@@ -154,10 +154,10 @@ finish. Honor the signal to stop work. An observe handler that throws is reporte
 handler runs. An error from `before_submit` rejects `beforeSubmit()` instead of becoming an
 `{ action: "error" }` decision; handle that rejection in your client.
 
-## Add a hook while running [#dynamic]
+## Add a hook from `activate` [#dynamic]
 
-`api.hook(name, handler)` adds a hook from `activate` and returns a function that removes it. The
-hook goes away with the plugin.
+The `hooks` that `activate` returns are added beside the plugin's own. Use them for a handler that
+shares state with what `activate` set up. They go away with the plugin.
 
 ```ts title="counter.ts"
 import type { Plugin } from "@nyte-ai/plugin/core";
@@ -167,12 +167,16 @@ export default {
   async activate(api) {
     let calls = Number((await api.storage.get("calls")) ?? 0);
 
-    api.hook("after_tool", async (outcome) => {
-      calls += 1;
-      await api.storage.set("calls", calls);
+    return {
+      hooks: {
+        async after_tool(outcome) {
+          calls += 1;
+          await api.storage.set("calls", calls);
 
-      return outcome;
-    });
+          return outcome;
+        },
+      },
+    };
   },
 } satisfies Plugin;
 ```

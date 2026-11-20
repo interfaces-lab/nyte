@@ -119,8 +119,8 @@ const read: ToolDefinition<Infer<typeof readParameters>> = {
     "Read a file in the workspace. Text comes back as numbered lines, which a reply cites as `path:line`; an image comes back as an image.",
   parameters: readParameters,
   class: (args) => ({ kind: "read", path: args.path }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const { files } = invocation.env;
 
@@ -148,7 +148,7 @@ const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
   parameters: writeParameters,
   output: PatchEntrySchema,
   class: (args) => ({ kind: "edit", path: args.path }),
-  replay: "never",
+  rerun: "never",
   async execute(args, invocation) {
     const { files } = invocation.env;
     const previous = await files.read(args.path);
@@ -176,7 +176,7 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
   parameters: editParameters,
   output: PatchEntrySchema,
   class: (args) => ({ kind: "edit", path: args.path }),
-  replay: "never",
+  rerun: "never",
   async execute(args, invocation) {
     const { files } = invocation.env;
     const document = await files.read(args.path);
@@ -239,8 +239,8 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   description: "List a directory in the workspace, one entry per line; directories end in /.",
   parameters: listParameters,
   class: (args) => ({ kind: "list", path: args.path ?? "." }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const directory = (args.path ?? ".").replace(/^\.\/?/, "").replace(/\/+$/, "");
     const limit = args.limit ?? LIST_LIMIT;
@@ -291,7 +291,7 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
     args.description === undefined
       ? { kind: "shell", command: args.command }
       : { kind: "shell", command: args.command, description: args.description },
-  replay: "never",
+  rerun: "never",
   async execute(args, invocation) {
     const { foreground, signal } = invocation;
 
@@ -371,8 +371,8 @@ const job: ToolDefinition<Infer<typeof jobParameters>> = {
     kind: "custom",
     label: args.action === "stop" ? `Stopping job ${args.id}` : `Reading job ${args.id}`,
   }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const { jobs } = invocation.workspace;
 
@@ -531,12 +531,19 @@ export const environmentPlugin: Plugin<"core"> = {
   activate(api) {
     const cwd = tryReadCwd(() => api.env);
 
-    if (cwd !== null)
-      api.contribute.prompt.add({
-        id: "cwd",
-        order: 100,
-        text: `The workspace root is ${cwd}. Tool paths are relative to it.`,
-      });
+    if (cwd === null) return {};
+
+    return {
+      contribute: {
+        prompt: [
+          {
+            id: "cwd",
+            order: 100,
+            text: `The workspace root is ${cwd}. Tool paths are relative to it.`,
+          },
+        ],
+      },
+    };
   },
 };
 

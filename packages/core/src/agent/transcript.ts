@@ -259,9 +259,7 @@ async function buildContext(
     head: input.head,
     run: input.run,
     sections: systemSections(found.record.prompt, input.agent, resources.prompt, [
-      ...(await resolveSections(runtime.registries.prompt.entries(), {
-        model: configuration.model,
-      })),
+      ...(await resolveSections(runtime, configuration.model)),
       ...(await projectSections(kernel, found.record, resources)),
     ]),
     commits: input.steps.map((step) => step.commit),

@@ -32,9 +32,9 @@ export function webFetch(fetch: Fetch): ToolDefinition<Infer<typeof fetchParamet
     description: "Fetch an http(s) URL as markdown, text or HTML; an image comes back as a file.",
     parameters: fetchParameters,
     class: (args) => ({ kind: "custom", label: `Fetching ${args.url}` }),
-    effects: "none",
-    approval: "never",
-    replay: "safe",
+    changes: "none",
+    asks: "never",
+    rerun: "safe",
     async execute(args, invocation) {
       const url = URL.parse(args.url);
 

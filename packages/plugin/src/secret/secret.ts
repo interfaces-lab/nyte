@@ -40,13 +40,12 @@ mkdir -p "$dir" && printf %s "$NYTE_SECRET_VALUE" > "$dir/$2" && printf %s "$HOM
 
 const REMOVE_DIRECTORIES = 'cd "$HOME/.nyte/secrets" 2>/dev/null || exit 0; rm -rf -- "$@"';
 
-const savedSetting: SettingDefinition<SavedSecrets> = {
+const savedSetting = {
   id: SAVED_SECRETS,
-  label: "Saved secrets",
+  title: "Saved secrets",
   schema: savedSecrets,
   default: {},
-  scope: "host",
-};
+} satisfies SettingDefinition<SavedSecrets>;
 
 type Actions = typeof secretContract.actions;
 
@@ -98,7 +97,7 @@ const handlers: Handlers = {
 
     if (saved?.phase.kind !== "saved" || saved.phase.head === null) return;
 
-    await context.api.sdk
+    await context.api.host
       .session(context.session)
       .head(saved.phase.head)
       .send(describeSaved(saved.name, saved.phase.path, saved.phase.expiresAt), {
@@ -134,11 +133,11 @@ const request: ToolDefinition<Infer<typeof secretParameters>> = {
     "Ask the user for one API key, token or password instead of asking in chat. It returns the path of an owner-only file holding it; you never see the value. Read the file only in the command that needs it, and never print it.",
   parameters: secretParameters,
   class: (args) => ({ kind: "custom", label: args.name }),
-  effects: "none",
-  approval: "never",
-  replay: "safe",
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
   async execute(args, invocation) {
-    if (await readsOnly(invocation.session, invocation.sdk))
+    if (await readsOnly(invocation.session, invocation.host))
       throw new SdkError("denied", "A side chat can't ask the user for a secret.");
 
     const part = await invocation.session.parts.create(secret, {
@@ -288,14 +287,14 @@ const remove: Command<"core"> = {
 };
 
 async function findFolder(api: PluginApi<"core">, workspace: WorkspaceId): Promise<WorkspaceId> {
-  const info = await api.sdk.workspace(workspace).info();
+  const info = await api.host.workspace(workspace).info();
 
   return info.isolation?.source ?? info.id;
 }
 
 async function readSaved(api: PluginApi<"core">): Promise<SavedSecrets> {
   const checked = await savedSecrets["~standard"].validate(
-    await api.contribute.settings.value(SAVED_SECRETS),
+    await api.registries.settings.value(SAVED_SECRETS),
   );
 
   return checked.issues === undefined ? checked.value : {};
@@ -305,7 +304,7 @@ async function changeSaved(
   api: PluginApi<"core">,
   change: (entries: SavedSecrets) => SavedSecrets,
 ): Promise<void> {
-  const outcome = await api.sdk.settings.apply(SAVED_SECRETS, change(await readSaved(api)));
+  const outcome = await api.host.settings.apply(SAVED_SECRETS, change(await readSaved(api)));
 
   if (outcome.kind !== "applied") throw new Error("The list of saved secrets couldn't be updated.");
 }
@@ -353,5 +352,7 @@ export default {
 
     api.signal.addEventListener("abort", () => clearInterval(timer), { once: true });
     run();
+
+    return {};
   },
 } satisfies Plugin;

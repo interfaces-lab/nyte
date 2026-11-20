@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
 import {
-  acquireSessionResources,
+  bindSession,
   clampThinkingLevel,
   createAssistantMessageEventStream,
   getCurrentTools,
@@ -258,18 +258,9 @@ export function claudeCodeSdk(start: StartQuery = query) {
   const plugin = {
     id: "claude-code-sdk",
     activate(api) {
-      const id = api.session.id;
-      const binding: Binding = { cwd: api.env.cwd };
-      const release = acquireSessionResources(id);
-      bindings.set(id, binding);
+      bindSession(bindings, api.session.id, { cwd: api.env.cwd }, api.signal);
 
-      const unbind = () => {
-        if (bindings.get(id) === binding) bindings.delete(id);
-        release();
-      };
-
-      if (api.signal.aborted) unbind();
-      else api.signal.addEventListener("abort", unbind, { once: true });
+      return {};
     },
   } satisfies Plugin;
 

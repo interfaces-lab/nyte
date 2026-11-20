@@ -1,12 +1,13 @@
 import { isJson } from "@nyte-ai/schema";
 import type { SessionId, SettingInfo } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
-import type { SettingDefinition } from "../contract/plugin.ts";
-import { readSettingLayers } from "../store/setting-layers.ts";
+import { resolveSetting } from "../contract/plugin.ts";
+import type { ResolvedSetting, SettingDefinition } from "../contract/plugin.ts";
+import { readSetting, readSettingLayers } from "../store/setting-layers.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
 
 interface Defined {
-  readonly definition: SettingDefinition;
+  readonly definition: ResolvedSetting;
   readonly owner: string;
 }
 
@@ -20,10 +21,10 @@ export async function settingInfos(
 
   const defined =
     runtime === null
-      ? hostDefinitions(kernel)
+      ? await shownOnHost(kernel, hostDefinitions(kernel))
       : runtime.registries.settings
           .entries()
-          .map((entry) => ({ definition: entry.item, owner: entry.owner }));
+          .map((entry) => ({ definition: resolveSetting(entry.item), owner: entry.owner }));
 
   const infos = await Promise.all(
     defined.map(async ({ definition, owner }): Promise<SettingInfo | null> => {
@@ -41,12 +42,16 @@ export async function settingInfos(
         id: definition.id,
         owner,
         scope: definition.scope,
-        label: definition.label,
+        title: definition.title,
+        description: definition.description,
+        placeholder: definition.placeholder,
+        page: definition.page,
+        secret: definition.secret,
         schema,
         choices:
           definition.choices?.flatMap((choice) =>
             isJson(choice.value)
-              ? [{ value: choice.value, label: choice.label, badge: choice.badge }]
+              ? [{ value: choice.value, title: choice.title, note: choice.note }]
               : [],
           ) ?? null,
         value: layer?.value ?? (isJson(definition.default) ? definition.default : null),
@@ -58,12 +63,54 @@ export async function settingInfos(
   return infos.flatMap((info) => (info === null ? [] : [info]));
 }
 
+async function shownOnHost(
+  kernel: Kernel,
+  defined: readonly Defined[],
+): Promise<readonly Defined[]> {
+  if (defined.every((entry) => entry.definition.when === undefined)) return defined;
+
+  const chat = {
+    parent: null,
+    settings: await readSettingValues(
+      kernel,
+      null,
+      defined.map((entry) => entry.definition),
+    ),
+    searchProviders: [],
+  };
+
+  return defined.filter((entry) => {
+    try {
+      return entry.definition.when === undefined || entry.definition.when(chat) === true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Each setting's current value in a session, by id, as a `when` reads it; with no session, the host's values. */
+export async function readSettingValues(
+  kernel: Kernel,
+  session: SessionId | null,
+  settings: readonly SettingDefinition[],
+): Promise<Readonly<Record<string, unknown>>> {
+  return Object.fromEntries(
+    await Promise.all(
+      settings.map(async (entry) => {
+        const definition = resolveSetting(entry);
+
+        return [definition.id, await readSetting(kernel.store, definition, session)] as const;
+      }),
+    ),
+  );
+}
+
 export function findSettingDefinition(kernel: Kernel, id: string): Defined | undefined {
   return (
     staticHostDefinitions(kernel).find((entry) => entry.definition.id === id) ??
     [...kernel.plugins.runtimes().values()]
       .flatMap((runtime) => runtime.registries.settings.entries())
-      .map((entry) => ({ definition: entry.item, owner: entry.owner }))
+      .map((entry) => ({ definition: resolveSetting(entry.item), owner: entry.owner }))
       .find((entry) => entry.definition.id === id)
   );
 }
@@ -76,9 +123,8 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
     ...[...kernel.plugins.runtimes().values()].flatMap((runtime) =>
       runtime.registries.settings
         .entries()
-        .flatMap((entry) =>
-          entry.item.scope === "host" ? [{ definition: entry.item, owner: entry.owner }] : [],
-        ),
+        .map((entry) => ({ definition: resolveSetting(entry.item), owner: entry.owner }))
+        .filter((entry) => entry.definition.scope === "host"),
     ),
   ].filter((entry) => {
     if (seen.has(entry.definition.id)) return false;
@@ -90,8 +136,8 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
 
 function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
   return [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap((plugin) =>
-    (plugin.contribute?.settings ?? []).flatMap((definition) =>
-      definition.scope === "host" ? [{ definition, owner: plugin.id }] : [],
-    ),
+    (plugin.contribute?.settings ?? [])
+      .map((entry) => ({ definition: resolveSetting(entry), owner: plugin.id }))
+      .filter((entry) => entry.definition.scope === "host"),
   );
 }

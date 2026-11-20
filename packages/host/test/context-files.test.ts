@@ -58,7 +58,14 @@ async function contextFiles(
     seen = resolve;
   });
 
-  const probe: Plugin<"core"> = { id: "probe", activate: (api) => seen(api.inputs.contextFiles) };
+  const probe: Plugin<"core"> = {
+    id: "probe",
+    activate(api) {
+      seen(api.project.contextFiles);
+
+      return {};
+    },
+  };
 
   await using host = await openHost({
     store: memoryStore(),

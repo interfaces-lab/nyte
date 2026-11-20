@@ -31,8 +31,8 @@ const echo: ToolDefinition<{ readonly text: string }> = {
   description: "Echo the text.",
   parameters: say,
   class: () => ({ kind: "read", path: "notes.md" }),
-  replay: "safe",
-  effects: "none",
+  rerun: "safe",
+  changes: "none",
   execute: async (args) => ({ content: [{ kind: "text", text: `echo: ${args.text}` }] }),
 };
 
@@ -41,8 +41,8 @@ const boom: ToolDefinition<{ readonly text: string }> = {
   description: "Fail.",
   parameters: say,
   class: () => ({ kind: "custom", label: "Failing" }),
-  replay: "safe",
-  effects: "none",
+  rerun: "safe",
+  changes: "none",
   execute: async () => {
     throw new Error("Boom.");
   },
@@ -54,8 +54,8 @@ function gated(gate: Promise<void>): ToolDefinition<{ readonly text: string }> {
     description: "Wait for the gate.",
     parameters: say,
     class: () => ({ kind: "custom", label: "Waiting" }),
-    replay: "safe",
-    effects: "none",
+    rerun: "safe",
+    changes: "none",
     async execute() {
       await gate;
 

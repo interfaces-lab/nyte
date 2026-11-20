@@ -95,7 +95,7 @@ const handlers: Handlers = {
 
     if (answered?.phase.kind !== "answered" || answered.phase.head === null) return;
 
-    await context.api.sdk
+    await context.api.host
       .session(context.session)
       .head(answered.phase.head)
       .send(
@@ -142,11 +142,11 @@ const ask: ToolDefinition<Infer<typeof questionParameters>> = {
     kind: "custom",
     label: args.questions.map((item) => item.header).join(", "),
   }),
-  effects: "none",
-  approval: "never",
-  replay: "safe",
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
   async execute(args, invocation) {
-    if (await readsOnly(invocation.session, invocation.sdk))
+    if (await readsOnly(invocation.session, invocation.host))
       throw new SdkError("denied", "A side chat can't ask the user questions.");
 
     for (const item of args.questions) {

@@ -27,7 +27,13 @@ import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
 import type { SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
-import type { DocumentsApi, ImageProcessor, ModelsApi, OpenOptions } from "./contract/host.ts";
+import type {
+  ClientsApi,
+  DocumentsApi,
+  ImageProcessor,
+  ModelsApi,
+  OpenOptions,
+} from "./contract/host.ts";
 import type {
   Kernel,
   PluginHost,
@@ -39,6 +45,7 @@ import type {
 } from "./contract/kernel.ts";
 import type { PartDefinitions } from "./contract/parts.ts";
 import type { ServedHost } from "./contract/server.ts";
+import { resolveSetting } from "./contract/plugin.ts";
 import type { Plugin } from "./contract/plugin.ts";
 import type { Member } from "./contract/presence.ts";
 import { decodeHostIdentity, envelope } from "./contract/records.ts";
@@ -69,12 +76,12 @@ import { createWorkspaces, createWorkspaceState } from "./env/workspaces.ts";
 import { createConfigurationResolver, createModelsApi, rememberChoice } from "./extend/models.ts";
 import { pluginSecrets } from "./extend/plugin-api.ts";
 import {
-  checkPlugins,
   createPluginRuntime,
   createPluginState,
   hostPluginRows,
   replacePlugins,
 } from "./extend/plugin-runtime.ts";
+import { checkPlugins } from "./extend/plugin-checks.ts";
 import { bumpGeneration } from "./extend/registry.ts";
 import { publishViews } from "./extend/part-views.ts";
 import { reportUserPluginFailures, userPluginFolder } from "./extend/plugin-folders.ts";
@@ -316,12 +323,12 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
   const issues: ValidationIssue[] = [];
   let applied = 0;
 
-  const declared = [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap(
-    (plugin) => plugin.contribute?.settings ?? [],
+  const declared = [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap((plugin) =>
+    (plugin.contribute?.settings ?? []).map(resolveSetting),
   );
 
   const sessionScoped = new Set(
-    declared.flatMap((setting) => (setting.scope === "session" ? [setting.id] : [])),
+    declared.flatMap((setting) => (setting.scope === "chat" ? [setting.id] : [])),
   );
 
   const secret = new Set(declared.flatMap((setting) => (setting.secret ? [setting.id] : [])));
@@ -399,6 +406,7 @@ async function composeKernel(
     execution: options.execution,
     models: options.models,
     mcp: options.mcp,
+    clients: options.clients,
     github: options.github,
     documents: options.documents,
     images: options.images,
@@ -453,6 +461,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly poll?: number;
     readonly models?: Models;
     readonly mcp?: McpHubFactory;
+    readonly clients?: ClientsApi;
     readonly github?: GitHubAccountApi;
     readonly documents?: DocumentsApi;
     readonly images?: ImageProcessor;
@@ -593,6 +602,7 @@ export function createKernel(input: KernelOptions): Kernel {
     get secretKey() {
       return (secretKey ??= kernel.secrets === null ? null : loadSecretCipherKey(kernel.secrets));
     },
+    clients: input.clients ?? null,
     github: input.github ?? null,
     documents: input.documents ?? null,
     images: input.images ?? null,
@@ -718,7 +728,7 @@ async function evictIdleRuntimes(kernel: Kernel): Promise<void> {
       driving.has(session) ||
       awaited.has(session) ||
       kernel.folds.folding(session) ||
-      kernel.plugins.state.assigned.has(session) ||
+      kernel.plugins.state.inline.has(session) ||
       kernel.jobs.background(session).some((job) => job.item.state === "working")
       ? []
       : [session];

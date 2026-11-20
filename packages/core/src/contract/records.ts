@@ -85,6 +85,14 @@ const CatalogRecordType = record({ id: idSchema<"catalog">() });
 
 export type CatalogRecord = Static<typeof CatalogRecordType>;
 
+const AssignedPluginType = Type.Union([
+  record({ path: Type.String() }),
+  record({ id: Type.String() }),
+]);
+
+/** One plugin a session is assigned: a plugin file by path, or a plugin the serving host has loaded, by id. */
+export type AssignedPlugin = Static<typeof AssignedPluginType>;
+
 const SessionRecordType = record({
   id: idSchema<"session">(),
   name: nullable(Type.String()),
@@ -108,6 +116,7 @@ const SessionRecordType = record({
   mcp: Type.Optional(typed<McpCeiling>()(McpCeilingType)),
   side: Type.Optional(Type.Literal(true)),
   project: Type.Optional(idSchema<"project">()),
+  plugins: Type.Optional(list(AssignedPluginType)),
 });
 
 export type SessionRecord = Static<typeof SessionRecordType>;

@@ -32,7 +32,7 @@ type Handlers = {
 };
 
 export interface ApprovalTool extends RuntimeCall {
-  readonly approval?: ToolDefinition["approval"];
+  readonly asks?: ToolDefinition["asks"];
 }
 
 const DENIED = "The user denied this tool call. Ask them how to proceed instead of retrying it.";
@@ -53,14 +53,13 @@ const POLICIES = ApprovalPolicyType.anyOf.map((literal) => literal.const);
  * @category plugins
  * @since 0.1.0
  */
-export const permissions: SettingDefinition<ApprovalPolicy> = {
+export const permissions = {
   id: PERMISSIONS,
-  label: "Permissions",
+  title: "Permissions",
   schema: approvalPolicy,
   choices: APPROVAL_POLICIES,
   default: "full",
-  scope: "host",
-};
+} satisfies SettingDefinition<ApprovalPolicy>;
 
 const GUARDED = new Set([".claude", ".git", ".nyte"]);
 
@@ -81,7 +80,7 @@ function changes(tool: ApprovalTool): boolean {
   const kind = tool.class.kind;
 
   return (
-    (tool.approval ?? "policy") === "policy" &&
+    (tool.asks ?? "policy") === "policy" &&
     kind !== "read" &&
     kind !== "list" &&
     kind !== "delegate"
@@ -93,7 +92,7 @@ export function mayChange(definition: ToolDefinition): boolean {
     return changes({
       name: definition.name,
       class: definition.class({}, { call: PROBE }),
-      approval: definition.approval,
+      asks: definition.asks,
     });
   } catch {
     return true;
@@ -132,7 +131,7 @@ export function approvalReason(
 }
 
 async function readPolicy(api: PluginApi<"core">): Promise<ApprovalPolicy> {
-  const value = await api.contribute.settings.value(PERMISSIONS);
+  const value = await api.registries.settings.value(PERMISSIONS);
   const ceiling = (await api.session.info()).mcp?.ceiling;
   const checked = approvalPolicy["~standard"].validate(value);
 
@@ -221,7 +220,7 @@ async function approveRuntimeCall(
 ): Promise<RuntimeVerdict> {
   const { api, signal } = context;
 
-  if (changes(call) && (await readsOnly(api.session, api.sdk)))
+  if (changes(call) && (await readsOnly(api.session, api.host)))
     return { kind: "deny", reason: READ_ONLY };
   const reason = await pendingReason(api, call);
 
@@ -245,10 +244,10 @@ export default {
   approve: approveRuntimeCall,
   hooks: {
     offer_tools: async (tools, context) => {
-      if (!(await readsOnly(context.api.session, context.api.sdk))) return tools;
+      if (!(await readsOnly(context.api.session, context.api.host))) return tools;
 
       const changing = new Set(
-        context.api.contribute.tools
+        context.api.registries.tools
           .list()
           .filter(mayChange)
           .map((definition) => definition.name),
@@ -259,10 +258,10 @@ export default {
     before_tool: async (call, context) => {
       const { api } = context;
 
-      const definition = api.contribute.tools.list().find((tool) => tool.name === call.name);
-      const tool = { name: call.name, class: call.class, approval: definition?.approval };
+      const definition = api.registries.tools.list().find((tool) => tool.name === call.name);
+      const tool = { name: call.name, class: call.class, asks: definition?.asks };
 
-      if (changes(tool) && (await readsOnly(api.session, api.sdk)))
+      if (changes(tool) && (await readsOnly(api.session, api.host)))
         return { action: "reject", reason: READ_ONLY };
 
       const reason = await context.memo("reason", () => pendingReason(api, tool));

@@ -19,6 +19,7 @@ import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import type { ClientActions } from "@nyte-ai/plugin/core/browser-client";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import canvas from "@nyte-ai/plugin/core/canvas";
+import cd from "@nyte-ai/plugin/core/cd";
 import { claudeCodeSdk } from "@nyte-ai/plugin/core/claude-code-sdk";
 import codemode from "@nyte-ai/plugin/core/codemode";
 import designGuide from "@nyte-ai/plugin/core/design-guide";
@@ -50,7 +51,7 @@ import { createMcpHub } from "./mcp-client/hub.ts";
 import type { ClientMetadataFetch } from "./mcp-server/client-metadata.ts";
 import { openMcpServer } from "./mcp-server/server.ts";
 import { createViewCompiler } from "./plugins/views.ts";
-import { performOffered, sharedClients } from "./serve/clients.ts";
+import { performFor, performOffered, sharedClients } from "./serve/clients.ts";
 import { createPluginLoader } from "./plugins/loader.ts";
 import type { PluginImport } from "./plugins/loader.ts";
 import { defaultSecrets } from "./keys/secrets.ts";
@@ -150,6 +151,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     question,
     secretRequests,
     rename,
+    cd,
     subagents,
     threads,
     bashDescription,
@@ -197,6 +199,15 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     compileView: createViewCompiler(),
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
+    clients: {
+      rows: () => (server === null ? [] : sharedClients(server).rows()),
+      perform: (principal, request) =>
+        server === null
+          ? Promise.reject(
+              new SdkError("unavailable", "The host is still opening.", { retry: true }),
+            )
+          : performFor(server, principal, request),
+    },
     github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),
     documents:
       options.documents ?? (usesLocalProvider ? localDocuments(documentsClosed.signal) : undefined),

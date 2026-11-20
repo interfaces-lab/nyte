@@ -535,7 +535,7 @@ describe("openHost", () => {
             description: "Changes something.",
             parameters: standard(Type.Object({})),
             class: () => ({ kind: "custom", label: "touch" }),
-            replay: "safe",
+            rerun: "safe",
             async execute() {
               touched += 1;
 

@@ -134,6 +134,7 @@ export function open(
     readonly store?: Store;
     readonly execution?: ComposeOptions["execution"];
     readonly poll?: number;
+    readonly secrets?: ComposeOptions["secrets"];
   },
 ): Promise<ServedHost & { readonly kernel: Kernel }> {
   const browser = options?.browser;
@@ -142,6 +143,7 @@ export function open(
     store: options?.store ?? memoryStore(),
     execution: options?.execution,
     poll: options?.poll,
+    secrets: options?.secrets,
     models: fake.models,
     plugins: [
       {

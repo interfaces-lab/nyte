@@ -1,7 +1,7 @@
 import { isPart, tool } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
 import { adapters, webPlugin } from "../src/web/index.ts";
-import { fakeModels, open } from "./fake-models.ts";
+import { fakeModels, open, until } from "./fake-models.ts";
 
 function recording(body: string) {
   const sent: { readonly url: string; readonly headers: Headers; readonly body: unknown }[] = [];
@@ -134,4 +134,67 @@ it("routes web_search by its declared host setting, read through settings.value 
     output: { provider: "tavily", results: [{ url: "https://a.test", title: "A", content: "aa" }] },
   });
   expect(sent.map((request) => request.url)).toEqual(["https://api.tavily.com/search"]);
+});
+
+it("keeps one secret key per provider: the chosen provider's key field is the only one shown, /websearch-key saves it sealed, and the search sends it", async () => {
+  const { sent, fetch } = recording(
+    JSON.stringify({ results: [{ url: "https://a.test", title: "A", content: "aa" }] }),
+  );
+
+  const fake = fakeModels();
+
+  fake.reply(
+    { content: [{ type: "text", text: "Ready." }] },
+    { content: [{ type: "toolCall", id: "w", name: "web_search", arguments: { query: "nyte" } }] },
+    { content: [{ type: "text", text: "Found." }] },
+  );
+
+  await using host = await open(fake, [webPlugin(fetch)], {
+    secrets: { key: async () => new Uint8Array(32).fill(7) },
+  });
+
+  expect(await host.settings.apply("web_search.provider", "tavily")).toEqual({ kind: "applied" });
+  expect(
+    host.kernel.host
+      .current()
+      .settings.filter((setting) => setting.id.startsWith("web_search.key."))
+      .map((setting) => setting.id),
+  ).toEqual(["web_search.key.tavily"]);
+  expect(
+    host.kernel.host
+      .current()
+      .settings.filter((setting) => setting.owner === "web")
+      .map((setting) => setting.page),
+  ).toEqual(["Web search", "Web search"]);
+  const { session, receipt } = await host.sessions.start({ content: "Hi." });
+  await receipt.settled();
+
+  const keyFields = async (): Promise<readonly unknown[]> =>
+    (await session.view()).catalog.settings
+      .filter((setting) => setting.id.startsWith("web_search.key."))
+      .map((setting) => [setting.id, setting.secret, setting.value]);
+
+  expect(await keyFields()).toEqual([["web_search.key.tavily", true, null]]);
+  expect(await session.command("websearch-key", "tavily tvly-123")).toEqual({
+    kind: "ran",
+    output: "Key for tavily saved.",
+  });
+  await until(async () =>
+    JSON.stringify(await keyFields()).includes('{"secret":true}') ? true : undefined,
+  );
+
+  expect(await keyFields()).toEqual([["web_search.key.tavily", true, { secret: true }]]);
+  expect(await (await session.send("Search.")).settled()).toMatchObject({ kind: "completed" });
+  expect(sent.map((request) => request.headers.get("authorization"))).toEqual(["Bearer tvly-123"]);
+
+  expect(await session.command("websearch-key", "tavily")).toEqual({
+    kind: "ran",
+    output: "Key for tavily removed.",
+  });
+  expect(await host.settings.apply("web_search.provider", "exa")).toEqual({ kind: "applied" });
+  await until(async () =>
+    JSON.stringify(await keyFields()).includes("web_search.key.exa") ? true : undefined,
+  );
+
+  expect(await keyFields()).toEqual([["web_search.key.exa", true, null]]);
 });

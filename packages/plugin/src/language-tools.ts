@@ -102,8 +102,8 @@ const definition: ToolDefinition<SymbolAt> = {
     "Find where a symbol is defined, using the workspace's language server (Go, TypeScript, JavaScript). Answers path:line:column per definition.",
   parameters: SymbolAt,
   class: (args) => ({ kind: "read", path: args.path }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const language = await requireLanguage(invocation);
     const position = await locate(await requireFiles(invocation), args);
@@ -121,8 +121,8 @@ const references: ToolDefinition<SymbolAt> = {
     "Find every reference to a symbol, its declaration included, using the workspace's language server (Go, TypeScript, JavaScript). Answers path:line:column per reference.",
   parameters: SymbolAt,
   class: (args) => ({ kind: "read", path: args.path }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const language = await requireLanguage(invocation);
     const position = await locate(await requireFiles(invocation), args);
@@ -147,8 +147,8 @@ const diagnostics: ToolDefinition<Infer<typeof InFile>> = {
     "List the compiler and analyzer errors and warnings for a file as it is on disk, from the workspace's language server (Go, TypeScript, JavaScript).",
   parameters: InFile,
   class: (args) => ({ kind: "read", path: args.path }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const language = await requireLanguage(invocation);
     const frame = await diagnosticsFor(language, args.path);
@@ -216,7 +216,7 @@ const rename: ToolDefinition<Infer<typeof Rename>> = {
     "Rename a symbol everywhere the workspace's language server (Go, TypeScript, JavaScript) finds it, and write the edited files. Refuses, changing nothing, when a file changed since the server read it.",
   parameters: Rename,
   class: (args) => ({ kind: "edit", path: args.path }),
-  replay: "never",
+  rerun: "never",
   async execute(args, invocation) {
     const language = await requireLanguage(invocation);
     const files = await requireFiles(invocation);

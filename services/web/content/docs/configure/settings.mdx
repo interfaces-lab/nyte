@@ -20,19 +20,19 @@ every client of that host.
 
 These ship with Nyte. Plugins you add can declare more.
 
-| Setting                  | Default  | What it does                                                                                                                                    |
-| ------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `permissions`            | `"full"` | Which tool calls wait for you: `ask`, `auto-edit` or `full`. See [Permissions](/docs/configure/permissions)                                     |
-| `workspaceTrust`         | `"ask"`  | What folders you haven't answered for do with their project files: `ask`, `always` or `never`. See [Trust a folder](/docs/configure/trust#mode) |
-| `skills.paths`           | `[]`     | More places to find skills. See [Skills](/docs/configure/skills#paths)                                                                          |
-| `continueInterrupted`    | `true`   | When a response is cut off, keep its text and ask the model to continue it                                                                      |
-| `web_search.provider`    | `"exa"`  | Where web searches go: `exa`, `tavily`, `firecrawl`, `parallel`, or `off`                                                                       |
-| `web_search.keys`        | `{}`     | API keys for the web search providers, sealed like secret variables. Without one, a provider's keyless route answers                            |
-| `worktrees.branchPrefix` | `""`     | Starts the name of each branch Nyte creates for a worktree chat, such as `nyte/`                                                                |
-| `worktrees.idleDays`     | `7`      | Clean a worktree once no chat has used it for this many days. `0` turns this off                                                                |
-| `worktrees.maxCount`     | `20`     | Clean the least recently used worktrees beyond this many. `0` turns this off                                                                    |
-| `telemetry.endpoint`     | `""`     | An OTLP HTTP address to send a trace of each model request to. Empty sends nothing                                                              |
-| `variables.entries`      | `{}`     | The variables from [Environment variables](/docs/environment-variables)                                                                         |
+| Setting                  | Default  | What it does                                                                                                                                       |
+| ------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `permissions`            | `"full"` | Which tool calls wait for you: `ask`, `auto-edit` or `full`. See [Permissions](/docs/configure/permissions)                                        |
+| `workspaceTrust`         | `"ask"`  | What folders you haven't answered for do with their project files: `ask`, `always` or `never`. See [Trust a folder](/docs/configure/trust#mode)    |
+| `skills.paths`           | `[]`     | More places to find skills. See [Skills](/docs/configure/skills#paths)                                                                             |
+| `continueInterrupted`    | `true`   | When a response is cut off, keep its text and ask the model to continue it                                                                         |
+| `web_search.provider`    | `"exa"`  | Where web searches go: `exa`, `tavily`, `firecrawl`, `parallel`, or `off`                                                                          |
+| `web_search.key.<id>`    | none     | One provider's API key (`exa`, `tavily`, `firecrawl`, `parallel`), sealed like secret variables. Without one, the provider's keyless route answers |
+| `worktrees.branchPrefix` | `""`     | Starts the name of each branch Nyte creates for a worktree chat, such as `nyte/`                                                                   |
+| `worktrees.idleDays`     | `7`      | Clean a worktree once no chat has used it for this many days. `0` turns this off                                                                   |
+| `worktrees.maxCount`     | `20`     | Clean the least recently used worktrees beyond this many. `0` turns this off                                                                       |
+| `telemetry.endpoint`     | `""`     | An OTLP HTTP address to send a trace of each model request to. Empty sends nothing                                                                 |
+| `variables.entries`      | `{}`     | The variables from [Environment variables](/docs/environment-variables)                                                                            |
 
 Cleaning a worktree deletes its ignored dependency and build folders, such as `node_modules`. Its
 files and edits stay. Cleanup runs when the host starts and every so often after, and skips
@@ -40,14 +40,14 @@ worktrees with a chat still running.
 
 In the desktop app, find them here:
 
-| Setting               | Where                                                                         |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `permissions`         | **Customize > Plugins > Permissions**                                         |
-| `web_search.provider` | **Settings > Web search**, or **Customize > Plugins > Web**                   |
-| `web_search.keys`     | **Settings > Web search**. In the terminal, `/websearch-key <provider> <key>` |
-| `worktrees.*`         | **Settings > Source control**                                                 |
-| `telemetry.endpoint`  | **Settings > Developer** with **Developer Mode** on, as **Trace endpoint**    |
-| `variables.entries`   | **Settings > Environment variables**                                          |
+| Setting               | Where                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `permissions`         | **Customize > Plugins > Permissions**                                                                        |
+| `web_search.provider` | **Settings > Web search**, or **Customize > Plugins > Web**                                                  |
+| `web_search.key.<id>` | **Settings > Web search**, shown for the chosen provider. In the terminal, `/websearch-key <provider> <key>` |
+| `worktrees.*`         | **Settings > Source control**                                                                                |
+| `telemetry.endpoint`  | **Settings > Developer** with **Developer Mode** on, as **Trace endpoint**                                   |
+| `variables.entries`   | **Settings > Environment variables**                                                                         |
 
 The desktop app adds settings of its own, named `desktop.*`, for notifications, sleep, its terminal
 and its browser. It shows them on its **Settings** pages.
@@ -71,9 +71,9 @@ don't change it. Use the file to set up a new machine, then change settings in t
 The file can seed the host settings above. It can't seed:
 
 - `variables.entries`, which holds secrets. Set those in **Settings > Environment variables**.
-- `web_search.keys`, which holds secrets. Set those in **Settings > Web search**.
+- `web_search.key.<id>`, which holds a secret. Set it in **Settings > Web search**.
 - A plugin's session settings. Set those on a chat.
-- Settings a plugin adds from `activate`, or that plugins in a folder's `.nyte/plugins` declare.
+- Settings a plugin returns from `activate`, or that plugins in a folder's `.nyte/plugins` declare.
 
 It can seed a host setting that a plugin from `sdk.open` or `~/.nyte/plugins` declares in
 `contribute.settings`.

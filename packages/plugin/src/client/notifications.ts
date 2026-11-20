@@ -8,24 +8,29 @@ export default {
   activate(api) {
     const heard = new Map<SessionId, string>();
 
-    api.hook("attention_changed_anywhere", (event) => {
-      const info = event.info;
-      const alert = headAttention(info).alert;
-      const news = alertNews(heard.get(info.id), alert);
-      heard.set(info.id, alert.key);
+    return {
+      hooks: {
+        attention_changed_anywhere(event) {
+          const info = event.info;
+          const alert = headAttention(info).alert;
+          const news = alertNews(heard.get(info.id), alert);
+          heard.set(info.id, alert.key);
 
-      if (
-        !news ||
-        alert.state === undefined ||
-        !alertsOnChat(info, alert, true, false) ||
-        api.looking.has(info.id)
-      )
-        return;
-      api.ui.notify({
-        title: sessionTitle(info),
-        message: alert.body,
-        level: alert.state === "failed" ? "error" : alert.state === "waiting" ? "warning" : "info",
-      });
-    });
+          if (
+            !news ||
+            alert.state === undefined ||
+            !alertsOnChat(info, alert, true, false) ||
+            api.looking.has(info.id)
+          )
+            return;
+          api.ui.notify({
+            title: sessionTitle(info),
+            message: alert.body,
+            level:
+              alert.state === "failed" ? "error" : alert.state === "waiting" ? "warning" : "info",
+          });
+        },
+      },
+    };
   },
 } satisfies Plugin;

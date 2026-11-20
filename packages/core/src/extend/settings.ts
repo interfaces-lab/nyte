@@ -8,7 +8,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { SettingsApi } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import type { Setting, SettingDefinition } from "../contract/plugin.ts";
+import type { Setting, ResolvedSetting } from "../contract/plugin.ts";
 import { collectContributions } from "../engine/contributions.ts";
 import { WORKSPACE_TRUST } from "../env/trust.ts";
 import { dropScans, readTrust, trustChanged } from "../env/workspaces.ts";
@@ -48,7 +48,7 @@ export function createSettingsApi(kernel: Kernel): SettingsApi {
 
 export function settingHandle<T>(
   kernel: Kernel,
-  definition: SettingDefinition<T>,
+  definition: ResolvedSetting<T>,
   input: {
     readonly owner: string;
     readonly session: SessionId | null;
@@ -131,7 +131,7 @@ export async function publishSettings(kernel: Kernel): Promise<void> {
 
 async function storeHostValue(
   kernel: Kernel,
-  definition: Pick<SettingDefinition, "id" | "secret">,
+  definition: Pick<ResolvedSetting, "id" | "secret">,
   value: Json,
 ): Promise<void> {
   const id = definition.id;
@@ -161,20 +161,21 @@ async function storeHostValue(
   ]);
 }
 
-async function readOpenedSetting<T>(kernel: Kernel, definition: SettingDefinition<T>): Promise<T> {
+async function readOpenedSetting<T>(kernel: Kernel, definition: ResolvedSetting<T>): Promise<T> {
   const stored = await readKv(kernel.store, kvRef("host", "settings", definition.id));
 
   if (stored === undefined) return definition.default;
 
-  const opened = isJsonObject(stored)
-    ? Object.fromEntries(
-        await Promise.all(
-          Object.entries(stored).map(
-            async (entry) => [entry[0], await openSecretEntry(kernel, entry[1])] as const,
+  const opened =
+    !isJsonObject(stored) || stored.secret === true
+      ? await openSecretEntry(kernel, stored)
+      : Object.fromEntries(
+          await Promise.all(
+            Object.entries(stored).map(
+              async (entry) => [entry[0], await openSecretEntry(kernel, entry[1])] as const,
+            ),
           ),
-        ),
-      )
-    : stored;
+        );
 
   const checked = await check(definition.schema, opened);
 
@@ -195,28 +196,34 @@ async function sealSecretEntries(
 ): Promise<Json> {
   if (!isJsonObject(written)) return written;
 
+  if (written.secret === true) return sealSecretEntry(kernel, "This setting", written, stored);
+
   const kept = isJsonObject(stored) ? stored : {};
 
   const entries = await Promise.all(
-    Object.entries(written).map(async (entry): Promise<[string, Json]> => {
-      const key = entry[0];
-      const value = entry[1];
-
-      if (!isJsonObject(value) || value.secret !== true) return [key, value];
-
-      if (typeof value.value === "string")
-        return [key, { secret: true, ...(await sealText(kernel, value.value)) }];
-
-      const previous = kept[key];
-
-      if (isJsonObject(previous) && previous.secret === true && "ciphertext" in previous)
-        return [key, previous];
-
-      throw new SdkError("invalid", `${key} is secret but has no value to keep. Enter one.`);
-    }),
+    Object.entries(written).map(async (entry): Promise<[string, Json]> => [
+      entry[0],
+      await sealSecretEntry(kernel, entry[0], entry[1], kept[entry[0]]),
+    ]),
   );
 
   return Object.fromEntries(entries);
+}
+
+async function sealSecretEntry(
+  kernel: Kernel,
+  name: string,
+  written: Json,
+  stored: Json | undefined,
+): Promise<Json> {
+  if (!isJsonObject(written) || written.secret !== true) return written;
+
+  if (typeof written.value === "string")
+    return { secret: true, ...(await sealText(kernel, written.value)) };
+
+  if (isJsonObject(stored) && stored.secret === true && "ciphertext" in stored) return stored;
+
+  throw new SdkError("invalid", `${name} is secret but has no value to keep. Enter one.`);
 }
 
 async function settingsConfigured(

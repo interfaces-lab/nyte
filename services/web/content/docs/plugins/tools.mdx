@@ -24,8 +24,8 @@ const listTodos: ToolDefinition<Infer<typeof parameters>> = {
   description: "List the TODO comments in a file, with their line numbers.",
   parameters,
   class: (args) => ({ kind: "read", path: args.path }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const file = await invocation.env.files.read(args.path);
 
@@ -84,7 +84,7 @@ the user first.
 | `{ kind: "delegate", child, role, title }` | Starting or talking to a subagent | Never                                       |
 | `{ kind: "custom", label }`                | Anything else                     | Unless permissions are set to full access   |
 
-`approval` overrides that per tool:
+`asks` overrides that per tool:
 
 - `"policy"` (the default) lets a permissions hook hold the call by its class.
 - `"never"` is for calls that change nothing the user guards, such as asking a question or showing a
@@ -93,14 +93,14 @@ the user first.
 
 ## Files and replays [#effects]
 
-`effects` says whether a call can write the workspace:
+`changes` says whether a call can write the workspace:
 
 - `"workspace"` (the default): the host snapshots the files before and after the call and records
   what changed.
 - `"none"`: the call can't write files, so the host skips the snapshot. Use it for reads, web
   requests, questions and parts.
 
-`replay` is required. It says what happens when the host restarts in the middle of a call:
+`rerun` is required. It says what happens when the host restarts in the middle of a call:
 
 - `"safe"`: the call runs again. Pick it when running twice does no harm.
 - `"never"`: the call ends as `interrupted` instead of running again. Pick it for anything that
@@ -115,20 +115,21 @@ an external action happen exactly once.
 
 The second argument to `execute` is the `ToolInvocation`.
 
-| Member                | What it is                                                                   |
-| --------------------- | ---------------------------------------------------------------------------- |
-| `env`                 | The chat's environment: `cwd`, `files` and `exec`                            |
-| `session`             | The chat, for example to create a part with `session.parts.create`           |
-| `sdk`                 | A connection to the host, the same API SDK code uses                         |
-| `workspace`           | The chat's workspace                                                         |
-| `signal`              | Aborts when the user stops the run                                           |
-| `progress(update)`    | Reports `{ text?, fraction?, detail? }` while the call runs                  |
-| `tools`               | `execute` another tool, `list` the chat's tools, see which are `loaded`      |
-| `foreground`          | Starts a command the user can send to the background                         |
-| `wait(target)`        | Waits for a part answer, a job, a run or a timer, across host restarts       |
-| `memo(name, compute)` | Reuses a stored value across restarts; may compute again before it is stored |
-| `now()`               | The time, the same on a replay                                               |
-| `run`, `call`, `head` | Ids of the run, the call and the branch it runs on                           |
+| Member                | What it is                                                                     |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `env`                 | The chat's environment: `cwd`, `files` and `exec`                              |
+| `session`             | The chat, for example to create a part with `session.parts.create`             |
+| `host`                | A connection to the host, the same API SDK code uses                           |
+| `api`                 | The [API](/docs/plugins/reference#plugin-api) of the plugin that owns the tool |
+| `workspace`           | The chat's workspace                                                           |
+| `signal`              | Aborts when the user stops the run                                             |
+| `progress(update)`    | Reports `{ text?, fraction?, detail? }` while the call runs                    |
+| `tools`               | `execute` another tool, `list` the chat's tools, see which are `loaded`        |
+| `foreground`          | Starts a command the user can send to the background                           |
+| `wait(target)`        | Waits for a part answer, a job, a run or a timer, across host restarts         |
+| `memo(name, compute)` | Reuses a stored value across restarts; may compute again before it is stored   |
+| `now()`               | The time, the same on a replay                                                 |
+| `run`, `call`, `head` | Ids of the run, the call and the branch it runs on                             |
 
 ## Who can call the tool [#exposure]
 

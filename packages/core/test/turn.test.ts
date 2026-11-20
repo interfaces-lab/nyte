@@ -175,7 +175,7 @@ describe("turn", () => {
       description: "Call echo inside.",
       parameters: nothing,
       class: () => ({ kind: "custom", label: "Nesting" }),
-      replay: "safe",
+      rerun: "safe",
       async execute(_args, invocation) {
         const inner = await invocation.tools.execute("echo", { text: "inner" });
 
@@ -882,7 +882,7 @@ describe("turn", () => {
       description: "Run until stopped.",
       parameters: nothing,
       class: () => ({ kind: "custom", label: "Hanging" }),
-      replay: "safe",
+      rerun: "safe",
       async execute(_args, invocation) {
         started.resolve();
         await new Promise((resolve) =>

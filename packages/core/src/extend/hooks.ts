@@ -2,7 +2,6 @@ import { compile, JsonType, SdkError, SubmissionType, withJson } from "@nyte-ai/
 import type {
   Awaitable,
   Decision,
-  Disposer,
   HeadName,
   Json,
   PrincipalId,
@@ -271,14 +270,12 @@ export function namesCoreHook(name: string): name is HookName<"core"> {
   );
 }
 
-export function skipUnknownHook(api: PluginApi<"core">, name: string): Disposer {
+export function reportUnknownHook(api: PluginApi<"core">, name: string): void {
   api.report({
     severity: "error",
     path: ["hooks", name],
     message: `There is no core hook named ${name}, so this handler never runs.`,
   });
-
-  return () => {};
 }
 
 function stepContext(session: SessionId, step: HookStep): ConnectionContext {

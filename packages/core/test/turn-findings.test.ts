@@ -39,7 +39,7 @@ describe("turn findings (CORE-DIET D3)", () => {
       description: "Reload the session's plugins without waiting.",
       parameters: nothing,
       class: () => ({ kind: "custom", label: "Reloading" }),
-      replay: "safe",
+      rerun: "safe",
       async execute() {
         reload();
 
@@ -50,17 +50,21 @@ describe("turn findings (CORE-DIET D3)", () => {
     const slow: Plugin<"core"> = {
       id: "slow",
       contribute: { tools: [reloading] },
-      async activate(api) {
+      async activate() {
         activations += 1;
         const activation = activations;
 
         if (activation === 2) await gate.promise;
 
-        api.hook("before_request", (request) => {
-          seen.push(`before_request:${activation}`);
+        return {
+          hooks: {
+            before_request(request) {
+              seen.push(`before_request:${activation}`);
 
-          return request;
-        });
+              return request;
+            },
+          },
+        };
       },
     };
 
@@ -94,7 +98,7 @@ describe("turn findings (CORE-DIET D3)", () => {
       description: "A tool only the given runtime lists.",
       parameters: nothing,
       class: () => ({ kind: "custom", label: "Marking" }),
-      replay: "safe",
+      rerun: "safe",
       execute: async () => ({ content: [{ kind: "text", text: "marked" }] }),
     };
 
@@ -103,7 +107,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     await host.kernel.plugins.runtime(session.id).ready;
     const given = createPluginRuntime(host.kernel, session.id, null);
     await given.ready;
-    await given.load([{ id: "marker", contribute: { tools: [marker] } }]);
+    await given.load([{ id: "marker", contribute: { tools: [marker] } }], null);
 
     const { transcript } = await requestBody(host.kernel, fake.models, given, {
       session: session.id,

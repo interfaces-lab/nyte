@@ -29,7 +29,8 @@ import type {
   Kernel,
   PluginRuntime,
 } from "../contract/kernel.ts";
-import type { ModelContextPolicy, SettingDefinition } from "../contract/plugin.ts";
+import { resolveSetting } from "../contract/plugin.ts";
+import type { ModelContextPolicy, ResolvedSetting, SettingDefinition } from "../contract/plugin.ts";
 import type { Refusal } from "../engine/contributions.ts";
 import { commit } from "../watch/commit.ts";
 import {
@@ -736,8 +737,8 @@ export async function rememberChoice(
   bumpGeneration(kernel);
 }
 
-function sessionScoped(settings: readonly SettingDefinition[]): readonly SettingDefinition[] {
-  return settings.filter((definition) => definition.scope === "session");
+function sessionScoped(settings: readonly SettingDefinition[]): readonly ResolvedSetting[] {
+  return settings.map(resolveSetting).filter((definition) => definition.scope === "chat");
 }
 
 function invalid(issues: readonly ValidationIssue[]): Refusal {

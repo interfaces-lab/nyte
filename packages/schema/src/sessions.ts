@@ -77,7 +77,6 @@ export type SessionsChange = Decoded<typeof SessionsChangeType>;
  */
 export const CLIENT_COMMAND_NAMES = [
   "accounts",
-  "cd",
   "compact",
   "continue",
   "edit",
@@ -131,19 +130,58 @@ export const CommandCompletionType = Type.Object({
 
 export type CommandCompletion = Decoded<typeof CommandCompletionType>;
 
+/** What a secret setting holds: null when nothing is saved. The host seals `value`, and a client reads back `{ secret: true }` only. */
+export const SecretValueType = nullable(
+  Type.Object({ secret: Type.Literal(true), value: Type.Optional(Type.String()) }),
+);
+
+export type SecretValue = Decoded<typeof SecretValueType>;
+
+/** The settings pages every plugin can name. A client that lacks one shows the setting with its general settings. */
+export type PresetPage =
+  | "server"
+  | "profile"
+  | "general"
+  | "notifications"
+  | "appearance"
+  | "themes"
+  | "usage"
+  | "agent"
+  | "editor"
+  | "terminal"
+  | "variables"
+  | "source-control"
+  | "browser"
+  | "developer"
+  | "providers";
+
+/** Where a setting shows: a preset page, or any other text, which is the title of a page of its own. */
+export type SettingPage = PresetPage | (string & {});
+
+/**
+ * A setting as a client draws it. The field comes from the setting, in this order: a menu when it
+ * has `choices`; a masked field when it is `secret` and holds a `SecretValue`; a switch, a text
+ * field or a number field when `schema.type` is `boolean`, `string`, or `number` or `integer`.
+ * Any other setting has no field and is changed through `settings.apply`.
+ */
 export const SettingInfoType = Type.Object({
   id: Type.String(),
   owner: Type.String(),
-  scope: Type.Enum(["host", "session"]),
-  label: Type.String(),
+  scope: Type.Enum(["host", "chat"]),
+  title: Type.String(),
+  description: Type.Optional(Type.String()),
+  placeholder: Type.Optional(Type.String()),
+  /** A `PresetPage`, or the title of a page of its own; absent, the setting is a general one. */
+  page: Type.Optional(Type.String()),
+  secret: Type.Optional(Type.Literal(true)),
   schema: JsonObjectType,
   choices: nullable(
     Type.Array(
-      Type.Object({ value: JsonType, label: Type.String(), badge: Type.Optional(Type.String()) }),
+      Type.Object({ value: JsonType, title: Type.String(), note: Type.Optional(Type.String()) }),
     ),
   ),
   value: JsonType,
-  from: Type.Enum(["default", "host", "session"]),
+  from: Type.Enum(["default", "host", "chat"]),
 });
 
 export type SettingInfo = Decoded<typeof SettingInfoType>;
@@ -207,10 +245,15 @@ export const CommandOutcomeType = Type.Union([
 
 export type CommandOutcome = Decoded<typeof CommandOutcomeType>;
 
-/** What a command run outside any chat did: `prompt` is the first message of the chat it asks to start. */
+/** What a command run outside any chat did: `prompt` is the first message of the chat it asks to start, `moved` the folder that chat starts in. */
 export const WorkspaceCommandOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("ran"), output: nullable(Type.String()) }),
   Type.Object({ kind: Type.Literal("prompt"), content: UserContentType }),
+  Type.Object({
+    kind: Type.Literal("moved"),
+    workspace: idSchema<"workspace">(),
+    output: nullable(Type.String()),
+  }),
   Type.Object({ kind: Type.Literal("unknown") }),
   Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
 ]);

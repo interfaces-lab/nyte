@@ -331,7 +331,7 @@ describe("runs", () => {
         description: "Ignores its abort signal.",
         parameters: standard(Type.Object({})),
         class: () => ({ kind: "custom", label: name }),
-        replay: "safe",
+        rerun: "safe",
         async execute(_args, invocation) {
           if (park) await invocation.wait({ kind: "timer", until: Date.now() + 3_600_000 });
           ran = true;

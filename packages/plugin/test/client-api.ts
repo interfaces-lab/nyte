@@ -1,4 +1,4 @@
-import type { ClientApi, Connection, PluginApi, PluginStorage, Setting } from "@nyte-ai/core";
+import type { ClientApi, Connection, PluginApi, PluginStorage } from "@nyte-ai/core";
 
 const storage: PluginStorage = {
   get: async () => undefined,
@@ -17,29 +17,22 @@ export function clientApi(
   sdk: Connection,
   notified: Parameters<ClientApi["ui"]["notify"]>[0][],
 ): PluginApi<"client"> {
-  const setting: Setting & (() => void) = Object.assign(() => undefined, {
-    get: async () => undefined,
-    set: async () => undefined,
-    watch: async function* () {},
-  });
-
   return {
     side: "client",
-    sdk,
-    contribute: {
-      commands: { add: () => () => undefined, list: () => [] },
+    host: sdk,
+    registries: {
+      commands: { list: () => [] },
       settings: {
-        add: () => setting,
         list: () => [],
         value: async () => undefined,
+        set: async () => undefined,
         watch: async function* () {},
       },
-      renderers: { add: () => () => undefined, list: () => [] },
-      keybindings: { add: () => () => undefined, list: () => [] },
+      renderers: { list: () => [] },
+      keybindings: { list: () => [] },
     },
     storage,
     signal: new AbortController().signal,
-    hook: () => () => undefined,
     report: () => undefined,
     reload: () => undefined,
     client: { name: "test", frameworks: ["react", "tui"] },

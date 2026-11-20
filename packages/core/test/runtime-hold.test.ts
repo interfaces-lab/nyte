@@ -15,7 +15,7 @@ const echo: ToolDefinition<Infer<typeof nothing>> = {
   description: "The echo tool.",
   parameters: nothing,
   class: () => ({ kind: "custom", label: "echo" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async () => ({ content: [{ kind: "text", text: "echo ran" }] }),
 };
 
@@ -40,6 +40,8 @@ function slow(release: Promise<void>): Plugin<"core"> & { readonly activations: 
       activations += 1;
 
       if (activations === 2) await release;
+
+      return {};
     },
   };
 }
@@ -49,11 +51,16 @@ function observer(seen: string[]): Plugin<"core"> {
 
   return {
     id: "observer",
-    activate(api) {
+    activate() {
       activations += 1;
       const n = activations;
-      api.hook("after_request", (event) => void seen.push(`runtime${n}:${event.step}`));
-      api.hook("run_ended", (end) => void seen.push(`runtime${n}:run_ended:${end.kind}`));
+
+      return {
+        hooks: {
+          after_request: (event) => void seen.push(`runtime${n}:${event.step}`),
+          run_ended: (end) => void seen.push(`runtime${n}:run_ended:${end.kind}`),
+        },
+      };
     },
   };
 }

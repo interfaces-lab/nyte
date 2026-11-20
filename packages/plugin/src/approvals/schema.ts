@@ -17,16 +17,16 @@ export const PERMISSIONS = "permissions";
 export const approvalPolicy = policy;
 
 export const APPROVAL_POLICIES = [
-  { value: "ask", label: "Ask first", badge: "Asks before commands, file edits and other tools" },
+  { value: "ask", title: "Ask first", badge: "Asks before commands, file edits and other tools" },
   {
     value: "auto-edit",
-    label: "Auto-edit",
+    title: "Auto-edit",
     badge: "Edits workspace files, asks before commands and other tools",
   },
-  { value: "full", label: "Full access", badge: "Runs every tool without asking" },
+  { value: "full", title: "Full access", badge: "Runs every tool without asking" },
 ] as const satisfies readonly {
   readonly value: ApprovalPolicy;
-  readonly label: string;
+  readonly title: string;
   readonly badge: string;
 }[];
 

@@ -12,7 +12,7 @@ import type {
   WaitOutcome,
 } from "@nyte-ai/schema";
 import { clipText, isPart, text, tool } from "@nyte-ai/core";
-import type { Session, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
+import type { Session, ToolDefinition, ToolInvocation, When } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/plugin/core";
 
 const CAPITALIZED = { subagent: "Subagent", chat: "Chat" } as const;
@@ -123,9 +123,9 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
     "Run a subagent and get its answer as this call's result, whenever you need the answer this turn. Several task calls in one response run in parallel. It does not see this conversation.",
   parameters: taskParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
-  replay: "safe",
+  rerun: "safe",
   async execute(args, invocation) {
-    const { session: child, receipt } = await invocation.sdk.sessions.start({
+    const { session: child, receipt } = await invocation.host.sessions.start({
       parent: invocation.session.id,
       name: args.title,
       configuration: await childConfiguration(invocation, args),
@@ -158,10 +158,10 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
     "Start a subagent in the background and return its id, for work you won't wait on or a subagent you'll message again with send. Its answer reaches you on its own. When you need the answer this turn, use task instead. Link it in a reply as [short title](agent:<id>).",
   parameters: createParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "create", title: args.title ?? null }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
-    const { session: child } = await invocation.sdk.sessions.start({
+    const { session: child } = await invocation.host.sessions.start({
       parent: invocation.session.id,
       name: args.title,
       configuration: await childConfiguration(invocation, args),
@@ -189,8 +189,8 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
     role: "send",
     title: null,
   }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const target = await findTarget(invocation, args.session, "steer");
     const child = target.session;
@@ -215,7 +215,7 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
     role: "await",
     title: null,
   }),
-  replay: "safe",
+  rerun: "safe",
   async execute(args, invocation) {
     const target = await findTarget(invocation, args.session, "read");
     const child = target.session;
@@ -272,8 +272,8 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
     role: "read",
     title: null,
   }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const target = await findTarget(invocation, args.session, "read");
     const child = target.session;
@@ -304,8 +304,8 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
     role: "stop",
     title: null,
   }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
     const target = await findTarget(invocation, args.session, "steer");
     const child = target.session;
@@ -317,31 +317,35 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   },
 };
 
+const topLevel: When = (chat) => chat.parent === null;
+
 export default {
   id: "subagents",
-  async activate(api) {
-    if ((await api.session.info()).parent !== null) return;
+  contribute: {
+    tools: [task, create, send, awaitChild, readAgent, stop].map((definition) => ({
+      ...definition,
+      when: topLevel,
+    })),
+    prompt: [
+      {
+        id: "subagents",
+        order: 97,
+        when: topLevel,
+        text: async (context) => {
+          const models = enabledModels(await context.api.host.models.list());
+          const agents = context.api.registries.agents.list();
 
-    for (const definition of [task, create, send, awaitChild, readAgent, stop])
-      api.contribute.tools.add(definition);
-
-    api.contribute.prompt.add({
-      id: "subagents",
-      order: 97,
-      text: async () => {
-        const models = enabledModels(await api.sdk.models.list());
-        const agents = api.contribute.agents.list();
-
-        return [
-          `Enabled models, for the model of task and create: ${models.length === 0 ? "none" : models.map((info) => `${info.ref.provider}/${info.ref.id}`).join(", ")}.`,
-          ...(agents.length === 0
-            ? []
-            : [
-                `Registered agents, for their agent: ${agents.map((agent) => agent.id).join(", ")}.`,
-              ]),
-        ].join("\n");
+          return [
+            `Enabled models, for the model of task and create: ${models.length === 0 ? "none" : models.map((info) => `${info.ref.provider}/${info.ref.id}`).join(", ")}.`,
+            ...(agents.length === 0
+              ? []
+              : [
+                  `Registered agents, for their agent: ${agents.map((agent) => agent.id).join(", ")}.`,
+                ]),
+          ].join("\n");
+        },
       },
-    });
+    ],
   },
 } satisfies Plugin;
 
@@ -377,7 +381,7 @@ async function childConfiguration(
 }
 
 async function findModel(invocation: ToolInvocation, name: string): Promise<ModelRef> {
-  const models = enabledModels(await invocation.sdk.models.list());
+  const models = enabledModels(await invocation.host.models.list());
   const matches = matchModels(models, name);
   const [only, ...others] = matches;
 
@@ -405,7 +409,7 @@ async function findAgentModel(
   agent: string,
   model: string | undefined,
 ): Promise<ModelRef> {
-  const models = enabledModels(await invocation.sdk.models.list());
+  const models = enabledModels(await invocation.host.models.list());
   const names = model === undefined ? [agent] : [model, `${agent} ${model}`, agent];
 
   const [found] = names.flatMap((name) => {
@@ -423,7 +427,7 @@ async function describeWorktree(
   invocation: ToolInvocation,
   child: Session,
 ): Promise<string | null> {
-  const workspace = await invocation.sdk.workspace((await child.info()).workspace).info();
+  const workspace = await invocation.host.workspace((await child.info()).workspace).info();
 
   if (workspace.isolation === null) return null;
   const folder = "path" in workspace.target ? workspace.target.path : workspace.id;
@@ -442,7 +446,7 @@ async function findTarget(
   id: string,
   access: "read" | "steer",
 ): Promise<Target> {
-  const session = invocation.sdk.session(asId<"session">(id));
+  const session = invocation.host.session(asId<"session">(id));
 
   if (session.id === invocation.session.id) throw new Error("That is this chat.");
   const info = await session.info();

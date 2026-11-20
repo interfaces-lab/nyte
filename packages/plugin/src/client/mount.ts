@@ -1,19 +1,19 @@
 import type {
+  Additions,
   Command,
   Connection,
+  Derive as SideDerive,
   Keybinding,
   PluginStorage,
   Registry,
-  RegistryDraft,
   Renderer,
   Session,
-  Setting,
   SettingDefinition,
 } from "@nyte-ai/core";
+import { callable, resolveSetting } from "@nyte-ai/core";
 import type {
   Awaitable,
   Decision,
-  Disposer,
   Json,
   Placement,
   RunId,
@@ -27,9 +27,20 @@ import type { PartMessage } from "./presentation.ts";
 
 type Notification = Parameters<PluginApi["ui"]["notify"]>[0];
 
-type ClientRegistries = PluginApi["contribute"];
+type ClientRegistries = PluginApi["registries"];
 
-type Derive<T> = (draft: RegistryDraft<T>, siblings: ClientRegistries) => void;
+type Derive<T> = SideDerive<T, "client">;
+
+interface Added<T> extends Registry<T> {
+  add(entry: T | Derive<T>): void;
+}
+
+interface Mounted {
+  readonly commands: Added<Command>;
+  readonly settings: ClientRegistries["settings"] & Added<SettingDefinition>;
+  readonly renderers: Added<Renderer>;
+  readonly keybindings: Added<Keybinding>;
+}
 
 interface Handler<N extends HookName> {
   readonly order: number;
@@ -62,33 +73,15 @@ export interface ClientPlugins {
   dispose(): Promise<void>;
 }
 
-function derives<T>(entry: T | Derive<T>): entry is Derive<T> {
-  return typeof entry === "function";
-}
-
-function registry<T>(
-  key: (item: T) => string,
-  siblings: () => ClientRegistries,
-): Registry<T, "client"> {
+function registry<T>(key: (item: T) => string, siblings: () => ClientRegistries): Added<T> {
   const items = new Set<T>();
   const derivations = new Set<Derive<T>>();
 
-  function add(item: T): Disposer;
-  function add(derive: Derive<T>): Disposer;
-  function add(entry: T | Derive<T>): Disposer {
-    if (derives(entry)) {
-      derivations.add(entry);
-
-      return () => void derivations.delete(entry);
-    }
-
-    items.add(entry);
-
-    return () => void items.delete(entry);
-  }
-
   return {
-    add,
+    add(entry) {
+      if (callable(entry)) derivations.add(entry);
+      else items.add(entry);
+    },
     list() {
       const draft = new Map<string, T>([...items].map((item) => [key(item), item]));
 
@@ -113,7 +106,7 @@ function registry<T>(
   };
 }
 
-function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["settings"] {
+function settingsRegistry(siblings: () => ClientRegistries): Mounted["settings"] {
   const base = registry<SettingDefinition>((item) => item.id, siblings);
   const values = new Map<string, unknown>();
   const listeners = new Map<string, Set<(value: unknown) => void>>();
@@ -123,7 +116,7 @@ function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["s
 
     if (definition === undefined) throw new Error(`No setting is declared with id ${id}.`);
 
-    return values.has(id) ? values.get(id) : definition.default;
+    return values.has(id) ? values.get(id) : resolveSetting(definition).default;
   };
 
   async function* watch(id: string): AsyncIterable<unknown> {
@@ -146,24 +139,18 @@ function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["s
     }
   }
 
-  function add(item: SettingDefinition): Setting & Disposer;
-  function add(derive: Derive<SettingDefinition>): Disposer;
-  function add(entry: SettingDefinition | Derive<SettingDefinition>) {
-    if (derives(entry)) return base.add(entry);
-    const remove = base.add(entry);
+  return {
+    add: (entry) => base.add(entry),
+    list: () => base.list(),
+    value: async (id) => current(id),
+    async set(id, value) {
+      current(id);
+      values.set(id, value);
 
-    return Object.assign(remove, {
-      get: async () => current(entry.id),
-      set: async (value: unknown) => {
-        values.set(entry.id, value);
-
-        for (const listener of listeners.get(entry.id) ?? []) listener(value);
-      },
-      watch: () => watch(entry.id),
-    });
-  }
-
-  return { add, list: () => base.list(), value: async (id) => current(id), watch };
+      for (const listener of listeners.get(id) ?? []) listener(value);
+    },
+    watch,
+  };
 }
 
 function memoryStorage(client: string): PluginStorage {
@@ -216,9 +203,13 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
   };
 
   const controller = new AbortController();
-  const apis: { readonly plugin: Plugin; readonly api: PluginApi }[] = [];
+  const apis: {
+    readonly plugin: Plugin;
+    readonly api: PluginApi;
+    readonly add: (additions: Additions<"client">) => void;
+  }[] = [];
 
-  const register = <N extends HookName>(api: PluginApi, name: N, entry: HookEntry<N>): Disposer => {
+  const register = <N extends HookName>(api: PluginApi, name: N, entry: HookEntry<N>): void => {
     const handler: Handler<N> =
       "run" in entry
         ? { order: entry.order ?? 0, run: entry.run, api }
@@ -228,12 +219,6 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
 
     list.push(handler);
     list.sort((left, right) => left.order - right.order);
-
-    return () => {
-      const index = list.findIndex((candidate) => candidate === handler);
-
-      if (index !== -1) list.splice(index, 1);
-    };
   };
 
   const context = (api: PluginApi, session: SessionId | null, run: RunId | null) => ({
@@ -269,7 +254,7 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
   };
 
   for (const plugin of options.plugins) {
-    const registries: ClientRegistries = {
+    const registries: Mounted = {
       commands: registry<Command>(
         (item) => item.name,
         () => registries,
@@ -285,21 +270,50 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
       ),
     };
 
-    for (const command of plugin.contribute?.commands ?? []) registries.commands.add(command);
+    const add = (additions: Additions<"client">): void => {
+      for (const entry of additions.contribute?.commands ?? []) registries.commands.add(entry);
 
-    for (const setting of plugin.contribute?.settings ?? []) registries.settings.add(setting);
+      for (const entry of additions.contribute?.settings ?? []) registries.settings.add(entry);
 
-    for (const renderer of plugin.contribute?.renderers ?? []) registries.renderers.add(renderer);
+      for (const entry of [
+        ...(additions.contribute?.commands ?? []),
+        ...(additions.contribute?.settings ?? []),
+      ])
+        if (!callable(entry) && entry.when !== undefined)
+          options.report(
+            plugin.id,
+            "A client plugin's `when` is never asked, so its item is always there.",
+          );
 
-    for (const binding of plugin.contribute?.keybindings ?? []) registries.keybindings.add(binding);
+      for (const entry of additions.contribute?.renderers ?? []) registries.renderers.add(entry);
+
+      for (const entry of additions.contribute?.keybindings ?? [])
+        registries.keybindings.add(entry);
+      const hooks = additions.hooks ?? {};
+
+      if (hooks.run_ended_anywhere !== undefined)
+        register(api, "run_ended_anywhere", hooks.run_ended_anywhere);
+
+      if (hooks.attention_changed_anywhere !== undefined)
+        register(api, "attention_changed_anywhere", hooks.attention_changed_anywhere);
+
+      if (hooks.app_ready !== undefined) register(api, "app_ready", hooks.app_ready);
+
+      if (hooks.session_opened !== undefined) register(api, "session_opened", hooks.session_opened);
+
+      if (hooks.before_submit !== undefined) register(api, "before_submit", hooks.before_submit);
+
+      if (hooks.session_closed !== undefined) register(api, "session_closed", hooks.session_closed);
+
+      if (hooks.app_closing !== undefined) register(api, "app_closing", hooks.app_closing);
+    };
 
     const api: PluginApi = {
       side: "client",
-      sdk: options.connection,
-      contribute: registries,
+      host: options.connection,
+      registries,
       storage: memoryStorage(options.client.name),
       signal: controller.signal,
-      hook: (name, entry) => register(api, name, entry),
       report: (issue) => options.report(plugin.id, issue.message),
       reload: () => undefined,
       client: options.client,
@@ -312,32 +326,16 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
       ui: { notify: options.notify },
     };
 
-    const hooks = plugin.hooks ?? {};
-
-    if (hooks.run_ended_anywhere !== undefined)
-      register(api, "run_ended_anywhere", hooks.run_ended_anywhere);
-
-    if (hooks.attention_changed_anywhere !== undefined)
-      register(api, "attention_changed_anywhere", hooks.attention_changed_anywhere);
-
-    if (hooks.app_ready !== undefined) register(api, "app_ready", hooks.app_ready);
-
-    if (hooks.session_opened !== undefined) register(api, "session_opened", hooks.session_opened);
-
-    if (hooks.before_submit !== undefined) register(api, "before_submit", hooks.before_submit);
-
-    if (hooks.session_closed !== undefined) register(api, "session_closed", hooks.session_closed);
-
-    if (hooks.app_closing !== undefined) register(api, "app_closing", hooks.app_closing);
-    apis.push({ plugin, api });
+    add({ contribute: plugin.contribute, hooks: plugin.hooks });
+    apis.push({ plugin, api, add });
   }
 
   await Promise.all(
-    apis.map(async ({ plugin, api }) => {
+    apis.map(async (entry) => {
       try {
-        await plugin.activate?.(api);
+        if (entry.plugin.activate !== undefined) entry.add(await entry.plugin.activate(entry.api));
       } catch (cause) {
-        options.report(plugin.id, causeMessage(cause));
+        options.report(entry.plugin.id, causeMessage(cause));
       }
     }),
   );
@@ -345,7 +343,7 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
   const renderers = new Map<string, Renderer>();
 
   for (const { api } of apis)
-    for (const renderer of api.contribute.renderers.list())
+    for (const renderer of api.registries.renderers.list())
       if (
         options.client.frameworks.includes(renderer.framework) &&
         !renderers.has(renderer.kind.kind)

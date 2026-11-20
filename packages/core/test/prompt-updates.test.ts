@@ -19,10 +19,15 @@ function sectioned(sections: Map<string, { text: string; order: number }>): Plug
   return {
     id: "sectioned",
     contribute: { tools: [echo] },
-    activate(api) {
-      for (const [section, value] of sections)
-        api.contribute.prompt.add({ id: section, text: value.text, order: value.order });
-    },
+    activate: () => ({
+      contribute: {
+        prompt: [...sections].map(([section, value]) => ({
+          id: section,
+          text: value.text,
+          order: value.order,
+        })),
+      },
+    }),
   };
 }
 

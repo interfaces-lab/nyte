@@ -135,8 +135,8 @@ const weather: ToolDefinition<{ city: string }> = {
   description: "Get the current weather in a city.",
   parameters: standard(Type.Object({ city: Type.String() })),
   class: () => ({ kind: "custom", label: "Weather" }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute({ city }) {
     const response = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=3`);
     return { content: [{ kind: "text", text: await response.text() }] };
@@ -151,8 +151,8 @@ const { receipt } = await host.sessions.start({ content: "Do I need an umbrella 
 await receipt.settled();
 ```
 
-`effects: "none"` says the tool doesn't write files, so the host skips the snapshot around it.
-`replay: "safe"` says running the call twice does no harm, so the host may run it again after a
+`changes: "none"` says the tool doesn't write files, so the host skips the snapshot around it.
+`rerun: "safe"` says running the call twice does no harm, so the host may run it again after a
 crash. [Plugins](/docs/plugins) covers the rest of what a plugin can add.
 
 ## Ask before tool calls [#ask-before-tool-calls]

@@ -54,77 +54,74 @@ const parameters = standard(
 
 const output = standard(Type.Object({ loaded: Type.Array(Type.String()) }));
 
+const search: ToolDefinition<{ query: string; limit?: number }, { loaded: string[] }> = {
+  name: "tool_search",
+  description: DESCRIPTION,
+  parameters,
+  output,
+  exposure: "model-only",
+  class: () => ({ kind: "custom", label: "Searching tools" }),
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
+  loads: (result) => result.loaded,
+  async execute(args, invocation) {
+    if (args.query.trim() === "") throw new Error("query must not be empty");
+    const loaded = new Set(await invocation.tools.loaded());
+    const found = new Map(
+      invocation.api.registries.tools
+        .list()
+        .flatMap((definition): [string, ToolNamespace][] =>
+          definition.namespace === undefined ? [] : [[definition.name, definition.namespace]],
+        ),
+    );
+
+    const candidates = (await invocation.tools.list()).filter(
+      (info) =>
+        (info.exposure === "code" || info.exposure === "deferred") && !loaded.has(info.name),
+    );
+
+    const names = rankTools(
+      args.query,
+      candidates.map((info) => createToolSearchDocument(info, found.get(info.name))),
+      args.limit ?? DEFAULT_SEARCH_LIMIT,
+    );
+
+    const lines = names.map((name) => {
+      const [line = ""] = (candidates.find((info) => info.name === name)?.description ?? "")
+        .trim()
+        .split(/\r?\n/);
+
+      return `- ${name}: ${line}`;
+    });
+
+    return {
+      content: [
+        {
+          kind: "text",
+          text:
+            names.length === 0
+              ? "No matching tools found."
+              : `Loaded ${names.length} tool${names.length === 1 ? "" : "s"}. They are available from your next call:\n${lines.join("\n")}`,
+        },
+      ],
+      output: { loaded: [...names] },
+    };
+  },
+};
+
 export default {
   id: "tool-search",
-  activate(api) {
-    const namespaces = (): ReadonlyMap<string, ToolNamespace> =>
-      new Map(
-        api.contribute.tools
-          .list()
-          .flatMap((definition) =>
-            definition.namespace === undefined ? [] : [[definition.name, definition.namespace]],
-          ),
-      );
-
-    const search: ToolDefinition<{ query: string; limit?: number }, { loaded: string[] }> = {
-      name: "tool_search",
-      description: DESCRIPTION,
-      parameters,
-      output,
-      exposure: "model-only",
-      class: () => ({ kind: "custom", label: "Searching tools" }),
-      effects: "none",
-      approval: "never",
-      replay: "safe",
-      loads: (result) => result.loaded,
-      async execute(args, invocation) {
-        if (args.query.trim() === "") throw new Error("query must not be empty");
-        const loaded = new Set(await invocation.tools.loaded());
-        const found = namespaces();
-
-        const candidates = (await invocation.tools.list()).filter(
-          (info) =>
-            (info.exposure === "code" || info.exposure === "deferred") && !loaded.has(info.name),
-        );
-
-        const names = rankTools(
-          args.query,
-          candidates.map((info) => createToolSearchDocument(info, found.get(info.name))),
-          args.limit ?? DEFAULT_SEARCH_LIMIT,
-        );
-
-        const lines = names.map((name) => {
-          const [line = ""] = (candidates.find((info) => info.name === name)?.description ?? "")
-            .trim()
-            .split(/\r?\n/);
-
-          return `- ${name}: ${line}`;
-        });
-
-        return {
-          content: [
-            {
-              kind: "text",
-              text:
-                names.length === 0
-                  ? "No matching tools found."
-                  : `Loaded ${names.length} tool${names.length === 1 ? "" : "s"}. They are available from your next call:\n${lines.join("\n")}`,
-            },
-          ],
-          output: { loaded: [...names] },
-        };
-      },
-    };
-
-    api.contribute.tools.add(search);
-    api.hook("offer_tools", (tools) => {
+  contribute: { tools: [search] },
+  hooks: {
+    offer_tools(tools, context) {
       const declared = new Set(tools.map((info) => info.name));
-      const pending = api.contribute.tools
+      const pending = context.api.registries.tools
         .list()
         .some((definition) => definition.exposure === "deferred" && !declared.has(definition.name));
 
       return pending ? tools : tools.filter((info) => info.name !== search.name);
-    });
+    },
   },
 } satisfies Plugin;
 

@@ -177,9 +177,9 @@ export const settingInfo: SettingInfo = {
   id: "core/theme",
   owner: "core",
   scope: "host",
-  label: "Theme",
+  title: "Theme",
   schema: { enum: ["dark", "light"] },
-  choices: [{ value: "dark", label: "Dark", badge: "new" }],
+  choices: [{ value: "dark", title: "Dark", note: "new" }],
   value: "dark",
   from: "default",
 };

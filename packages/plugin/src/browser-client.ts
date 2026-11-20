@@ -221,6 +221,8 @@ export function clientBrowserPlugins(actions: ClientActions, home: string): read
           },
           { once: true },
         );
+
+        return {};
       },
     },
   ];

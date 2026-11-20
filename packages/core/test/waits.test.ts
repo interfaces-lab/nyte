@@ -48,7 +48,7 @@ const parker = {
   description: "Wait for a timer.",
   parameters: standard(Type.Object({})),
   class: () => ({ kind: "custom", label: "Waiting" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (_args, invocation) => ({
     content: [
       {

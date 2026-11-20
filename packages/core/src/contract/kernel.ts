@@ -38,6 +38,7 @@ import type {
 import type { KeyedSerial } from "@nyte-ai/schema/serial";
 import type { FoldCache, LogPublisher, SessionBus } from "./fold.ts";
 import type {
+  ClientsApi,
   Connection,
   ConnectionContext,
   ConnectionRegistry,
@@ -54,8 +55,10 @@ import type {
 } from "./host.ts";
 import type { PartDefinition, PartDefinitions, PartTable } from "./parts.ts";
 import type {
+  Additions,
   Agent,
   ContributionTable,
+  Derive,
   HookEntry,
   HookName,
   HookTable,
@@ -67,7 +70,7 @@ import type {
   SettingsRegistry,
 } from "./plugin.ts";
 import type { Presence } from "./presence.ts";
-import type { CallRecord, SessionRecord } from "./records.ts";
+import type { AssignedPlugin, CallRecord, SessionRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
 import type { ToolDefinition } from "./tools.ts";
@@ -164,6 +167,8 @@ export interface Kernel {
   readonly secretKey: Promise<CryptoKey> | null;
 
   readonly mcp: McpHub | null;
+
+  readonly clients: ClientsApi | null;
 
   readonly github: GitHubAccountApi | null;
 
@@ -362,7 +367,10 @@ export interface PluginRuntime {
 
   readonly ready: Promise<void>;
 
-  load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
+  load(
+    plugins: readonly Plugin<"core">[],
+    assigned: readonly AssignedPlugin[] | null,
+  ): Promise<readonly PluginLoadOutcome[]>;
 
   requested(): readonly Plugin<"core">[];
 
@@ -377,7 +385,8 @@ export interface PluginRuntime {
 
   instance(id: string): PluginInstance | undefined;
 
-  assigned(): readonly (Plugin<"core"> | PluginFile)[] | null;
+  /** The session record's plugins as of this runtime's last load; null when the session has none assigned. */
+  assigned(): readonly AssignedPlugin[] | null;
 
   hold(): Disposer;
 
@@ -392,6 +401,9 @@ export interface PluginInstance {
   readonly plugin: Plugin<"core">;
   readonly api: PluginApi<"core">;
 
+  /** Adds items and hooks to every host the instance has joined, and to each it joins later. */
+  add(additions: Additions<"core">): void;
+
   join(host: InstanceHost): Disposer;
 }
 
@@ -402,7 +414,8 @@ export interface InstanceHost {
 }
 
 export interface PluginState {
-  readonly assigned: Map<SessionId, readonly (Plugin<"core"> | PluginFile)[]>;
+  /** The plugin objects this process was handed for a session, which its record names only by id. */
+  readonly inline: Map<SessionId, readonly Plugin<"core">[]>;
   readonly holds: Map<PartDefinition, { count: number; readonly dispose: Disposer }>;
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
   readonly publishing: Map<SessionId, Promise<void>>;
@@ -421,10 +434,17 @@ export type PluginFailure = {
 
 export type Attached = { readonly env: ExecutionEnv | null };
 
-export interface CoreRegistry<T, Handle = Disposer> extends Registry<T, "core", Handle> {
-  owned(owner: string, signal?: AbortSignal): Registry<T, "core", Handle>;
+export interface OwnedRegistry<T> extends Registry<T> {
+  add(entry: T | Derive<T, "core">): Disposer;
+}
+
+export interface CoreRegistry<T> extends Registry<T> {
+  owned(owner: string, signal?: AbortSignal): OwnedRegistry<T>;
 
   entries(): readonly { readonly item: T; readonly owner: string }[];
+
+  /** The entries before `when` left any out. */
+  drafted(): readonly { readonly item: T; readonly owner: string }[];
 
   declared(owner: string): readonly T[];
 
@@ -435,10 +455,9 @@ export interface CoreRegistry<T, Handle = Disposer> extends Registry<T, "core", 
 
 export type CoreRegistries = {
   readonly [K in keyof Registries<"core">]: CoreRegistry<
-    ContributionTable[K & keyof ContributionTable]["item"],
-    ContributionTable[K & keyof ContributionTable]["handle"]
+    ContributionTable[K & keyof ContributionTable]["item"]
   > &
-    (K extends "settings" ? Pick<SettingsRegistry<"core">, "value" | "watch"> : {});
+    (K extends "settings" ? Pick<SettingsRegistry, "value" | "set" | "watch"> : {});
 };
 
 export interface RegistrySet extends CoreRegistries {

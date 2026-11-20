@@ -20,7 +20,7 @@ function tool(name: string, execute?: () => Promise<void>): ToolDefinition<Infer
     description: `The ${name} tool.`,
     parameters: nothing,
     class: () => ({ kind: "custom", label: name }),
-    replay: "safe",
+    rerun: "safe",
     async execute() {
       await execute?.();
 
@@ -149,6 +149,8 @@ describe("plugin reload (D4)", () => {
         id: "stamp",
         activate(api) {
           own = api;
+
+          return {};
         },
         hooks: {
           after_tool: (outcome, { api }) => {
@@ -357,6 +359,8 @@ describe("plugin reload (D4)", () => {
       contribute: { tools: [tool("retained")] },
       activate() {
         counts.push("activate");
+
+        return {};
       },
       hooks: {
         session_activated() {
@@ -424,5 +428,116 @@ describe("plugin reload (D4)", () => {
         message: expect.stringContaining("Offline now."),
       }),
     ]);
+  });
+
+  it("reloads the full list: a plugin a failed activation rejected is retried, and a session's own list is kept", async () => {
+    let broken = true;
+    const starts: string[] = [];
+
+    const flaky: Plugin<"core"> = {
+      id: "flaky",
+      activate() {
+        starts.push("flaky");
+
+        if (broken) throw new Error("Not yet.");
+
+        return {};
+      },
+    };
+
+    const builtin: Plugin<"core"> = {
+      id: "builtin",
+      activate() {
+        starts.push("builtin");
+
+        return {};
+      },
+    };
+
+    const { kernel, host, workspace } = await world({ plugins: [flaky], builtins: [builtin] });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    const first = kernel.plugins.runtime(session.id);
+
+    expect(first.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "fake-environment"]);
+
+    broken = false;
+    await host.workspace(workspace).reload();
+
+    expect(first.plugins()).toEqual([]);
+    expect(
+      kernel.plugins
+        .runtime(session.id)
+        .plugins()
+        .map((plugin) => plugin.id),
+    ).toEqual(["builtin", "fake-environment", "flaky"]);
+
+    const own: Plugin<"core"> = { id: "own" };
+    await host.plugins.replace([own], { session: session.id });
+    await host.workspace(workspace).reload();
+    const runtime = kernel.plugins.runtime(session.id);
+
+    expect(runtime.assigned()).toEqual([{ id: "own" }]);
+    expect(runtime.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "own"]);
+    expect(starts.filter((id) => id === "builtin")).toHaveLength(4);
+  });
+  it("a session's assigned plugins load again in a fresh process on the same store", async () => {
+    const guard: Plugin<"core"> = { id: "guard" };
+    const first = await setup();
+    first.kernel.plugins.host = [guard, { id: "other" }];
+    const { session } = await first.host.sessions.start({ content: "Hi." });
+    await first.host.plugins.replace([guard], { session: session.id });
+
+    const restarted = await setup({ store: first.kernel.store });
+    restarted.kernel.plugins.host = [guard, { id: "other" }];
+    const runtime = restarted.kernel.plugins.runtime(session.id);
+    await runtime.ready;
+
+    expect(runtime.plugins().map((plugin) => plugin.id)).toEqual(["test-environment", "guard"]);
+    expect(runtime.assigned()).toEqual([{ id: "guard" }]);
+  });
+
+  it("a process holding an older runtime loads a session's assigned plugins when it advances the head", async () => {
+    const guard: Plugin<"core"> = { id: "guard" };
+    const first = await setup();
+    first.kernel.plugins.host = [guard];
+    const { session } = await first.host.sessions.start({ content: "Hi." });
+    const peer = await setup({ store: first.kernel.store });
+    peer.kernel.plugins.host = [guard, { id: "other" }];
+    await peer.kernel.plugins.runtime(session.id).ready;
+
+    expect(
+      peer.kernel.plugins
+        .runtime(session.id)
+        .plugins()
+        .map((plugin) => plugin.id),
+    ).toEqual(["test-environment", "guard", "other"]);
+
+    await first.host.plugins.replace([guard], { session: session.id });
+    void peer.host.execution.advance({ session: session.id, head: main });
+
+    await until(() =>
+      peer.kernel.plugins.runtime(session.id).assigned() === null ? undefined : true,
+    );
+    await peer.kernel.plugins.runtime(session.id).ready;
+
+    expect(
+      peer.kernel.plugins
+        .runtime(session.id)
+        .plugins()
+        .map((plugin) => plugin.id),
+    ).toEqual(["test-environment", "guard"]);
+  });
+
+  it("a process without a session's assigned plugin refuses the session and never falls back to its own plugins", async () => {
+    const first = await setup();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
+    await first.host.plugins.replace([{ id: "extra" }], { session: session.id });
+    const restarted = await setup({ store: first.kernel.store });
+
+    await expect(restarted.kernel.plugins.runtime(session.id).ready).rejects.toMatchObject({
+      code: "unavailable",
+      message:
+        "The plugins assigned to this session did not load: No plugin named extra is loaded on this host.",
+    });
   });
 });

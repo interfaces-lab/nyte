@@ -13,29 +13,120 @@ Import core plugin types from `@nyte-ai/plugin/core` and client plugin types fro
 | `id`          | Both | Unique name. No `/`, and not `models` or `settings`                                                       |
 | `contribute`  | Both | Lists of items to add, keyed by [registry](#registries)                                                   |
 | `hooks`       | Both | Handlers keyed by [hook name](/docs/plugins/hooks), as functions or `{ order, run }`                      |
-| `activate`    | Both | `(api) => void`, run when the plugin starts. Add items and hooks here that depend on runtime state        |
+| `activate`    | Both | `(api) => { contribute, hooks }`, run when the plugin starts. See [`activate`](#activate)                 |
 | `environment` | Core | An environment provider: where the agent's files and commands live                                        |
 | `approve`     | Core | Decides whether a call another agent runtime asks to run may run. Returns `allow` or `deny` with a reason |
 
 A core plugin starts once per chat, so `activate` runs once for each chat that loads it. A client
 plugin starts once per app.
 
+### `activate` [#activate]
+
+`activate` runs after the plugin's own `contribute` items and `hooks` are in place. It returns the
+items and hooks that depend on the chat, such as a tool only a top-level chat gets:
+
+```ts title="top-level-only.ts"
+import type { Plugin } from "@nyte-ai/plugin/core";
+
+export default {
+  id: "top-level-only",
+  async activate(api) {
+    if ((await api.session.info()).parent !== null) return {};
+
+    return { contribute: { tools: [review] } };
+  },
+} satisfies Plugin;
+```
+
+- `activate` always returns an object. Return `{}` when the plugin adds nothing for this chat.
+- A plugin whose `activate` returns nothing doesn't load. Its row shows
+  `Activation failed: activate returned nothing.`
+- What it returns is added with the plugin's declared items and removed when the plugin unloads.
+- Nothing is added after it returns.
+- Timers, watchers and connections start in `activate` and stop when `api.signal` aborts.
+
+The returned `contribute` lists also take [derive functions](#derive), which the plugin's top-level
+`contribute` field doesn't.
+
 ## Plugin API [#plugin-api]
 
-`activate`, hooks, commands and part actions receive the plugin's API as `api`.
+Every callback a core plugin writes receives the plugin's API as `api`: `activate`, hooks, a
+command's `run`, a part action, a prompt section's `text`, and a tool's `execute` as
+`invocation.api`.
+
+### Where `api` comes from [#api-contexts]
+
+Every member works in every callback. Two things differ by callback:
+
+| Callback           | `api.host` acts as      | The `api` it gets              |
+| ------------------ | ----------------------- | ------------------------------ |
+| `activate`         | A participant           | The plugin's own for this chat |
+| An observe hook    | A participant           | The one `activate` got         |
+| A prompt `text`    | A participant           | The one `activate` got         |
+| A decide hook      | A participant           | One made for that call         |
+| A tool's `execute` | A participant           | One made for that call         |
+| A command's `run`  | Whoever ran the command | One made for that call         |
+
+- Acting as a participant, `api.host` is refused anything that needs `owner` or `maintenance`
+  authority, such as `principals.list()`, with `denied`.
+- An `api` made for a call belongs to that call: what it starts through `api.host` and
+  `api.session` is recorded against it.
+- `api.env` throws `unavailable` while the chat has no environment attached, and `api.project`
+  throws `unavailable` while its resources aren't read. Both are the same in every callback.
+
+### Ask an app to act [#clients]
+
+A core plugin reaches the apps connected to its host through `api.host`. `clients.read()` lists
+them with the actions each declared, and `client(id).perform(action, input)` asks one to run an
+action:
+
+```ts title="dark-at-night.ts"
+import type { Command, Plugin } from "@nyte-ai/plugin/core";
+
+const dark: Command<"core"> = {
+  name: "dark",
+  title: "Switch the app to dark",
+  description: "Sets the dark theme in every open window of the Nyte app.",
+  async run(_text, { api }) {
+    const windows = (await api.host.clients.read()).filter((client) =>
+      client.actions.some((action) => action.name === "setting.theme"),
+    );
+
+    await Promise.all(
+      windows.map((window) =>
+        api.host.client(window.id).perform("setting.theme", { value: "dark" }),
+      ),
+    );
+
+    return `Changed ${String(windows.length)} windows.`;
+  },
+};
+
+export default { id: "dark-at-night", contribute: { commands: [dark] } } satisfies Plugin;
+```
+
+- The app declares its commands, such as `chat.new` and `settings.open`, and one `setting.<name>`
+  action for each preference a plugin can read or set. [The app's actions](/docs/cli#nyte-action)
+  lists them.
+- A setting your plugin puts on an app page with [`page`](/docs/plugins/commands-and-settings#where)
+  can act on that page's own preferences this way: a setting on `themes` calls `setting.theme`.
+- The app runs a request made for its own user and refuses any other with `denied`, until that
+  user turns on **Remote control**. A request from `activate`, an observe hook or a prompt section
+  is made for the host's own user. A request from a tool's `execute`, a decide hook or a command's
+  `run` is made for whoever started that run or ran that command.
+- [`clients`](/docs/sdk/reference/connection#clients) has the limits and every error.
 
 ### Both sides
 
-| Member              | What it does                                                                                     |
-| ------------------- | ------------------------------------------------------------------------------------------------ |
-| `side`              | `"core"` or `"client"`                                                                           |
-| `sdk`               | A connection to the host, the same API SDK code uses                                             |
-| `contribute`        | The [registries](#registries), to add and list items                                             |
-| `storage`           | [Storage](#storage) for this plugin                                                              |
-| `signal`            | Aborts when the plugin unloads                                                                   |
-| `hook(name, entry)` | Adds a hook and returns a function that removes it                                               |
-| `report(issue)`     | Reports a `{ severity, path, message }` issue. On the host it shows on the plugin's row          |
-| `reload()`          | Runs the plugin's derive functions again. See [derived items](#derive). Does nothing in a client |
+| Member          | What it does                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| `side`          | `"core"` or `"client"`                                                                           |
+| `host`          | A connection to the host, the same API SDK code uses                                             |
+| `registries`    | The [registries](#registries), to list items and read settings                                   |
+| `storage`       | [Storage](#storage) for this plugin                                                              |
+| `signal`        | Aborts when the plugin unloads                                                                   |
+| `report(issue)` | Reports a `{ severity, path, message }` issue. On the host it shows on the plugin's row          |
+| `reload()`      | Runs the plugin's derive functions again. See [derived items](#derive). Does nothing in a client |
 
 ### Core only
 
@@ -44,7 +135,7 @@ plugin starts once per app.
 | `session`               | The chat the plugin runs in                                                                  |
 | `env`                   | The chat's environment: `cwd`, `files` and `exec`. Throws while none is attached             |
 | `wrapEnv(wrap)`         | Wraps the chat's environment with your own. Returns a function that undoes it                |
-| `inputs`                | What the host found for the chat: user and project files, `skills`, `contextFiles`, `prompt` |
+| `project`               | What the host found for the chat: user and project files, `skills`, `contextFiles`, `prompt` |
 | `request(input)`        | Sends a one-off request to a model, outside the chat's history                               |
 | `approve(call, signal)` | Asks every loaded plugin's `approve` about a call. The first denial wins                     |
 
@@ -63,7 +154,7 @@ reason, or with `refused` or `failed`.
 
 ## Registries [#registries]
 
-`contribute` in the plugin object and `api.contribute` share the same keys. Each registry keys its
+`contribute` in the plugin object and `api.registries` share the same keys. Each registry keys its
 items by one field. When two core plugins add an item with the same key, the later one replaces the
 earlier one and the host reports a warning, except for part kinds, where the first one wins.
 
@@ -96,21 +187,20 @@ framework the client supports wins.
 
 ### Registry methods [#registry-methods]
 
-| Method        | What it does                                                      |
-| ------------- | ----------------------------------------------------------------- |
-| `add(item)`   | Adds an item. Returns a function that removes it                  |
-| `add(derive)` | Adds a derive function. Returns a function that removes it        |
-| `list()`      | Every item now: from all core plugins, or only this client plugin |
+`api.registries` reads the registries. A plugin adds to them through its `contribute` field and what
+`activate` returns.
 
-The settings registry's `add(definition)` returns a handle with `get()`, `set(value)` and `watch()`.
-It also has:
+| Method   | What it does                                                      |
+| -------- | ----------------------------------------------------------------- |
+| `list()` | Every item now: from all core plugins, or only this client plugin |
 
-| Method      | What it does                                        |
-| ----------- | --------------------------------------------------- |
-| `value(id)` | The current value of a setting this plugin declared |
-| `watch(id)` | Yields that value now and after each change         |
+The settings registry also has:
 
-Items added through `api.contribute` go away when the plugin unloads.
+| Method           | What it does                                                       |
+| ---------------- | ------------------------------------------------------------------ |
+| `value(id)`      | The current value of a setting this plugin declared                |
+| `set(id, value)` | Changes that value. Throws when the value doesn't match the schema |
+| `watch(id)`      | Yields that value now and after each change                        |
 
 ### Derived items [#derive]
 
@@ -122,14 +212,17 @@ import type { Plugin } from "@nyte-ai/plugin/core";
 
 export default {
   id: "use-pnpm",
-  activate(api) {
-    api.contribute.tools.add((draft) =>
-      draft.wrap("bash", (bash) => ({
-        ...bash,
-        description: `${bash.description}\nThis repository uses pnpm. Never run npm or yarn.`,
-      })),
-    );
-  },
+  activate: () => ({
+    contribute: {
+      tools: [
+        (draft) =>
+          draft.wrap("bash", (bash) => ({
+            ...bash,
+            description: `${bash.description}\nThis repository uses pnpm. Never run npm or yarn.`,
+          })),
+      ],
+    },
+  }),
 } satisfies Plugin;
 ```
 
@@ -149,6 +242,40 @@ it was and is reported. Call `api.reload()` when something a derive function rea
 In a client, derive functions run when `list()` is called. An error propagates to that caller instead
 of being caught and reported by the registry. `api.reload()` does nothing in a client.
 
+## `when` [#when]
+
+A tool, a setting, a command and a prompt section can each carry `when`, which says whether the
+item is in a chat:
+
+```ts title="top-level-only.ts"
+import type { Plugin, When } from "@nyte-ai/plugin/core";
+
+const topLevel: When = (chat) => chat.parent === null;
+
+export default {
+  id: "threads",
+  contribute: { tools: [start, list].map((tool) => ({ ...tool, when: topLevel })) },
+} satisfies Plugin;
+```
+
+`when` gets the chat:
+
+| Field             | What it is                                                         |
+| ----------------- | ------------------------------------------------------------------ |
+| `parent`          | The chat this one was started from, or `null` for a top-level chat |
+| `settings`        | Every setting's current value in this chat, by id                  |
+| `searchProviders` | The search providers plugins added                                 |
+
+What the host does with it:
+
+- It asks when the chat's plugins load, and again whenever a setting changes or a plugin's items do.
+- Only `true` keeps the item. An item without `when` is always there.
+- `when` answers at once. It can't await.
+- If `when` throws, the item is left out and the error shows on the plugin's row.
+- A setting that is out keeps its stored value.
+- A secret setting reads `{ secret: true }` once one is saved, and never its value.
+- A client plugin's `when` is never asked. The client reports it and keeps the item.
+
 ## Items [#items]
 
 ### ToolDefinition [#tool-definition]
@@ -161,23 +288,24 @@ See [Give the agent a tool](/docs/plugins/tools) for a walkthrough.
 | `description` | Yes      | What the model reads about the tool                                                   |
 | `parameters`  | Yes      | Schema of the arguments                                                               |
 | `class`       | Yes      | `(args, { call }) => ToolClass`: how the call is shown and gated                      |
-| `replay`      | Yes      | `"safe"` runs the call again after a host restart. `"never"` ends it as `interrupted` |
+| `rerun`       | Yes      | `"safe"` runs the call again after a host restart. `"never"` ends it as `interrupted` |
 | `execute`     | Yes      | `(args, invocation) => Promise<ToolResult>`                                           |
 | `output`      | No       | Schema of `ToolResult.output`                                                         |
-| `effects`     | No       | `"workspace"` (default) snapshots files around the call. `"none"` skips it            |
-| `approval`    | No       | `"policy"` (default), `"never"` or `"runtime"`                                        |
+| `changes`     | No       | `"workspace"` (default) snapshots files around the call. `"none"` skips it            |
+| `asks`        | No       | `"policy"` (default), `"never"` or `"runtime"`                                        |
 | `exposure`    | No       | `"model"` (default), `"model-only"`, `"code"`, `"deferred"` or `"hidden"`             |
 | `loads`       | No       | `(output) => names`: tools the model gets from its next request on. Needs `output`    |
 | `namespace`   | No       | A group the tool belongs to: `name`, `aliases`, `description`, `instructions`         |
+| `when`        | No       | [`(chat) => boolean`](#when): whether the tool is in a chat                           |
 | `grammar`     | No       | A Lark grammar or a regex the model's input must follow                               |
 
 ### PromptSection [#prompt-section]
 
-| Field   | What it is                                                        |
-| ------- | ----------------------------------------------------------------- |
-| `id`    | Name of the section. A later section with the same id replaces it |
-| `text`  | Text added to the system prompt, or `({ model }) => text \| null` |
-| `order` | Sort position, lowest first. Default `100`                        |
+| Field   | What it is                                                             |
+| ------- | ---------------------------------------------------------------------- |
+| `id`    | Name of the section. A later section with the same id replaces it      |
+| `text`  | Text added to the system prompt, or `({ model, api }) => text \| null` |
+| `order` | Sort position, lowest first. Default `100`                             |
 
 Core calls a `text` function each time it builds a request; `null` leaves the section out. When the
 text changes, the model gets the change as an update after the conversation so far, so the cached
@@ -230,31 +358,36 @@ A backend for the `web_search` tool.
 
 See [Add a command and a setting](/docs/plugins/commands-and-settings#commands).
 
-| Field         | What it is                                                                        |
-| ------------- | --------------------------------------------------------------------------------- |
-| `name`        | What the user types after `/`: lowercase letters, digits and `-`                  |
-| `title`       | Name in menus                                                                     |
-| `description` | One line on what it does                                                          |
-| `takesText`   | Wait for text after the name instead of running at once                           |
-| `hidden`      | Keep it out of `/` menus; a client still runs it with `session.command`           |
-| `category`    | Group in menus                                                                    |
-| `keywords`    | Extra words menus match                                                           |
-| `complete`    | `(prefix, { signal, api }) => suggestions`, each `{ value, label, description? }` |
-| `run`         | `(text, { signal, api, caller }) => string \| { prompt } \| void`                 |
+| Field         | What it is                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| `name`        | What the user types after `/`: lowercase letters, digits and `-`                            |
+| `title`       | Name in menus                                                                               |
+| `description` | One line on what it does                                                                    |
+| `takesText`   | Wait for text after the name instead of running at once                                     |
+| `hidden`      | Keep it out of `/` menus; a client still runs it with `session.command`                     |
+| `category`    | Group in menus                                                                              |
+| `keywords`    | Extra words menus match                                                                     |
+| `complete`    | `(prefix, { signal, api }) => suggestions`, each `{ value, label, description? }`           |
+| `run`         | `(text, { signal, api, caller }) => string \| { prompt } \| { workspace, output? } \| void` |
 
 ### SettingDefinition [#setting]
 
 See [Settings](/docs/plugins/commands-and-settings#settings).
 
-| Field     | What it is                                                                                       |
-| --------- | ------------------------------------------------------------------------------------------------ |
-| `id`      | Unique name                                                                                      |
-| `label`   | Name users see                                                                                   |
-| `schema`  | Schema every value must match                                                                    |
-| `default` | Value until the user picks one                                                                   |
-| `scope`   | `"host"`: one value. `"session"`: one value per chat                                             |
-| `choices` | Allowed values, each `{ value, label, badge? }`                                                  |
-| `secret`  | `true` for a record of `{ secret, value? }` entries. The host encrypts the entries marked secret |
+| Field         | What it is                                                                           |
+| ------------- | ------------------------------------------------------------------------------------ |
+| `id`          | Unique name                                                                          |
+| `title`       | Name users see                                                                       |
+| `type`        | `"text"`, `"number"`, `"integer"`, `"switch"` or `"secret"`                          |
+| `default`     | Value until the user sets one. Each type has its own when this is left out           |
+| `choices`     | Allowed values, each `{ value, title, note? }`. The field becomes a menu             |
+| `description` | One sentence shown under the field                                                   |
+| `placeholder` | What an empty field shows                                                            |
+| `scope`       | `"host"` (the default): one value. `"chat"`: one value per chat                      |
+| `page`        | A [preset page](/docs/plugins/commands-and-settings#where) or the title of a new one |
+| `when`        | [`(chat) => boolean`](#when): whether the setting is in a chat                       |
+| `schema`      | In place of `type`, for a value of another shape. Needs `default`                    |
+| `secret`      | With `schema`: `true` when the value's entries are `{ secret, value? }` to be sealed |
 
 ### Renderer [#renderer]
 
@@ -273,7 +406,6 @@ A client plugin's way to draw a part kind.
 | --------- | --------------------------- |
 | `key`     | The key or chord            |
 | `command` | Name of the command it runs |
-| `when`    | Condition for the binding   |
 
 ## Storage [#storage]
 

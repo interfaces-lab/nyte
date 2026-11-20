@@ -8,6 +8,10 @@ when `scope` names it. Live sessions reload. A plugin that fails its checks keep
 version (`kept-previous`) or is left out (`rejected`); the report lists each plugin's outcome and
 issues, with the new catalog generation.
 
+A session's plugins are stored with the session. They load again after the host restarts and on any
+other host that serves the same store. If that host can't load one of them, the session refuses work
+with `unavailable` until it can.
+
 ## When to call it
 
 From developer tools that reload plugins while they are being written. Most clients never call it.

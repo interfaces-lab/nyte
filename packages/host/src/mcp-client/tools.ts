@@ -191,8 +191,8 @@ function bridge(
     parameters: passthrough(tool.inputSchema),
     exposure: exposure === "code" ? "deferred" : exposure,
     class: () => ({ kind: "custom", label: `${entry.name}: ${tool.title ?? tool.name}` }),
-    effects: tool.annotations?.readOnlyHint === true ? "none" : "workspace",
-    replay:
+    changes: tool.annotations?.readOnlyHint === true ? "none" : "workspace",
+    rerun:
       tool.annotations?.readOnlyHint === true || tool.annotations?.idempotentHint === true
         ? "safe"
         : "never",

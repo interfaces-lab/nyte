@@ -14,7 +14,7 @@ export async function readsOnly(
 
 export function withheldInSideChats(name: string): HookHandler<"offer_tools"> {
   return async (tools, context) =>
-    (await readsOnly(context.api.session, context.api.sdk))
+    (await readsOnly(context.api.session, context.api.host))
       ? tools.filter((info) => info.name !== name)
       : tools;
 }

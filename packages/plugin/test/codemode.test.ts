@@ -14,7 +14,7 @@ const echo: ToolDefinition<{ text: string }> = {
   description: "Echo the text.",
   parameters: text,
   class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => ({ content: [{ kind: "text", text: `echo: ${args.text}` }] }),
 };
 
@@ -25,7 +25,7 @@ const shout: ToolDefinition<{ text: string }, { loud: string }> = {
   output: standard(Type.Object({ loud: Type.String() })),
   exposure: "code",
   class: () => ({ kind: "custom", label: "Shouting" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => ({ content: [], output: { loud: args.text.toUpperCase() } }),
 };
 

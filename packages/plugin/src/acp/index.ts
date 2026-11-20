@@ -1,5 +1,5 @@
 import {
-  acquireSessionResources,
+  bindSession,
   getCurrentSystemPrompt,
   getCurrentTools,
   lazyStream,
@@ -64,8 +64,8 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
     description: "A tool an ACP agent ran. The agent reports the result; Nyte records it.",
     parameters: standard(mirrorArguments),
     exposure: "hidden",
-    approval: "runtime",
-    replay: "safe",
+    asks: "runtime",
+    rerun: "safe",
     class: mirrorClass,
     async execute(args, invocation) {
       const thread = live.get(invocation.session.id)?.thread;
@@ -291,21 +291,14 @@ export function acpAgents(options?: {
     id: "acp",
     contribute: { tools: [mirrorTool(live)] },
     activate(api) {
-      const id = api.session.id;
-      const binding: Binding = {
-        env: api.env,
-        approve: (call, signal) => api.approve(call, signal),
-      };
-      const release = acquireSessionResources(id);
-      bindings.set(id, binding);
+      bindSession(
+        bindings,
+        api.session.id,
+        { env: api.env, approve: (call, signal) => api.approve(call, signal) },
+        api.signal,
+      );
 
-      const unbind = () => {
-        if (bindings.get(id) === binding) bindings.delete(id);
-        release();
-      };
-
-      if (api.signal.aborted) unbind();
-      else api.signal.addEventListener("abort", unbind, { once: true });
+      return {};
     },
   } satisfies Plugin;
 

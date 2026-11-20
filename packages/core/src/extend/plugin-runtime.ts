@@ -4,10 +4,8 @@ import type {
   Awaitable,
   Disposer,
   HostView,
-  PluginCheckReport,
   PluginLoadOutcome,
   PluginReplacementReport,
-  Schema,
   SessionId,
   ValidationIssue,
 } from "@nyte-ai/schema";
@@ -15,7 +13,6 @@ import { CORE_CONTEXT, LOCAL } from "../contract/host.ts";
 import type { PluginFile } from "../contract/host.ts";
 import type {
   Attached,
-  CoreRegistry,
   HookDispatch,
   InstanceHost,
   Kernel,
@@ -26,25 +23,29 @@ import type {
 } from "../contract/kernel.ts";
 import type { PartDefinition } from "../contract/parts.ts";
 import type {
+  Additions,
+  Chat,
   HookName,
+  Hooks,
   Plugin,
   PluginApi,
   Registries,
   Registry,
-  RegistryDraft,
 } from "../contract/plugin.ts";
+import type { AssignedPlugin } from "../contract/records.ts";
 import type { ExecutionEnv, Resources } from "../contract/workspace.ts";
 import { RESERVED_PART_KINDS } from "./part-definitions.ts";
 import { coveredHere, requireSession } from "../store/session.ts";
-import { callable } from "../util/callable.ts";
 import { dev } from "../util/dev-log.ts";
-import { convertJsonSchema } from "../util/json-schema.ts";
 import { activateSession } from "./activation.ts";
+import { preflight, reservedKind, takenKind } from "./plugin-checks.ts";
+import type { Preflight } from "./plugin-checks.ts";
 import { publishViews } from "./part-views.ts";
-import { loadPlugins } from "./plugin-folders.ts";
-import { createHookDispatch, namesCoreHook, skipUnknownHook } from "./hooks.ts";
+import { assignPlugins, loadPlugins } from "./plugin-folders.ts";
+import { createHookDispatch, namesCoreHook, reportUnknownHook } from "./hooks.ts";
 import { build, corePluginApi } from "./plugin-api.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
+import { readSettingValues } from "./setting-definitions.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
 import { scanResources } from "./resources.ts";
 
@@ -59,22 +60,10 @@ type SessionLoad =
   | { readonly kind: "reassigned" }
   | { readonly kind: "gone" };
 
-type Derive<T> = (draft: RegistryDraft<T>, siblings: Registries<"core">) => void;
-
-type Apply = (to: InstanceHost, signal: AbortSignal) => Disposer;
-
-interface Preflight {
-  readonly plugin: Plugin<"core">;
-  readonly issues: readonly ValidationIssue[];
-  readonly ok: boolean;
-}
-
 interface Resolved {
   readonly env: Attached;
   readonly inputs: Resources | null;
 }
-
-const RESERVED_IDS: readonly string[] = ["models", "settings"];
 
 const ACTIVATE_SECONDS = 30;
 
@@ -84,7 +73,7 @@ const UNRESOLVED: Resolved = { env: { env: null }, inputs: null };
 
 export function createPluginState(): PluginState {
   return {
-    assigned: new Map(),
+    inline: new Map(),
     holds: new Map(),
     settings: new Set(),
     publishing: new Map(),
@@ -114,6 +103,7 @@ export function createPluginRuntime(
   let closed = false;
   let last: readonly PluginLoadOutcome[] = [];
   let requested: readonly Plugin<"core">[] = [];
+  let assigned = previous?.assigned() ?? null;
   const lifecycle = serial();
   let holds = 0;
   let idle: PromiseWithResolvers<void> | null = null;
@@ -148,7 +138,10 @@ export function createPluginRuntime(
     finding.set(owner, [...(finding.get(owner) ?? []), issue]);
   };
 
+  let facts: Pick<Chat, "parent" | "settings"> = { parent: null, settings: {} };
+
   const registries = createRegistrySet({
+    chat: () => facts,
     onChange: afterPass,
     setting: (definition, owner) =>
       settingHandle(kernel, definition, {
@@ -158,6 +151,28 @@ export function createPluginRuntime(
       }),
     report: pend,
   });
+
+  const readFacts = async (): Promise<void> => {
+    registries.settings.materialize(registries);
+
+    facts = {
+      parent: (await requireSession(kernel.store, session)).record.parent,
+      settings: await readSettingValues(
+        kernel,
+        session,
+        registries.settings.drafted().map((entry) => entry.item),
+      ),
+    };
+  };
+
+  const settingChanged = (_id: string, scope: SessionId | null): void => {
+    if (closed || (scope !== null && scope !== session)) return;
+
+    void readFacts().then(
+      () => registries.reload(),
+      () => undefined,
+    );
+  };
 
   const dispatch = createHookDispatch(kernel, session);
 
@@ -273,8 +288,7 @@ export function createPluginRuntime(
 
     try {
       dev("plugins", "activate", { session, plugin: plugin.id });
-      install(plugin, instance.api);
-      await bounded(plugin.activate?.(instance.api));
+      await activate(instance);
 
       return null;
     } catch (error) {
@@ -313,10 +327,12 @@ export function createPluginRuntime(
 
   const loadAll = async (
     plugins: readonly Plugin<"core">[],
+    stored: readonly AssignedPlugin[] | null,
   ): Promise<readonly PluginLoadOutcome[]> => {
     dev("plugins", "load", { session, plugins: plugins.map(({ id }) => id) });
     closed = false;
     requested = plugins;
+    assigned = stored;
 
     const checked = preflight(
       plugins,
@@ -338,6 +354,8 @@ export function createPluginRuntime(
     }
 
     last = outcomes;
+    kernel.plugins.state.settings.add(settingChanged);
+    await readFacts();
     await registries.materialize();
     await publishCatalog(kernel, session);
 
@@ -373,7 +391,7 @@ export function createPluginRuntime(
     hooks,
     ready,
     hold,
-    load: (plugins) => lifecycle.run(() => loadAll(plugins)),
+    load: (plugins, stored) => lifecycle.run(() => loadAll(plugins, stored)),
     requested: () => requested,
     outcomes: () => last,
     issues: issueRows,
@@ -386,7 +404,7 @@ export function createPluginRuntime(
     },
     plugins: () => [...active.values()].map((entry) => entry.instance.plugin),
     instance: (id) => active.get(id)?.instance,
-    assigned: () => kernel.plugins.state.assigned.get(session) ?? null,
+    assigned: () => assigned,
     idleSince: () => (holds > 0 || activating ? null : used),
     touch() {
       used = Date.now();
@@ -396,6 +414,7 @@ export function createPluginRuntime(
         while (holds > 0) await (idle ??= Promise.withResolvers()).promise;
         dev("plugins", "close", { session, plugins: [...active.keys()] });
         closed = true;
+        kernel.plugins.state.settings.delete(settingChanged);
 
         for (const id of [...active.keys()].reverse()) {
           active.get(id)?.leave();
@@ -451,8 +470,7 @@ export async function activateApart(
     const leave = instance.join(host);
 
     try {
-      install(plugin, instance.api);
-      await bounded(plugin.activate?.(instance.api));
+      await activate(instance);
       active.set(plugin.id, { instance, leave });
     } catch {
       leave();
@@ -467,29 +485,17 @@ export async function activateApart(
   };
 }
 
-export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckReport {
-  return {
-    plugins: preflight(plugins, []).map(({ plugin, issues, ok }) => ({
-      kind: ok ? "activated" : "rejected",
-      id: plugin.id,
-      issues,
-    })),
-    collisions: collisions(plugins),
-  };
-}
-
 export async function replacePlugins(
   kernel: Kernel,
   requested: readonly (Plugin<"core"> | PluginFile)[],
   scope?: { readonly session: SessionId },
 ): Promise<PluginReplacementReport> {
-  const { assigned } = kernel.plugins.state;
   const builtins = kernel.plugins.builtins.length;
 
   if (scope !== undefined) {
     await requireSession(kernel.store, scope.session);
     await loadPlugins(kernel, requested);
-    assigned.set(scope.session, requested);
+    await assignPlugins(kernel, scope.session, requested);
     const outcomes = await reloadSession(kernel, scope.session);
 
     return { generation: bumpGeneration(kernel), plugins: outcomes.slice(builtins) };
@@ -501,8 +507,8 @@ export async function replacePlugins(
   kernel.plugins.host = plugins;
 
   const sessions = await Promise.all(
-    [...kernel.plugins.runtimes().keys()].map(async (session): Promise<SessionLoad> => {
-      if (assigned.has(session)) {
+    [...kernel.plugins.runtimes()].map(async ([session, runtime]): Promise<SessionLoad> => {
+      if (runtime.assigned() !== null) {
         await kernel.plugins.reload(session).catch(() => undefined);
 
         return { kind: "reassigned" };
@@ -637,178 +643,28 @@ function publishPlugins(kernel: Kernel): void {
   kernel.host.update({ plugins: [...merged.values()] });
 }
 
-function preflight(
-  plugins: readonly Plugin<"core">[],
-  loaded: readonly Plugin<"core">[],
-): readonly Preflight[] {
-  const taken = new Set(loaded.map((plugin) => plugin.id));
+async function activate(instance: PluginInstance): Promise<void> {
+  const plugin = instance.plugin;
+  instance.add({ contribute: plugin.contribute, hooks: plugin.hooks });
 
-  const providers = new Set(
-    loaded.flatMap((plugin) => (plugin.environment === undefined ? [] : [plugin.environment.kind])),
-  );
+  if (plugin.activate === undefined) return;
+  const returned: unknown = await bounded(plugin.activate(instance.api));
 
-  return plugins.map((plugin) => {
-    const issues: ValidationIssue[] = [];
-
-    const error = (path: readonly (string | number)[], message: string): void => {
-      issues.push({ severity: "error", path, message, source: { plugin: plugin.id } });
-    };
-
-    if (taken.has(plugin.id) || plugins.filter((other) => other.id === plugin.id).length > 1)
-      error(["id"], `More than one plugin is named ${plugin.id}.`);
-
-    if (RESERVED_IDS.includes(plugin.id))
-      error(["id"], `The plugin id ${plugin.id} is reserved for the host.`);
-
-    if (plugin.id.includes("/")) error(["id"], `The plugin id ${plugin.id} contains "/".`);
-
-    const kind = plugin.environment?.kind;
-
-    if (kind !== undefined && issues.length === 0) {
-      if (providers.has(kind))
-        error(["environment"], `Another plugin provides the ${kind} environment.`);
-      else providers.add(kind);
-    }
-
-    for (const { path, schema, direction } of listContributionSchemas(plugin)) {
-      try {
-        convertJsonSchema(schema, direction);
-      } catch (thrown) {
-        error(
-          path,
-          `This schema has no JSON Schema: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
-        );
-      }
-    }
-
-    return { plugin, issues, ok: issues.length === 0 };
-  });
-}
-
-function listContributionSchemas(plugin: Plugin<"core">): readonly {
-  readonly path: readonly string[];
-  readonly schema: Schema<unknown>;
-  readonly direction: "input" | "output";
-}[] {
-  const declared = plugin.contribute;
-
-  const at = (
-    path: readonly string[],
-    schema: Schema<unknown> | undefined,
-    direction: "input" | "output",
-  ) => (schema === undefined ? [] : [{ path, schema, direction }]);
-
-  return [
-    ...(declared?.tools ?? []).flatMap((tool) => [
-      ...at(["tools", tool.name, "parameters"], tool.parameters, "input"),
-      ...at(["tools", tool.name, "output"], tool.output, "output"),
-    ]),
-    ...(declared?.settings ?? []).flatMap((setting) =>
-      at(["settings", setting.id], setting.schema, "output"),
-    ),
-    ...(declared?.parts ?? []).flatMap((part) => [
-      ...at(["parts", part.kind, "state"], part.state, "output"),
-      ...Object.entries(part.actions).flatMap(([action, spec]) => [
-        ...at(["parts", part.kind, action, "input"], spec.input, "input"),
-        ...at(["parts", part.kind, action, "answer"], spec.input, "output"),
-        ...at(["parts", part.kind, action, "output"], spec.output, "output"),
-      ]),
-    ]),
-  ];
-}
-
-function collisions(plugins: readonly Plugin<"core">[]): readonly ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  const claims = new Map<string, string>();
-
-  const claim = (kind: string, key: string, owner: string): void => {
-    const previous = claims.get(`${kind}/${key}`);
-
-    if (previous === undefined || previous === owner) {
-      claims.set(`${kind}/${key}`, owner);
-
-      return;
-    }
-
-    issues.push({
-      severity: "warning",
-      path: [kind, key],
-      message: `${key} from ${owner} collides with the one from ${previous}.`,
-      source: { plugin: owner },
-    });
-  };
-
-  for (const plugin of plugins) {
-    const declared = plugin.contribute;
-
-    for (const tool of declared?.tools ?? []) claim("tools", tool.name, plugin.id);
-
-    for (const setting of declared?.settings ?? []) claim("settings", setting.id, plugin.id);
-
-    for (const command of declared?.commands ?? []) claim("commands", command.name, plugin.id);
-
-    for (const part of declared?.parts ?? []) {
-      if (RESERVED_PART_KINDS.has(part.kind)) issues.push(reservedKind(part.kind, plugin.id));
-      else claim("parts", part.kind, plugin.id);
-    }
-  }
-
-  return issues;
-}
-
-function reservedKind(kind: string, owner: string): ValidationIssue {
-  return {
-    severity: "warning",
-    path: ["parts", kind],
-    message: `${kind} is a built-in part kind; ${owner}'s definition is ignored.`,
-    source: { plugin: owner },
-  };
-}
-
-function takenKind(kind: string, owner: string, holder: string | null): ValidationIssue {
-  return {
-    severity: "warning",
-    path: ["parts", kind],
-    message: `${holder ?? "Another definition"} already registered the ${kind} part kind; ${owner}'s definition is ignored.`,
-    source: { plugin: owner },
-  };
-}
-
-function install(plugin: Plugin<"core">, api: PluginApi<"core">): void {
-  const declared = plugin.contribute;
-  const { contribute } = api;
-
-  for (const item of declared?.tools ?? []) contribute.tools.add(item);
-
-  for (const item of declared?.prompt ?? []) contribute.prompt.add(item);
-
-  for (const item of declared?.agents ?? []) contribute.agents.add(item);
-
-  for (const item of declared?.modelContext ?? []) contribute.modelContext.add(item);
-
-  for (const item of declared?.skills ?? []) contribute.skills.add(item);
-
-  for (const item of declared?.searchProviders ?? []) contribute.searchProviders.add(item);
-
-  for (const item of declared?.parts ?? []) contribute.parts.add(item);
-
-  for (const item of declared?.commands ?? []) contribute.commands.add(item);
-
-  for (const item of declared?.settings ?? []) contribute.settings.add(item);
-
-  for (const name of Object.keys(plugin.hooks ?? {}))
-    if (namesCoreHook(name)) installHook(api, plugin.hooks, name);
-    else skipUnknownHook(api, name);
+  if (typeof returned !== "object" || returned === null)
+    throw new Error("activate returned nothing. Return what the plugin adds, or {} for nothing.");
+  instance.add(returned);
 }
 
 function installHook<N extends HookName<"core">>(
+  to: InstanceHost,
   api: PluginApi<"core">,
-  handlers: Plugin<"core">["hooks"],
+  input: { readonly owner: string; readonly signal: AbortSignal; readonly hooks: Hooks<"core"> },
   name: N,
 ): void {
-  const entry = handlers?.[name];
+  const entry = input.hooks[name];
 
-  if (entry !== undefined) api.hook(name, entry);
+  if (entry !== undefined)
+    untilAborted(input.signal, to.hooks.register(input.owner, api, name, entry));
 }
 
 function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Disposer {
@@ -864,48 +720,42 @@ function createInstance(
   const owner = plugin.id;
   const controller = new AbortController();
   const hosts = new Map<InstanceHost, AbortController>();
-  const registrations = new Map<Apply, Map<InstanceHost, Disposer>>();
+  const added: Additions<"core">[] = [];
   let home: InstanceHost | null = null;
 
-  const createHostSignal = (to: InstanceHost): AbortSignal =>
-    AbortSignal.any([controller.signal, hosts.get(to)?.signal ?? controller.signal]);
+  const apply = (to: InstanceHost, additions: Additions<"core">): void => {
+    const signal = AbortSignal.any([controller.signal, hosts.get(to)?.signal ?? controller.signal]);
+    const given = additions.contribute ?? {};
+    const registries = to.registries;
 
-  const register = <R extends Disposer>(apply: (to: InstanceHost, signal: AbortSignal) => R): R => {
-    const [first, ...rest] = hosts.size > 0 ? [...hosts.keys()] : home === null ? [] : [home];
+    for (const entry of given.tools ?? []) registries.tools.owned(owner, signal).add(entry);
 
-    if (first === undefined)
-      throw new SdkError("unavailable", `${owner} runs in no session runtime.`);
-    const result = apply(first, hosts.has(first) ? createHostSignal(first) : controller.signal);
-    const applied = new Map<InstanceHost, Disposer>([[first, result]]);
+    for (const entry of given.prompt ?? []) registries.prompt.owned(owner, signal).add(entry);
 
-    for (const to of rest) applied.set(to, apply(to, createHostSignal(to)));
-    registrations.set(apply, applied);
+    for (const entry of given.agents ?? []) registries.agents.owned(owner, signal).add(entry);
 
-    const dispose = (): void => {
-      registrations.delete(apply);
+    for (const entry of given.modelContext ?? [])
+      registries.modelContext.owned(owner, signal).add(entry);
 
-      for (const remove of applied.values()) remove();
-      applied.clear();
-    };
+    for (const entry of given.skills ?? []) registries.skills.owned(owner, signal).add(entry);
 
-    return Object.assign(dispose, result);
+    for (const entry of given.searchProviders ?? [])
+      registries.searchProviders.owned(owner, signal).add(entry);
+
+    for (const entry of given.parts ?? []) registries.parts.owned(owner, signal).add(entry);
+
+    for (const entry of given.commands ?? []) registries.commands.owned(owner, signal).add(entry);
+
+    for (const entry of given.settings ?? []) registries.settings.owned(owner, signal).add(entry);
+    const hooks = additions.hooks ?? {};
+
+    for (const name of Object.keys(hooks))
+      if (namesCoreHook(name)) installHook(to, api, { owner, signal, hooks }, name);
   };
 
-  const contribution = <T, Handle>(
-    pick: (registries: RegistrySet) => CoreRegistry<T, Handle>,
-  ): Registry<T, "core", Handle> => {
-    function add(item: T): Handle & Disposer;
-    function add(derive: Derive<T>): Disposer;
-    function add(value: T | Derive<T>): Disposer {
-      return register((to, signal) => {
-        const target = pick(to.registries).owned(owner, signal);
-
-        return callable(value) ? target.add(value) : target.add(value);
-      });
-    }
-
-    return { add, list: () => (home === null ? [] : pick(home.registries).list()) };
-  };
+  const read = <T>(pick: (registries: RegistrySet) => Registry<T>): Registry<T> => ({
+    list: () => (home === null ? [] : pick(home.registries).list()),
+  });
 
   const settings = (): Registries<"core">["settings"] => {
     if (home === null) throw new SdkError("unavailable", `${owner} runs in no session runtime.`);
@@ -913,32 +763,27 @@ function createInstance(
     return home.registries.owned(owner).settings;
   };
 
-  const contribute: Registries<"core"> = {
-    tools: contribution((registries) => registries.tools),
-    prompt: contribution((registries) => registries.prompt),
-    agents: contribution((registries) => registries.agents),
-    modelContext: contribution((registries) => registries.modelContext),
-    skills: contribution((registries) => registries.skills),
-    searchProviders: contribution((registries) => registries.searchProviders),
-    parts: contribution((registries) => registries.parts),
-    commands: contribution((registries) => registries.commands),
-    settings: {
-      ...contribution((registries) => registries.settings),
-      value: (id) => settings().value(id),
-      watch: (id) => settings().watch(id),
-    },
-  };
-
   const api: PluginApi<"core"> = build(kernel, {
     ...input,
     owner,
-    contribute,
+    registries: {
+      tools: read((registries) => registries.tools),
+      prompt: read((registries) => registries.prompt),
+      agents: read((registries) => registries.agents),
+      modelContext: read((registries) => registries.modelContext),
+      skills: read((registries) => registries.skills),
+      searchProviders: read((registries) => registries.searchProviders),
+      parts: read((registries) => registries.parts),
+      commands: read((registries) => registries.commands),
+      settings: {
+        ...read((registries) => registries.settings),
+        value: (id) => settings().value(id),
+        set: (id, value) => settings().set(id, value),
+        watch: (id) => settings().watch(id),
+      },
+    },
     handle: kernel.handles.activationSession(CORE_CONTEXT, session),
     signal: controller.signal,
-    hook: (name, entry) =>
-      namesCoreHook(name)
-        ? register((to, signal) => untilAborted(signal, to.hooks.register(owner, api, name, entry)))
-        : skipUnknownHook(api, name),
     report: (issue) =>
       home?.report(owner, { ...issue, source: { ...issue.source, plugin: owner } }),
     reload() {
@@ -949,18 +794,23 @@ function createInstance(
   return {
     plugin,
     api,
+    add(additions) {
+      added.push(additions);
+
+      for (const name of Object.keys(additions.hooks ?? {}))
+        if (!namesCoreHook(name)) reportUnknownHook(api, name);
+
+      for (const to of hosts.keys()) apply(to, additions);
+    },
     join(to) {
       home = to;
       hosts.set(to, new AbortController());
 
-      for (const [apply, applied] of registrations)
-        applied.set(to, apply(to, createHostSignal(to)));
+      for (const additions of added) apply(to, additions);
 
       return () => {
         hosts.get(to)?.abort();
         hosts.delete(to);
-
-        for (const applied of registrations.values()) applied.delete(to);
 
         if (hosts.size === 0) controller.abort();
       };
@@ -968,7 +818,7 @@ function createInstance(
   };
 }
 
-async function bounded(activation: Awaitable<void> | undefined): Promise<void> {
+async function bounded<T>(activation: Awaitable<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const deadline = new Promise<never>((_resolve, reject) => {
@@ -979,7 +829,7 @@ async function bounded(activation: Awaitable<void> | undefined): Promise<void> {
   });
 
   try {
-    await Promise.race([activation, deadline]);
+    return await Promise.race([activation, deadline]);
   } finally {
     clearTimeout(timer);
   }

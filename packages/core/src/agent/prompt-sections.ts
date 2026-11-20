@@ -8,7 +8,7 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import type { SystemMessage } from "@nyte-ai/schema/model";
-import type { Kernel } from "../contract/kernel.ts";
+import type { Kernel, PluginRuntime } from "../contract/kernel.ts";
 import type { PromptSection } from "../contract/plugin.ts";
 import { decodePromptRecord } from "../contract/records.ts";
 import type { PromptRecord } from "../contract/records.ts";
@@ -60,16 +60,23 @@ export function systemSections(
 }
 
 export async function resolveSections(
-  entries: readonly { readonly item: PromptSection; readonly owner: string }[],
-  context: { readonly model: ModelRef },
+  runtime: PluginRuntime,
+  model: ModelRef,
 ): Promise<readonly FixedSection[]> {
   const resolved = await Promise.all(
-    entries.map(async (entry) => {
+    runtime.registries.prompt.entries().map(async (entry) => {
       const section = entry.item;
 
       if (typeof section.text === "string") return [{ ...section, text: section.text }];
+      const api = runtime.api(entry.owner);
 
-      const text = await Promise.resolve(section.text(context)).catch((error: unknown) => {
+      if (api === undefined)
+        throw new SdkError(
+          "internal",
+          `Plugin ${entry.owner} is not active, so its prompt section ${section.id} has no API.`,
+        );
+
+      const text = await Promise.resolve(section.text({ model, api })).catch((error: unknown) => {
         throw new SdkError(
           "internal",
           `Plugin ${entry.owner}'s prompt section ${section.id} failed: ${error instanceof Error ? error.message : String(error)}`,

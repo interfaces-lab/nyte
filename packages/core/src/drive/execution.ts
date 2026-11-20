@@ -163,7 +163,11 @@ export async function advance(
     if (found === null || !found.record.heads.some((entry) => entry.name === head))
       return { kind: "idle" };
     kernel.children.link(found.record, null, 0);
-    await kernel.plugins.runtime(session).ready;
+    const runtime = kernel.plugins.runtime(session);
+    await runtime.ready;
+
+    if (JSON.stringify(runtime.assigned()) !== JSON.stringify(found.record.plugins ?? null))
+      await kernel.plugins.reload(session);
     const refused = await claim(kernel, session, head);
 
     if (refused !== null) return refused;

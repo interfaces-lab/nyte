@@ -24,7 +24,7 @@ export const echo = {
   description: "Echo the text.",
   parameters: standard(Type.Object({ text: Type.String() })),
   class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => {
     echoes.push(args.text);
 

@@ -100,12 +100,14 @@ export default function Tonight() {
 
 export default {
   id: "design-guide",
-  activate(api) {
-    api.contribute.prompt.add({
-      id: "design",
-      order: 60,
-      text: async () => ((await hasDesigns(api)) ? DESIGN_GUIDE : null),
-    });
+  contribute: {
+    prompt: [
+      {
+        id: "design",
+        order: 60,
+        text: async (context) => ((await hasDesigns(context.api)) ? DESIGN_GUIDE : null),
+      },
+    ],
   },
 } satisfies Plugin;
 

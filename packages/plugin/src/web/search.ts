@@ -1,27 +1,24 @@
 import { dev } from "@nyte-ai/core";
-import type { PluginApi, SearchResult, ToolDefinition } from "@nyte-ai/plugin/core";
+import type { SearchResult, ToolDefinition } from "@nyte-ai/plugin/core";
 import { searchOutput, searchParameters, WEB_SEARCH_TOOL } from "./schema.ts";
 import type { SearchOutput } from "./schema.ts";
 
 const TIMEOUT_MS = 25_000;
 
-export function webSearch(
-  api: PluginApi,
-  setting: string,
-): ToolDefinition<{ query: string }, SearchOutput> {
+export function webSearch(setting: string): ToolDefinition<{ query: string }, SearchOutput> {
   return {
     name: WEB_SEARCH_TOOL,
     description: `Search the web for current information. The year is ${new Date().getFullYear()}.`,
     parameters: searchParameters,
     output: searchOutput,
     class: (args) => ({ kind: "custom", label: `Searching ${args.query}` }),
-    effects: "none",
-    approval: "never",
-    replay: "safe",
+    changes: "none",
+    asks: "never",
+    rerun: "safe",
     async execute(args, invocation) {
       const output = await invocation.memo("results", async (): Promise<SearchOutput> => {
-        const chosen = await api.contribute.settings.value(setting);
-        const providers = api.contribute.searchProviders.list();
+        const chosen = await invocation.api.registries.settings.value(setting);
+        const providers = invocation.api.registries.searchProviders.list();
 
         const provider =
           providers.find((candidate) => candidate.id === chosen) ??

@@ -1,6 +1,9 @@
 export { ALL_AUTHORITY, IMAGE_LIMITS, LOCAL } from "./contract/host.ts";
 
 export type {
+  Client,
+  Clients,
+  ClientsApi,
   ConnectOptions,
   Connection,
   ConnectionContext,
@@ -48,17 +51,22 @@ export type {
 } from "./contract/parts.ts";
 
 export type {
+  Additions,
   Agent,
   Available,
+  Chat,
   ClientApi,
   Command,
   ContributionTable,
+  Contributed,
   Decide,
   Declared,
+  Derive,
   HookEntry,
   HookHandler,
   HookName,
   HookTable,
+  Hooks,
   Keybinding,
   ModelContextPolicy,
   Observe,
@@ -69,6 +77,7 @@ export type {
   Registry,
   RegistryDraft,
   Renderer,
+  ResolvedSetting,
   Row,
   RuntimeCall,
   RuntimeVerdict,
@@ -81,6 +90,7 @@ export type {
   SideTable,
   Skill,
   Transform,
+  When,
 } from "./contract/plugin.ts";
 
 export type {
@@ -184,6 +194,8 @@ export { matchesOutput } from "./util/json-schema.ts";
 export { fitsActionOutput, fitsAnswer, fitsState } from "./api/part-schema.ts";
 
 export { callable } from "./util/callable.ts";
+
+export { resolveSetting } from "./contract/plugin.ts";
 
 export { lineDiff } from "./util/line-diff.ts";
 

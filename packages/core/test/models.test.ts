@@ -37,10 +37,10 @@ function catalog() {
 
 const tone = {
   id: "tone",
-  label: "Tone",
+  title: "Tone",
   schema: standard(Type.Union([Type.Literal("calm"), Type.Literal("loud")])),
   default: "calm",
-  scope: "session",
+  scope: "chat",
 } as const;
 
 const extras: Plugin<"core"> = {

@@ -75,15 +75,15 @@ const renameTool: ToolDefinition<Infer<typeof renameParameters>> = {
   description: "Rename this chat, only when the user asks.",
   parameters: renameParameters,
   class: (args) => ({ kind: "custom", label: `Renaming to ${args.title.trim()}` }),
-  effects: "none",
-  approval: "never",
-  replay: "safe",
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
   async execute(args, invocation) {
     const id = invocation.session.id;
     const title = args.title.trim();
 
     if (title === "") throw new Error("Session title must not be empty.");
-    const outcome = await invocation.sdk.session(id).update({ name: title });
+    const outcome = await invocation.host.session(id).update({ name: title });
 
     if (outcome.kind !== "updated")
       throw new Error(`Unable to rename session ${id}: ${outcome.kind}.`);

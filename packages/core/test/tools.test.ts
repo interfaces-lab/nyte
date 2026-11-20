@@ -282,7 +282,7 @@ describe("tool calls", () => {
       description: "Call echo twice, then wait.",
       parameters: standard(Type.Object({ until: Type.Number() })),
       class: () => ({ kind: "custom", label: "Delegating" }),
-      replay: "safe",
+      rerun: "safe",
       execute: async (args, invocation) => {
         runs += 1;
         const first = await invocation.tools.execute("echo", { text: "a" });
@@ -339,9 +339,9 @@ describe("tool calls", () => {
       description: "Create a child and a panel, then wait.",
       parameters: standard(Type.Object({ until: Type.Number() })),
       class: () => ({ kind: "delegate", child: null, role: "create", title: null }),
-      replay: "safe",
+      rerun: "safe",
       execute: async (args, invocation) => {
-        const { session: child } = await invocation.sdk.sessions.start({
+        const { session: child } = await invocation.host.sessions.start({
           parent: invocation.session.id,
           content: "Hi.",
         });
@@ -404,7 +404,7 @@ describe("tool calls", () => {
     const never = {
       ...echo,
       name: "never",
-      replay: "never",
+      rerun: "never",
       execute: async () => {
         executions.never += 1;
 

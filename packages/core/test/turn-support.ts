@@ -25,7 +25,7 @@ export const echo: ToolDefinition<{ readonly text: string }> = {
   description: "Echo the text.",
   parameters: standard(Type.Object({ text: Type.String() })),
   class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => ({ content: [{ kind: "text", text: `echo: ${args.text}` }] }),
 };
 
@@ -34,7 +34,7 @@ export const nap: ToolDefinition<Infer<typeof nothing>> = {
   description: "Sleep a little.",
   parameters: nothing,
   class: () => ({ kind: "custom", label: "Napping" }),
-  replay: "safe",
+  rerun: "safe",
   async execute(_args, invocation) {
     await invocation.wait({ kind: "timer", until: invocation.now() + 100 });
 
@@ -50,7 +50,7 @@ export function recorder(gate?: Promise<void>) {
     description: "Wait for the gate.",
     parameters: nothing,
     class: () => ({ kind: "custom", label: "Waiting" }),
-    replay: "safe",
+    rerun: "safe",
     async execute() {
       await gate;
 

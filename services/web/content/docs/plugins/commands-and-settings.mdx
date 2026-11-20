@@ -9,20 +9,16 @@ setting decides how long it is.
 
 ```ts title="standup.ts"
 import type { Command, Plugin, SettingDefinition } from "@nyte-ai/plugin/core";
-import { standard } from "@nyte-ai/schema";
-import { Type } from "typebox";
 
-const length: SettingDefinition<"short" | "detailed"> = {
+const length = {
   id: "standup.length",
-  label: "Stand-up length",
-  schema: standard(Type.Union([Type.Literal("short"), Type.Literal("detailed")])),
+  title: "Stand-up length",
+  type: "text",
   choices: [
-    { value: "short", label: "Three bullets" },
-    { value: "detailed", label: "A paragraph per task" },
+    { value: "short", title: "Three bullets" },
+    { value: "detailed", title: "A paragraph per task" },
   ],
-  default: "short",
-  scope: "host",
-};
+} satisfies SettingDefinition;
 
 const standup: Command = {
   name: "standup",
@@ -30,7 +26,7 @@ const standup: Command = {
   description: "Drafts a stand-up update from this chat; text after the name adds a focus.",
   takesText: true,
   async run(text, { api }) {
-    const chosen = await api.contribute.settings.value(length.id);
+    const chosen = await api.registries.settings.value(length.id);
     const shape = chosen === "detailed" ? "one paragraph per task" : "three bullets";
     const focus = text === "" ? "" : ` Focus on ${text}.`;
 
@@ -52,18 +48,19 @@ Focus on the auth work." as a message in the chat.
 `name` is what the user types. Use lowercase letters, digits and `-`, and make it specific: other
 plugins share the same `/` menu. The host refuses a name the clients keep for themselves:
 
-`accounts`, `cd`, `compact`, `continue`, `edit`, `help`, `login`, `logout`, `mcp`, `new`, `plugins`,
+`accounts`, `compact`, `continue`, `edit`, `help`, `login`, `logout`, `mcp`, `new`, `plugins`,
 `pr`, `quit`, `reload`, `resume`, `sessions`, `settings`, `sidechat`, `skills`, `tasks`, `tree`,
 `trust`, `update`, `usage`.
 
 `run` gets the text typed after the name, trimmed, or `""` when there is none. What it returns
 decides what happens next:
 
-| `run` returns | Result                                                    |
-| ------------- | --------------------------------------------------------- |
-| A string      | The client shows the string to the user                   |
-| `{ prompt }`  | The host sends `prompt` to the chat as the user's message |
-| Nothing       | Nothing more                                              |
+| `run` returns           | Result                                                                 |
+| ----------------------- | ---------------------------------------------------------------------- |
+| A string                | The client shows the string to the user                                |
+| `{ prompt }`            | The host sends `prompt` to the chat as the user's message              |
+| `{ workspace, output }` | The host moves the chat to `workspace`, then the client shows `output` |
+| Nothing                 | Nothing more                                                           |
 
 If `run` throws, the client shows the error's message.
 
@@ -96,38 +93,135 @@ SDK code runs a command with `session.command(name, text)` and asks for suggesti
 
 ## Settings [#settings]
 
-A setting has an `id`, a `label` users see, a `schema` its value must match, and a `default`.
+A setting needs three fields: an `id`, a `title` users see, and a `type`.
 
-`scope` decides who shares the value:
+```ts
+const endpoint = {
+  id: "telemetry.endpoint",
+  title: "OTLP traces endpoint",
+  type: "text",
+} satisfies SettingDefinition;
+```
 
-- `"host"`: one value for every chat on the host.
-- `"session"`: each chat can have its own value, and starts from the default.
+### Types [#types]
 
-Where users change it:
+`type` names the value a setting holds and the field the desktop app draws for it:
 
-- The desktop app lists each plugin's settings under **Customize > Plugins**. A boolean setting shows
-  as a switch. Any other setting needs `choices` and shows as a menu. A per-chat setting changes only
-  the chat that's open.
+| `type`      | Value                | Default | Field                               |
+| ----------- | -------------------- | ------- | ----------------------------------- |
+| `"text"`    | A string             | `""`    | A text field with Save              |
+| `"number"`  | A number             | `0`     | A number field with Save            |
+| `"integer"` | A whole number       | `0`     | A number field with Save            |
+| `"switch"`  | `true` or `false`    | `false` | A switch                            |
+| `"secret"`  | A [secret](#secrets) | `null`  | A masked field with Save and Remove |
+
+`default` replaces the default in the table. A `secret` has none.
+
+### Choices [#choices]
+
+With `choices`, a `text`, `number` or `integer` setting shows as a menu. Each choice is
+`{ value, title, note? }`, and `note` is a short note beside the chosen one. The default is the
+first choice unless `default` names another.
+
+### Other fields [#other-fields]
+
+| Field         | What it does                                                             |
+| ------------- | ------------------------------------------------------------------------ |
+| `description` | One sentence shown under the field                                       |
+| `placeholder` | What an empty text, number or secret field shows                         |
+| `scope`       | `"host"` (the default): one value for every chat. `"chat"`: one per chat |
+
+A setting starts with host scope, so its value applies whether or not a chat is open. Give it
+`"chat"` only when each chat needs its own value; a chat then starts from the default.
+
+### Where a setting shows [#where]
+
+A setting's `page` says where the desktop app shows it in **Settings**:
+
+| `page`                           | Where the setting shows                                             |
+| -------------------------------- | ------------------------------------------------------------------- |
+| Left out                         | Under **General**, in a group named for the plugin                  |
+| A preset page, such as `"usage"` | On that page, after the app's own settings                          |
+| Any other text                   | On a page of its own with that title, added to the Settings sidebar |
+
+```ts
+const budget = {
+  id: "spend.budget",
+  title: "Monthly budget",
+  type: "number",
+  page: "usage",
+} satisfies SettingDefinition;
+```
+
+The preset pages are `server`, `profile`, `general`, `notifications`, `appearance`, `themes`,
+`usage`, `agent`, `editor`, `terminal`, `variables`, `source-control`, `browser`, `developer` and
+`providers`. Your editor offers them, and `page` still accepts any other text.
+
+- A preset name is matched exactly. `"Usage"` is not `"usage"`: it makes a page titled Usage.
+- Settings from different plugins that give the same custom text share one page.
+- A client that doesn't show a preset page shows its settings under General.
+- Only a host setting with a field is placed. A per-chat setting, or one without a field, shows
+  under **Customize > Plugins** only.
+- The settings of plugins that ship with the app show where the app already draws them, unless
+  they name a `page`.
 - The terminal lists settings that have `choices` under `/settings`.
 
-`choices` labels each allowed value. A choice's `badge` shows next to it.
+### Secrets [#secrets]
+
+A `secret` setting keeps a value the host seals and never sends back to a client:
+
+```ts title="exa-key.ts"
+import type { SettingDefinition } from "@nyte-ai/plugin/core";
+
+const key = {
+  id: "exa.key",
+  title: "Exa API key",
+  description: "Sent with each search.",
+  placeholder: "Paste a key",
+  type: "secret",
+} satisfies SettingDefinition;
+```
+
+- The plugin reads `{ secret: true, value }`, or `null` when nothing is saved.
+- A client reads `{ secret: true }` once a value is saved, and never the value.
+- Writing `{ secret: true, value }` replaces the value. Writing `{ secret: true }` keeps it. Writing
+  `null` removes it.
+- A secret setting has host scope, and the host needs a secret key to store it.
+
+### A value of another shape [#schema]
+
+A setting whose value fits no `type` gives a `schema` and a `default` in its place:
+
+```ts
+import { standard } from "@nyte-ai/schema";
+import { Type } from "typebox";
+
+const paths = {
+  id: "skills.paths",
+  title: "Skill paths",
+  schema: standard(Type.Array(Type.String())),
+  default: [],
+} satisfies SettingDefinition<readonly string[]>;
+```
+
+The desktop app draws a field for it only when the schema is a string, a number, an integer or a
+boolean. Any other setting has no field and changes through `settings.apply`.
 
 ### Reading a setting [#read]
 
-In plugin code, `api.contribute.settings.value(id)` reads the current value of a setting your plugin
+In plugin code, `api.registries.settings.value(id)` reads the current value of a setting your plugin
 declared. `watch(id)` yields the value now and again after each change.
 
 ```ts
-for await (const value of api.contribute.settings.watch("standup.length")) {
+for await (const value of api.registries.settings.watch("standup.length")) {
   console.log("Stand-up length is now", value);
 }
 ```
 
 Both return `unknown`. Check the value before you use it.
 
-`api.contribute.settings.add(definition)` declares a setting from `activate` and returns a handle with
-`get()`, `set(value)` and `watch()`. `set` checks the value against the schema and throws when it
-doesn't match.
+`api.registries.settings.set(id, value)` changes a setting your plugin declared. It checks the value
+against the schema and throws when it doesn't match.
 
 SDK code changes a host setting with `connection.settings.apply(id, value)`, which returns `applied`,
 `invalid` with issues, or `unknown`.

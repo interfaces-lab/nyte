@@ -11,7 +11,9 @@ import type {
   SessionId,
   SkillInfo,
   ToolInfo,
+  UserContent,
   ValidationIssue,
+  WorkspaceId,
 } from "@nyte-ai/schema";
 import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
@@ -21,20 +23,25 @@ import type {
   CoreRegistry,
   HookContext,
   Kernel,
+  OwnedRegistry,
   PluginRuntime,
   RegistrySet,
   ToolSource,
 } from "../contract/kernel.ts";
 import type {
+  Chat,
   Command,
+  CommandReturn,
+  Derive,
   PluginApi,
-  Registries,
-  Registry,
   RegistryDraft,
+  ResolvedSetting,
   Setting,
   SettingDefinition,
   SettingsRegistry,
+  When,
 } from "../contract/plugin.ts";
+import { resolveSetting } from "../contract/plugin.ts";
 import { sendNow } from "../engine/admission.ts";
 import { commit } from "../watch/commit.ts";
 import { encodeCatalog } from "../store/catalogs.ts";
@@ -44,8 +51,6 @@ import { callable } from "../util/callable.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
 import { stepPluginApi } from "./plugin-api.ts";
 import { settingInfos } from "./setting-definitions.ts";
-
-type Derive<T> = (draft: RegistryDraft<T>, siblings: Registries<"core">) => void;
 
 interface Entry<T> {
   readonly item: T;
@@ -65,8 +70,10 @@ const ORDER = [
 ] as const satisfies readonly (keyof CoreRegistries)[];
 
 export function createRegistrySet(input: {
+  /** The chat's parent and setting values, as `when` reads them. */
+  chat(): Pick<Chat, "parent" | "settings">;
   onChange(): void;
-  setting(definition: SettingDefinition, owner: string): Setting<unknown>;
+  setting(definition: ResolvedSetting, owner: string): Setting<unknown>;
   report(owner: string, issue: ValidationIssue): void;
 }): RegistrySet {
   let scheduled = false;
@@ -81,9 +88,15 @@ export function createRegistrySet(input: {
     });
   };
 
-  const settings = createRegistry<SettingDefinition, Setting<unknown>>({
+  const chat = (): Chat => ({
+    ...input.chat(),
+    searchProviders: registries.searchProviders.list(),
+  });
+
+  const settings = createRegistry<SettingDefinition>({
     key: (definition) => definition.id,
-    handle: (definition, owner) => input.setting(definition, owner),
+    when: (definition) => definition.when,
+    chat,
     onChange: reload,
   });
 
@@ -93,19 +106,31 @@ export function createRegistrySet(input: {
     if (definition === undefined)
       throw new SdkError("unknown", `${owner} declares no setting ${id}.`);
 
-    return input.setting(definition, owner);
+    return input.setting(resolveSetting(definition), owner);
   };
 
-  const reading = (owner: string): Pick<SettingsRegistry<"core">, "value" | "watch"> => ({
+  const reading = (owner: string): Pick<SettingsRegistry, "value" | "set" | "watch"> => ({
     value: async (id) => declared(owner, id).get(),
+    set: async (id, value) => declared(owner, id).set(value),
     async *watch(id) {
       yield* declared(owner, id).watch();
     },
   });
 
   const registries: CoreRegistries = {
-    tools: createRegistry({ key: (tool) => tool.name, onChange: reload }),
-    prompt: createRegistry({ key: (section) => section.id, overrides: true, onChange: reload }),
+    tools: createRegistry({
+      key: (tool) => tool.name,
+      when: (tool) => tool.when,
+      chat,
+      onChange: reload,
+    }),
+    prompt: createRegistry({
+      key: (section) => section.id,
+      overrides: true,
+      when: (section) => section.when,
+      chat,
+      onChange: reload,
+    }),
     agents: createRegistry({ key: (agent) => agent.id, onChange: reload }),
     modelContext: createRegistry({
       key: (policy) => `${policy.model.provider}/${policy.model.id}`,
@@ -117,6 +142,8 @@ export function createRegistrySet(input: {
     commands: createRegistry({
       key: (command) => command.name,
       refuse: refuseCommandName,
+      when: (command) => command.when,
+      chat,
       onChange: reload,
     }),
     settings: { ...settings, ...reading("core") },
@@ -166,16 +193,18 @@ export function createRegistrySet(input: {
   return set;
 }
 
-function createRegistry<T, Handle = Disposer>(input: {
+function createRegistry<T>(input: {
   key(item: T, owner: string): string;
-  handle?(item: T, owner: string): Handle;
   refuse?(item: T): string | undefined;
+  when?(item: T): When | undefined;
+  chat?(): Chat;
   readonly overrides?: boolean;
   onChange(): void;
-}): CoreRegistry<T, Handle> {
+}): CoreRegistry<T> {
   const statics: Entry<T>[] = [];
-  const derives: { readonly derive: Derive<T>; readonly owner: string }[] = [];
+  const derives: { readonly derive: Derive<T, "core">; readonly owner: string }[] = [];
   let materialized: readonly Entry<T>[] = [];
+  let drafted: readonly Entry<T>[] = [];
 
   const removal = (remove: () => void, signal: AbortSignal | undefined): Disposer => {
     let removed = false;
@@ -195,13 +224,8 @@ function createRegistry<T, Handle = Disposer>(input: {
     return dispose;
   };
 
-  const adder = (
-    owner: string,
-    signal: AbortSignal | undefined,
-  ): Registry<T, "core", Handle>["add"] => {
-    function add(item: T): Handle & Disposer;
-    function add(derive: Derive<T>): Disposer;
-    function add(value: T | Derive<T>): Disposer {
+  const owned = (owner: string, signal?: AbortSignal): OwnedRegistry<T> => ({
+    add(value) {
       if (callable(value)) {
         const entry = { derive: value, owner };
         derives.push(entry);
@@ -220,7 +244,8 @@ function createRegistry<T, Handle = Disposer>(input: {
       const entry: Entry<T> = { item: value, owner };
       statics.push(entry);
       input.onChange();
-      const dispose = removal(
+
+      return removal(
         () =>
           statics.splice(
             statics.findIndex((candidate) => candidate === entry),
@@ -228,22 +253,15 @@ function createRegistry<T, Handle = Disposer>(input: {
           ),
         signal,
       );
-
-      return Object.assign(dispose, input.handle?.(value, owner));
-    }
-
-    return add;
-  };
-
-  const owned = (owner: string, signal?: AbortSignal): Registry<T, "core", Handle> => ({
-    add: adder(owner, signal),
+    },
     list: () => materialized.map((entry) => entry.item),
   });
 
   return {
-    ...owned("core"),
+    list: () => materialized.map((entry) => entry.item),
     owned,
     entries: () => materialized,
+    drafted: () => drafted,
     declared: (owner) => statics.flatMap((entry) => (entry.owner === owner ? [entry.item] : [])),
     materialize(siblings) {
       const draft = new Map<string, Entry<T>>();
@@ -303,6 +321,30 @@ function createRegistry<T, Handle = Disposer>(input: {
             source: { plugin: entry.owner },
           },
         });
+      }
+
+      drafted = [...draft.values()];
+
+      for (const [key, entry] of draft) {
+        const when = input.when?.(entry.item);
+
+        if (when === undefined || input.chat === undefined) continue;
+
+        try {
+          if (when(input.chat()) === true) continue;
+        } catch (error) {
+          issues.push({
+            owner: entry.owner,
+            issue: {
+              severity: "error",
+              path: [key, "when"],
+              message: `when failed, so ${key} is left out: ${error instanceof Error ? error.message : String(error)}`,
+              source: { plugin: entry.owner },
+            },
+          });
+        }
+
+        draft.delete(key);
       }
 
       materialized = [...draft.values()];
@@ -549,28 +591,66 @@ async function runHeld(
   const invoked = await invokeCommand(kernel, context, session, runtime, name, text);
 
   if (invoked.kind !== "returned") return invoked;
-  const { result, command } = invoked;
+  const { result, command, api } = invoked;
 
-  if (typeof result === "string") return { kind: "ran", output: result };
+  switch (result.kind) {
+    case "text":
+      return { kind: "ran", output: result.output };
+    case "move":
+      return moveSession(api, result);
+    case "prompt":
+      try {
+        const receipt = await sendNow(kernel, {
+          session,
+          head: MAIN,
+          context,
+          content: result.content,
+          options: {
+            source: { kind: "action", label: command.title, command: command.name },
+          },
+        });
 
-  if (result === undefined) return { kind: "ran", output: null };
+        return { kind: "sent", receipt: receipt.id };
+      } catch (error) {
+        return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
+      }
 
-  try {
-    const receipt = await sendNow(kernel, {
-      session,
-      head: MAIN,
-      context,
-      content: result.prompt,
-      options: {
-        source: { kind: "action", label: command.title, command: command.name },
-      },
-    });
+    default: {
+      const _exhaustive: never = result;
 
-    return { kind: "sent", receipt: receipt.id };
-  } catch (error) {
-    return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
+      return _exhaustive;
+    }
   }
 }
+
+async function moveSession(
+  api: PluginApi<"core">,
+  move: Extract<CommandResult, { readonly kind: "move" }>,
+): Promise<CommandOutcome> {
+  const outcome = await api.session.update({ workspace: move.workspace });
+
+  switch (outcome.kind) {
+    case "updated":
+      return { kind: "ran", output: move.output };
+    case "busy":
+      return {
+        kind: "failed",
+        message: "Wait for the current run to finish before changing directories.",
+      };
+    case "unknown-workspace":
+      return { kind: "failed", message: "That folder isn't registered on this host." };
+    default: {
+      const _exhaustive: never = outcome;
+
+      return _exhaustive;
+    }
+  }
+}
+
+type CommandResult =
+  | { readonly kind: "text"; readonly output: string | null }
+  | { readonly kind: "prompt"; readonly content: UserContent }
+  | { readonly kind: "move"; readonly workspace: WorkspaceId; readonly output: string | null };
 
 export async function invokeCommand(
   kernel: Kernel,
@@ -582,8 +662,9 @@ export async function invokeCommand(
 ): Promise<
   | {
       readonly kind: "returned";
-      readonly result: Awaited<ReturnType<Command["run"]>>;
+      readonly result: CommandResult;
       readonly command: Command;
+      readonly api: PluginApi<"core">;
     }
   | Extract<CommandOutcome, { readonly kind: "unknown" | "failed" }>
 > {
@@ -593,16 +674,27 @@ export async function invokeCommand(
   const { command, api } = found;
 
   try {
-    const result = await command.run(text.trim(), {
+    const returned = await command.run(text.trim(), {
       signal: api.signal,
       api,
       caller: context.principal,
     });
 
-    return { kind: "returned", result, command };
+    return { kind: "returned", result: commandResult(returned), command, api };
   } catch (error) {
     return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function commandResult(returned: CommandReturn): CommandResult {
+  if (returned === undefined) return { kind: "text", output: null };
+
+  if (typeof returned === "string") return { kind: "text", output: returned };
+
+  if (returned.workspace !== undefined)
+    return { kind: "move", workspace: returned.workspace, output: returned.output ?? null };
+
+  return { kind: "prompt", content: returned.prompt };
 }
 
 export async function completeCommand(

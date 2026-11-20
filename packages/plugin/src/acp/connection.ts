@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   client,
@@ -6,7 +7,11 @@ import {
   PROTOCOL_VERSION,
   RequestError,
 } from "@agentclientprotocol/sdk/unstable";
-import type { ClientConnection, InitializeResponse } from "@agentclientprotocol/sdk/unstable";
+import type {
+  ClientConnection,
+  InitializeResponse,
+  SessionConfigOption,
+} from "@agentclientprotocol/sdk/unstable";
 import { processEnvironment } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 import manifest from "../../package.json" with { type: "json" };
@@ -17,6 +22,12 @@ import type { AcpApprove } from "./thread.ts";
 const AUTH_REQUIRED = -32_000;
 
 const STDERR_TAIL = 4_096;
+
+interface Pipe {
+  readonly input: WritableStream<Uint8Array>;
+  readonly output: ReadableStream<Uint8Array>;
+  stop(): Promise<unknown>;
+}
 
 function protocolStream(job: Job, stderr: (bytes: Uint8Array) => void): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -43,21 +54,25 @@ function protocolStream(job: Job, stderr: (bytes: Uint8Array) => void): Readable
 
 export class AcpProcess {
   readonly agent: AcpAgent;
-  readonly #job: Job;
+  readonly #pipe: Pipe;
   readonly #connection: ClientConnection;
   readonly #threads = new Map<string, AcpThread>();
+  readonly #options = new Map<string, readonly SessionConfigOption[]>();
   readonly #ready: Promise<InitializeResponse>;
   #stderr = "";
   #failure: Error | undefined;
 
-  private constructor(agent: AcpAgent, job: Job) {
+  private constructor(agent: AcpAgent, connect: (stderr: (bytes: Uint8Array) => void) => Pipe) {
     this.agent = agent;
-    this.#job = job;
 
     const app = client({ name: "nyte" })
-      .onNotification(methods.client.session.update, (context) =>
-        this.#threads.get(context.params.sessionId)?.update(context.params.update),
-      )
+      .onNotification(methods.client.session.update, (context) => {
+        const { sessionId, update } = context.params;
+
+        if (update.sessionUpdate === "config_option_update")
+          this.#options.set(sessionId, update.configOptions);
+        this.#threads.get(sessionId)?.update(update);
+      })
       .onRequest(
         methods.client.session.requestPermission,
         async (context) =>
@@ -66,15 +81,13 @@ export class AcpProcess {
           },
       );
 
-    const writable = new WritableStream<Uint8Array>({ write: (chunk) => job.write(chunk) });
-
     const decoder = new TextDecoder();
 
-    const readable = protocolStream(job, (bytes) => {
+    this.#pipe = connect((bytes) => {
       this.#stderr = (this.#stderr + decoder.decode(bytes, { stream: true })).slice(-STDERR_TAIL);
     });
 
-    this.#connection = app.connect(ndJsonStream(writable, readable));
+    this.#connection = app.connect(ndJsonStream(this.#pipe.input, this.#pipe.output));
 
     void this.#connection.closed.then(() =>
       this.close(new Error(`${agent.name} exited.${this.#detail()}`)),
@@ -98,7 +111,41 @@ export class AcpProcess {
       stdio: "protocol",
     });
 
-    return new AcpProcess(agent, job);
+    return new AcpProcess(agent, (stderr) => ({
+      input: new WritableStream<Uint8Array>({ write: (chunk) => job.write(chunk) }),
+      output: protocolStream(job, stderr),
+      stop: () => job.stop(),
+    }));
+  }
+
+  /** Runs the agent on this machine, outside any session's environment, as a catalog probe does. */
+  static spawn(agent: AcpAgent, cwd: string): AcpProcess {
+    const child = spawn(agent.command, [...agent.args], {
+      cwd,
+      env: { ...process.env, ...agent.env },
+      stdio: "pipe",
+    });
+
+    return new AcpProcess(agent, (stderr) => {
+      child.stderr.on("data", (chunk: Buffer) => stderr(chunk));
+
+      return {
+        input: new WritableStream<Uint8Array>({
+          write: (chunk) =>
+            new Promise<void>((resolve, reject) =>
+              child.stdin.write(chunk, (error) => (error ? reject(error) : resolve())),
+            ),
+        }),
+        output: new ReadableStream<Uint8Array>({
+          start(controller) {
+            child.stdout.on("data", (chunk: Buffer) => controller.enqueue(chunk));
+            child.on("error", (error) => controller.error(error));
+            child.on("close", () => controller.close());
+          },
+        }),
+        stop: async () => child.kill(),
+      };
+    });
   }
 
   get closed(): boolean {
@@ -112,13 +159,10 @@ export class AcpProcess {
   async open(cwd: string, approve: AcpApprove): Promise<AcpThread> {
     await this.#initialized();
 
-    let sessionId: string;
+    let session: Awaited<ReturnType<typeof this.newSession>>;
 
     try {
-      ({ sessionId } = await this.#connection.agent.request(methods.agent.session.new, {
-        cwd,
-        mcpServers: [],
-      }));
+      session = await this.newSession(cwd);
     } catch (error) {
       if (error instanceof RequestError && error.code === AUTH_REQUIRED)
         throw new Error(`Sign in to ${this.agent.name} in a terminal, then send again.`, {
@@ -126,6 +170,9 @@ export class AcpProcess {
         });
       throw error;
     }
+
+    const { sessionId } = session;
+    this.#options.set(sessionId, session.configOptions ?? []);
 
     if (this.agent.mode !== undefined)
       await this.#connection.agent.request(methods.agent.session.setMode, {
@@ -152,10 +199,33 @@ export class AcpProcess {
     return thread;
   }
 
+  /** The session's configuration options as the agent last reported them. */
+  configOptions(thread: AcpThread): readonly SessionConfigOption[] {
+    return this.#options.get(this.#sessionId(thread)) ?? [];
+  }
+
+  async configure(
+    thread: AcpThread,
+    configId: string,
+    value: string,
+  ): Promise<readonly SessionConfigOption[]> {
+    const sessionId = this.#sessionId(thread);
+
+    const { configOptions } = await this.#connection.agent.request(
+      methods.agent.session.setConfigOption,
+      { sessionId, configId, value },
+    );
+
+    this.#options.set(sessionId, configOptions);
+
+    return configOptions;
+  }
+
   forget(thread: AcpThread): void {
     for (const [id, known] of this.#threads)
       if (known === thread) {
         this.#threads.delete(id);
+        this.#options.delete(id);
         thread.close();
       }
   }
@@ -166,8 +236,19 @@ export class AcpProcess {
 
     for (const thread of this.#threads.values()) thread.close(reason);
     this.#threads.clear();
+    this.#options.clear();
     this.#connection.close();
-    void this.#job.stop().catch(() => undefined);
+    void this.#pipe.stop().catch(() => undefined);
+  }
+
+  private newSession(cwd: string) {
+    return this.#connection.agent.request(methods.agent.session.new, { cwd, mcpServers: [] });
+  }
+
+  #sessionId(thread: AcpThread): string {
+    for (const [id, known] of this.#threads) if (known === thread) return id;
+
+    throw this.#failure ?? new Error(`${this.agent.name} closed this session.`);
   }
 
   async #initialized(): Promise<InitializeResponse> {

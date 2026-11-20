@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { enabledModels, matchModels, standard } from "@nyte-ai/schema";
 import type { ConfigurationPatch, Infer, ToolResult, WorkspaceId } from "@nyte-ai/schema";
-import type { ToolDefinition, ToolInvocation } from "@nyte-ai/core";
+import type { ToolDefinition, ToolInvocation, When } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/plugin/core";
 
 const LIST_LIMIT = 20;
@@ -40,11 +40,11 @@ const start: ToolDefinition<Infer<typeof startParameters>> = {
     kind: "custom",
     label: args.title === undefined ? "Starting chat" : `Starting chat: ${args.title}`,
   }),
-  effects: "none",
-  approval: "never",
-  replay: "safe",
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
   async execute(args, invocation) {
-    const started = await invocation.sdk.sessions.start({
+    const started = await invocation.host.sessions.start({
       name: args.title,
       workspace:
         args.workspace === undefined
@@ -64,13 +64,13 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   description: "List other top-level chats, newest first, in this folder unless `everywhere`.",
   parameters: listParameters,
   class: () => ({ kind: "custom", label: "Listing chats" }),
-  effects: "none",
-  approval: "never",
-  replay: "safe",
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
   async execute(args, invocation) {
     const own = await invocation.session.info();
-    const workspaces = await invocation.sdk.workspaces.list();
-    const page = await invocation.sdk.sessions.list({ parents: { kind: "roots" }, limit: 200 });
+    const workspaces = await invocation.host.workspaces.list();
+    const page = await invocation.host.sessions.list({ parents: { kind: "roots" }, limit: 200 });
     const query = args.query?.toLowerCase();
 
     const rows = page.items
@@ -97,17 +97,15 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   },
 };
 
+const topLevel: When = (chat) => chat.parent === null;
+
 export default {
   id: "threads",
-  async activate(api) {
-    if ((await api.session.info()).parent !== null) return;
-
-    for (const definition of [start, list]) api.contribute.tools.add(definition);
-  },
+  contribute: { tools: [start, list].map((tool) => ({ ...tool, when: topLevel })) },
 } satisfies Plugin;
 
 async function findWorkspace(invocation: ToolInvocation, name: string): Promise<WorkspaceId> {
-  const workspaces = await invocation.sdk.workspaces.list();
+  const workspaces = await invocation.host.workspaces.list();
 
   const found = workspaces.find(
     (workspace) =>
@@ -135,7 +133,7 @@ async function startConfiguration(
       ? undefined
       : { model: effective.model, thinking: effective.thinking };
 
-  const matches = matchModels(enabledModels(await invocation.sdk.models.list()), model);
+  const matches = matchModels(enabledModels(await invocation.host.models.list()), model);
   const [only, ...others] = matches;
 
   if (only !== undefined && others.length === 0) return { model: only };

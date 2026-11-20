@@ -105,9 +105,9 @@ const showChecklist: ToolDefinition<Infer<typeof parameters>> = {
   description: "Show the user a checklist they can tick off as they go.",
   parameters,
   class: (args) => ({ kind: "custom", label: args.title }),
-  effects: "none",
-  approval: "never",
-  replay: "safe",
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
   async execute(args, invocation) {
     const part = await invocation.session.parts.create(checklist, {
       state: { title: args.title, items: args.items.map((label) => ({ label, done: false })) },

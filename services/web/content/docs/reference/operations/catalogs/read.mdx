@@ -129,7 +129,7 @@ Response:
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "owner", "scope", "label", "schema", "choices", "value", "from"],
+        "required": ["id", "owner", "scope", "title", "schema", "choices", "value", "from"],
         "properties": {
           "id": {
             "type": "string"
@@ -138,10 +138,23 @@ Response:
             "type": "string"
           },
           "scope": {
-            "enum": ["host", "session"]
+            "enum": ["host", "chat"]
           },
-          "label": {
+          "title": {
             "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "page": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "boolean",
+            "const": true
           },
           "schema": {
             "type": "object",
@@ -157,15 +170,15 @@ Response:
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "required": ["value", "label"],
+                  "required": ["value", "title"],
                   "properties": {
                     "value": {
                       "$ref": "Json"
                     },
-                    "label": {
+                    "title": {
                       "type": "string"
                     },
-                    "badge": {
+                    "note": {
                       "type": "string"
                     }
                   }
@@ -180,7 +193,7 @@ Response:
             "$ref": "Json"
           },
           "from": {
-            "enum": ["default", "host", "session"]
+            "enum": ["default", "host", "chat"]
           }
         }
       }

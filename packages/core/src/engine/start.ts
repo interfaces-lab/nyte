@@ -117,7 +117,7 @@ export async function discardSession(
 
   if (outcome.kind === "stale") return false;
   kernel.executionState.starting.get(session)?.abort.abort();
-  kernel.plugins.state.assigned.delete(session);
+  kernel.plugins.state.inline.delete(session);
   await kernel.plugins.close(session);
   kernel.sessions.forget(session);
   kernel.children.forget(session);

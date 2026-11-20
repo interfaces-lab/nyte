@@ -255,9 +255,9 @@ function renderTool(measuring: Measuring | undefined): ToolDefinition<Infer<type
       kind: "custom",
       label: args.canvas === undefined ? `Rendering ${args.title}` : `Updating ${args.title}`,
     }),
-    effects: "none",
-    approval: "never",
-    replay: "safe",
+    changes: "none",
+    asks: "never",
+    rerun: "safe",
     async execute(args, invocation) {
       const compiled = await compile(args, invocation);
 
@@ -373,9 +373,9 @@ function previewTool(measuring: Measuring): ToolDefinition<Infer<typeof previewP
     description: `Render a canvas off-screen in the real canvas runtime and see it before the user does: a PNG at the chat column's width (${CANVAS_PREVIEW_WIDTHS.chat} px), its height there and at a phone's width (${CANVAS_PREVIEW_WIDTHS.phone} px), every load or render error with its file and line, layout findings with their fix, and the canvas's console output. Takes the same \`source\` and \`files\` as canvas_render and compiles them the same way; nothing is added to the chat.`,
     parameters: previewParameters,
     class: () => ({ kind: "custom", label: "Previewing canvas" }),
-    effects: "none",
-    approval: "never",
-    replay: "safe",
+    changes: "none",
+    asks: "never",
+    rerun: "safe",
     async execute(args, invocation) {
       const compiled = await compile(args, invocation);
       const outcome = await previewWithin(

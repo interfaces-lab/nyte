@@ -48,6 +48,7 @@ import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "./capabilitie
 import { baseline, nextBase, NO_CHANGES, toolChanges } from "./tool-snapshots.ts";
 import type { ToolBaseline, ToolChanges } from "./tool-snapshots.ts";
 import { loadedTools } from "./transcript.ts";
+import { stepPluginApi } from "../extend/plugin-api.ts";
 import { offeredTools, toolSource } from "../extend/registry.ts";
 import { changesEvents } from "../fold/changes.ts";
 import { withFold } from "../watch/reads.ts";
@@ -98,7 +99,12 @@ const toolCallers = compile(withJson(ToolCallerType));
 const toolIntents = compile(withJson(ToolIntentType));
 
 type Plan = { readonly args: Json; readonly class: ToolClass } & (
-  | { readonly kind: "execute"; readonly definition: ToolDefinition; readonly input: unknown }
+  | {
+      readonly kind: "execute";
+      readonly definition: ToolDefinition;
+      readonly owner: string;
+      readonly input: unknown;
+    }
   | { readonly kind: "settle"; readonly outcome: ToolOutcome }
 );
 
@@ -317,7 +323,7 @@ async function perform(
   let before: ToolBaseline | null = null;
 
   const snapshotted =
-    planned.kind === "execute" && where.covered !== true && planned.definition.effects !== "none";
+    planned.kind === "execute" && where.covered !== true && planned.definition.changes !== "none";
 
   const step = await runStep<ToolOutcome>(kernel, {
     session,
@@ -325,7 +331,7 @@ async function perform(
     run,
     call,
     kind: "tool",
-    replay: planned.kind === "execute" ? planned.definition.replay : "safe",
+    replay: planned.kind === "execute" ? planned.definition.rerun : "safe",
     intent,
     opening: { updates: () => partOpening(kernel.store, where, planned), fenced: STOPPED },
     part: asId<"part">(call),
@@ -369,9 +375,9 @@ async function plan(
   const custom: ToolClass = { kind: "custom", label: name };
   const found = toolSource(where.runtime).get(name);
   const hidden = await hiddenOwners(kernel, session, run);
-  const definition = found === undefined || hidden.has(found.owner) ? undefined : found.definition;
+  const shown = found === undefined || hidden.has(found.owner) ? undefined : found;
 
-  if (definition === undefined) {
+  if (shown === undefined) {
     const missing = found === undefined ? await missingCapabilities(kernel, session, run) : [];
 
     return {
@@ -383,6 +389,8 @@ async function plan(
       class: custom,
     };
   }
+
+  const definition = shown.definition;
 
   if (where.argumentsError !== undefined)
     return {
@@ -453,7 +461,14 @@ async function plan(
       class: custom,
     };
 
-  return { kind: "execute", definition, input: checked.value, args, class: known };
+  return {
+    kind: "execute",
+    definition,
+    owner: shown.owner,
+    input: checked.value,
+    args,
+    class: known,
+  };
 }
 
 async function partOpening(
@@ -535,6 +550,7 @@ async function execute(
 
     const invocation = createInvocation(kernel, {
       hidden,
+      owner: planned.owner,
       session,
       head: where.head,
       run,
@@ -780,6 +796,7 @@ export function createInvocation(
     readonly env: ExecutionEnv;
     readonly durable: Durable;
     readonly runtime: PluginRuntime;
+    readonly owner: string;
     readonly covered: boolean;
     readonly hidden?: ReadonlySet<string>;
   },
@@ -816,7 +833,18 @@ export function createInvocation(
     head,
     signal,
     session: kernel.handles.session(context, session),
-    sdk,
+    host: sdk,
+    get api() {
+      const own = input.runtime.api(input.owner);
+
+      if (own === undefined)
+        throw new SdkError(
+          "unavailable",
+          `Plugin ${input.owner} is no longer active in session ${session}.`,
+        );
+
+      return stepPluginApi(kernel, own, context, session);
+    },
     workspace: sdk.workspace(input.workspace),
     env: input.env,
     progress(update) {

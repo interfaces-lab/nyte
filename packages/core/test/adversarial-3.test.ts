@@ -35,7 +35,7 @@ function writer(ran: string[]): ToolDefinition<{ readonly text: string }> {
     description: "Writes.",
     parameters: standard(Type.Object({ text: Type.String() })),
     class: () => ({ kind: "custom", label: "Writing" }),
-    replay: "never",
+    rerun: "never",
     execute: async (args) => {
       ran.push(args.text);
 
@@ -183,7 +183,7 @@ describe("ADV A-3", () => {
         description: "Naps.",
         parameters: standard(Type.Object({})),
         class: () => ({ kind: "custom", label: "nap" }),
-        replay: "safe",
+        rerun: "safe",
         execute: async (_args, invocation) => {
           const woke = await invocation.wait({ kind: "timer", until: at });
 
@@ -197,6 +197,8 @@ describe("ADV A-3", () => {
           activations += 1;
 
           if (activations === 2) await gate.promise;
+
+          return {};
         },
       };
 

@@ -53,8 +53,8 @@ function outcomeText(outcome: PageOutcome): string {
 function browserTool<T extends Exclude<BrowserTool, "browser_open" | "browser_capture">>(input: {
   readonly name: T;
   readonly description: string;
-  readonly replay: "safe" | "never";
-  readonly approval?: ToolDefinition["approval"];
+  readonly rerun: "safe" | "never";
+  readonly asks?: ToolDefinition["asks"];
   run(args: Infer<(typeof browserParameters)[T]>, invocation: ToolInvocation): Promise<string>;
 }): ToolDefinition<Infer<(typeof browserParameters)[T]>> {
   return {
@@ -62,9 +62,9 @@ function browserTool<T extends Exclude<BrowserTool, "browser_open" | "browser_ca
     description: input.description,
     parameters: browserParameters[input.name],
     class: () => ({ kind: "custom", label: input.name }),
-    effects: "none",
-    approval: input.approval,
-    replay: input.replay,
+    changes: "none",
+    asks: input.asks,
+    rerun: input.rerun,
     execute: async (args, invocation) => ({
       content: [{ kind: "text", text: await input.run(args, invocation) }],
     }),
@@ -76,9 +76,9 @@ const open: ToolDefinition<{ url: string }> = {
   description: "Open a URL in a new browser page and return the page id and its snapshot.",
   parameters: browserParameters.browser_open,
   class: () => ({ kind: "custom", label: "browser_open" }),
-  effects: "none",
-  approval: "never",
-  replay: "safe",
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
   async execute(args, invocation) {
     const opened = await (await requireBrowser(invocation)).open({ url: args.url });
     const view = await opened.view();
@@ -99,9 +99,9 @@ const capture: ToolDefinition<{ page?: string }> = {
   description: "Take a screenshot of the page.",
   parameters: browserParameters.browser_capture,
   class: () => ({ kind: "custom", label: "browser_capture" }),
-  effects: "none",
-  approval: "never",
-  replay: "safe",
+  changes: "none",
+  asks: "never",
+  rerun: "safe",
   execute: (args, invocation) =>
     withPage(invocation, args.page, async (held) => {
       const image = await held.capture();
@@ -126,8 +126,8 @@ export const browserTools: readonly ToolDefinition[] = [
     name: "browser_snapshot",
     description:
       "Read the page's accessibility tree: one line per node with its ref, role and name.",
-    replay: "safe",
-    approval: "never",
+    rerun: "safe",
+    asks: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         render(await held.snapshot({ ref: args.ref })),
@@ -136,7 +136,7 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_click",
     description: "Click a node by its ref.",
-    replay: "never",
+    rerun: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         outcomeText(await held.click({ ref: args.ref, button: args.button, double: args.double })),
@@ -145,7 +145,7 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_type",
     description: "Type text into a node by its ref.",
-    replay: "never",
+    rerun: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         outcomeText(
@@ -161,7 +161,7 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_press",
     description: "Press a key or chord, such as Enter or Control+a, on a node or the page.",
-    replay: "never",
+    rerun: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         outcomeText(await held.press({ key: args.key, ref: args.ref })),
@@ -170,8 +170,8 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_scroll",
     description: "Scroll the page or a node.",
-    replay: "never",
-    approval: "never",
+    rerun: "never",
+    asks: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         outcomeText(
@@ -183,8 +183,8 @@ export const browserTools: readonly ToolDefinition[] = [
     name: "browser_wait",
     description:
       "Wait for the page to load, for text to appear or disappear, or for a delay in milliseconds.",
-    replay: "never",
-    approval: "never",
+    rerun: "never",
+    asks: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         outcomeText(
@@ -201,8 +201,8 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_console",
     description: "Read the page's console, newest first.",
-    replay: "never",
-    approval: "never",
+    rerun: "never",
+    asks: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) => {
         const entries = await held.console({ limit: args.limit, clear: args.clear });
@@ -216,7 +216,7 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_evaluate",
     description: "Evaluate a JavaScript expression in the page; with a ref, the node is `this`.",
-    replay: "never",
+    rerun: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) => {
         const result = await held.evaluate(args.expression, { ref: args.ref });

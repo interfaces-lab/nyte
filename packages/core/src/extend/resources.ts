@@ -174,26 +174,24 @@ export const resourcesPlugin: Plugin<"core"> = {
     settings: [
       {
         id: SKILL_PATHS,
-        label: "Skill paths",
+        title: "Skill paths",
         schema: standard(Type.Array(Type.String())),
         default: [],
-        scope: "host",
       },
       {
         id: WORKSPACE_TRUST,
-        label: "Project trust",
+        title: "Project trust",
         schema: standard(
           Type.Union([Type.Literal("ask"), Type.Literal("always"), Type.Literal("never")]),
         ),
         default: "ask",
-        scope: "host",
         choices: [
-          { value: "ask", label: "ask", badge: "Ask before loading a new folder's project files" },
-          { value: "always", label: "always", badge: "Load every folder's project files" },
+          { value: "ask", title: "ask", note: "Ask before loading a new folder's project files" },
+          { value: "always", title: "always", note: "Load every folder's project files" },
           {
             value: "never",
-            label: "never",
-            badge: "Load project files only from folders you trusted",
+            title: "never",
+            note: "Load project files only from folders you trusted",
           },
         ],
       },
@@ -202,52 +200,63 @@ export const resourcesPlugin: Plugin<"core"> = {
   activate(api) {
     const inputs = tryReadResources(api);
 
-    if (inputs === null) return;
+    if (inputs === null) return {};
 
     for (const issue of resourceIssues(inputs)) api.report(issue);
 
-    if (inputs.contextFiles.length > 0)
-      api.contribute.prompt.add({
-        id: "project-context",
-        order: 10,
-        text: [
-          "Instructions from the user and the project, in order; later files are more specific:",
-          ...inputs.contextFiles.map((file) => `# ${file.path}\n\n${file.content.trim()}`),
-        ].join("\n\n"),
-      });
+    return {
+      contribute: {
+        skills: [
+          (draft) => {
+            for (const skill of inputs.skills)
+              draft.set(skill.name, {
+                name: skill.name,
+                description: skill.description,
+                location: skill.location,
+              });
+          },
+        ],
+        prompt: [
+          ...(inputs.contextFiles.length === 0
+            ? []
+            : [
+                {
+                  id: "project-context",
+                  order: 10,
+                  text: [
+                    "Instructions from the user and the project, in order; later files are more specific:",
+                    ...inputs.contextFiles.map(
+                      (file) => `# ${file.path}\n\n${file.content.trim()}`,
+                    ),
+                  ].join("\n\n"),
+                },
+              ]),
+          (draft, siblings) => {
+            const skills = siblings.skills.list().toSorted((a, b) => a.name.localeCompare(b.name));
 
-    api.contribute.skills.add((draft) => {
-      for (const skill of inputs.skills)
-        draft.set(skill.name, {
-          name: skill.name,
-          description: skill.description,
-          location: skill.location,
-        });
-    });
+            if (skills.length === 0) return;
 
-    api.contribute.prompt.add((draft, siblings) => {
-      const skills = siblings.skills.list().toSorted((a, b) => a.name.localeCompare(b.name));
-
-      if (skills.length === 0) return;
-
-      draft.set("skills", {
-        id: "skills",
-        order: 90,
-        text: [
-          "Skills: read a skill's file when its description matches the task.",
-          ...skills.map(
-            (skill) =>
-              `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.location})`,
-          ),
-        ].join("\n"),
-      });
-    });
+            draft.set("skills", {
+              id: "skills",
+              order: 90,
+              text: [
+                "Skills: read a skill's file when its description matches the task.",
+                ...skills.map(
+                  (skill) =>
+                    `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.location})`,
+                ),
+              ].join("\n"),
+            });
+          },
+        ],
+      },
+    };
   },
 };
 
 function tryReadResources(api: PluginApi<"core">): Resources | null {
   try {
-    return api.inputs;
+    return api.project;
   } catch {
     return null;
   }
@@ -526,7 +535,7 @@ async function refresh(kernel: Kernel, session: SessionId): Promise<boolean> {
     const plugins =
       workspace === undefined
         ? null
-        : await sessionPlugins(kernel, runtime, workspace).catch(() => null);
+        : await sessionPlugins(kernel, session, runtime, workspace).catch(() => null);
 
     const unchanged =
       read !== undefined &&

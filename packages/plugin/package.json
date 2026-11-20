@@ -22,6 +22,7 @@
     "./core/browser-client": "./src/browser-client.ts",
     "./core/browser-tools": "./src/browser-tools.ts",
     "./core/canvas": "./src/canvas/canvas.ts",
+    "./core/cd": "./src/cd.ts",
     "./core/canvas-client": "./src/canvas/canvas-client.ts",
     "./core/canvas-compile": "./src/canvas/canvas-compile.ts",
     "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
@@ -142,6 +143,10 @@
       "./core/question": {
         "types": "./dist/src/question/question.d.ts",
         "import": "./dist/src/question/question.js"
+      },
+      "./core/cd": {
+        "types": "./dist/src/cd.d.ts",
+        "import": "./dist/src/cd.js"
       },
       "./core/rename": {
         "types": "./dist/src/rename.d.ts",

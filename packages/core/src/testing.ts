@@ -6,7 +6,7 @@ export type { Kernel } from "./contract/kernel.ts";
 
 export { publishPatch } from "./engine/runs.ts";
 
-export { checkPlugins } from "./extend/plugin-runtime.ts";
+export { checkPlugins } from "./extend/plugin-checks.ts";
 
 export { pollStore, publishSet } from "./watch/watch.ts";
 

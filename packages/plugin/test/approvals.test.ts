@@ -18,7 +18,7 @@ const save = {
   description: "Save a file.",
   parameters: standard(Type.Object({ path: Type.String() })),
   class: (args) => ({ kind: "edit", path: args.path }),
-  replay: "never",
+  rerun: "never",
   execute: async (args) => {
     ran.push(`save ${args.path}`);
 
@@ -31,7 +31,7 @@ const shell = {
   description: "Run a command.",
   parameters: standard(Type.Object({ command: Type.String() })),
   class: (args) => ({ kind: "shell", command: args.command }),
-  replay: "never",
+  rerun: "never",
   execute: async (args) => {
     ran.push(`shell ${args.command}`);
 
@@ -44,8 +44,8 @@ const look = {
   description: "Read a file.",
   parameters: standard(Type.Object({ path: Type.String() })),
   class: (args) => ({ kind: "read", path: args.path }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   execute: async (args) => {
     ran.push(`look ${args.path}`);
 
@@ -111,8 +111,8 @@ describe("approvalReason", () => {
   const command = { name: "bash", class: { kind: "shell", command: "ls" } as const };
   const read = { name: "read", class: { kind: "read", path: "/etc/hosts" } as const };
   const mcp = { name: "mcp__db__drop", class: { kind: "custom", label: "Dropping" } as const };
-  const search = { ...mcp, name: "web_search", approval: "never" as const };
-  const mirror = { name: "claude_code", class: command.class, approval: "runtime" as const };
+  const search = { ...mcp, name: "web_search", asks: "never" as const };
+  const mirror = { name: "claude_code", class: command.class, asks: "runtime" as const };
 
   it.each([
     ["ask", edit("src/a.ts"), "edit"],
@@ -361,8 +361,10 @@ function runtimeApis() {
 
   const plugin: Plugin<"core"> = {
     id: "runtime",
-    activate: (api) => {
+    activate(api) {
       apis.set(api.session.id, api);
+
+      return {};
     },
   };
 

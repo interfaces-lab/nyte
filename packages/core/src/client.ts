@@ -14,6 +14,8 @@ export {
 
 export { callable } from "./util/callable.ts";
 
+export { resolveSetting } from "./contract/plugin.ts";
+
 export { dev } from "./util/dev-log.ts";
 
 export { closable, coalesce } from "./util/iterable.ts";
