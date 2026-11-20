@@ -3,6 +3,7 @@ import type {
   HeadInfo,
   HeadName,
   PatchEvent,
+  ReceiptId,
   RefUpdate,
   RunEnd,
   RunId,
@@ -10,15 +11,16 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import type { FoldState } from "../contract/fold.ts";
-import { CORE_CONTEXT, LOCAL } from "../contract/host.ts";
+import { LOCAL } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeCallRecord, decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord, SessionRecord } from "../contract/records.ts";
 import type { Run } from "../contract/session.ts";
-import { commit } from "../fold/commit.ts";
-import { liveParts, readRunEnd, withFold } from "../fold/reads.ts";
+import { commit } from "../watch/commit.ts";
+import { liveParts, readRunEnd, withFold } from "../watch/reads.ts";
 import { failedParts } from "../store/parts.ts";
 import { endedRunRef, inboxRef, liveRef, runRef, sessionRef } from "../store/refs.ts";
+import { reportId, reserveReport } from "../store/reports.ts";
 import { wokenIndex } from "../store/wait-index.ts";
 import {
   attempt,
@@ -33,8 +35,9 @@ import {
   sessionEvent,
   STALE,
 } from "../store/session.ts";
-import { send } from "./admission.ts";
 import { FENCED, stopRun } from "./fence.ts";
+import { callPhase } from "./call-phase.ts";
+import { deliverReport } from "./reports.ts";
 import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { clipText } from "../util/clip.ts";
@@ -129,6 +132,8 @@ export async function endRun(
       ),
     );
 
+    const report = await reserveChildReport(kernel, current.record, run, final);
+
     const receipts = await Promise.all(
       landed.map(async (id): Promise<readonly RefUpdate[]> => {
         const receipt = await readReceipt(kernel.store, session, id);
@@ -178,13 +183,14 @@ export async function endRun(
           )),
       ...receipts.flat(),
       ...(await abandonedCalls(kernel.store, session, run)),
+      ...(report === null ? [] : [report.update]),
     ]);
 
     return outcome.kind === "set"
       ? {
           head,
           end: final,
-          parent: record.parent,
+          report: report === null ? null : { session: report.session, id: report.id },
           pending: inbox.messages,
           settled: receipts.flatMap((updates, index) =>
             updates.length > 0 ? [landed[index]] : [],
@@ -206,7 +212,8 @@ export async function endRun(
 
   const woke = await kernel.waits.runEnded(session, run, ended.end);
 
-  if (!woke && ended.parent !== null) await deliverChildReport(kernel, session, run, ended.end);
+  if (!woke && ended.report !== null)
+    await deliverReport(kernel, ended.report.session, ended.report.id);
 
   if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
 }
@@ -225,14 +232,14 @@ async function abandonedCalls(
   return found.flatMap(({ ref, call }): readonly RefUpdate[] => {
     if (call === null || call.record.run !== run) return [];
 
-    if (call.record.kind === "intent")
-      return [{ name: ref.name, target: null, expect: ref.revision }];
-
-    return call.record.result === null &&
-      call.record.waiting === null &&
-      call.record.waits.length > 0
-      ? [{ name: wokenIndex(session, call.record.id), target: null }]
-      : [];
+    switch (callPhase(call.record).kind) {
+      case "intended":
+        return [{ name: ref.name, target: null, expect: ref.revision }];
+      case "woken":
+        return [{ name: wokenIndex(session, call.record.id), target: null }];
+      default:
+        return [];
+    }
   });
 }
 
@@ -259,44 +266,49 @@ export function runHandle(kernel: Kernel, session: SessionId, id: RunId): Run {
   };
 }
 
+/** Publishes a streamed change to a part of `run`, unless the run is fenced or this process no longer holds it: a stream or a tool that outlives its run's end publishes nothing. */
 export function publishPatch(
   kernel: Kernel,
   session: SessionId,
   run: RunId,
   patch: PatchEvent,
 ): void {
-  if (kernel.runs.fenced(run)) return;
+  if (kernel.runs.signal(run) === null || kernel.runs.fenced(run)) return;
   kernel.bus.publish(session, patch);
 }
 
-async function deliverChildReport(
+async function reserveChildReport(
   kernel: Kernel,
-  child: SessionId,
+  child: SessionRecord,
   run: RunId,
   end: RunEnd,
-): Promise<void> {
-  const found = await readSession(kernel.store, child);
-  const parent = found?.record.parent ?? null;
+): Promise<{
+  readonly session: SessionId;
+  readonly id: ReceiptId;
+  readonly update: RefUpdate;
+} | null> {
+  const parent = child.parent === null ? null : await readSession(kernel.store, child.parent);
 
-  if (found === null || parent === null || found.record.side === true) return;
-  const target = await readSession(kernel.store, parent);
+  if (parent === null || child.side === true) return null;
+  const origin = child.origin?.head ?? MAIN;
+  const head = parent.record.heads.some((entry) => entry.name === origin) ? origin : MAIN;
+  const ended = { kind: "run", session: child.id, run } as const;
 
-  if (target === null) return;
-  const origin = found.record.origin?.head ?? MAIN;
-  const head = target.record.heads.some((entry) => entry.name === origin) ? origin : MAIN;
-
-  const answer = clipText(
-    (await withFold(kernel, child, (state) => extractRunAnswer(state, run))).trim(),
+  const content = clipText(
+    (await withFold(kernel, child.id, (state) => extractRunAnswer(state, run))).trim(),
     "head",
   );
 
-  await send(kernel, {
-    session: parent,
-    head,
-    context: CORE_CONTEXT,
-    content: answer,
-    options: { source: { kind: "child", session: child, end: end.kind }, delivery: "attach" },
-  });
+  return {
+    session: parent.record.id,
+    id: reportId(ended),
+    update: await reserveReport(kernel.store, parent.record.id, {
+      head,
+      content,
+      source: { kind: "child", session: child.id, end: end.kind },
+      ended,
+    }),
+  };
 }
 
 function extractRunAnswer(state: FoldState, run: RunId): string {

@@ -31,7 +31,7 @@ import type { DirectoryStore, SessionStore } from "@nyte-ai/protocol";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import { sqliteStore } from "../src/sqlite.ts";
+import { sqliteStore } from "../src/store/sqlite.ts";
 import { fakeModels } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
 import { rawConnect } from "./fixtures/raw-socket.ts";
@@ -43,6 +43,7 @@ import {
   hello,
   openSocket,
   performs,
+  reportSettled,
   serve,
   socketUrl,
   target,
@@ -408,6 +409,7 @@ describe("the host's WebSocket", () => {
     gate.resolve();
     await started.receipt.settled();
     await childReaches(watcher, child, "done");
+    await reportSettled(host, session);
     const resumed = await reconnect(listener, session, store);
 
     expect(resumed.complete).toBe(false);
@@ -426,6 +428,7 @@ describe("the host's WebSocket", () => {
     const child = started.session.id;
     await started.receipt.settled();
     await childReaches(watcher, child, "done");
+    await reportSettled(host, session);
     const store = await readAndDrop(listener, session);
 
     expect(childState(store.snapshot().rows.background.values(), child)).toBe("done");
@@ -561,7 +564,7 @@ describe("the host's WebSocket", () => {
         input: { scopes: [`session/${session}`] },
       }),
     );
-    await new Promise((settle) => setTimeout(settle, 50));
+    await raw.answered("1");
 
     for (let index = 0; index < 40; index += 1)
       await (await send(host, fake, session, `${index} ${"x".repeat(700_000)}`)).settled();
@@ -620,6 +623,7 @@ describe("the host's WebSocket", () => {
     await measuring.client.call("events.subscribe", { scopes: [`session/${session}`] });
     const big = `big ${"x".repeat(1_200_000)}`;
     await (await send(host, fake, session, big)).settled();
+    await measuring.client.until((frame) => frame.type === "fragment" && frame.last === true);
     await (await send(host, fake, session, "small one")).settled();
     await measuring.client.until(
       (frame) => frame.kind === "change" && JSON.stringify(frame).includes("small one"),
@@ -789,7 +793,7 @@ describe("the host scope", () => {
     expect(store.snapshot()).toEqual(openDirectoryStore(fresh.read).snapshot());
   });
 
-  it("sends host subscribers the host's status and the sessions' activations whole on subscribe", async () => {
+  it("sends host subscribers the host's status whole on subscribe", async () => {
     const listener = await serve(await compose(fakeModels()));
     const client = await connect(listener);
     await client.call("events.subscribe", { scopes: ["host"] });
@@ -804,11 +808,6 @@ describe("the host scope", () => {
       startedAt: expect.any(Number),
       listeners: [listener.address],
       tailnet: null,
-    });
-    expect(client.frames.find((frame) => frame.activations !== undefined)).toMatchObject({
-      scope: "host",
-      seq: null,
-      kind: "live",
     });
   });
 });

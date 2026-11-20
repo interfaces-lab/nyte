@@ -2,9 +2,9 @@ import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId, compile, SdkError, ToolPartStateType, withJson } from "@nyte-ai/schema";
 import { mapped } from "@nyte-ai/protocol";
-import { followTrace, pagedViews, traced, tracePaints } from "@nyte-ai/sdk/client";
-import type { HeadView, HostConnection } from "@nyte-ai/sdk/client";
-import type { Connection, MessageId, PagedViews, Session, WorkspaceId } from "@nyte-ai/sdk";
+import { followTrace, traced, tracePaints } from "@nyte-ai/sdk/client";
+import type { Chat, ClientConnection } from "@nyte-ai/sdk/client";
+import type { Connection, MessageId, Session, WorkspaceId } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
 import { follow } from "../lib/view-helpers.ts";
@@ -12,38 +12,44 @@ import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
 import {
-  chatSends,
   chatViews,
   healthUpdates,
-  openChat,
   readPart,
+  refusedSends,
   sessionLists,
   whenOpen,
 } from "../live-host.ts";
-import type { ChatUpdate, HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
+import { errorMessage } from "../lib/format.ts";
+import type {
+  ChatUpdate,
+  HostPort,
+  PluginsPort,
+  SendEnd,
+  SessionPort,
+  WorkspacePort,
+} from "./ports.ts";
 
 const TOOL_STATE = compile(withJson(ToolPartStateType));
 
 export function hostPort(
-  host: Connection,
-  live: HostConnection,
+  host: ClientConnection,
   folder: string | null,
   painted: () => Promise<void> = () => Promise.resolve(),
   starts: { readonly contextFiles?: false } = {},
 ): HostPort {
   const workspaces = {
-    inspect: (target) => whenOpen(live, () => live.call("workspaces.inspect", { target })),
+    inspect: (target) => whenOpen(host, () => host.call("workspaces.inspect", { target })),
     add: (target, options) =>
-      whenOpen(live, () => live.call("workspaces.add", { target, options })),
+      whenOpen(host, () => host.call("workspaces.add", { target, options })),
   } satisfies Pick<Connection["workspaces"], "inspect" | "add">;
 
   const sessions = {
-    list: (input) => whenOpen(live, () => live.call("sessions.list", input ?? {})),
+    list: (input) => whenOpen(host, () => host.call("sessions.list", input ?? {})),
   } satisfies Pick<Connection["sessions"], "list">;
 
   return {
-    session: (id) => sessionPort(host, live, host.session(id), painted),
-    workspace: (id) => workspacePort(host, live, id),
+    session: (id) => sessionPort(host, host.session(id), painted),
+    workspace: (id) => workspacePort(host, id),
     async openFolder(path) {
       const opened = path ?? folder;
 
@@ -89,9 +95,10 @@ export function hostPort(
     },
     rootSessions: () => rootSessions({ sessions }),
     catalog: () => host.watch(),
-    sessionInfos: () => sessionLists(live, { parents: { kind: "all" } }),
-    health: () => healthUpdates(live),
-    listModels: () => whenOpen(live, () => live.call("models.list", {})),
+    sessionInfos: () => sessionLists(host, { parents: { kind: "all" } }),
+    health: () => healthUpdates(host),
+    refusedSends: () => refusedSends(host),
+    listModels: () => whenOpen(host, () => host.call("models.list", {})),
     accounts: (provider) => host.models.accounts(provider ?? undefined),
     selectAccount: (provider, account) => host.models.selectAccount(provider, account),
     renameAccount: (provider, account, label) =>
@@ -127,7 +134,7 @@ export function hostPort(
       return { account, folder: state };
     },
     async trustInfo(workspace) {
-      const info = await whenOpen(live, () => live.call("workspace.info", { workspace }));
+      const info = await whenOpen(host, () => host.call("workspace.info", { workspace }));
       const inspected = await workspaces.inspect(info.target).catch(() => null);
 
       const path = "path" in info.target ? info.target.path : info.id;
@@ -197,10 +204,10 @@ export function hostPort(
                   if (closed) return;
 
                   const opened = new TaskIndex(info, {
-                    children: sessionLists(live, {
+                    children: sessionLists(host, {
                       parents: { kind: "children", session: info.id },
                     }),
-                    views: (child) => chatViews(live, openChat(live, child), null),
+                    views: (child) => chatViews(host.chat(child)),
                     jobs: host.workspace(info.workspace).jobs.watch(),
                     onChange() {
                       latest = opened.tasks;
@@ -254,14 +261,14 @@ export function hostPort(
   };
 }
 
-function workspacePort(host: Connection, live: HostConnection, id: WorkspaceId): WorkspacePort {
+function workspacePort(host: ClientConnection, id: WorkspaceId): WorkspacePort {
   return {
     id,
     catalog: () => host.workspace(id).catalog(),
     command: (name, text) => host.workspace(id).command(name, text),
     completeCommand: (name, prefix) => host.workspace(id).completeCommand(name, prefix),
     async cwd() {
-      const workspace = await whenOpen(live, () => live.call("workspace.info", { workspace: id }));
+      const workspace = await whenOpen(host, () => host.call("workspace.info", { workspace: id }));
 
       return workspace.target.kind === "local" && "path" in workspace.target
         ? workspace.target.path
@@ -278,7 +285,7 @@ function workspacePort(host: Connection, live: HostConnection, id: WorkspaceId):
         })(),
       );
     },
-    mentions: (signal) => whenOpen(live, () => scanMentions(host, id, signal)),
+    mentions: (signal) => whenOpen(host, () => scanMentions(host, id, signal)),
   };
 }
 
@@ -307,35 +314,30 @@ async function scanMentions(
 }
 
 function sessionPort(
-  host: Connection,
-  live: HostConnection,
+  host: ClientConnection,
   session: Session,
   painted: () => Promise<void>,
 ): SessionPort {
   const readReceipt = (message: MessageId) => session.receipt(asId(message));
-  const readInfo = () => whenOpen(live, () => live.call("session.info", { session: session.id }));
+  const readInfo = () => whenOpen(host, () => host.call("session.info", { session: session.id }));
 
   const readWorkspace = async (): Promise<WorkspacePort> =>
-    workspacePort(host, live, (await readInfo()).workspace);
+    workspacePort(host, (await readInfo()).workspace);
 
-  let views: PagedViews<HeadView> | null = null;
+  let chat: Chat | null = null;
 
   return {
     id: session.id,
     watch() {
-      const store = openChat(live, session.id);
+      const opened = host.chat(session.id);
+      chat = opened;
 
-      views = pagedViews({
-        watch: () => chatViews(live, store, chatSends(host, session.id)),
-        history: (query) => session.history(query),
-      });
-
-      return mapped(tracePaints(views, session.id, painted), (view): ChatUpdate => ({
+      return mapped(tracePaints(chatViews(opened), session.id, painted), (view): ChatUpdate => ({
         view,
-        freshness: store.freshness(),
+        freshness: opened.snapshot().freshness,
       }));
     },
-    earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),
+    earlier: (limit) => chat?.earlier(limit) ?? Promise.resolve(0),
     see: (commit) => session.see(commit),
     info: readInfo,
     async workspace() {
@@ -347,11 +349,18 @@ function sessionPort(
       const id = options.id ?? asId<"receipt">(crypto.randomUUID());
       followTrace(session.id, id);
 
-      const receipt = await traced("composer.submit", id, { session: session.id }, () =>
-        session.send(content, { ...options, id }),
+      const sending = await traced("composer.submit", id, { session: session.id }, () =>
+        host.chat(session.id).send(content, { ...options, id }),
       );
 
-      return { message: receipt.message };
+      return {
+        message: asId<"message">(sending.id),
+        delivered: sending.delivered.then(
+          (end): SendEnd =>
+            end.kind === "sent" ? { kind: "sent", message: end.receipt.message } : end,
+          (error: unknown): SendEnd => ({ kind: "refused", reason: errorMessage(error) }),
+        ),
+      };
     },
     async withdraw(message) {
       const receipt = readReceipt(message);
@@ -395,7 +404,7 @@ function sessionPort(
       return outcome.kind === "ok";
     },
     async toolState(part, signal) {
-      const view = await readPart(live, session.id, part, signal);
+      const view = await readPart(host, session.id, part, signal);
 
       return view !== null && TOOL_STATE.Check(view.state) ? view.state : null;
     },
@@ -452,31 +461,6 @@ function sessionPort(
 
       return outcome.kind === "missing" ? "missing" : "stopped";
     },
-    async changeDirectory(path) {
-      const seen = await host.workspaces.inspect({ kind: "local", path });
-
-      const added = await host.workspaces.add(seen.target, {
-        expect: { identity: seen.identity },
-      });
-
-      if (added.kind === "stale")
-        return { kind: "refused", reason: `${path} changed while it was opened; try again.` };
-
-      if (added.kind === "unavailable")
-        return { kind: "refused", reason: `Couldn't open ${path}: ${added.reason}` };
-      const outcome = await session.update({ workspace: added.workspace });
-
-      if (outcome.kind === "busy")
-        return {
-          kind: "refused",
-          reason: "Wait for active runs and jobs to finish before changing directories.",
-        };
-
-      if (outcome.kind !== "updated")
-        return { kind: "refused", reason: `Couldn't open ${path} for this session.` };
-
-      return { kind: "changed", cwd: path };
-    },
     async reload() {
       const info = await session.info();
       const outcome = await host.workspace(info.workspace).reload();
@@ -489,8 +473,7 @@ function sessionPort(
 }
 
 export async function pluginsPort(
-  host: Connection,
-  live: HostConnection,
+  host: ClientConnection,
   options: {
     readonly notify: (title: string, body: string, sound: boolean) => void;
     readonly report: (plugin: string, message: string) => void;
@@ -514,7 +497,7 @@ export async function pluginsPort(
   });
 
   const stopDirectory = follow(
-    sessionLists(live, { parents: { kind: "all" } }),
+    sessionLists(host, { parents: { kind: "all" } }),
     (sessions) => plugins.sessionsChanged(sessions),
     (cause) =>
       options.report("notifications", cause instanceof Error ? cause.message : String(cause)),

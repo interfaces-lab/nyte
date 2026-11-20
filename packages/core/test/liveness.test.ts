@@ -6,7 +6,7 @@ import { runStep } from "../src/engine/durable.ts";
 import { stopRun } from "../src/engine/fence.ts";
 import { move } from "../src/engine/move.ts";
 import { endRun } from "../src/engine/runs.ts";
-import { publishSet } from "../src/fold/watch.ts";
+import { publishSet } from "../src/watch/watch.ts";
 import {
   callRef,
   decodeCallRecord,

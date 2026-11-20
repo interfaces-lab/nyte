@@ -10,6 +10,7 @@ import type {
   RefUpdate,
   ReviseOptions,
   ReviseOutcome,
+  Revision,
   RunId,
   RunView,
   SendOptions,
@@ -22,10 +23,11 @@ import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { CommitRecord } from "../contract/records.ts";
 import type { SendReceipt } from "../contract/session.ts";
-import { commit } from "../fold/commit.ts";
+import type { StoreConnection } from "../contract/store.ts";
+import { commit } from "../watch/commit.ts";
 import { walkCommitPath } from "../fold/paths.ts";
-import { holdsReports } from "../fold/project.ts";
-import { withFold } from "../fold/reads.ts";
+import { holdsReports } from "../watch/project.ts";
+import { withFold } from "../watch/reads.ts";
 import { callRef, headRef, inboxRef, receiptRef } from "../store/refs.ts";
 import {
   attempt,
@@ -50,6 +52,7 @@ import { dev } from "../util/dev-log.ts";
 import { admitted, buildMessage, pendingReceipt } from "./admission-writes.ts";
 import type { MessageRecord } from "./admission-writes.ts";
 import { holdSummary, summarizedMove } from "./branch-summary.ts";
+import { callPhase } from "./call-phase.ts";
 import { resolveHeadConfiguration } from "./contributions.ts";
 import { fence, finishFence } from "./fence.ts";
 import { freezeMentions } from "./mentions.ts";
@@ -66,6 +69,7 @@ interface Sending {
   readonly content: UserContent;
   readonly options: SendOptions;
   readonly stop: AbortSignal | null;
+  readonly reserved: boolean;
 }
 
 type SendInput = {
@@ -74,6 +78,7 @@ type SendInput = {
   readonly context: ConnectionContext;
   readonly content: UserContent;
   readonly options?: SendOptions;
+  readonly reserved?: boolean;
 };
 
 type ReviseInput = {
@@ -125,6 +130,7 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
     content: input.content,
     options: input.options ?? {},
     stop: null,
+    reserved: input.reserved ?? false,
   };
 
   const target = sending.options.replace;
@@ -169,6 +175,7 @@ export async function reviseQueued(
     content: input.content,
     options: input.options ?? {},
     stop: null,
+    reserved: false,
   };
 
   const queued = (await readInbox(kernel.store, session, head)).messages.includes(message);
@@ -196,7 +203,7 @@ export async function readDeparture(
   return landed === null ? { kind: "missing" } : { kind: "sent" };
 }
 
-async function refuseDeciding(kernel: Kernel, session: SessionId, message: MessageId) {
+export async function refuseDeciding(kernel: Kernel, session: SessionId, message: MessageId) {
   const input = await withFold(kernel, session, (state) => state.inputs.get(message));
 
   if (input?.schedule.kind === "deciding")
@@ -227,6 +234,7 @@ export function selectRunStart(
   return report ?? null;
 }
 
+/** With `start`, lands nothing unless the prompt `ids` were selected for is still the one the inbox it writes would select, so a reorder or revision after selection makes the caller select again. Beside that prompt it lands only the ids still delivered as steers or attaches, as run-start selection takes them. */
 export async function landing(
   kernel: Kernel,
   session: SessionId,
@@ -244,20 +252,39 @@ export async function landing(
     const held = inbox.hold?.message;
 
     if (start !== null && held !== undefined && ids.includes(held)) return [];
-    const due = inbox.messages.filter((message) => ids.includes(message) && message !== held);
 
-    if (due.length === 0) return [];
+    const candidates = inbox.messages.filter(
+      (message) => ids.includes(message) && message !== held,
+    );
 
-    const { inputs, siblings, starts } = await withFold(kernel, session, (state) => ({
-      inputs: due.map((message) => state.inputs.get(message)),
-      siblings: state.siblings.get(tip.id) ?? [],
-      starts:
+    if (candidates.length === 0) return [];
+
+    const { due, inputs, siblings, starts } = await withFold(kernel, session, (state) => {
+      const select = (messages: readonly MessageId[]) =>
         selectRunStart(
           state,
           head,
-          due.flatMap((message) => state.inputs.get(message) ?? []),
-        ) !== null,
-    }));
+          messages.flatMap((message) => state.inputs.get(message) ?? []),
+        )?.input.id;
+
+      const chosen = start === null ? undefined : select(ids);
+
+      const landable =
+        start === null
+          ? candidates
+          : candidates.filter((message) => {
+              const delivery = state.inputs.get(message)?.delivery;
+
+              return message === chosen || delivery === "attach" || delivery === "steer";
+            });
+
+      return {
+        due: landable,
+        inputs: landable.map((message) => state.inputs.get(message)),
+        siblings: state.siblings.get(tip.id) ?? [],
+        starts: chosen !== undefined && chosen === select(inbox.messages),
+      };
+    });
 
     if (start !== null && !starts) return [];
 
@@ -342,8 +369,12 @@ async function admit(sending: Sending): Promise<SendReceipt> {
   const id = options.id ?? asId<"receipt">(crypto.randomUUID());
   const digest = await hashSendRequest(sending);
 
-  if (await known(kernel.store, session, id, "send", digest))
-    return sendReceipt(kernel, session, id);
+  const replayed = (): Promise<boolean> =>
+    sending.reserved
+      ? readReservation(kernel.store, session, id, digest).then((found) => found === null)
+      : known(kernel.store, session, id, "send", digest);
+
+  if (await replayed()) return sendReceipt(kernel, session, id);
   dev("admission", "send", { session, head, receipt: id });
 
   const submission = await gate(sending, asId<"message">(id), {
@@ -356,12 +387,14 @@ async function admit(sending: Sending): Promise<SendReceipt> {
   const covered = await coveredHere(kernel, session);
 
   return attempt(`Admitting ${id}`, async () => {
-    const [inbox, run, configuration] = await Promise.all([
+    const [inbox, run, configuration, reservation] = await Promise.all([
       readInbox(kernel.store, session, head),
       liveRun(kernel.store, session, head),
       resolveHeadConfiguration(kernel, session, head),
+      sending.reserved ? readReservation(kernel.store, session, id, digest) : ("absent" as const),
     ]);
 
+    if (reservation === null) return sendReceipt(kernel, session, id);
     const landing = landed(kernel, submission, run?.record ?? null, configuration.model);
 
     const message = buildMessage(asId<"message">(id), landing, {
@@ -373,12 +406,11 @@ async function admit(sending: Sending): Promise<SendReceipt> {
 
     const outcome = await commit(kernel, [
       await admitted(kernel, session, head, inbox, [...inbox.messages, message.id], message),
-      await pendingReceipt(kernel.store, session, id, digest, "absent"),
+      await pendingReceipt(kernel.store, session, id, digest, reservation),
     ]);
 
     if (outcome.kind === "stale")
-      return outcome.name === receiptRef(session, id) &&
-        (await known(kernel.store, session, id, "send", digest))
+      return outcome.name === receiptRef(session, id) && (await replayed())
         ? sendReceipt(kernel, session, id)
         : STALE;
 
@@ -542,13 +574,13 @@ async function editGated(
     if (located === undefined) return { kind: "failed", outcome: { kind: "missing-target" } };
     const { parent, since } = located;
 
-    if (typeof abandoned === "object")
+    if (abandoned?.kind === "summarize")
       return {
         kind: "summarize",
         tip: checked.tip,
         parent,
         since,
-        instructions: abandoned.summarize.instructions ?? null,
+        instructions: abandoned.instructions ?? null,
       };
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
     const stopped = fenced === null || fenced.kind === "ended" ? null : checked.run;
@@ -723,6 +755,7 @@ export async function readmitDeciding(
     content: input.content,
     options: {},
     stop,
+    reserved: false,
   };
 
   const submission = await gate(sending, input.id, {
@@ -778,6 +811,25 @@ async function announce(
   if (message.covered) kernel.wakes.notify(session, head);
 
   if (message.source.kind === "user") await kernel.waits.inputAdmitted(session, head, message.id);
+}
+
+async function readReservation(
+  store: StoreConnection,
+  session: SessionId,
+  id: ReceiptId,
+  digest: string,
+): Promise<Revision | null> {
+  const found = await readReceipt(store, session, id);
+
+  if (found === null) return null;
+
+  if (found.record.kind === "report")
+    return found.record.outcome === null ? found.ref.revision : null;
+
+  if (found.record.kind !== "send" || found.record.digest !== digest)
+    throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+
+  return null;
 }
 
 async function readReplayReceipt(
@@ -850,7 +902,7 @@ async function decideBeforeSend(
   if (submission.replace === message) {
     const found = await readCall(kernel.store, session, call);
 
-    if (found !== null && found.record.result !== null)
+    if (found !== null && callPhase(found.record).kind === "settled")
       await commit(kernel, [
         { name: callRef(session, call), target: null, expect: found.ref.revision },
       ]);

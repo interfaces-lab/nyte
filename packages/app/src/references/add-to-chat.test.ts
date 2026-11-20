@@ -17,7 +17,7 @@ test("a terminal selection goes to the chat with the command it followed", async
 }, 60_000);
 
 const browserBridge = `
-window.__nytePicks = 0;
+window.__nyteChanges = [];
 const state = {
   url: "https://example.com/",
   title: "Example",
@@ -30,10 +30,12 @@ const state = {
   agentHolders: 0,
   fullscreen: false,
   deniedPermissions: [],
+  design: { on: false, views: { xray: false, rulers: false, grid: false, contrast: false } },
 };
 const resolved = () => Promise.resolve(undefined);
 window.nyte = new Proxy(
   {
+    app: "nyte",
     host: {
       openExternal: resolved,
       setThemePreference() {},
@@ -44,26 +46,19 @@ window.nyte = new Proxy(
         perform: resolved,
         close: resolved,
         captureFrame: resolved,
-        pickElement: () => {
-          window.__nytePicks += 1;
-          return Promise.resolve(
-            window.__nytePicks === 1 || window.__nytePicks === 3
-              ? {
-                  url: "https://example.com/",
-                  selector: "main > button.primary",
-                  html: '<button class="primary">Save</button>',
-                  image: "data:image/png;base64,AQIDBA==",
-                }
-              : undefined,
-          );
+        design: (input) => {
+          window.__nyteChanges.push(input.change);
+          return resolved();
         },
         find: () => Promise.resolve({ active: 0, total: 0 }),
         cancelDownload: resolved,
         login: resolved,
         history: () => Promise.resolve([]),
         forgetHistory: resolved,
-        setBounds: () => {},
         setFocus: () => {},
+        guests: () => Promise.resolve([]),
+        attach: resolved,
+        setShown: () => {},
       },
     },
     onEvent: () => () => {},
@@ -72,7 +67,7 @@ window.nyte = new Proxy(
 );
 `;
 
-test("a picked element sends its HTML, selector and crop, or reports an image intake error", async () => {
+test("Design Mode asks the page's surface to turn on, and its picks reach the chat with their crops", async () => {
   expect(
     await testRenderer(
       new URL("./add-to-chat-browser.browser-test.tsx", import.meta.url),

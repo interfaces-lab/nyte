@@ -1,11 +1,12 @@
 import "../../test/window-bridge.ts";
+import { paneLayout, runPane, selectSession } from "../../test/panes.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
-import type { Execution, HeadInfo, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
+import type { Execution, HeadInfo, HostView, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
@@ -18,9 +19,10 @@ import { scriptedConnection, viewStream } from "../../test/scripted-connection.t
 import { COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
 import { useWindowTabItems, useWindowTabsState } from "./use-window-tabs.tsx";
 import { WindowTabStrip } from "./window-tab-strip.tsx";
+import { chatWindow } from "../window/index.ts";
 import { windowTabs } from "./window-tabs.ts";
 
-type State = "working" | "waiting" | "failed" | "unread" | "read";
+type State = "working" | "waiting" | "asking" | "failed" | "failed-unread" | "unread" | "read";
 
 const RUN = {
   id: asId<"run">("run"),
@@ -31,6 +33,12 @@ const RUN = {
 } as const;
 
 const LIVE: Execution = { kind: "live", run: RUN, phase: "responding", stopping: false };
+
+const ASKING: Execution = {
+  kind: "waiting",
+  run: RUN,
+  on: { kind: "run", session: asId<"session">("subagent"), run: asId<"run">("subagent-run") },
+};
 
 const FAILED: Execution = {
   kind: "idle",
@@ -47,9 +55,16 @@ function heads(state: State): readonly HeadInfo[] {
       name: asId<"head">("main"),
       tip: { kind: "commit", id: asId<"commit">("tip") },
       stack: null,
-      execution: state === "working" ? LIVE : state === "failed" ? FAILED : COMPLETED,
-      unread: state === "unread",
-      background: { working: 0, waiting: state === "waiting" ? 1 : 0 },
+      execution:
+        state === "working"
+          ? LIVE
+          : state === "asking"
+            ? ASKING
+            : state === "failed" || state === "failed-unread"
+              ? FAILED
+              : COMPLETED,
+      unread: state === "unread" || state === "failed-unread",
+      background: { working: 0, waiting: state === "waiting" || state === "asking" ? 1 : 0 },
     },
   ];
 }
@@ -58,18 +73,35 @@ function chat(name: string, state: State): SessionInfo {
   return sessionRow(name, { workspace: asId<"workspace">("alpha"), heads: heads(state) });
 }
 
-const folder: WorkspaceInfo = {
-  id: asId<"workspace">("alpha"),
-  target: { kind: "local", path: "/work/alpha" },
-  identity: asId("identity"),
-  availability: { kind: "available" },
-  projectResources: null,
-  trusted: true,
-  projectSources: [],
-  addedBy: asId("tester"),
-  sessions: 0,
-  writers: [],
-  isolation: null,
+function folder(id: string): WorkspaceInfo {
+  return {
+    id: asId<"workspace">(id),
+    target: { kind: "local", path: `/work/${id}` },
+    identity: asId("identity"),
+    availability: { kind: "available" },
+    projectResources: null,
+    trusted: true,
+    projectSources: [],
+    addedBy: asId("tester"),
+    writers: [],
+    isolation: null,
+  };
+}
+
+const host: HostView = {
+  id: asId<"host">("scripted"),
+  link: { kind: "connected" },
+  operations: null,
+  name: "Test",
+  platform: "linux",
+  version: "0.0.0",
+  catalog: asId<"catalog-generation">("initial"),
+  plugins: [],
+  settings: [],
+  views: [],
+  defaultWorkspace: asId<"workspace">("home"),
+  projects: [],
+  authority: new Set(),
 };
 
 interface Listed {
@@ -87,16 +119,17 @@ const list = () => Object.entries(states).map(([name, state]) => chat(name, stat
 const sessions = viewStream<readonly SessionInfo[]>(list());
 
 const scripted = scriptedConnection({
+  host: viewStream(host),
   sessions,
-  workspaces: [folder],
+  workspaces: [folder("alpha"), folder("home")],
   session: (id) => (id === quiet.id ? { info: async () => quiet } : {}),
 });
 
-installConnection(scripted.connection, scripted.live);
+installConnection(scripted.connection);
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -105,7 +138,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -128,17 +161,30 @@ function tabMark(tooltip: string): string {
     element.getAttribute("aria-label")?.startsWith(tooltip),
   );
 
-  if (tab === undefined) return "no tab";
-  const unread = tab.getAttribute("aria-label")?.includes(", unread") === true;
+  return tab === undefined ? "no tab" : markLabel(tab);
+}
 
-  return `${markLabel(tab)}${unread ? ", unread" : ""}`;
+function tabName(tooltip: string): string {
+  const name = [...document.querySelectorAll('[role="tab"]')]
+    .map((element) => element.getAttribute("aria-label") ?? "")
+    .find((label) => label.startsWith(tooltip));
+
+  return name === undefined ? "no tab" : name.slice(tooltip.length);
+}
+
+function unread(name: keyof Listed): boolean {
+  return chatWindow.getSnapshot().unread.has(asId<"session">(name));
+}
+
+function seen(name: keyof Listed): string {
+  return `${sidebarMark(name)}|${String(unread(name))}`;
 }
 
 async function change(next: Partial<Listed>, row: keyof Listed): Promise<void> {
-  const before = sidebarMark(row);
+  const before = seen(row);
   states = { ...states, ...next };
   sessions.push(list());
-  await until(() => sidebarMark(row) !== before, `${row}'s row to change`);
+  await until(() => seen(row) !== before, `${row}'s row to change`);
 }
 
 function Strip(): ReactElement {
@@ -174,9 +220,14 @@ export async function run(): Promise<string> {
   windowTabs.start({ id: "tab-status", launch: undefined });
   windowTabs.openChat(asId<"session">("Solo"), "permanent");
   windowTabs.openChat(asId<"session">("Left"), "permanent");
-  const controller = windowTabs.controller();
-  controller.drop(asId<"session">("Right"), controller.getSnapshot().focus[0], "right");
-  controller.selectSession(asId<"session">("Left"));
+  const controller = windowTabs.panes();
+  runPane(controller, {
+    kind: "drop",
+    sessionId: asId<"session">("Right"),
+    pane: paneLayout(controller).focus[0],
+    placement: "right",
+  });
+  selectSession(controller, asId<"session">("Left"));
   windowTabs.openChat(quiet.id, "permanent");
   windowTabs.dispatch({ kind: "new-tab" });
 
@@ -206,11 +257,31 @@ export async function run(): Promise<string> {
   try {
     await until(() => sidebarMark("Solo") !== "no row", "the sidebar");
 
-    const solo: { readonly state: State; readonly row: string; readonly tab: string }[] = [];
+    const solo: {
+      readonly state: State;
+      readonly row: string;
+      readonly tab: string;
+      readonly name: string;
+      readonly unread: boolean;
+    }[] = [];
 
-    for (const state of ["working", "waiting", "failed", "unread", "read"] as const) {
+    for (const state of [
+      "working",
+      "asking",
+      "failed",
+      "failed-unread",
+      "waiting",
+      "unread",
+      "read",
+    ] as const) {
       await change({ Solo: state }, "Solo");
-      solo.push({ state, row: sidebarMark("Solo"), tab: tabMark("Solo") });
+      solo.push({
+        state,
+        row: sidebarMark("Solo"),
+        tab: tabMark("Solo"),
+        name: tabName("Solo"),
+        unread: unread("Solo"),
+      });
     }
 
     const split = async (next: Partial<Listed>, row: keyof Listed) => {
@@ -226,7 +297,7 @@ export async function run(): Promise<string> {
     const rightUnread = await split({ Right: "unread" }, "Right");
     const leftWorking = await split({ Left: "working" }, "Left");
 
-    for (let frame = 0; frame < 100 && tabMark("Quiet") === "no tab"; frame += 1) await painted();
+    for (let frame = 0; frame < 100 && tabMark("Quiet") === "no tab"; frame += 1) await nextFrame();
 
     const unlisted = {
       row: sidebarMark("Quiet"),

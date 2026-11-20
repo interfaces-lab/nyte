@@ -45,5 +45,6 @@ const port = hostPort(openHostPort);
 
 installBridge({
   ...window.nyte,
+  app: window.nyte.window.app,
   host: { ...window.nyte.host, fetch: port.fetch, socket: port.socket },
 });

@@ -9,6 +9,7 @@ import { asId } from "@nyte-ai/schema";
 import { queryClient } from "../../data/query-client.ts";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
+import { ToolCallView } from "../tools/tool-call.tsx";
 import { transcriptRows, type TurnItemRow } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
 import "../../theme/tokens.stylex.ts";
@@ -90,6 +91,7 @@ const rows = transcriptRows({
   running: false,
   held: false,
   retrying: undefined,
+  live: { planning: false, newest: undefined, thought: undefined, awaiting: undefined },
 }).filter((row) => row.kind === "response");
 
 function streamedReply(ended: boolean): TurnItemRow | undefined {
@@ -110,6 +112,7 @@ function streamedReply(ended: boolean): TurnItemRow | undefined {
     running: !ended,
     held: false,
     retrying: undefined,
+    live: { planning: false, newest: undefined, thought: undefined, awaiting: undefined },
   }).find((row) => row.kind === "response");
 }
 
@@ -125,7 +128,7 @@ function Completion({ row }: { row: TurnItemRow | undefined }): ReactElement | n
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <TurnItemView row={row} running={false} density="compact" cwd={undefined} />
+        <TurnItemView row={row} density="compact" cwd={undefined} />
       </TooltipProvider>
     </QueryClientProvider>
   );
@@ -137,9 +140,14 @@ function Stage(): ReactElement {
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
         {rows.map((row) => (
           <div key={row.key} data-row={row.key}>
-            <TurnItemView row={row} running={false} density="compact" cwd={undefined} />
+            <TurnItemView row={row} density="compact" cwd={undefined} />
           </div>
         ))}
+        <ToolCallView
+          message={settledTool("sh", { kind: "shell", command: "pnpm test" })}
+          cwd={undefined}
+          density="detailed"
+        />
         <p>
           <SubagentCitation session={working.id} label="core" />{" "}
           <SubagentCitation session={finished.id} label="app" />
@@ -149,7 +157,12 @@ function Stage(): ReactElement {
   );
 }
 
-const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+async function within(done: () => boolean, ms: number): Promise<void> {
+  const deadline = performance.now() + ms;
+
+  while (!done() && performance.now() < deadline)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 async function settled(element: Element): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -180,7 +193,7 @@ export async function run(): Promise<string> {
   document.body.append(stage);
   const root = createRoot(stage);
   flushSync(() => root.render(<Stage />));
-  await wait(50);
+  await within(() => stage.querySelector("[data-row='response:a2']") !== null, 2_000);
 
   const first = find(stage, "[data-row='response:a1']", HTMLElement);
   const second = find(stage, "[data-row='response:a2']", HTMLElement);
@@ -214,12 +227,11 @@ export async function run(): Promise<string> {
   check(opacity(firstTime) === 1, "focusing an earlier reply's actions shows its time");
 
   copy.click();
-  await wait(100);
+  await within(() => copy.hasAttribute("data-copied"), 2_000);
   check(copy.hasAttribute("data-copied"), "copying a reply confirms it");
   check((await navigator.clipboard.readText()) === "First answer", "the reply copies its own text");
   await navigator.clipboard.writeText("untouched");
   copy.click();
-  await wait(100);
   check(
     (await navigator.clipboard.readText()) === "untouched",
     "a click during the confirmation copies nothing",
@@ -227,13 +239,22 @@ export async function run(): Promise<string> {
 
   const code = find(second, "[aria-label='Copy ts code block']", HTMLButtonElement);
   code.click();
-  await wait(100);
+  await within(() => code.hasAttribute("data-copied"), 2_000);
   check(code.hasAttribute("data-copied"), "copying code confirms it");
   check((await navigator.clipboard.readText()) === CODE, "the code block copies its code");
 
-  await wait(2_000);
+  const command = find(stage, "[aria-label='Copy command']", HTMLButtonElement);
+  const confirmed = () => command.innerHTML.includes("IconCheckmark");
+  command.click();
+  await within(confirmed, 2_000);
+  check(confirmed(), "copying a command confirms it");
+  check((await navigator.clipboard.readText()) === "pnpm test", "the command copies itself");
+
+  await within(() => !copy.hasAttribute("data-copied") && !code.hasAttribute("data-copied"), 3_000);
   check(!copy.hasAttribute("data-copied"), "the reply's confirmation resets after 2 s");
   check(!code.hasAttribute("data-copied"), "the code block's confirmation resets after 2 s");
+  await within(() => !confirmed(), 3_000);
+  check(!confirmed(), "the command's confirmation resets after 2 s");
 
   const [busy, idle] = stage.querySelectorAll("a[data-citation='agent']");
   check(
@@ -252,12 +273,12 @@ export async function run(): Promise<string> {
   document.body.append(replyStage);
   const replyRoot = createRoot(replyStage);
   flushSync(() => replyRoot.render(<Completion row={streamedReply(false)} />));
-  await wait(50);
+  await within(() => replyStage.querySelector("p") !== null, 2_000);
   const streamed = find(replyStage, "p", HTMLParagraphElement);
   const selection = window.getSelection();
   selection?.selectAllChildren(streamed);
   flushSync(() => replyRoot.render(<Completion row={streamedReply(true)} />));
-  await wait(50);
+  await within(() => replyStage.querySelector("[aria-label='Copy reply']") !== null, 2_000);
   check(
     replyStage.querySelector("[aria-label='Copy reply']") !== null,
     "a reply gains its actions when its turn ends",

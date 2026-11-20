@@ -2,8 +2,13 @@ import { app, Notification } from "electron";
 import type { HostEvent, TerminalNotice } from "@nyte-ai/app/contract/bridge.ts";
 import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { SessionId } from "@nyte-ai/sdk";
-import type { AttentionDelivery } from "../shared/attention.ts";
-import type { HostWindow } from "../shared/host-window.ts";
+import { findViewer, stepWindowAttention } from "../shared/attention.ts";
+import type {
+  AttentionDelivery,
+  AttentionWindows,
+  WindowAttentionEvent,
+} from "../shared/attention.ts";
+import type { HostWindow, WindowEnd } from "../shared/host-window.ts";
 
 export interface AlertWindows {
   focused(): HostWindow | undefined;
@@ -12,38 +17,33 @@ export interface AlertWindows {
   send(window: HostWindow, event: HostEvent): void;
 }
 
-type WindowState =
-  | { readonly kind: "ready"; readonly viewed: string | null }
-  | { readonly kind: "loading"; readonly opening: SessionId };
-
 const KEPT_NOTIFICATIONS = 100;
 
 export class Alerts {
   readonly #settings: () => DesktopSettings;
   readonly #windows: AlertWindows;
-  readonly #windowStates = new Map<HostWindow, WindowState>();
+  #windowStates: AttentionWindows = new Map();
   readonly #kept = new Set<Notification>();
   #bounce: number | undefined;
 
   constructor(settings: () => DesktopSettings, windows: AlertWindows) {
     this.#settings = settings;
     this.#windows = windows;
-    app.on("browser-window-focus", () => this.#stopBounce());
+    app.on("browser-window-focus", (_event, window) => {
+      this.#stopBounce();
+      this.#step({ kind: "focused", window: window.webContents.id });
+    });
   }
 
   agent(delivery: AttentionDelivery): void {
-    const focused = this.#windows.focused();
+    if (this.#windows.focused() !== undefined) return;
 
-    if (
-      focused !== undefined &&
-      this.#viewed(focused) === delivery.session &&
-      !this.#settings().notifyViewedChat
-    )
-      return;
+    if (delivery.notify)
+      this.#post({ title: delivery.title, body: delivery.body, silent: !delivery.sound }, () =>
+        this.openChat(delivery.session),
+      );
 
-    if (delivery.notify) this.#tell(focused, delivery);
-
-    if (!delivery.bounce || focused !== undefined || app.dock === undefined) return;
+    if (!delivery.bounce || app.dock === undefined) return;
     this.#stopBounce();
     this.#bounce = app.dock.bounce("critical");
   }
@@ -53,68 +53,43 @@ export class Alerts {
   }
 
   viewing(window: HostWindow, viewed: string | null): void {
-    const before = this.#windowStates.get(window);
-
-    this.#windowStates.set(window, {
-      kind: "ready",
-      viewed,
-    });
-
-    if (before?.kind === "loading")
-      this.#windows.send(window, { kind: "open_session", session: before.opening });
+    this.#step({ kind: "viewing", window, viewed });
   }
 
   terminal(window: HostWindow, notice: TerminalNotice): void {
     const settings = this.#settings();
 
-    if (!settings.notifications || !settings.terminalNotifications) return;
+    if (
+      !settings.notifications ||
+      !settings.terminalNotifications ||
+      this.#windows.focused() !== undefined
+    )
+      return;
     this.#post({ ...notice, silent: !settings.notificationSounds }, () =>
       this.#windows.reveal(window),
     );
   }
 
-  reloading(window: HostWindow): void {
-    if (this.#windowStates.get(window)?.kind === "ready") this.#windowStates.delete(window);
+  windowEnded(window: HostWindow, end: WindowEnd): void {
+    this.#step({ kind: "ended", window, end });
   }
 
-  release(window: HostWindow): void {
-    this.#windowStates.delete(window);
+  openChat(session: SessionId): void {
+    this.#step({
+      kind: "clicked",
+      window: findViewer(this.#windowStates, session) ?? this.#windows.latest(),
+      session,
+    });
   }
 
-  #tell(focused: HostWindow | undefined, delivery: AttentionDelivery): void {
-    if (focused !== undefined && this.#windowStates.get(focused)?.kind === "ready") {
-      this.#windows.send(focused, {
-        kind: "chat_alert",
-        session: delivery.session,
-        state: delivery.state,
-        title: delivery.title,
-        body: delivery.body,
-      });
+  #step(event: WindowAttentionEvent): void {
+    const step = stepWindowAttention(this.#windowStates, event);
+    this.#windowStates = step.windows;
 
-      return;
-    }
+    if (step.reveal !== undefined) this.#windows.reveal(step.reveal);
 
-    this.#post({ title: delivery.title, body: delivery.body, silent: !delivery.sound }, () =>
-      this.#openChat(delivery.session),
-    );
-  }
-
-  #viewed(window: HostWindow): string | null | undefined {
-    const state = this.#windowStates.get(window);
-
-    return state?.kind === "ready" ? state.viewed : undefined;
-  }
-
-  #openChat(session: SessionId): void {
-    const target =
-      [...this.#windowStates.keys()].find((window) => this.#viewed(window) === session) ??
-      this.#windows.latest();
-
-    this.#windows.reveal(target);
-
-    if (this.#windowStates.get(target)?.kind === "ready")
-      this.#windows.send(target, { kind: "open_session", session });
-    else this.#windowStates.set(target, { kind: "loading", opening: session });
+    if (step.open !== undefined)
+      this.#windows.send(step.open.window, { kind: "open_session", session: step.open.session });
   }
 
   #post(options: Electron.NotificationConstructorOptions, click: () => void): void {

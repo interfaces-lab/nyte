@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, media, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, workbench } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -29,9 +29,24 @@ export const workbenchStyles = create({
   },
   panelOpen: {
     minWidth: 0,
-    width: `clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px)))`,
+    width: `min(100cqi, clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px))))`,
   },
   panelWidth: (pixels: number) => ({ "--_workbench-width": `${pixels}px` }),
+  /** In a Code window the stored width is the chat panel's, and the workbench takes the rest of the stage. */
+  panelOpenCode: {
+    minWidth: 0,
+    width: `calc(100cqi - min(100cqi, clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px)))))`,
+  },
+  panelEndRule: {
+    "::after": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      borderInlineEndWidth: 1,
+      borderColor: { default: role.strokeQuaternary, [media.forcedColors]: "CanvasText" },
+      pointerEvents: "none",
+    },
+  },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
   railHostCompact: { width: workbench.iconRailWidth, minWidth: workbench.iconRailWidth },
   panelOverlay: {
@@ -42,9 +57,9 @@ export const workbenchStyles = create({
     minWidth: 0,
     width: "100cqi",
     maxWidth: "100cqi",
-    backgroundColor: role.bgBase,
     "--nyte-hairline-elevation": shadow.shadowWorkbench,
   },
+  panelOverlayStart: { insetInlineEnd: "auto", insetInlineStart: 0 },
   panelHidden: { display: "none" },
   panelBody: { display: "flex", flex: 1, minWidth: 0, minHeight: 0, flexDirection: "column" },
   rail: {
@@ -134,41 +149,18 @@ export const workbenchStyles = create({
   },
   panelSlotHidden: { display: "none" },
   launcher: {
-    display: "grid",
-    gridTemplateColumns: `repeat(2, ${workbench.launcherCardSize})`,
-    gridAutoRows: workbench.launcherCardSize,
-    gap: space.s2,
-    placeContent: "center",
-    flex: 1,
-    minHeight: 0,
-    padding: space.s4,
-  },
-  launcherFrame: {
     display: "flex",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.strokeQuaternary,
-    borderRadius: radius.card,
-    overflow: "clip",
-  },
-  launcherCard: {
-    "--_row-fill": {
-      default: "transparent",
-      ":hover": { [media.hover]: role.fillTertiary },
-      ":active": role.fillSecondary,
-    },
     flexDirection: "column",
     justifyContent: "center",
-    gap: space.s2,
-    paddingBlock: space.s3,
-    "--_row-padding-inline": space.s3,
-    borderRadius: 0,
-    color: {
-      default: role.contentSecondary,
-      ":hover": { [media.hover]: role.contentPrimary },
-      ":focus-visible": role.contentPrimary,
-    },
-    textAlign: "center",
+    alignSelf: "center",
+    gap: target.gap,
+    flex: 1,
+    width: workbench.railWidth,
+    maxWidth: "100%",
+    minHeight: 0,
+    paddingBlock: space.s4,
+    paddingInline: space.s2,
+    color: role.contentSecondary,
   },
   sash: {
     position: "absolute",
@@ -206,6 +198,7 @@ export const workbenchStyles = create({
     touchAction: "none",
     WebkitAppRegion: "no-drag",
   },
+  sashEnd: { insetInlineEnd: `calc(${workbench.sashWidth} / -2)` },
   sashActive: { "--_sash-rule": role.strokeSecondary, "--_sash-delay": "0s" },
   treeTheme: {
     "--trees-bg-override": role.bgBase,
@@ -218,12 +211,13 @@ export const workbenchStyles = create({
     "--trees-selected-bg-override": role.fillSecondary,
     "--trees-selected-fg-override": role.contentPrimary,
     "--trees-focus-ring-color-override": appearance.focusRing,
+    "--trees-selected-focused-border-color-override": appearance.focusRing,
     "--trees-input-bg-override": role.bgElevated,
     "--trees-search-bg-override": role.bgElevated,
     "--trees-search-fg-override": role.contentPrimary,
     "--trees-scrollbar-thumb-override": role.scrollbarThumb,
     "--trees-font-family-override": type.fontSans,
-    "--trees-font-size-override": type.fontSm,
+    "--trees-font-size-override": type.fontBase,
     "--trees-status-ignored-override": role.contentTertiary,
     fontVariantNumeric: "tabular-nums",
   },

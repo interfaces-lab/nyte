@@ -17,7 +17,7 @@ import {
 } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import type { TSchema } from "typebox";
-import { sqliteStore } from "../../src/sqlite.ts";
+import { sqliteStore } from "../../src/store/sqlite.ts";
 import { ID, schemaArbitrary } from "./arbitrary.ts";
 
 type JsonObject = { readonly [key: string]: Json };

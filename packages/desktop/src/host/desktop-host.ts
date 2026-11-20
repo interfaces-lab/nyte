@@ -1,10 +1,9 @@
 import { basename, join } from "node:path";
-import { asId } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
-import { UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
-import { SdkError, sdk } from "@nyte-ai/sdk/client";
-import type { Connection, HostConnection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
+import { API_REVISION, asId } from "@nyte-ai/schema";
+import { connect, createSendJournal, SdkError } from "@nyte-ai/sdk/client";
+import type { ClientConnection, Connection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
 import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type {
   HostEvent,
@@ -27,23 +26,26 @@ import type {
 } from "../shared/ipc.ts";
 import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
 import type { HostWindow } from "../shared/host-window.ts";
-import { planAttention } from "../shared/attention.ts";
+import { planAttention, reconcileReminders } from "../shared/attention.ts";
 import type { AttentionDelivery, AttentionReminder, AttentionSeen } from "../shared/attention.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
+import { busyTaskCount } from "../shared/update-activity.ts";
 import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
+import { restorableFolder } from "../shared/window-workspace.ts";
+import { registerFolder } from "@nyte-ai/app/contract/register-folder.ts";
 import { desktopSettings } from "./host-settings.ts";
-import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
+import { ExpectedHostError } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
+import type { HostLink } from "./host-link.ts";
 import type { RemoteAccessPlugins } from "./connections/remote-access-plugin.ts";
 import { ServerSettingsStore } from "./connections/server-settings.ts";
 import type { SavedServer } from "./connections/server-settings.ts";
 
 export interface DesktopHostDependencies {
   readonly home: string;
-  open(): Promise<Connection>;
-  readonly client: Pick<HostConnection, "call" | "directory">;
-  readonly usageScan?: UsageScanReader;
+  readonly link: Pick<HostLink, "connection" | "follow" | "attach">;
+  readonly usageScan: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
   readonly keepAwake?: (awake: boolean) => void;
@@ -51,7 +53,7 @@ export interface DesktopHostDependencies {
   readonly alert?: (delivery: AttentionDelivery) => void;
   readonly badge?: (count: number) => void;
   readonly mediaOrigin?: string;
-  emitHostEvent(event: HostEvent, window?: HostWindow): void;
+  emitHostEvent(event: HostEvent): void;
 }
 
 type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
@@ -114,38 +116,6 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-async function follow<T>(
-  open: () => AsyncIterable<T>,
-  apply: (value: T) => void,
-  signal: AbortSignal,
-): Promise<void> {
-  let wait = WATCH_RETRY_MS;
-
-  while (!signal.aborted) {
-    const values = open()[Symbol.asyncIterator]();
-
-    const stop = (): void => {
-      void values.return?.();
-    };
-
-    signal.addEventListener("abort", stop, { once: true });
-
-    try {
-      for (let next = await values.next(); next.done !== true; next = await values.next()) {
-        wait = WATCH_RETRY_MS;
-        apply(next.value);
-      }
-    } catch (cause) {
-      retainDiagnostic({ correlationId: "desktop-host-watch", cause });
-    } finally {
-      signal.removeEventListener("abort", stop);
-    }
-
-    await pause(wait, signal);
-    wait = Math.min(wait * 2, WATCH_RETRY_CAP_MS);
-  }
-}
-
 const SERVER_PROBLEMS = {
   network: {
     kind: "network",
@@ -199,22 +169,33 @@ export function throwForRenderer(cause: unknown): never {
 }
 
 interface ServerWatch {
-  readonly saved: SavedServer;
+  saved: SavedServer;
   readonly stop: AbortController;
   readonly first: PromiseWithResolvers<void>;
   state: ServerState | undefined;
 }
 
-async function probeServer(url: string, token: string, hostId?: SavedServer["hostId"]) {
-  const connection = await sdk.connect({
+const SERVER_CLIENT = {
+  kind: "app",
+  name: "Nyte",
+  version: `api-${String(API_REVISION)}`,
+} as const;
+
+async function probeServer(url: string, token: string) {
+  const connection = await connect({
     url,
     credentials: { kind: "token", token },
-    expect: hostId === undefined ? undefined : { hostId },
+    client: SERVER_CLIENT,
+    journal: createSendJournal(),
   });
 
   try {
     for await (const view of connection.watch())
-      return { hostId: connection.hostId, version: view.version };
+      return {
+        hostId: connection.hostId,
+        publicKey: connection.publicKey ?? null,
+        version: view.version,
+      };
     throw new SdkError("unavailable", "The server closed before it described itself.");
   } finally {
     await connection.close();
@@ -224,12 +205,8 @@ async function probeServer(url: string, token: string, hostId?: SavedServer["hos
 export class DesktopHost {
   readonly #deps: DesktopHostDependencies;
   readonly #connect: ConnectRuntime;
-  #opened: Promise<Connection>;
   readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
-  readonly #selections = new Map<HostWindow, SelectedWorkspace>();
-  /** The folder Finder opened a window for: it shows when the window has no selection, across reloads. */
-  readonly #seeds = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
   #tailnet: string | undefined;
   #rows: readonly SessionInfo[] = [];
@@ -250,7 +227,7 @@ export class DesktopHost {
   constructor(dependencies: DesktopHostDependencies) {
     this.#deps = dependencies;
     this.#servers = new ServerSettingsStore(join(dependencies.home, ".nyte", "server.json"));
-    this.#usageScan = dependencies.usageScan ?? new UsageScanner(dependencies.home);
+    this.#usageScan = dependencies.usageScan;
 
     this.#connect =
       dependencies.connect ??
@@ -261,74 +238,57 @@ export class DesktopHost {
         onChange: () => this.remoteChanged(),
       });
 
-    this.#opened = this.#begin();
+    this.#followView();
   }
 
-  #begin(): Promise<Connection> {
-    const opened = this.#deps.open();
-    opened.then(
-      (connection) => this.#followView(connection),
-      () => undefined,
-    );
+  #followView(): void {
+    const stop = this.#deps.link.follow((view) => {
+      const tailnet = JSON.stringify(view.tailnet ?? null);
 
-    return opened;
-  }
+      if (this.#tailnet !== undefined && this.#tailnet !== tailnet) this.#remoteChanged();
+      this.#tailnet = tailnet;
+      this.#settings = desktopSettings(view);
+      this.#deps.settingsChanged?.(this.#settings);
+      this.#followRows();
+      this.#holdAwake();
 
-  #ready(): Promise<Connection> {
-    return this.#opened.catch((cause: unknown) => {
-      if (this.#closing !== undefined) throw cause;
-      this.#opened = this.#begin();
-
-      return this.#opened;
+      if (this.#seen !== undefined) this.#attend();
     });
-  }
 
-  #followView(opened: Connection): void {
-    void follow(
-      () => opened.watch(),
-      (view) => {
-        const tailnet = JSON.stringify(view.tailnet ?? null);
-
-        if (this.#tailnet !== undefined && this.#tailnet !== tailnet) this.#remoteChanged();
-        this.#tailnet = tailnet;
-        this.#settings = desktopSettings(view);
-        this.#deps.settingsChanged?.(this.#settings);
-        this.#followRows();
-        this.#holdAwake();
-
-        if (this.#seen !== undefined) this.#attend();
-      },
-      this.#watching.signal,
-    );
+    this.#watching.signal.addEventListener("abort", stop, { once: true });
   }
 
   #followRows(): void {
     if (this.#rowsFollowed || this.#watching.signal.aborted) return;
     this.#rowsFollowed = true;
-    const directory = this.#deps.client.directory({ parents: { kind: "all" } });
 
-    const stop = directory.subscribe(() => {
-      const snapshot = directory.snapshot();
+    const detach = this.#deps.link.attach((connection) => {
+      const directory = connection.sessions.open({ parents: { kind: "all" } });
 
-      if (snapshot === null) return;
-      this.#rows = snapshot.ids.flatMap((id) => {
-        const row = snapshot.rows.get(id);
+      const stop = directory.subscribe(() => {
+        const snapshot = directory.snapshot();
 
-        return row === undefined ? [] : [row];
+        if (snapshot === null) return;
+        this.#rows = snapshot.ids.flatMap((id) => {
+          const row = snapshot.rows.get(id);
+
+          return row === undefined ? [] : [row];
+        });
+        this.#holdAwake();
+        this.#attend();
       });
-      this.#holdAwake();
-      this.#attend();
-    });
 
-    this.#watching.signal.addEventListener(
-      "abort",
-      () => {
+      return () => {
         stop();
         directory.close();
-      },
-      { once: true },
-    );
+      };
+    });
+
+    this.#watching.signal.addEventListener("abort", detach, { once: true });
   }
+
+  readonly #call: ClientConnection["call"] = async (name, input) =>
+    (await this.#deps.link.connection()).call(name, input);
 
   #attend(): void {
     if (this.#closing !== undefined) return;
@@ -354,23 +314,16 @@ export class DesktopHost {
 
   #remind(reminders: readonly AttentionReminder[]): void {
     const every = this.#settings.remindMinutes * 60_000;
+    const changes = reconcileReminders(this.#reminders, reminders, every);
 
-    const wanted = new Map(
-      reminders.map((reminder) => [reminder.id, JSON.stringify([every, reminder.delivery])]),
-    );
-
-    for (const [id, held] of this.#reminders) {
-      if (wanted.get(id) === held.signature) continue;
-      clearInterval(held.timer);
+    for (const id of changes.stop) {
+      clearInterval(this.#reminders.get(id)?.timer);
       this.#reminders.delete(id);
     }
 
-    for (const reminder of reminders) {
-      const signature = wanted.get(reminder.id);
-
-      if (signature === undefined || this.#reminders.has(reminder.id)) continue;
+    for (const reminder of changes.start) {
       const timer = setInterval(() => this.#deps.alert?.(reminder.delivery), every);
-      this.#reminders.set(reminder.id, { signature, timer });
+      this.#reminders.set(reminder.id, { signature: reminder.signature, timer });
     }
   }
 
@@ -393,32 +346,22 @@ export class DesktopHost {
 
   readonly #handlers: CallTable = {
     "host.endpoint": async () => {
-      const connection = await this.#ready();
+      const connection = await this.#deps.link.connection();
 
       return {
         url: HOST_PORT_ORIGIN,
         credentials: { kind: "token", token: "" },
-        expect: { hostId: connection.hostId },
+        expect:
+          connection.publicKey === undefined
+            ? undefined
+            : { hostId: connection.hostId, publicKey: connection.publicKey },
         ...(this.#deps.mediaOrigin === undefined ? {} : { mediaOrigin: this.#deps.mediaOrigin }),
       };
     },
-    "host.state": async (window) => this.#state(window),
-    "host.restore": async (window, { session }) => {
-      if (this.#state(window).workspace === undefined)
-        await this.#selectChatFolder(window, session);
-
-      return this.#state(window);
-    },
-    "host.openWorkspace": (window, { path }) => this.#openWorkspace(window, path),
-    "host.registerWorkspace": (_window, { path }) => this.#registerWorkspace(path),
-    "host.trustWorkspace": (window, { path }) => this.#openWorkspace(window, path, true),
-    "host.closeWorkspace": async (window) => {
-      const shown = this.#state(window).workspace !== undefined;
-      this.#selections.delete(window);
-      this.#seeds.delete(window);
-
-      if (shown) this.#deps.emitHostEvent({ kind: "workspace_closed" }, window);
-    },
+    "host.restore": (_window, { session }) => this.#chatFolder(session),
+    "host.openWorkspace": (_window, { path }) => this.#openWorkspace(path, false),
+    "host.registerWorkspace": (_window, { path }) => this.registerWorkspace(path),
+    "host.trustWorkspace": (_window, { path }) => this.#openWorkspace(path, true),
     "host.usage": async (_window, usageWindow) => this.#usageScan.scan({ window: usageWindow }),
     "host.server.state": () => this.#serverState(),
     "host.server.connect": (_window, input) => this.#connectServer(input),
@@ -464,7 +407,7 @@ export class DesktopHost {
           message: "This Mac's Nyte host has no Tailscale node. Reinstall Nyte to get it back.",
         });
 
-      await this.#deps.client.call("host.tailnet.configure", {
+      await this.#call("host.tailnet.configure", {
         enabled,
         hostname: node.dnsName?.split(".")[0] ?? "nyte",
         tags: node.tags,
@@ -473,7 +416,7 @@ export class DesktopHost {
       this.#remoteChanged();
     },
     "host.remote.signOutTailnet": async () => {
-      await this.#deps.client.call("host.tailnet.logout", {});
+      await this.#call("host.tailnet.logout", {});
       this.#remoteChanged();
     },
     "host.connect.state": () => this.#connect.view(),
@@ -487,32 +430,12 @@ export class DesktopHost {
     "host.connect.signOut": () => this.#connect.signOut(),
   } satisfies HostCalls;
 
-  /** The window's renderer is gone or reloading; a seed outlives it. */
-  releaseWindow(window: HostWindow): void {
-    this.#selections.delete(window);
-  }
-
-  closeWindow(window: HostWindow): void {
-    this.#selections.delete(window);
-    this.#seeds.delete(window);
-  }
-
   registerWorkspace(path: string): Promise<RegisterWorkspaceOutcome> {
-    return this.#registerWorkspace(path);
+    return registerFolder(() => this.#deps.link.connection(), path, false, "local");
   }
 
-  /** Shows `workspace` in a window before its first load, so it emits nothing. */
-  seedWorkspace(window: HostWindow, workspace: SelectedWorkspace): void {
-    this.#seeds.set(window, workspace);
-  }
-
-  selectedWorkspace(window: HostWindow): SelectedWorkspace | undefined {
-    return this.#state(window).workspace;
-  }
-
-  /** The host's available local folders. */
   async localWorkspaces(): Promise<readonly SelectedWorkspace[]> {
-    const host = await this.#ready();
+    const host = await this.#deps.link.connection();
 
     return (await host.workspaces.list()).flatMap((workspace) =>
       workspace.availability.kind === "available" &&
@@ -529,12 +452,12 @@ export class DesktopHost {
 
   suspend(): void {
     if (!this.#settings.pauseOnSleep) return;
-    void this.#deps.client.call("host.execution.pause", {}).catch(() => undefined);
+    void this.#call("host.execution.pause", {}).catch(() => undefined);
   }
 
   resume(): void {
     this.#connect.resume();
-    void this.#deps.client.call("host.execution.resume", {}).catch(() => undefined);
+    void this.#call("host.execution.resume", {}).catch(() => undefined);
   }
 
   accountChanged(): void {
@@ -547,93 +470,53 @@ export class DesktopHost {
       this.#holdAwake();
       this.#remind([]);
       await this.#connect.close().catch(() => undefined);
-      const opened = await this.#opened.catch(() => undefined);
       await this.#usageScan.close();
-      await opened?.close();
     })();
 
     return this.#closing;
   }
 
   async updateActivity(): Promise<DesktopUpdateActivity> {
-    const opened = await this.#opened.catch(() => undefined);
+    const opened = await this.#deps.link.connection().catch(() => undefined);
     const rows = opened === undefined ? [] : await listSessions(opened);
     const terminalCommandCount = opened === undefined ? 0 : await busyTerminals(opened);
 
-    const taskCount = rows.filter((row) =>
-      row.heads.some((head) => head.execution.kind !== "idle"),
-    ).length;
+    const taskCount = busyTaskCount(rows);
 
     return taskCount === 0 && terminalCommandCount === 0
       ? { kind: "idle" }
       : { kind: "busy", taskCount, terminalCommandCount };
   }
 
-  #state(window: HostWindow) {
-    return { workspace: this.#selections.get(window) ?? this.#seeds.get(window) };
-  }
-
-  async #selectChatFolder(window: HostWindow, session: string): Promise<void> {
-    const host = await this.#ready();
+  async #chatFolder(session: string): Promise<SelectedWorkspace | undefined> {
+    const host = await this.#deps.link.connection();
 
     const info = await host
       .session(asId<"session">(session))
       .info()
       .catch(() => null);
 
-    if (info === null) return;
+    if (info === null) return undefined;
 
-    const workspace = await host
-      .workspace(info.workspace)
-      .info()
-      .catch(() => null);
-
-    if (
-      workspace === null ||
-      workspace.availability.kind === "unavailable" ||
-      workspace.target.kind !== "local" ||
-      !("path" in workspace.target) ||
-      (workspace.trusted === null && workspace.projectSources.length > 0)
-    )
-      return;
-    const { path } = workspace.target;
-    this.#selections.set(window, { id: workspace.id, path, name: basename(path) });
+    return restorableFolder(
+      await host
+        .workspace(info.workspace)
+        .info()
+        .catch(() => null),
+    );
   }
 
-  async #openWorkspace(
-    window: HostWindow,
-    path: string,
-    trust = false,
-  ): Promise<OpenWorkspaceOutcome> {
-    const registered = await this.#registerWorkspace(path, trust);
+  async #openWorkspace(path: string, trust: boolean): Promise<OpenWorkspaceOutcome> {
+    const registered = await registerFolder(
+      () => this.#deps.link.connection(),
+      path,
+      trust,
+      "local",
+    );
 
-    if (registered.kind === "failed") return registered;
-    this.#selections.set(window, registered.workspace);
-    this.#deps.emitHostEvent({ kind: "workspace_opened", workspace: registered.workspace }, window);
-
-    return { kind: "opened", workspace: registered.workspace, needsTrust: registered.needsTrust };
-  }
-
-  async #registerWorkspace(path: string, trust = false): Promise<RegisterWorkspaceOutcome> {
-    const host = await this.#ready();
-    const seen = await host.workspaces.inspect({ kind: "local", path });
-    const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
-
-    if (added.kind === "stale")
-      return { kind: "failed", message: "The folder changed while it was opened. Open it again." };
-
-    if (added.kind === "unavailable")
-      return { kind: "failed", message: "This folder can't be opened here." };
-
-    if (trust) await host.workspace(added.workspace).update({ projectResources: true });
-    const workspace = await host.workspace(added.workspace).info();
-    const folder = "path" in workspace.target ? workspace.target.path : path;
-
-    return {
-      kind: "registered",
-      workspace: { id: workspace.id, path: folder, name: basename(folder) },
-      needsTrust: workspace.trusted === null && seen.projectSources.length > 0,
-    };
+    return registered.kind === "failed"
+      ? registered
+      : { kind: "opened", workspace: registered.workspace, needsTrust: registered.needsTrust };
   }
 
   async #serverState(): Promise<ServerState> {
@@ -652,7 +535,14 @@ export class DesktopHost {
     );
 
     if ("kind" in answered) return { kind: "failed" as const, message: answered.message };
-    const saved = { url: input.baseUrl, hostId: answered.hostId, token: input.token };
+
+    const saved = {
+      url: input.baseUrl,
+      hostId: answered.hostId,
+      publicKey: answered.publicKey,
+      token: input.token,
+    };
+
     await this.#servers.write(saved);
     await this.#watchServer(saved);
     this.#deps.emitHostEvent({ kind: "server_changed" });
@@ -681,6 +571,39 @@ export class DesktopHost {
     return watch;
   }
 
+  async #connectSaved(watch: ServerWatch): Promise<Connection> {
+    const saved = watch.saved;
+
+    const connection = await connect({
+      url: saved.url,
+      credentials: { kind: "token", token: saved.token },
+      client: SERVER_CLIENT,
+      journal: createSendJournal(),
+      expect:
+        saved.publicKey === null ? undefined : { hostId: saved.hostId, publicKey: saved.publicKey },
+    });
+
+    if (saved.publicKey !== null) return connection;
+
+    if (connection.hostId !== saved.hostId) {
+      await connection.close().catch(() => undefined);
+
+      throw new SdkError(
+        "stale",
+        `Host ${connection.hostId} answered instead of ${saved.hostId}.`,
+        {
+          hostId: connection.hostId,
+        },
+      );
+    }
+
+    if (connection.publicKey === undefined || watch.stop.signal.aborted) return connection;
+    watch.saved = { ...saved, publicKey: connection.publicKey };
+    void this.#servers.write(watch.saved).catch(() => undefined);
+
+    return connection;
+  }
+
   async #followServer(watch: ServerWatch): Promise<void> {
     const { saved } = watch;
     const signal = AbortSignal.any([watch.stop.signal, this.#watching.signal]);
@@ -688,11 +611,7 @@ export class DesktopHost {
 
     while (!signal.aborted) {
       try {
-        const connection = await sdk.connect({
-          url: saved.url,
-          credentials: { kind: "token", token: saved.token },
-          expect: { hostId: saved.hostId },
-        });
+        const connection = await this.#connectSaved(watch);
 
         const stop = (): void => {
           void connection.close();
@@ -745,7 +664,7 @@ export class DesktopHost {
   }
 
   #tailnetNode(): Promise<TailnetNode> {
-    return this.#deps.client.call("host.tailnet.status", {}).catch((cause: unknown) => {
+    return this.#call("host.tailnet.status", {}).catch((cause: unknown) => {
       if (cause instanceof SdkError && cause.code === "unavailable")
         return { state: "unavailable" as const };
 

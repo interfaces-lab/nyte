@@ -15,7 +15,7 @@ import {
   statusCode,
   withInputHeader,
 } from "../src/index.ts";
-import { parseJson } from "../src/json.ts";
+import { parseJson } from "../src/wire/json.ts";
 import { endless } from "./endless.ts";
 
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -61,6 +61,7 @@ describe("errors", () => {
       hostId: asId("h1"),
       issues: [{ severity: "error", path: ["content", 0], message: "Required." }],
       correlation: "c1",
+      retry: true,
     });
     const wire = encodeError(error);
     const decoded = decodeError(structuredClone(wire));
@@ -117,16 +118,19 @@ describe("server-sent events", () => {
   });
 
   it("sends a ping while the source waits", async () => {
+    const waiting = Promise.withResolvers<void>();
+
     const reader = sseFrames(
       {
         async *[Symbol.asyncIterator]() {
-          await new Promise((resolve) => setTimeout(resolve, 40));
+          await waiting.promise;
           yield 1;
         },
       },
       { heartbeatMs: 5 },
     ).getReader();
     const first = await reader.read();
+    waiting.resolve();
     await reader.cancel();
 
     expect(new TextDecoder().decode(first.value)).toBe(": ping\n\n");

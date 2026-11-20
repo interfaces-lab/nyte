@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, vi, test } from "vitest";
+import { describe, onTestFinished, vi, test } from "vitest";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import {
   failedTransiently,
@@ -260,13 +260,17 @@ describe("retryAssistantCall", () => {
   });
 
   test("aborts backoff sleep via signal, returns an aborted message, and emits onRetryFinished(false)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const controller = new AbortController();
     const produce = vi.fn(async () => errorMessage("terminated"));
     const policy: RetryPolicy = { enabled: true, maxRetries: 5, baseDelayMs: 10_000 };
     const onRetryFinished = vi.fn();
     const p = retryAssistantCall(produce, policy, controller.signal, { onRetryFinished });
-    while (produce.mock.calls.length === 0) await new Promise((resolve) => setTimeout(resolve, 1));
-    await new Promise((resolve) => setTimeout(resolve, 1));
+    await vi.advanceTimersByTimeAsync(9_999);
+    assert.equal(vi.getTimerCount(), 1);
     controller.abort();
     const res = await p;
     assert.equal(res.stopReason, "aborted");

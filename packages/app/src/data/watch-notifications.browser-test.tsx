@@ -37,8 +37,10 @@ function numbers() {
   };
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
 }
 
 function elapsed(ms: number): Promise<void> {
@@ -87,7 +89,7 @@ export async function run(): Promise<string> {
   };
 
   const source = numbers();
-  const store = new WatchStore(source.open);
+  const store = new WatchStore(() => ({ values: source.open(), ended: "reopen" as const }));
   const heard: (number | null)[] = [];
   const rendered: (number | null)[] = [];
 
@@ -105,11 +107,11 @@ export async function run(): Promise<string> {
   const shown = (): string => container.textContent ?? "";
 
   try {
-    const opened = store.next();
+    const opened = store.until((value) => value === 0);
     source.push(0);
     await opened;
     flushSync(() => root.render(<Shown store={store} />));
-    await painted();
+    await nextFrame();
     const first = { heard: [...heard], rendered: [...rendered], shown: shown() };
 
     commits = 0;
@@ -119,7 +121,7 @@ export async function run(): Promise<string> {
 
     for (const value of [1, 2, 3, 4, 5]) source.push(value);
     const beforeFlush = await atFrame;
-    await painted();
+    await nextFrame();
 
     const burst = {
       heard: heard.slice(1),
@@ -133,7 +135,7 @@ export async function run(): Promise<string> {
 
     for (const value of [6, 7, 8]) {
       source.push(value);
-      await painted();
+      await nextFrame();
     }
 
     const perFrame = { commits, shown: shown() };
@@ -153,7 +155,7 @@ export async function run(): Promise<string> {
     paused = false;
 
     const beforeRetry = rendered.length;
-    const ten = store.next();
+    const ten = store.until((value) => value === 10);
     source.push(10);
     await ten;
     const queuedBeforeRetry = pending.size;
@@ -165,15 +167,15 @@ export async function run(): Promise<string> {
       rendered: rendered.slice(beforeRetry),
     };
 
-    const eleven = store.next();
+    const eleven = store.until((value) => value === 11);
     source.push(11);
     await eleven;
     const rescheduled = pending.size;
-    await painted();
+    await nextFrame();
     const retry = { ...retried, rescheduled, afterFrame: rendered.slice(beforeRetry) };
 
     const beforeDispose = rendered.length;
-    const twelve = store.next();
+    const twelve = store.until((value) => value === 12);
     source.push(12);
     await twelve;
     const queuedBeforeDispose = pending.size;
@@ -185,7 +187,7 @@ export async function run(): Promise<string> {
       rendered: rendered.slice(beforeDispose),
     };
 
-    await painted();
+    await nextFrame();
     const dispose = { ...disposed, afterFrame: rendered.slice(beforeDispose), shown: shown() };
 
     return JSON.stringify({ first, burst, perFrame, hidden, retry, dispose });

@@ -62,7 +62,6 @@ export type LoadRequest =
   | { readonly kind: "tree"; readonly session: SessionId }
   | { readonly kind: "models" }
   | { readonly kind: "usage"; readonly session: SessionId }
-  | { readonly kind: "directory"; readonly path: string }
   | { readonly kind: "plugins" }
   | { readonly kind: "pull-request"; readonly workspace: WorkspaceId }
   | { readonly kind: "mcp-servers"; readonly workspace: WorkspaceId }

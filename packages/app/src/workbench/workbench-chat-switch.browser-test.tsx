@@ -1,4 +1,4 @@
-import { tabPanes } from "../../test/panes.ts";
+import { selectSession, tabPanes } from "../../test/panes.ts";
 import "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
 import "./panels.deferred.tsx";
@@ -234,22 +234,19 @@ const files: FilesApi = {
   upload: refuse,
 };
 
-const { connection, live } = scriptedConnection({
+const { connection } = scriptedConnection({
   sessions: NAMES.map((name) => sessionRow(name, { name })),
   views: new Map([...chats.values()].map((entry) => [asId<"session">(entry.name), entry.stream])),
 });
 
-installConnection(
-  {
-    ...connection,
-    workspace: (id) => ({
-      ...connection.workspace(id),
-      files: async () => ({ kind: "available", api: files }),
-      git: async () => ({ kind: "unsupported", reason: "Not a repository." }),
-    }),
-  },
-  live,
-);
+installConnection({
+  ...connection,
+  workspace: (id) => ({
+    ...connection.workspace(id),
+    files: async () => ({ kind: "available", api: files }),
+    git: async () => ({ kind: "unsupported", reason: "Not a repository." }),
+  }),
+});
 
 const catalog = {
   generation: asId<"catalog-generation">("initial"),
@@ -259,16 +256,14 @@ const catalog = {
 
 const host = { workspace: WORKSPACE } satisfies HostState;
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function pause(ms: number): Promise<void> {
   const until = performance.now() + ms;
 
-  while (performance.now() < until) await painted();
+  while (performance.now() < until) await nextFrame();
 }
 
 async function until(condition: () => boolean, what: string): Promise<void> {
@@ -276,7 +271,7 @@ async function until(condition: () => boolean, what: string): Promise<void> {
 
   while (!condition()) {
     if (performance.now() - started > 10_000) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -315,7 +310,6 @@ export async function run(): Promise<string> {
       trusted: true,
       projectSources: [],
       addedBy: asId<"principal">("tester"),
-      sessions: 0,
       writers: [],
       isolation: null,
     },
@@ -347,7 +341,7 @@ export async function run(): Promise<string> {
 
   const root = createRoot(container);
   const panes = tabPanes();
-  panes.selectSession(asId<"session">("alpha"));
+  selectSession(panes, asId<"session">("alpha"));
   reset();
 
   flushSync(() =>
@@ -355,7 +349,7 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -367,7 +361,7 @@ export async function run(): Promise<string> {
   );
 
   const show = async (name: Name): Promise<void> => {
-    panes.selectSession(asId<"session">(name));
+    selectSession(panes, asId<"session">(name));
     await until(
       () => container.innerText.includes(`${name} question ${String(TURNS)}`),
       `chat ${name}`,

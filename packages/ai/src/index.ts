@@ -72,11 +72,10 @@ export { getFastModeCostMultiplier } from "./model-pricing.ts";
 
 export {
   baseModel,
-  FAST_MODEL_SUFFIX,
-  fastModelId,
   providerIdentity,
-  supportsFastMode,
-  withFastVariants,
+  supportedModes,
+  variantModelId,
+  withModeVariants,
 } from "./model-variants.ts";
 
 export * from "./models-store.ts";

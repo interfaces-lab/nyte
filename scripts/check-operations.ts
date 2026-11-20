@@ -26,7 +26,7 @@ const lockPath = join(root, "packages/schema/src/wire/operations/operations.lock
 
 const revisionPath = "packages/schema/src/wire/operations/index.ts";
 
-const docsPath = join(root, "packages/docs/content/docs/reference/operations");
+const docsPath = join(root, "services/web/content/docs/reference/operations");
 
 const START = "{/* generated:start */}";
 

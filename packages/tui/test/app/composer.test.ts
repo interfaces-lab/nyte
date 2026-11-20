@@ -5,8 +5,11 @@ import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
 import { resolveMention } from "../../src/effects/local-ports.ts";
 import { openTestHost, testEnvironment } from "../fixture/host.ts";
 import { composerShows, cursorCell, startTui } from "../harness/tui.ts";
+import type { Tui } from "../harness/tui.ts";
 
 const FRAME_MS = 1000 / 60;
+
+const REPAINT_TURNS = 200;
 
 const lineStartDeleted = (frame: string): boolean =>
   composerShows(frame, "kept 前") &&
@@ -38,6 +41,48 @@ test("each typed key shows in the composer within a frame at p95 and 50 ms at wo
 
   expect(sorted[Math.floor(sorted.length * 0.95)]).toBeLessThanOrEqual(FRAME_MS);
   expect(sorted.at(-1)).toBeLessThanOrEqual(50);
+});
+
+async function repaint(tui: Tui, typed: string): Promise<{ frames: number; cells: number }> {
+  let frames = 0;
+  let cells = 0;
+  let shown = false;
+
+  for (let turn = 0; turn < REPAINT_TURNS; turn++) {
+    await tui.renderOnce();
+    const updated = tui.getNativeStats().cellsUpdated;
+
+    if (updated > 0) {
+      frames += 1;
+      cells += updated;
+    }
+
+    shown ||= composerShows(tui.captureCharFrame(), typed);
+
+    if (shown && updated === 0) return { frames, cells };
+    await Bun.sleep(1);
+  }
+
+  throw new Error(`The composer never settled on ${typed}:\n${tui.captureCharFrame()}`);
+}
+
+test("each typed key repaints in one frame, and after the first only the cell it typed", async () => {
+  await using tui = await startTui();
+  await tui.ready();
+
+  const keys = [...new Intl.Segmenter().segment("hi nyte, every key shows at once")].map(
+    (key) => key.segment,
+  );
+
+  const repaints: { frames: number; cells: number }[] = [];
+
+  for (const [index, key] of keys.entries()) {
+    tui.mockInput.pressKey(key);
+    repaints.push(await repaint(tui, keys.slice(0, index + 1).join("")));
+  }
+
+  expect(repaints[0]?.frames).toBe(1);
+  expect(repaints.slice(1)).toEqual(keys.slice(1).map(() => ({ frames: 1, cells: 1 })));
 });
 
 test("Cmd+Backspace deletes to the line start, undo restores it, and the other deletion keys still work", async () => {

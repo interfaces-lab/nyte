@@ -230,7 +230,6 @@ function AccountFlow({
             repair: false,
             options: {
               signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
-              relay: true,
             },
           });
 

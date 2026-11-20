@@ -1,0 +1,137 @@
+---
+title: language.change
+description: Applies the client's edits to an open document and moves it to a newer version.
+---
+
+Applies edits to a document the client opened, in order, and moves it to `version`, which must be newer than the last. A change with a `range` replaces that range; one with a null `range` replaces the whole text. Send changes one at a time and wait for each: changes sent side by side can arrive out of order, and the later one then fails as stale.
+
+## When to call it
+
+On every edit in an editor buffer, before asking for completions or hovers at the new text.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "main.go",
+  "version": 2,
+  "changes": [
+    {
+      "range": {
+        "start": { "line": 2, "utf16Column": 14 },
+        "end": { "line": 2, "utf16Column": 14 }
+      },
+      "text": "\n\tfmt."
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `unknown` for a document the client didn't open; open it first.
+- `stale` for a version no newer than the document's; open it again with the whole text to start over.
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "version", "changes"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "version": {
+      "type": "number"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["range", "text"],
+        "properties": {
+          "range": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["start", "end"],
+                "properties": {
+                  "start": {
+                    "type": "object",
+                    "required": ["line", "utf16Column"],
+                    "properties": {
+                      "line": {
+                        "type": "number"
+                      },
+                      "utf16Column": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "end": {
+                    "type": "object",
+                    "required": ["line", "utf16Column"],
+                    "properties": {
+                      "line": {
+                        "type": "number"
+                      },
+                      "utf16Column": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

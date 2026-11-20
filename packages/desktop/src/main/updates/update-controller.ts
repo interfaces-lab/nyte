@@ -12,7 +12,6 @@ interface UpdateDependencies {
   updater: Pick<AppUpdater, "checkForUpdates" | "downloadUpdate" | "quitAndInstall">;
   currentVersion: string;
   activity: () => Promise<DesktopUpdateActivity>;
-  /** Asks before a restart would lose what the windows hold; false keeps the app running. */
   confirmQuit: () => boolean;
   beforeInstall: () => Promise<void>;
   cleanupTimeoutMs?: number;

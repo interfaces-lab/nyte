@@ -1,4 +1,5 @@
 import "../../test/window-bridge.ts";
+import { paneLayout, selectSession } from "../../test/panes.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
@@ -46,7 +47,6 @@ function folder(id: string): WorkspaceInfo {
     trusted: true,
     projectSources: [],
     addedBy: asId("tester"),
-    sessions: 0,
     writers: [],
     isolation: null,
   };
@@ -130,16 +130,14 @@ const scripted = scriptedConnection({
   }),
 });
 
-installConnection(scripted.connection, scripted.live);
+installConnection(scripted.connection);
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
@@ -147,7 +145,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -221,7 +219,7 @@ function stored() {
   return Value.Parse(StoredSidebar, parsed);
 }
 
-const panes = windowTabs.controller();
+const panes = windowTabs.panes();
 
 function label(name: string): HTMLElement | undefined {
   return find('[data-slot="row-label"]', name);
@@ -290,7 +288,7 @@ async function arrowKeysMoveFocusAndFold(): Promise<void> {
   primary("Filler 8").focus();
   press(primary("Filler 8"), "ArrowLeft");
   check(document.activeElement === primary("beta"), "Left goes from the kept chat to its header");
-  const selection = activeSelection(panes.getSnapshot());
+  const selection = activeSelection(paneLayout(panes));
 
   check(
     selection.kind === "session" && selection.sessionId === asId<"session">("Filler 8"),
@@ -314,7 +312,7 @@ async function unfoldingIsStoredAndKeepsTheOpenChat(): Promise<void> {
 
 async function hoverButtonsSitBesideTheAge(): Promise<void> {
   primary("Quiet chat").focus();
-  await painted();
+  await nextFrame();
   const quiet = row("Quiet chat");
   const pin = quiet.querySelector<HTMLElement>('button[aria-label="Pin Quiet chat"]');
   const age = quiet.querySelector<HTMLElement>('[data-slot="row-meta"]');
@@ -382,14 +380,18 @@ async function doubleClickRenames(): Promise<void> {
   press(field, "Escape");
   await until(() => label("Quiet chat") !== undefined, "Escape to cancel");
   check(!updates.some((update) => update.includes("Something else")), "Escape saves nothing");
-  await painted();
-  check(document.activeElement === primary("Quiet chat"), "Escape returns focus to the row");
+  await until(
+    () => document.activeElement === primary("Quiet chat"),
+    "Escape to return focus to the row",
+  );
   const again = await startRename("Quiet chat");
   setValue(again, "Renamed chat");
   press(again, "Enter");
   await until(() => updates.includes('Quiet chat:{"name":"Renamed chat"}'), "the rename to save");
-  await painted();
-  check(document.activeElement === primary("Quiet chat"), "Enter returns focus to the row");
+  await until(
+    () => document.activeElement === primary("Renamed chat"),
+    "Enter to return focus to the row",
+  );
 }
 
 function archiveWorkingChat(): void {
@@ -425,8 +427,11 @@ async function openingAnUnreadInboxChatKeepsItThereUntilLeft(): Promise<void> {
   preferences.sidebarView.set({ ...preferences.sidebarView.get(), grouping: "inbox" });
   await until(() => find("button", "Done11") !== undefined, "the Inbox and its folded Done shelf");
   check(label("Unread answer") !== undefined, "an unread chat is in the Inbox");
-  panes.selectSession(asId<"session">("Unread answer"));
-  await painted();
+  selectSession(panes, asId<"session">("Unread answer"));
+  await until(
+    () => primary("Unread answer").getAttribute("aria-current") === "page",
+    "the opened chat to show as selected",
+  );
   check(label("Unread answer") !== undefined, "opening an unread chat keeps it in the Inbox");
   sessions.push(directory(false));
   await until(
@@ -437,7 +442,7 @@ async function openingAnUnreadInboxChatKeepsItThereUntilLeft(): Promise<void> {
     label("Unread answer") !== undefined,
     "reading it keeps it in the Inbox while it stays open",
   );
-  panes.selectSession(asId<"session">("Quiet chat"));
+  selectSession(panes, asId<"session">("Quiet chat"));
   await until(() => label("Unread answer") === undefined, "leaving it to move it to Done");
 }
 
@@ -461,7 +466,7 @@ export async function run(): Promise<string> {
   const container = document.createElement("div");
   container.style.cssText = "display:flex;width:256px;height:900px";
   document.body.append(container);
-  panes.selectSession(asId<"session">("Filler 8"));
+  selectSession(panes, asId<"session">("Filler 8"));
   const router = createAppRouter({ history: createMemoryHistory({ initialEntries: ["/"] }) });
   const root = createRoot(container);
 

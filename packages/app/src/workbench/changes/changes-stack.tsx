@@ -25,8 +25,10 @@ import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../../references/add-t
 import type { DiffFilesLoader } from "../../diff/diff-expansion.ts";
 import {
   DIFF_SEPARATOR_CSS,
+  DIFF_SEPARATOR_HEIGHT,
   EXPANSION_LINE_COUNT,
-  adaptDiffRender,
+  adaptDiffExpanders,
+  applyDiffScopes,
 } from "../../diff/diff-view.tsx";
 import { diffStyles } from "../../diff/diff.stylex.ts";
 import {
@@ -34,7 +36,7 @@ import {
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "@nyte-ai/ui/worker-pool";
-import { workbench } from "../../theme/schema.stylex.ts";
+import { diffView, workbench } from "../../theme/schema.stylex.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { useAppearance } from "../../theme/appearance-store.ts";
 import { keyOwner } from "../../lib/focus-owner.ts";
@@ -72,7 +74,6 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "auto",
-    backgroundColor: role.bgBase,
   },
   headerRow: {
     display: "flex",
@@ -120,6 +121,53 @@ const STACK_CSS = `${PIERRE_TOKEN_CSS}${DIFF_SEPARATOR_CSS}${NOTICE_CSS}`;
 
 const SCROLL_SETTLE_MS = 150;
 
+const STACK_LAYOUT = { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 };
+
+const SEARCH_OPTIONS = { disableShortcuts: true };
+
+const STACK_METRICS = new Map<
+  number,
+  {
+    readonly lineHeight: number;
+    readonly hunkSeparatorHeight: number;
+    readonly diffHeaderHeight: number;
+  }
+>();
+
+function stackMetrics(codeFontSize: number) {
+  const held = STACK_METRICS.get(codeFontSize);
+
+  if (held !== undefined) return held;
+  const probe = document.createElement("div");
+  probe.style.cssText = "position: absolute; visibility: hidden";
+  document.body.append(probe);
+
+  const height = (value: string): number => {
+    probe.style.height = value;
+
+    return Math.ceil(probe.getBoundingClientRect().height);
+  };
+
+  const made = {
+    lineHeight: height(diffView.lineHeight),
+    hunkSeparatorHeight: height(DIFF_SEPARATOR_HEIGHT),
+    diffHeaderHeight: height(workbench.headerHeight),
+  };
+
+  probe.remove();
+  STACK_METRICS.set(codeFontSize, made);
+
+  return made;
+}
+
+const onPostRender: CodeViewReactOptions<string, undefined>["onPostRender"] = (
+  node,
+  _instance,
+  phase,
+) => {
+  if (phase !== "unmount") adaptDiffExpanders(node);
+};
+
 function renderNotice(...[annotation]: CodeViewAnnotationArgs<string>): ReactElement {
   return <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>;
 }
@@ -144,6 +192,7 @@ interface HeaderInputs {
   readonly onToggleCollapsed: (path: string) => void;
   readonly onViewedChange: (path: string, viewed: boolean) => void;
   readonly onRevertPath: ((path: string) => void) | undefined;
+  readonly onExpand: (path: string) => void;
   readonly addSelection: () => void;
 }
 
@@ -182,8 +231,14 @@ function createHeaderStore() {
 
 type HeaderStore = ReturnType<typeof createHeaderStore>;
 
+/**
+ * The stacked diffs of one Changes scope. A scroll restore or focus reveal waits until `visible`:
+ * Pierre's `CodeView` drops a scroll request on a root with no layout, so one made while the
+ * panel is hidden would be lost.
+ */
 export function ChangesStack({
   ref,
+  visible,
   items,
   collapsedPaths,
   onToggleCollapsed,
@@ -203,6 +258,7 @@ export function ChangesStack({
   onDemandPatch,
 }: {
   readonly ref?: Ref<ChangesStackHandle>;
+  readonly visible: boolean;
   readonly items: readonly ChangesStackItem[];
   readonly collapsedPaths: readonly string[];
   readonly onToggleCollapsed: (path: string) => void;
@@ -221,7 +277,9 @@ export function ChangesStack({
   readonly onActivePath: (path: string) => void;
   readonly onDemandPatch?: (path: string) => () => void;
 }): ReactElement {
-  const theme = useAppearance().theme;
+  const shown = useAppearance();
+  const theme = shown.theme;
+  const root = useRef<HTMLDivElement>(null);
   const viewer = useRef<CodeViewHandle<string, undefined>>(null);
   const restore = useRef<number | undefined>(scrollTop);
   const appliedFocusRevision = useRef(0);
@@ -264,17 +322,17 @@ export function ChangesStack({
     loadDiffFiles,
     expansionLineCount: EXPANSION_LINE_COUNT,
     stickyHeaders: true,
-    layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
+    layout: STACK_LAYOUT,
+    itemMetrics: stackMetrics(shown.codeFontSize),
     unsafeCSS: STACK_CSS,
-    onPostRender: (node, _instance, phase) => {
-      if (phase !== "unmount") adaptDiffRender(node);
-    },
+    onPostRender,
     enableLineSelection: true,
-    searchOptions: { disableShortcuts: true },
+    searchOptions: SEARCH_OPTIONS,
     onRevealSearchMatch: (item: { readonly id: string }) => {
-      const source = model.sourceById.get(item.id);
+      const latest = headers.get();
+      const source = latest?.sources.get(item.id);
 
-      if (source !== undefined) onExpand(source.path);
+      if (source !== undefined) latest?.onExpand(source.path);
     },
     onGutterUtilityClick: (
       range: SelectedLineRange,
@@ -288,14 +346,15 @@ export function ChangesStack({
   useLayoutEffect(() => {
     const pending = restore.current;
 
-    if (pending === undefined || viewer.current?.getInstance() === undefined) return;
+    if (!visible || pending === undefined || viewer.current?.getInstance() === undefined) return;
     viewer.current.scrollTo({ type: "position", position: pending, behavior: "instant" });
     restore.current = undefined;
-  }, [model.items]);
+  }, [model.items, visible]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- scrolls the imperative viewer to the focused file before paint
   useLayoutEffect(() => {
     if (
+      !visible ||
       focusRevision === 0 ||
       appliedFocusRevision.current === focusRevision ||
       focusPath === undefined ||
@@ -312,7 +371,7 @@ export function ChangesStack({
       behavior: "instant",
     });
     onFocusApplied?.(focusRevision);
-  }, [focusPath, focusRevision, model.items, onFocusApplied]);
+  }, [focusPath, focusRevision, model.items, onFocusApplied, visible]);
 
   const inputs: HeaderInputs = {
     sources: model.sourceById,
@@ -323,6 +382,7 @@ export function ChangesStack({
     onToggleCollapsed,
     onViewedChange,
     onRevertPath,
+    onExpand,
     addSelection: () => {
       if (selection !== null) addRange(selection.id, selection.range);
     },
@@ -330,6 +390,11 @@ export function ChangesStack({
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- hands the latest inputs to the headers Pierre renders, which subscribe to their own slice
   useLayoutEffect(() => headers.set(inputs));
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- gives the diffs their change colours once per appearance on the root they inherit from, instead of on every render
+  useLayoutEffect(() => {
+    if (root.current !== null) applyDiffScopes(root.current);
+  }, [shown]);
 
   const renderHeader = (codeItem: CodeViewItem<string>): ReactElement => (
     <StackHeader id={codeItem.id} headers={headers} />
@@ -360,6 +425,7 @@ export function ChangesStack({
 
   return (
     <div
+      ref={root}
       {...props(styles.stack)}
       onKeyDown={(event) => {
         if (

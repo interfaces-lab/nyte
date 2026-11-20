@@ -184,9 +184,9 @@ describe("the recorder", () => {
       readonly #listeners = new Set<(event: SocketEvent) => void>();
 
       send(data: string): void {
-        setTimeout(() => {
+        queueMicrotask(() => {
           for (const listener of this.#listeners) listener({ data: `echo ${data}` });
-        }, 0);
+        });
       }
 
       close(): void {

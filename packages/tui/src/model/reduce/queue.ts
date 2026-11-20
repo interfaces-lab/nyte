@@ -135,13 +135,13 @@ function reorderTarget(
   index: number,
   to: Extract<Intent, { kind: "reorder" }>["to"],
 ): MessageId | null | undefined {
-  if (to === "earlier") return index <= 0 ? undefined : ids[index - 1];
+  if (to.kind === "earlier") return index <= 0 ? undefined : ids[index - 1];
 
-  if (to === "later") return index >= ids.length - 1 ? undefined : (ids[index + 2] ?? null);
+  if (to.kind === "later") return index >= ids.length - 1 ? undefined : (ids[index + 2] ?? null);
 
-  if (to.before === null) return index >= ids.length - 1 ? undefined : null;
+  if (to.message === null) return index >= ids.length - 1 ? undefined : null;
 
-  if (to.before === ids[index] || to.before === ids[index + 1]) return undefined;
+  if (to.message === ids[index] || to.message === ids[index + 1]) return undefined;
 
-  return ids.includes(to.before) ? to.before : null;
+  return ids.includes(to.message) ? to.message : null;
 }

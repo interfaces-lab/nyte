@@ -1,4 +1,4 @@
-import { tabPanes } from "../../test/panes.ts";
+import { selectSession, tabPanes } from "../../test/panes.ts";
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -38,6 +38,8 @@ const STREAM_MS = 16;
 const LIVE_TOOLS = 60;
 
 const ROUND_TRIP_MS = 300;
+
+const SHOWN_TURNS = 40;
 
 const ended: TurnInfo["state"] = { kind: "ended", end: { kind: "completed", usage: USAGE } };
 
@@ -149,6 +151,10 @@ function chat(name: Name): Chat {
 
   const settled = turns.flatMap((entry) => entry.messages);
 
+  const shownFrom = settled.findIndex(
+    (message) => message.turn === asId<"turn">(`${name}-turn-${String(TURNS - SHOWN_TURNS + 1)}`),
+  );
+
   const base = {
     revision: asId<"revision">(`${name}-r1`),
     seq: asSeq(1),
@@ -170,7 +176,7 @@ function chat(name: Name): Chat {
 
   const view = (live: string): SessionView => ({
     ...base,
-    messages: [...settled, answer(TURNS, live, true)],
+    messages: [...settled.slice(shownFrom), answer(TURNS, live, true)],
   });
 
   return {
@@ -220,7 +226,7 @@ installScripted(
         history: async ({ before, limit }) => {
           fetches.push(`${entry.name}:history`);
           await roundTrip();
-          const view = entry.view(entry.live);
+          const view = { ...entry.view(entry.live), messages: entry.settled };
           const end = view.messages.findIndex((message) => message.id === before);
           const start = Math.max(0, end - limit);
           const messages = view.messages.slice(start, Math.max(0, end));
@@ -249,16 +255,52 @@ function frame(): Promise<number> {
   return new Promise((resolve) => window.requestAnimationFrame(resolve));
 }
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
 async function pause(ms: number): Promise<void> {
   const until = performance.now() + ms;
 
-  while (performance.now() < until) await painted();
+  while (performance.now() < until) await nextFrame();
+}
+
+async function pageToStart(container: HTMLElement, name: Name) {
+  const viewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
+
+  if (viewport === null) throw new Error("No transcript");
+  const start = fetches.length;
+
+  const toTop = async (): Promise<void> => {
+    viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -1_000, bubbles: true }));
+    viewport.scrollTop = 100;
+    await frame();
+    viewport.scrollTop = 0;
+    await frame();
+  };
+
+  let asked = -1;
+
+  while (fetches.length !== asked) {
+    asked = fetches.length;
+    await toTop();
+    await pause(2 * ROUND_TRIP_MS);
+  }
+
+  for (let scroll = 0; scroll < 10; scroll += 1) {
+    await toTop();
+    await pause(50);
+  }
+
+  await pause(2 * ROUND_TRIP_MS);
+
+  return {
+    pages: asked - start,
+    firstPrompt: container.innerText.split("\n").includes(`${name} question 1`),
+    idleFetches: fetches.length - asked,
+  };
 }
 
 export async function run(): Promise<string> {
@@ -276,14 +318,14 @@ export async function run(): Promise<string> {
 
   const root = createRoot(container);
   const panes = tabPanes();
-  panes.selectSession(find("alpha").id);
+  selectSession(panes, find("alpha").id);
 
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -297,7 +339,7 @@ export async function run(): Promise<string> {
   const show = async (name: Name): Promise<number> => {
     const started = performance.now();
     const latest = `${find(name).live.split(" ").at(-1) ?? ""} `;
-    panes.selectSession(find(name).id);
+    selectSession(panes, find(name).id);
 
     for (;;) {
       const at = await frame();
@@ -357,12 +399,16 @@ export async function run(): Promise<string> {
       await pause(500);
     }
 
+    const switched = fetches.slice(beforeSwitching);
+    const paging = await pageToStart(container, "charlie");
+
     return JSON.stringify({
       opening,
       gapShown,
       gapClosed,
+      paging,
       switches,
-      switched: fetches.slice(beforeSwitching),
+      switched,
       slowest,
       roundTrip: ROUND_TRIP_MS,
     });

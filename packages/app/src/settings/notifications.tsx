@@ -37,7 +37,7 @@ const CHANNEL_LABEL: Readonly<Record<AlertChannel, string>> = {
 };
 
 const CHANNEL_DETAIL: Readonly<Record<AlertChannel, string>> = {
-  notification: "A system notification, even while Nyte is in the background",
+  notification: "A system notification while Nyte is in the background",
   badge: "Count it on the Dock icon",
   sound: "Play a sound with the notification",
   bounce: "Bounce the Dock icon until you switch to Nyte",
@@ -75,11 +75,6 @@ const INTERVALS = REMIND_MINUTES.map((minutes) => ({
   value: String(minutes),
   label: minutes === 1 ? "Every minute" : `Every ${String(minutes)} minutes`,
 }));
-
-const notifyViewedChat = pluginSetting(
-  "desktop.notifyViewedChat",
-  DESKTOP_SETTING_SCHEMAS.notifyViewedChat,
-);
 
 const notifySubagents = pluginSetting(
   "desktop.notifySubagents",
@@ -140,7 +135,7 @@ export function NotificationsSettings(): ReactElement {
         <SwitchRow
           setting={notifications}
           title={MASTER_LABEL.notifications}
-          description="Also while Nyte is in the background"
+          description="Only while Nyte is in the background"
         />
         <SwitchRow
           setting={dockBadge}
@@ -193,7 +188,6 @@ export function NotificationsSettings(): ReactElement {
       )}
 
       <SettingsSection>
-        <SwitchRow setting={notifyViewedChat} title="Notify about the chat you're viewing" />
         <SwitchRow
           setting={notifySubagents}
           title="Include subagent chats"

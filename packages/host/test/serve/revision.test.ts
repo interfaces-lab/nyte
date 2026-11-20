@@ -1,7 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import { LOCAL } from "@nyte-ai/core";
 import { headRef, memoryStore } from "@nyte-ai/core/store";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createTransport, decodeOutput } from "@nyte-ai/protocol";
 import { createServerHost, main, pollStore, setup } from "@nyte-ai/core/testing";
 import { createHandler } from "../../src/serve/handler.ts";
@@ -24,11 +24,11 @@ describe("head revisions across instances", () => {
     await session.run(driven.input.run.id).stop();
     const stopA = pollStore(a.kernel);
     const stopB = pollStore(b.kernel);
-    await new Promise((resolve) => setTimeout(resolve, 100));
     await second;
-
-    const view = await session.view();
     const stored = await store.refs.get(headRef(session.id, main));
+
+    await vi.waitFor(async () => expect((await session.view()).revision).toBe(stored?.revision));
+    const view = await session.view();
     const authority = new Set(["participant", "owner", "maintenance"] as const);
 
     const handler = createHandler({

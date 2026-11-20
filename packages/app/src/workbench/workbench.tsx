@@ -4,10 +4,9 @@ import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import { nyte } from "../contract/nyte.ts";
+import { nyte, windowApp } from "../contract/nyte.ts";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
-import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
-import { Row } from "@nyte-ai/ui/row";
+import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { useHostState } from "../data/host.ts";
@@ -19,17 +18,10 @@ import {
   DEFAULT_WIDTH,
   setActiveWorkbenchWidth,
   workbenchPanelWidth,
+  workbenchSeparatorValue,
   workbenchWidthBounds,
 } from "./width.ts";
-import {
-  browserSurface,
-  DEFAULT_VIEW,
-  EDITOR_SLOT,
-  tabSlot,
-  WORKBENCH_KINDS,
-  workbenchLaunchers,
-  workbenchShowsChat,
-} from "./model.ts";
+import { browserSurface, DEFAULT_VIEW, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "./model.ts";
 import type {
   WorkbenchBrowse,
   WorkbenchScope,
@@ -38,13 +30,13 @@ import type {
   WorkbenchViewState,
 } from "./model.ts";
 import { workbenchScope, workbenchViewKey, workspacePathForView } from "./paths.ts";
-import { shownWorkbenchTab, visibleTabs } from "./selectors.ts";
+import { railModel, shownWorkbenchTab, visibleTabs } from "./selectors.ts";
 import { useWorkbenchSnapshot, workbench } from "./store.ts";
 import type { ChangesTabPatch } from "./view-reducer.ts";
 import { launch, openUrl } from "./commands.ts";
 import { WorkbenchWorkspaceContext } from "./workbench-workspace.tsx";
 import type { WorkbenchWorkspace } from "./workbench-workspace.tsx";
-import { CompactRail, Rail } from "./rail.tsx";
+import { CompactRail, Rail, RailRow } from "./rail.tsx";
 import { BrowserPanel } from "./browser/browser-panel";
 import { CanvasPanel } from "../canvas/canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../lib/deferred.tsx";
@@ -203,6 +195,8 @@ function PanelContent({
           }
         />
       );
+    case "design":
+      return <Deferred entry="workbench">{({ DesignTab }) => <DesignTab />}</Deferred>;
     case "terminal":
       return (
         <Deferred entry="workbench">
@@ -247,6 +241,7 @@ function WorkbenchViewHost({
   const maximized = view.layout.kind === "maximized";
   const chatShowing = workbenchShowsChat(view.layout);
   const panelWidth = maximized ? stageWidth : workbenchPanelWidth(view.width, stageWidth);
+  const separator = workbenchSeparatorValue(panelWidth, stageWidth);
 
   const setWidth = (width: number): void =>
     workbench.dispatch(viewKey, { kind: "set-width", pixels: width });
@@ -319,6 +314,7 @@ function WorkbenchViewHost({
     setWidth(clampWorkbenchWidthToBounds(width, bounds));
   };
 
+  const code = windowApp() === "code";
   const panelVisible = current && view.expanded;
   const panelShown = panelVisible && !chatShowing;
   const panelHidden = !current || (panelVisible && chatShowing);
@@ -388,13 +384,14 @@ function WorkbenchViewHost({
         inert={panelHidden ? true : undefined}
         {...props(
           workbenchStyles.panel,
-          panelVisible && hairline.inlineStart,
+          panelVisible && (code ? workbenchStyles.panelEndRule : hairline.inlineStartAfter),
           panelVisible && [
-            workbenchStyles.panelOpen,
+            code ? workbenchStyles.panelOpenCode : workbenchStyles.panelOpen,
             workbenchStyles.panelWidth(view.width.pixels),
           ],
           !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
           panelVisible && maximized && workbenchStyles.panelOverlay,
+          panelVisible && maximized && code && workbenchStyles.panelOverlayStart,
           panelHidden && workbenchStyles.panelHidden,
         )}
       >
@@ -419,14 +416,18 @@ function WorkbenchViewHost({
             <div
               role="separator"
               tabIndex={0}
-              aria-label="Resize workbench"
+              aria-label={code ? "Resize chat panel" : "Resize workbench"}
               aria-orientation="vertical"
-              aria-valuemin={Math.round((bounds.min / stageWidth) * 100)}
-              aria-valuemax={Math.round((bounds.max / stageWidth) * 100)}
-              aria-valuenow={Math.round((panelWidth / stageWidth) * 100)}
-              aria-valuetext={`${String(Math.round((panelWidth / stageWidth) * 100))}%`}
+              aria-valuemin={separator.min}
+              aria-valuemax={separator.max}
+              aria-valuenow={separator.now}
+              aria-valuetext={`${String(separator.now)}%`}
               title="Drag to resize. Double-click to reset."
-              {...props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
+              {...props(
+                workbenchStyles.sash,
+                code && workbenchStyles.sashEnd,
+                resizing && workbenchStyles.sashActive,
+              )}
               onKeyDown={resizeWithKeyboard}
               onPointerDown={beginResize}
               onPointerMove={moveResize}
@@ -439,18 +440,16 @@ function WorkbenchViewHost({
           {panelTabs.map((tab) => renderSlot(tab, shownTab?.id === tab.id))}
           {panelShown && shownTab === null && (
             <div {...props(workbenchStyles.launcher)}>
-              {workbenchLaunchers(scope, capabilities).map((kind) => (
-                <div key={kind} {...props(workbenchStyles.launcherFrame)}>
-                  <Row
-                    variant="nav"
-                    xstyle={workbenchStyles.launcherCard}
-                    onClick={() => launch(viewKey, kind)}
-                  >
-                    <Icon name={WORKBENCH_KINDS[kind].icon} size="lg" />
-                    {WORKBENCH_KINDS[kind].label}
-                  </Row>
-                </div>
-              ))}
+              {railModel({ view, scope, capabilities, repository: false }).launchers.map(
+                (launcher) => (
+                  <RailRow
+                    key={launcher.kind}
+                    icon={launcher.icon}
+                    label={launcher.label}
+                    onClick={() => launch(viewKey, launcher.kind)}
+                  />
+                ),
+              )}
             </div>
           )}
         </div>
@@ -505,14 +504,20 @@ export function Workbench({
     const update = (): void => {
       const width = Math.floor(stage.getBoundingClientRect().width);
 
-      if (width > 0) setStageWidth(width);
+      if (width === 0) return;
+      setStageWidth(width);
+      workbench.dispatch(viewKey, { kind: "fit", narrow: workbenchWidthBounds(width).narrow });
     };
 
     update();
     const observer = new ResizeObserver(update);
     observer.observe(stage);
+    const leave = workbench.subscribe(update);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      leave();
+    };
   };
 
   return (

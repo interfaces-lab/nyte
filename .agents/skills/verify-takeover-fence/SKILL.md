@@ -1,109 +1,145 @@
 ---
 name: verify-takeover-fence
-description: "Check the takeover design with TLC and the real SQLite implementation with deterministic behavior tests when changing presence, execution claims, ref fences, or SQLite refs.set."
+description: "Checks that two hosts never drive one run, by checking the takeover design with TLC and the real SQLite implementation with deterministic behavior tests. Load it when changing presence, execution claims, ref fences, the same-machine dead-process verdict, or SQLite refs.set. Not for checking whether `localMachine` reads a pid, boot or start correctly; its own tests cover that."
 paths:
   - "packages/core/src/compose.ts"
   - "packages/core/src/contract/presence.ts"
   - "packages/core/src/engine/presence.ts"
   - "packages/core/src/drive/execution.ts"
-  - "packages/core/src/fold/commit.ts"
+  - "packages/core/src/watch/commit.ts"
   - "packages/core/src/store/log.ts"
   - "packages/core/src/store/refs.ts"
-  - "packages/host/src/sqlite.ts"
+  - "packages/host/src/store/sqlite.ts"
+  - "packages/host/src/local/process/machine.ts"
   - "packages/host/test/takeover-fence.test.ts"
 ---
 
 # Verify the takeover fence
 
-After B commits a takeover of A's head lease, A must not successfully publish another ref update. A stale publication can overwrite session state produced under B. A delayed local abort notification is allowed; a successful stale SQL write is not.
-
-There are two separate checks. Neither replaces the other.
+Once B commits a takeover of A's head lease, A must not publish another ref update, which could overwrite B's session state. A delayed local abort in A is fine; a stale SQL write that succeeds is not. Run both checks, read their results against the rules below, and cite a rule by its number when you report.
 
 ## Run both checks
 
-From the repository root:
+Rule numbers are stable ids that other skills and reviews cite. A removed rule leaves a gap.
 
-```sh
-node .agents/skills/verify-takeover-fence/check.mjs
-pnpm --dir packages/host exec vitest run test/takeover-fence.test.ts
-```
+1. **Run both checks from the repository root.** Neither check replaces the other.
 
-The first command checks the design in `TakeoverFence.tla`. Every run checks three configurations:
+   ```sh
+   node .agents/skills/verify-takeover-fence/check.mjs
+   pnpm --dir packages/host exec vitest run test/takeover-fence.test.ts
+   ```
 
-| Configuration | Required result |
-| --- | --- |
-| Both design parameters true | `NoStalePublication` passes. |
-| `AppendProcessFence=FALSE` | `NoStalePublication` fails with a counterexample. |
-| `DeleteProcessOnClaim=FALSE` | `NoStalePublication` fails with a counterexample. |
+## Design check
 
-The two failures are model self-tests, not evidence about TypeScript. The runner never reads product code or derives model parameters from it. A surviving mutant, a failing baseline, a timeout or a tool error makes the command exit nonzero. The baseline currently explores 238 generated states, 131 distinct states, to depth 9. Each mutant produces a four-state counterexample. All three checks together take about a second once tla-ts is in the pnpm store.
+2. **`check.mjs` checks `TakeoverFence.tla`.** In the model, B takes A's lease on the 20 s lapse, and C takes it on the same-machine verdict that A's OS process is gone. A may exit at any point.
+3. **Each configuration must give its required result.** The runner checks these five configurations:
 
-The second command checks the real implementation in `packages/host/test/takeover-fence.test.ts`. It composes two member-enabled hosts using `composeServer` and the existing fake-model fixtures over a real in-memory SQLite store. This reaches `openPresence` and B's `claimNow` through `host.execution.advance`. It seeds A's initial lease, not the takeover result.
+   | Configuration | Required result |
+   | --- | --- |
+   | All three parameters true | `NoStalePublication`, `NoLiveExitTakeover` pass |
+   | `AppendProcessFence=FALSE` | `NoStalePublication` fails |
+   | `DeleteProcessOnClaim=FALSE` | `NoStalePublication` fails |
+   | `PidCheckSeesExit=FALSE` | `NoLiveExitTakeover` fails |
+   | `PidCheckSeesExit=FALSE`, `NoStalePublication` only | Passes (the fence holds under a wrong dead verdict) |
 
-The test enumerates 42 orders of A's wrapper entry, SQL write and post-await reply; A's real heartbeat callback, SQL write and reply; and B's prepared claim transaction. It includes takeover before A's wrapper check, between the check and SQL, and after SQL, with the beat on either side. A's callbacks cannot run inside A's synchronous wrapper-to-SQL interval; B's transaction can. Operations skipped after revocation become no-ops in the remaining schedule slots.
+4. **A required failure is a model self-test.** The required failures are counterexamples from model self-tests, not evidence about TypeScript. The runner never reads product code or derives parameters from it.
+5. **Read the exit code.** Exit 0 means all five configurations behaved as required. Exit 1 means a failing baseline or a surviving mutant, and exit 2 means a tool failure or a timeout.
+6. **Expect these state counts.** The baseline generates 212 states, 159 of them distinct, and the last configuration generates 829 and 464. All five take about 2 s once tla-ts is in the pnpm store.
 
-Vitest fake time pauses A's heartbeat while B keeps its own presence writable and observes A for 20 seconds. Promise gates then control transaction execution and result delivery without sleeps. The gates forward the original updates to SQLite and return its actual outcomes. They do not manufacture fences, claims or replies. After every scheduled step, the test reads the stored publication and checks its literal contents. It also reads the lease at B's transaction boundary. Once B commits, B's publication must remain stored. If A's fresh beat wins first, B's prepared CAS must lose and A may still publish. The 42 cases pass in about 0.8 seconds including Vitest startup.
+## Why a wrong same-machine verdict is safe
+
+Rules 7 to 12 are one argument, in order.
+
+7. **A fences its writes.** A's writes are fenced on its process ref.
+8. **The claim deletes the fence.** The claim deletes that ref in the lease transaction, expecting the revision it read.
+9. **The fence does not rest on the verdict.** So `NoStalePublication` never rests on the verdict. A wrong verdict revokes A at its next write or beat (the last configuration).
+10. **The verdict guards in-flight work.** Until then, the verdict guards against A's in-flight work running beside B's resumed run (`NoLiveExitTakeover`).
+11. **Gone means gone on this boot.** Gone means this boot and pid namespace, with the pid free or held by a process with another start read the same way. A gone process issues no further transaction.
+12. **What the machine cannot tell reads alive.** For such a process, the 20 s lapse applies.
+
+## Implementation check
+
+13. **The test runs two presences in one process.** `takeover-fence.test.ts` runs two presences in one process, not concurrent OS processes.
+14. **Two hosts share one real SQLite connection.** Two member-enabled hosts (`composeServer`, fake-model fixtures) share one real in-memory SQLite connection, with A's initial lease seeded. `host.execution.advance` reaches the real `openPresence`, failure-detection preparation and B's `claimNow`.
+15. **The test runs 42 orders.** Each order arranges A's wrapper entry, SQL write and post-await reply, A's real heartbeat callback, SQL write and reply, and B's prepared claim transaction. The takeover lands before A's wrapper check, between the check and SQL, or after SQL, with the beat on either side.
+16. **Only B's transaction may enter A's synchronous interval.** B's transaction may enter A's synchronous wrapper-to-SQL interval, but A's callbacks may not. Steps skipped after revocation are no-ops.
+17. **Each order runs under both verdicts.** Under the lapse verdict, fake time pauses A's heartbeat, and B's presence stays writable and observes A for 20 s. Under the exited verdict, B's machine says at once that A's process is gone while A still runs and writes.
+18. **The machines are fakes.** There is therefore no real pid check and no C.
+19. **Four rows keep a silent A alive until the lapse.** In these rows A's process runs, B's machine cannot tell, A recorded no process, or B has no machine.
+20. **Promise gates order the steps without sleeps.** The gates order transaction execution and result delivery. They forward the original updates and return SQLite's actual outcomes, and they never fake fences, claims or replies.
+21. **The oracle is the stored publication.** The oracle, independent of TLC, is the stored publication's literal contents after every step and the lease at B's transaction boundary. Once B commits, B's publication must stay; if A's fresh beat wins first, B's prepared CAS must lose and A may still publish.
+22. **Expect 88 cases.** They take about 2 s with Vitest startup.
 
 ## Coverage and sync record
 
-Last confirmed product code at `d142cf6dd8cbddcda21866cd2a795dd33abdb475` on `main`.
+23. **The sync commit is the last confirmed product code.** The last confirmed product code is `ec59d402346badac166044a865bf81fff401bab1` on `main`.
+24. **This table maps each covered source to the behavior the checks cover.**
 
-| Source and function | Covered behavior |
-| --- | --- |
-| `packages/core/src/compose.ts:355-372`, `composeKernel` | Member-enabled kernels use `presence.store`. The test exercises this wiring. |
-| `packages/core/src/engine/presence.ts:39-57,78-116`, `openPresence`, `beat`, `revoke`, `store.refs.set` | Registration, heartbeat CAS, automatic process fences and delayed local revocation. |
-| `packages/core/src/engine/presence.ts:126-141`, `holder`; `packages/core/src/contract/presence.ts:10-14`, `Holder` | Prepared claims use the process revision from `dead`. The test reaches that result with a controlled clock; the model starts after it. |
-| `packages/core/src/drive/execution.ts:145-193,473-475,500-563`, `advance`, `claim`, `claimNow` | The test's public path reaches the real claim. Lease acquisition and dead-process deletion share one update array. |
-| `packages/core/src/fold/commit.ts:49-68`, `commit` | Claim publication uses `kernel.store.refs.set`. |
-| `packages/core/src/store/log.ts:5-14`, `admits`, `fenceNames` | Revision expectations and existence of fence refs decide admission. |
-| `packages/core/src/store/refs.ts:92-99`, `leaseRef`, `processRef` | Lease and process refs use distinct keys. |
-| `packages/host/src/sqlite.ts:392-470`, `connect.refs.set` | Fence checks, expectations, ref changes and events share one `BEGIN IMMEDIATE` transaction. |
-| `packages/host/test/takeover-fence.test.ts`, `schedules`, `transactionGate`, parameterized behavior test | The implementation check and its controllable scheduler. |
+    | Source | Covered behavior |
+    | --- | --- |
+    | `packages/core/src/compose.ts:373-429` `composeKernel` | Member-enabled kernels use `presence.store`; tested |
+    | `packages/core/src/engine/presence.ts:21-61,89-128` `openPresence`, `beat`, `revoke`, `store.refs.set` | Registration (`os` from `Machine.self`), heartbeat CAS, automatic process fences, delayed local revocation |
+    | `packages/core/src/engine/presence.ts:72-77,137-160` `gone`, `holder`; `packages/core/src/contract/presence.ts:14-33` `Machine`, `Holder` | Claims take the process revision from `dead`, via the lapse or `Machine.state` saying gone. Tested both ways; the model's C is the second |
+    | `packages/host/src/local/process/machine.ts` `localMachine.state` | Neither check. Pid reuse, boots, pid namespaces and start-time precision have real-process tests in `packages/host/test/local-exec.test.ts` |
+    | `packages/core/src/drive/execution.ts:147-197,485-489,512-578` `advance`, `claim`, `claimNow` | Test reaches the real claim. Lease acquisition and dead-process deletion share one update array |
+    | `packages/core/src/watch/commit.ts:57-77` `commit` | Claim publication uses `kernel.store.refs.set` |
+    | `packages/core/src/store/log.ts:13-23` `admits`, `fenceNames` | Revision expectations and fence-ref existence decide admission |
+    | `packages/core/src/store/refs.ts:107-115` `leaseRef`, `processRef` | Distinct keys |
+    | `packages/host/src/store/sqlite.ts:511-630` `connect.refs.set` | Fence checks, expectations, ref changes and events in one `BEGIN IMMEDIATE` transaction, one synchronous attempt under `writeLock`. A busy `BEGIN` retries off the event loop; nothing awaits inside the attempt |
+    | `packages/host/test/takeover-fence.test.ts` `schedules`, `transactionGate`, parameterized test | The implementation check and its scheduler |
 
-`check.mjs` prints the output of this command as a re-review notice:
+25. **The re-review notice never gates.** `check.mjs` first prints `git log` from the sync commit over the covered files. The notice never gates, even without history, and cannot show uncommitted changes, so review those separately.
 
-```sh
-git log --oneline d142cf6dd8cbddcda21866cd2a795dd33abdb475..HEAD -- packages/core/src/compose.ts packages/core/src/contract/presence.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/fold/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/sqlite.ts
-```
+When covered code changed, take rules 26 to 29 in order.
 
-History output is not a gate. Unrelated edits do not prevent TLC from running. An unavailable history range is a notice too. Review uncommitted changes separately; this log cannot show them.
-
-When covered functions change, compare their behavior and await boundaries with the cited model actions and the test scheduler. Every model variable and action has source citations. Update those citations when lines move. Inspect relevant caller or helper changes even if they are outside the coverage list. Move the sync commit forward only after confirming the mapping at that commit and running both checks. Do not commit while running this skill. Use `/maintain-formal-verification-skill` when intervening changes did not recheck the model.
+26. **Compare the changed behavior with the model and the scheduler.** Compare each changed function's behavior and await boundaries with the model actions citing it and with the test scheduler. Check relevant callers and helpers outside the table too.
+27. **Update the line citations.** Update them in `TakeoverFence.tla`, where every variable and action cites its source, and in this file.
+28. **Run both checks.** Run the commands in rule 1.
+29. **Move the sync commit.** Move it to the commit you confirmed, in `SYNC_COMMIT` in `check.mjs` and in rule 23.
+30. **Do not commit.** Make no commit while you run this skill.
 
 ## Bounds and assumptions
 
-The model has incumbent A, contenders B and C, one head lease, one publication, one heartbeat, and one prepared claim per contender. Both contenders have already completed their separate reads, object writes and interruption preparation and observed lease revision 1 and dead process revision 1. `Init` is this verification cut, not a combined atomic code step.
-
-Each transaction action is one SQLite transaction. Post-await replies are separate actions. `turn` prevents callbacks in A from interleaving before its current synchronous call reaches SQL. Lease ownership also represents its expected revision because only the two claims can change it within this cut. Heartbeat revision 2 is a fresh unequal token, not arithmetic on production revisions.
-
-Contenders retain their own process refs. Instances and revisions are unique; an old instance is never re-registered. Extra expectations and run fences for the selected publication admit it, so another rejection cannot hide a missing process fence. SQLite serializes writer transactions. Successful `COMMIT` is the publication point.
-
-The code test uses two presences on one real SQLite connection with controlled call boundaries, not concurrent OS processes. It exercises the model's A/B scheduling projection and adds real registration and failure detection preparation. It does not exercise the third contender. Its oracle is the actual stored ref, independent of TLC and its mutant configurations.
-
-Neither check covers unbounded repeated operations, arbitrary process counts, eventual recovery, absent-holder or expiry-only takeovers, process close, lease renewal/release, durable timers, job reaping, other store backends, power-loss durability or external side effects. The model does not check failure-detector timing. The test covers one controlled timing scenario, not all clock discontinuities. There is no fairness or end-to-end liveness claim and no proof that all engine callers avoid raw-store writes.
+31. **A is the incumbent, and B and C are contenders.** The model has one head lease, one publication, one heartbeat and one exit of A's OS process, and one claim per contender.
+32. **B starts prepared.** B finished reads, object writes and interruption preparation, and saw lease revision 1 and dead process revision 1.
+33. **C prepares its claim at its check.** C prepares its claim at its same-machine check, expecting the process revision it reads then.
+34. **`Init` is a verification cut.** `Init` is this verification cut, not one atomic code step. The machine's answer is a design parameter.
+35. **Each transaction action is one SQLite transaction.** Post-await replies are separate actions.
+36. **`turn` holds A's callbacks back.** `turn` keeps A's callbacks from interleaving before its current synchronous call reaches SQL.
+37. **Lease ownership stands for its expected revision.** Only the two claims change it here.
+38. **Heartbeat revision 2 is a token.** It is a fresh unequal token, not production revision arithmetic.
+39. **Instances and revisions are unique.** Contenders keep their own process refs, instances and revisions are unique, and no old instance re-registers.
+40. **Nothing else rejects the selected publication.** Extra expectations and run fences for the selected publication admit it, so no other rejection hides a missing process fence.
+41. **SQLite serializes writer transactions.** A successful `COMMIT` is the publication point.
+42. **Neither check covers what lies outside these bounds.** Neither check covers unbounded repeated operations, arbitrary process counts, eventual recovery, absent-holder or expiry-only takeovers, process close, lease renewal or release, durable timers, job reaping, other store backends, power-loss durability, external side effects, failure-detector timing, fairness, end-to-end liveness, or whether every engine caller avoids raw-store writes. The test covers one controlled timing scenario, not every clock discontinuity.
 
 ## Mutation evidence
 
-The real-code test was run independently against these temporary product edits:
+43. **These temporary product edits made the test fail.**
 
-| Temporary edit | Result |
-| --- | --- |
-| Remove `name` from the appended fences in `presence.ts:107`. | 10 of 42 schedules fail. |
-| Remove the dead-process deletion from the claim array in `execution.ts:543-545`. | 19 of 42 schedules fail. |
-| Filter out names beginning `processes/` downstream in `fenceNames`, `store/log.ts:14`. | 10 of 42 schedules fail. |
+    | Temporary product edit | Vitest result |
+    | --- | --- |
+    | Remove `name` from the appended fences, `presence.ts:118` | 20 of 88 fail |
+    | Remove the dead-process deletion from the claim array, `execution.ts:555-557` | 38 of 88 fail |
+    | Filter out names beginning `processes/` downstream in `fenceNames`, `store/log.ts:22` | 20 of 88 fail |
+    | `gone` counts "cannot tell" as gone, `presence.ts:76` | "cannot tell" row fails |
+    | `gone` counts a record without a process as gone, `presence.ts:76` | "A recorded no process" row fails |
 
-Each failure reads `A publication` where `B publication` must remain stored. One failing order is A passing its wrapper check, B committing takeover and its publication, then A's SQL write overwriting it. These are behavior failures, not source-drift notices. The design runner still succeeds while the downstream source defect is present, as expected for a separate design check.
-
-Each product scratch edit was reversed with `git diff -- <file> | git apply -R`. Repository status returned to the same four untracked additions each time, and all 42 behavior cases passed again. No product edits remain. The earlier missing regression coverage is now guarded by this test; no stale publication was found in unchanged product code within these schedules.
+44. **Each failure stored A's publication over B's.** Each failure stored `A publication` where `B publication` must stay. A passed its wrapper check, B committed the takeover and its publication, and A's SQL write overwrote it.
+45. **These are behavior failures.** The design runner still passes with each defect, so these are behavior failures, not source-drift notices.
+46. **Restored code passed.** With each file restored, all 88 passed. Unchanged product code showed no stale publication in these schedules.
 
 ## Handle a failure
 
-For a baseline TLC failure, translate the trace using the source citations. Check whether it describes the implementation or a modeling mistake. For a behavior-test failure, report the named schedule and the stored lease and publication. A stale write in unchanged product code is a finding. Do not weaken the oracle or change product code without permission.
-
-A model mutant that passes means the design check lost sensitivity, not that the code is safe. Keep the model self-tests separate from the real-source mutation exercise. Only make temporary product edits when permitted and when the file has no pre-existing changes. Reverse only that scratch diff and confirm status after each reversal.
+47. **Translate a baseline TLC failure through the citations.** Translate the trace through the source citations, and decide whether it shows an implementation mistake or a modeling mistake.
+48. **Report a behavior-test failure with its schedule.** Report the named schedule and the stored lease and publication. A stale write in unchanged product code is a finding.
+49. **A passing model mutant means lost sensitivity.** It means the design check lost sensitivity, not that the code is safe.
+50. **Keep the oracle and the product code.** Do not weaken the oracle or change product code without permission.
+51. **Keep model self-tests separate from real-source mutation.** Edit product code temporarily only when permitted and when the file has no pre-existing changes. Reverse only that scratch diff, and confirm the status after each reversal.
 
 ## Tool setup
 
-The model command needs Node and pnpm. It runs `tla-ts`, a TLA+ model checker in TypeScript, through `pnpm dlx` at the version pinned in `check.mjs`; no Java. The same model under TLC 1.7.4 explored the same 238 and 131 states. Temporary files stay outside the repository and are removed after each run.
-
-History lookup has a 5-second limit and each model run a 120-second limit. Exit 0 means all three design checks met their expected outcomes, 1 means an unexpected property result, and 2 means a tool failure. None of these exit codes claims to verify the TypeScript implementation. Run Vitest too.
+52. **The check needs Node and pnpm, not Java.** `check.mjs` runs `tla-ts`, a TypeScript TLA+ model checker, through `pnpm dlx` at its pinned version.
+53. **Only tla-ts has checked this model.** An earlier version without A's exit and the same-machine verdict explored the same states under TLC 1.7.4.
+54. **Temporary files stay outside the repository.** The runner removes them after each run.
+55. **The runner limits each step.** The limit is 5 s for the history lookup and 120 s per model run.

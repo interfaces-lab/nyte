@@ -111,8 +111,10 @@ export function toolText(content: readonly ToolCallContent[], rawOutput: unknown
         return item.oldText === null || item.oldText === undefined
           ? `Wrote ${item.path}`
           : `Edited ${item.path}`;
-      default:
+      case "terminal":
         return `Terminal ${item.terminalId}`;
+      default:
+        return `Session ${item.sessionId}`;
     }
   });
 

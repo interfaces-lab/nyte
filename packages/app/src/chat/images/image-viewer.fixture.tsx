@@ -78,12 +78,12 @@ export async function openViewer(name: string, children?: ReactNode) {
   flushSync(() => trigger.click());
   await until(() => source !== undefined && signal !== undefined, "the real deferred viewer body");
 
-  const markup = Array.from(document.querySelectorAll("button")).find(
-    (button) => button.textContent === "Markup",
-  );
+  await paint();
+  const markup = document.querySelector<HTMLButtonElement>('button[aria-label="Markup"]');
 
-  if (markup === undefined) throw new Error("Missing Markup control");
+  if (markup === null) throw new Error("Missing Markup toggle");
   flushSync(() => markup.click());
+  await paint();
   const box = document.querySelector<HTMLButtonElement>('button[aria-label="Box"]');
 
   if (box === null) throw new Error("Missing Box control");
@@ -100,7 +100,7 @@ export async function openViewer(name: string, children?: ReactNode) {
     );
 
   check(
-    document.querySelectorAll('[data-image-mark="box"]').length === 1,
+    document.querySelectorAll('[data-image-markup] [data-image-mark="box"]').length === 1,
     "The viewer must own one completed box",
   );
 

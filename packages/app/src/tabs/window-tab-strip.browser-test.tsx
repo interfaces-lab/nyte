@@ -1,9 +1,16 @@
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
+import { enableTracing } from "@nyte-ai/sdk";
 import { WindowTabStrip } from "./window-tab-strip.tsx";
 import type { WindowTabItem, WindowTabStripProps } from "./window-tab-strip.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
+
+declare global {
+  interface Window {
+    readonly rendererKey: (payload: string) => void;
+  }
+}
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -11,6 +18,25 @@ function check(condition: boolean, message: string): void {
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function tabCommits(): number {
+  return window.nyteWorkCounts?.["render:window-tab"] ?? 0;
+}
+
+async function type(character: string): Promise<void> {
+  await new Promise<void>((resolve) => {
+    document.addEventListener("renderer-key-pressed", () => resolve(), { once: true });
+    window.rendererKey(
+      JSON.stringify({
+        key: character,
+        code: `Key${character.toUpperCase()}`,
+        keyCode: character.toUpperCase().codePointAt(0),
+        text: character,
+        modifiers: 0,
+      }),
+    );
+  });
 }
 
 async function drag(from: Element, distance: number): Promise<void> {
@@ -145,7 +171,7 @@ export async function run(): Promise<string> {
       preview.getAttribute("aria-label") === "Previewed, preview",
       "A preview does not say so in its name",
     );
-    check(titleStyle(preview) === "italic", "A preview title is upright");
+    check(titleStyle(preview) === "normal", "A preview tab is italic; only file previews are");
     check(titleStyle(lasting) === "normal", "A lasting tab's title is italic");
     preview.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     check(calls.at(-1) === "keep p", "Double-click did not keep the preview");
@@ -202,6 +228,22 @@ export async function run(): Promise<string> {
       "At the end, the start alone should fade",
     );
 
+    render([tab("first", "First"), tab("a", "Alpha"), tab("b", "Beta")]);
+    const field = document.createElement("input");
+    document.body.append(field);
+    field.focus();
+    await nextFrame();
+    const before = tabCommits();
+
+    for (const character of "abc") await type(character);
+    await nextFrame();
+    field.remove();
+    check(field.value === "abc", `Typing reached the field as "${field.value}"`);
+    check(
+      tabCommits() === before,
+      `Typing outside the strip redrew its tabs ${String(tabCommits() - before)} times`,
+    );
+
     return "passed";
   } finally {
     root.unmount();
@@ -210,3 +252,5 @@ export async function run(): Promise<string> {
 }
 
 applyDisplayMode("light");
+
+enableTracing();

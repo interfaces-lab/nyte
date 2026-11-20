@@ -1,5 +1,5 @@
 import {
-  acquireSessionResources,
+  bindSession,
   getCurrentSystemPrompt,
   getCurrentTools,
   lazyStream,
@@ -64,8 +64,8 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
     description: "A tool an ACP agent ran. The agent reports the result; Nyte records it.",
     parameters: standard(mirrorArguments),
     exposure: "hidden",
-    approval: "runtime",
-    replay: "safe",
+    asks: "runtime",
+    rerun: "safe",
     class: mirrorClass,
     async execute(args, invocation) {
       const thread = live.get(invocation.session.id)?.thread;
@@ -83,23 +83,6 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
   };
 }
 
-/**
- * Agent Client Protocol agents as one model API: each ACP registry agent
- * installed on this machine is a model of the `acp` provider, run as a
- * process in the session's environment. Its text and thoughts stream as the
- * assistant's, each of its tool calls is recorded as a hidden `acp` mirror
- * call, and a permission it asks for waits until Nyte records that call and
- * is then decided by `PluginApi.approve` under the call's ACP kind (a call
- * Nyte settles without running is refused). A stopped run cancels the
- * agent's turn. Which agents there are, and the command, arguments and
- * environment each starts with, come from the registry list shipped in
- * `registry-seed.json` and the user's `agentsFile`, never from the network,
- * so no remote entry picks what runs on this machine; a user agent replaces
- * a registry agent of the same id. An agent with a `mode` has each new
- * session set to it. An installed agent is listed but runs only once the
- * user picks it, never as a default the host chooses. `agents`, when given,
- * replaces both lookups, as tests do.
- */
 export function acpAgents(options?: {
   readonly agents?: () => Promise<readonly AcpAgent[]>;
   readonly agentsFile?: string;
@@ -308,21 +291,14 @@ export function acpAgents(options?: {
     id: "acp",
     contribute: { tools: [mirrorTool(live)] },
     activate(api) {
-      const id = api.session.id;
-      const binding: Binding = {
-        env: api.env,
-        approve: (call, signal) => api.approve(call, signal),
-      };
-      const release = acquireSessionResources(id);
-      bindings.set(id, binding);
+      bindSession(
+        bindings,
+        api.session.id,
+        { env: api.env, approve: (call, signal) => api.approve(call, signal) },
+        api.signal,
+      );
 
-      const unbind = () => {
-        if (bindings.get(id) === binding) bindings.delete(id);
-        release();
-      };
-
-      if (api.signal.aborted) unbind();
-      else api.signal.addEventListener("abort", unbind, { once: true });
+      return {};
     },
   } satisfies Plugin;
 

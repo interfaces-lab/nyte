@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type {
+  BrowserDesignPick,
   BrowserDownload,
   BrowserKey,
   BrowserSurfaceState,
@@ -33,6 +34,15 @@ let views: ReadonlyMap<string, BrowserSurfaceView> = new Map();
 const listeners = new Set<() => void>();
 
 const keyListeners = new Map<string, (key: BrowserKey) => void>();
+
+const pickListeners = new Map<string, (pick: BrowserDesignPick) => void>();
+
+export type BrowserBoardEvent = Extract<
+  HostEvent,
+  { kind: "browser_board_leave" | "browser_board_wheel" }
+>;
+
+const boardListeners = new Map<string, (event: BrowserBoardEvent) => void>();
 
 function set(surface: string, view: BrowserSurfaceView): void {
   const next = new Map(views);
@@ -134,6 +144,57 @@ export function onBrowserKey(surface: string, listener: (key: BrowserKey) => voi
 
 export function applyBrowserKey(event: Extract<HostEvent, { kind: "browser_key" }>): void {
   keyListeners.get(event.surface)?.(event.key);
+}
+
+export function onBrowserPick(
+  surface: string,
+  listener: (pick: BrowserDesignPick) => void,
+): () => void {
+  pickListeners.set(surface, listener);
+
+  return () => {
+    if (pickListeners.get(surface) === listener) pickListeners.delete(surface);
+  };
+}
+
+export function applyBrowserPick(event: Extract<HostEvent, { kind: "browser_design_pick" }>): void {
+  pickListeners.get(event.surface)?.(event.pick);
+}
+
+/** Hears the Esc and zoom gestures a page entered on the Design board hands back. */
+export function onBrowserBoard(
+  surface: string,
+  listener: (event: BrowserBoardEvent) => void,
+): () => void {
+  boardListeners.set(surface, listener);
+
+  return () => {
+    if (boardListeners.get(surface) === listener) boardListeners.delete(surface);
+  };
+}
+
+export function applyBrowserBoard(event: BrowserBoardEvent): void {
+  boardListeners.get(event.surface)?.(event);
+}
+
+/** Calls the listener with a claimed surface's state each time main publishes a new one. */
+export function watchBrowserSurface(
+  surface: string,
+  listener: (state: BrowserSurfaceState) => void,
+): () => void {
+  let last = views.get(surface)?.state;
+
+  const check = (): void => {
+    const state = views.get(surface)?.state;
+
+    if (state === last || state === undefined) return;
+    last = state;
+    listener(state);
+  };
+
+  listeners.add(check);
+
+  return () => listeners.delete(check);
 }
 
 export function claimBrowserSurface(surface: string): void {

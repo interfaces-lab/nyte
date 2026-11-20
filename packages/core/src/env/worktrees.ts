@@ -2,37 +2,37 @@ import { asId, SdkError, standard } from "@nyte-ai/schema";
 import type { PrincipalId, SessionId, WorkspaceId, WorktreeCleanup } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Kernel } from "../contract/kernel.ts";
-import type { Plugin, SettingDefinition } from "../contract/plugin.ts";
+import type { Plugin, ResolvedSetting } from "../contract/plugin.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { workspaceRef } from "../store/refs.ts";
 import { attempt, listSessionRecords, liveRuns, put, STALE } from "../store/session.ts";
 import { readSetting } from "../store/setting-layers.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
-import { byIdentity, changed, readWorkspace, sessionsOn, workspaceRecords } from "./environment.ts";
+import { byIdentity, changed, readWorkspace, workspaceRecords } from "./environment.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const BRANCH_PREFIX: SettingDefinition<string> = {
+const BRANCH_PREFIX: ResolvedSetting<string> = {
   id: "worktrees.branchPrefix",
-  label: "Branch prefix",
+  title: "Branch prefix",
   schema: standard(Type.String({ pattern: "^([A-Za-z0-9][A-Za-z0-9._/-]*)?$" })),
   default: "",
   scope: "host",
 };
 
-const IDLE_DAYS: SettingDefinition<number> = {
+const IDLE_DAYS: ResolvedSetting<number> = {
   id: "worktrees.idleDays",
-  label: "Clean idle worktrees after days",
+  title: "Clean idle worktrees after days",
   schema: standard(Type.Integer({ minimum: 0 })),
   default: 7,
   scope: "host",
 };
 
-const MAX_COUNT: SettingDefinition<number> = {
+const MAX_COUNT: ResolvedSetting<number> = {
   id: "worktrees.maxCount",
-  label: "Max worktrees",
+  title: "Max worktrees",
   schema: standard(Type.Integer({ minimum: 0 })),
   default: 20,
   scope: "host",
@@ -130,8 +130,7 @@ export async function releaseWorktree(
 
   if (record === null || isolation === null || isolation === undefined) return;
 
-  if (isolation.session !== session || (await sessionsOn(kernel.store, workspace)).length > 0)
-    return;
+  if (isolation.session !== session || (await workingWithin(kernel, record))) return;
   await kernel.environments.detachWorkspace(workspace);
 
   const removal = await kernel.environments
@@ -158,6 +157,23 @@ export async function releaseWorktree(
     return outcome.kind === "stale" ? STALE : true;
   });
   changed(kernel, workspace);
+}
+
+async function workingWithin(kernel: Kernel, worktree: WorkspaceRecord): Promise<boolean> {
+  const root = "path" in worktree.target ? worktree.target.path : null;
+
+  const within = new Set(
+    (await workspaceRecords(kernel.store)).flatMap((record) =>
+      record.id === worktree.id ||
+      (root !== null &&
+        "path" in record.target &&
+        (record.target.path.startsWith(`${root}/`) || record.target.path.startsWith(`${root}\\`)))
+        ? [record.id]
+        : [],
+    ),
+  );
+
+  return (await listSessionRecords(kernel.store)).some((record) => within.has(record.workspace));
 }
 
 export async function sweepWorktrees(kernel: Kernel): Promise<void> {

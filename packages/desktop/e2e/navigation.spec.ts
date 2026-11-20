@@ -5,6 +5,7 @@ import {
   chatPane,
   chatRow,
   chatTab,
+  composer,
   messages,
   openChat,
   openNewChat,
@@ -118,7 +119,7 @@ test("the navigation journey", async ({ desktop }) => {
   await test.step("New tab adds a new chat, and closing it goes back to the chat before it", async () => {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     const before = await tabs.count();
-    await page.getByRole("button", { name: "New tab" }).click();
+    await page.getByRole("button", { name: "New chat tab" }).click();
     await expect(tabs).toHaveCount(before + 1);
     await expect(chatTab(page, "New chat")).toHaveAttribute("aria-selected", "true");
     await chatTab(page, "New chat").click({ button: "middle" });
@@ -228,7 +229,7 @@ test("the navigation journey", async ({ desktop }) => {
 
 test("the sidebar journey", async ({ desktop }) => {
   const { page } = desktop;
-  const workspace = sidebar(page).getByRole("button", { name: "home", exact: true });
+  const workspace = sidebar(page).getByRole("button", { name: "Home", exact: true });
   const workspaces = sidebar(page).getByRole("region", { name: "Workspaces" });
   const pinned = sidebar(page).getByRole("region", { name: "Pinned" });
 
@@ -294,6 +295,8 @@ test("the sidebar journey", async ({ desktop }) => {
     expect(await selected.textContent()).toBe(before);
     await page.keyboard.press("Enter");
     await expect(chatTab(page, name ?? "")).toHaveAttribute("aria-selected", "true");
+    await expect(composer(page)).toBeFocused();
+    await chatRow(page, name ?? "").focus();
     await page.keyboard.press("ArrowLeft");
     await expect(workspace).toBeFocused();
     await page.keyboard.press("ArrowLeft");

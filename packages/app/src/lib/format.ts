@@ -11,6 +11,24 @@ export function formatUsd(dollars: number): string {
   return `$${groupDigits(fixed.slice(0, -3))}${fixed.slice(-3)}`;
 }
 
+export function formatUsdShort(dollars: number): string {
+  if (dollars >= 10_000) return `$${(dollars / 1000).toFixed(0)}K`;
+
+  if (dollars >= 1000) return `$${(dollars / 1000).toFixed(1)}K`;
+
+  if (dollars >= 100) return `$${dollars.toFixed(0)}`;
+
+  return formatUsd(dollars);
+}
+
+export function formatUsdPrecise(dollars: number): string {
+  if (dollars === 0 || dollars >= 1) return formatUsd(dollars);
+
+  if (dollars >= 0.1) return `$${dollars.toFixed(2)}`;
+
+  return `$${dollars.toFixed(dollars >= 0.01 ? 3 : 4)}`;
+}
+
 export function formatTokens(tokens: number): string {
   if (tokens < 1_000) return String(Math.round(tokens));
 

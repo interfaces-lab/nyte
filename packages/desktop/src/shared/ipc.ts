@@ -1,4 +1,4 @@
-import type { HostBridge, NyteBridge, StoreOpening } from "@nyte-ai/app/contract/bridge.ts";
+import type { HostBridge, NyteBridge } from "@nyte-ai/app/contract/bridge.ts";
 import type { DesktopWindow } from "@nyte-ai/app/contract/desktop-window.ts";
 import type { IpcFailure } from "@nyte-ai/app/contract/errors.ts";
 
@@ -8,7 +8,7 @@ export const HOST_EVENT_CHANNEL = "nyte:host-event";
 
 export const THEME_PREFERENCE_CHANNEL = "nyte:theme-preference";
 
-export const BROWSER_BOUNDS_CHANNEL = "nyte:browser-bounds";
+export const BROWSER_SHOWN_CHANNEL = "nyte:browser-shown";
 
 export const BROWSER_FOCUS_CHANNEL = "nyte:browser-focus";
 
@@ -26,29 +26,31 @@ export const TERMINAL_NOTIFICATION_CHANNEL = "nyte:terminal-notification";
 
 export const UNSAVED_EDITS_CHANNEL = "nyte:unsaved-edits";
 
+export const WINDOW_WORKSPACE_CHANNEL = "nyte:window-workspace";
+
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
 export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
 
 export const WINDOW_ID_ARGUMENT = "--nyte-window";
 
-/** Given only to a window opened while no other was: every window id worth keeping. */
 export const LAUNCH_WINDOWS_ARGUMENT = "--nyte-launch-windows";
 
-/** Given only to a window Finder opened: its `DesktopWindowOpen` as JSON. */
 export const WINDOW_OPEN_ARGUMENT = "--nyte-open";
+
+export const WINDOW_APP_ARGUMENT = "--nyte-app";
+
+export const APPS_ARGUMENT = "--nyte-apps";
 
 export const MAIN_OPERATION_PATHS = [
   "host.fonts",
   "host.pickWorkspace",
   "host.pickFolder",
-  "host.storeOpening",
   "host.updates.state",
   "host.updates.check",
   "host.updates.channel",
   "host.updates.setChannel",
   "host.hostProcess.state",
-  "host.hostProcess.restart",
   "host.hostProcess.confirm",
   "host.hostProcess.start",
   "host.bundledCli",
@@ -63,23 +65,25 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.perform",
   "host.browser.close",
   "host.browser.captureFrame",
-  "host.browser.pickElement",
+  "host.browser.design",
   "host.browser.find",
   "host.browser.cancelDownload",
   "host.browser.login",
   "host.browser.history",
   "host.browser.forgetHistory",
+  "host.browser.guests",
+  "host.browser.attach",
+  "host.browser.setEntered",
+  "host.switchApp",
 ] as const;
 
 const HOST_PROCESS_PATHS = [
   "host.endpoint",
-  "host.state",
   "host.restore",
   "host.usage",
   "host.openWorkspace",
   "host.registerWorkspace",
   "host.trustWorkspace",
-  "host.closeWorkspace",
   "host.server.state",
   "host.server.connect",
   "host.server.disconnect",
@@ -119,19 +123,17 @@ export type DesktopBridge = {
   readonly window: DesktopWindow;
   windowPainted(): void;
   readonly canvasShell?: NyteBridge["canvasShell"];
+  readonly apps: NonNullable<NyteBridge["apps"]>;
   readonly host: {
     openPort(nonce: string): void;
-    storeOpening(): Promise<StoreOpening>;
   } & Pick<
     HostBridge,
     | "onMenuCommand"
     | "setThemePreference"
-    | "state"
     | "endpoint"
     | "fonts"
     | "openWorkspace"
     | "registerWorkspace"
-    | "closeWorkspace"
     | "server"
     | "remote"
     | "connect"
@@ -139,6 +141,7 @@ export type DesktopBridge = {
     | "confirmExternal"
     | "pathForFile"
     | "onEvent"
+    | "switchApp"
   > &
     Required<
       Pick<
@@ -157,6 +160,7 @@ export type DesktopBridge = {
         | "browser"
         | "attention"
         | "setUnsavedEdits"
+        | "setWorkspacePath"
       >
     >;
 };
@@ -166,7 +170,7 @@ type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
     ? BridgeMethod<T[Head], Rest>
     : never
   : P extends keyof T
-    ? T[P]
+    ? NonNullable<T[P]>
     : never;
 
 type CallMethodByPath = {

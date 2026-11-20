@@ -80,6 +80,7 @@ function reveal(state: State, direction: "earlier" | "later"): Step {
     followedSession(state)?.view ?? null,
     followedShells(state),
     local,
+    followedSession(state)?.info ?? null,
   );
 
   const session = state.facts.chat;

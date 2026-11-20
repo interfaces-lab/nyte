@@ -29,13 +29,6 @@ export function openLog(home, now = new Date()) {
 }
 
 /**
- * Runs commands with init's environment.
- *
- * `capture` runs one quietly for a check and never throws: a missing command
- * returns code 127. `run` runs one for a step: output streams to `onLine` and
- * the log, or with `inherit` straight to the terminal for a vendor tool that
- * prompts, and it throws when the command exits non-zero.
- *
  * @param {object} options
  * @param {NodeJS.ProcessEnv} options.env
  * @param {{ write(text: string): void }} options.log

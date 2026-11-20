@@ -1,27 +1,16 @@
-import type { ProjectId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
-import { reduceLayout } from "../panes/layout.ts";
-import type { Layout } from "../panes/layout.ts";
-import { createFocusRequests } from "../panes/layout-store.ts";
-import type { LayoutStore } from "../panes/layout-store.ts";
-import { PaneController } from "../panes/pane-controller.ts";
-import { paneRules } from "../panes/pane-kinds.ts";
-import type { PaneContent } from "../panes/pane-kinds.ts";
 import { chatPanes } from "../panes/pane-layout.ts";
-import { SessionViewStateStore } from "../panes/session-view-state.ts";
 import { WindowDrafts } from "../chat/composer/drafts.ts";
 import { Type } from "typebox";
-import {
-  activeTab,
-  findChatTab,
-  initialWindow,
-  reduce,
-  tabLayout,
-  withoutPreviews,
-} from "./model.ts";
-import type { OpenIntent, WindowAction, WindowState } from "./model.ts";
+import { initialWindow, paneTabId, tabLayout, withoutPreviews } from "./model.ts";
+import type { OpenIntent, WindowAction } from "./model.ts";
 import { parseStrip, storeStrip } from "./stored-strip.ts";
+import { WindowStore } from "./window-store.ts";
+import type { TabPanes } from "./window-store.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
+import type { DraftStart } from "../panes/session-view-state.ts";
+import { preferences } from "../preferences/index.ts";
+import { windowApp } from "../contract/nyte.ts";
 import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 
 const WINDOW_KEY_PREFIX = "nyte.window.v1:";
@@ -52,17 +41,19 @@ function forgetWindows(windowIds: readonly string[]): void {
 }
 
 class WindowTabs {
-  #strip = false;
+  #stored = false;
   #windowKey = `${WINDOW_KEY_PREFIX}web`;
-  #state: WindowState = initialWindow("tab", newId);
   #startupDestination = true;
   #drafts: WindowDrafts | undefined;
-  readonly #controllers = new Map<string, PaneController>();
-  readonly #listeners = new Set<() => void>();
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
+  readonly store = new WindowStore(initialWindow("tab", newId), () => this.#windowDrafts());
+
+  constructor() {
+    this.store.subscribe(() => this.#save());
+  }
 
   get strip(): boolean {
-    return this.#strip;
+    return this.#stored && windowApp() !== "code";
   }
 
   get startupDestination(): boolean {
@@ -70,7 +61,7 @@ class WindowTabs {
   }
 
   start(desktopWindow: Pick<DesktopWindow, "id" | "launch">): void {
-    this.#strip = true;
+    this.#stored = true;
     this.#windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
 
     if (desktopWindow.launch !== undefined) forgetWindows(desktopWindow.launch.windowIds);
@@ -80,33 +71,29 @@ class WindowTabs {
       newId,
     );
 
-    this.#state = saved ?? initialWindow(newId(), newId);
+    this.store.restore(saved ?? initialWindow(newId(), newId));
     this.#startupDestination = desktopWindow.launch !== undefined && saved === undefined;
     window.addEventListener("pagehide", this.#flush);
   }
 
-  readonly subscribe = (listener: () => void): (() => void) => {
-    this.#listeners.add(listener);
+  readonly subscribe = this.store.subscribe;
 
-    return () => this.#listeners.delete(listener);
-  };
-
-  readonly getSnapshot = (): WindowState => this.#state;
+  readonly getSnapshot = this.store.getSnapshot;
 
   dispatch(action: WindowAction): void {
-    const next =
-      action.kind === "open" && !this.#strip ? { ...action, target: "here" as const } : action;
-
-    this.#apply(reduce(this.#state, next, newId));
+    this.store.dispatch(
+      action.kind === "open" && !this.strip ? { ...action, target: "here" } : action,
+    );
   }
 
   openChat(sessionId: SessionId, intent: OpenIntent): void {
     this.dispatch({ kind: "open", place: { kind: "session", sessionId }, target: intent });
   }
 
-  newChat(project?: ProjectId): void {
-    this.dispatch(this.#strip ? { kind: "new-tab" } : { kind: "leave-page" });
-    this.controller().newChat(project);
+  newChat(start: DraftStart = {}): void {
+    if (start.folder !== undefined) preferences.draftFolder.set(start.folder);
+    this.dispatch(this.strip ? { kind: "new-tab" } : { kind: "leave-page" });
+    this.store.newChat(this.paneTabId(), start);
   }
 
   showDraft(draftId: string): void {
@@ -114,7 +101,7 @@ class WindowTabs {
 
     const owner =
       located?.kind === "active"
-        ? this.#state.tabs.find(
+        ? this.getSnapshot().tabs.find(
             (tab) =>
               tab.id === located.tabId &&
               chatPanes(tabLayout(tab)).some(
@@ -124,53 +111,19 @@ class WindowTabs {
         : undefined;
 
     if (owner !== undefined) this.dispatch({ kind: "activate-tab", tabId: owner.id });
-    else if (this.#strip) this.dispatch({ kind: "new-tab" });
+    else if (this.strip) this.dispatch({ kind: "new-tab" });
     else this.dispatch({ kind: "leave-page" });
-    this.controller().selectDraft(draftId);
+    this.store.selectDraft(this.paneTabId(), draftId);
   }
 
-  readonly paneTabId = (): string => findChatTab(this.#state)?.id ?? this.#state.activeTabId;
-
-  controller(tabId: string = this.paneTabId()): PaneController {
-    const existing = this.#controllers.get(tabId);
-
-    if (existing !== undefined) return existing;
-
-    const tab =
-      this.#state.tabs.find((candidate) => candidate.id === tabId) ?? activeTab(this.#state);
-
-    const controller = new PaneController({
-      store: this.#layoutStore(tab.id),
-      viewState: new SessionViewStateStore(this.#windowDrafts(), tab.id),
-    });
-
-    this.#controllers.set(tab.id, controller);
-
-    return controller;
+  removeDraft(draftId: string): void {
+    this.store.removeDraft(this.paneTabId(), draftId);
   }
 
-  #layoutStore(tabId: string): LayoutStore {
-    const focus = createFocusRequests();
-    const rules = { ...paneRules, newId };
+  readonly paneTabId = (): string => paneTabId(this.getSnapshot());
 
-    const read = (): Layout<PaneContent> =>
-      tabLayout(
-        this.#state.tabs.find((candidate) => candidate.id === tabId) ?? activeTab(this.#state),
-      );
-
-    return {
-      subscribe: this.subscribe,
-      getSnapshot: read,
-      dispatch: (...actions) => {
-        const current = read();
-        const layout = actions.reduce((next, action) => reduceLayout(next, action, rules), current);
-
-        if (layout === current) return;
-        this.#apply(reduce(this.#state, { kind: "layout", tabId, layout }, newId), tabId);
-      },
-      onFocusRequest: focus.onFocusRequest,
-      requestFocus: focus.requestFocus,
-    };
+  panes(): TabPanes {
+    return this.store.tab(this.paneTabId());
   }
 
   #windowDrafts(): WindowDrafts {
@@ -183,46 +136,15 @@ class WindowTabs {
     return this.#drafts;
   }
 
-  #apply(next: WindowState, writer?: string): void {
-    if (next === this.#state) return;
-    const previous = this.#state;
-    this.#state = next;
-
-    const known = new Set(
-      [...next.tabs, ...next.closed.map((closed) => closed.tab)].map((tab) => tab.id),
-    );
-
-    for (const tabId of this.#controllers.keys())
-      if (!known.has(tabId)) this.#controllers.delete(tabId);
-
-    const changed = [...this.#controllers].flatMap(([tabId, controller]) => {
-      const before = previous.tabs.find((tab) => tab.id === tabId);
-      const after = next.tabs.find((tab) => tab.id === tabId);
-
-      return tabId === writer ||
-        before === undefined ||
-        after === undefined ||
-        tabLayout(before) === tabLayout(after)
-        ? []
-        : [{ store: controller.store, pane: tabLayout(after).focus[0] }];
-    });
-
-    this.#save();
-
-    for (const listener of this.#listeners) listener();
-
-    for (const entry of changed) entry.store.requestFocus(entry.pane);
-  }
-
   #save(): void {
-    if (!this.#strip) return;
+    if (!this.#stored) return;
     this.#saveTimer ??= setTimeout(this.#flush, SAVE_DELAY_MS);
   }
 
   readonly #flush = (): void => {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    const lasting = withoutPreviews(this.#state, () => crypto.randomUUID());
+    const lasting = withoutPreviews(this.getSnapshot(), () => crypto.randomUUID());
 
     writeStored(localArea(), `${this.#windowKey}:tabs`, storeStrip(lasting));
   };

@@ -1,13 +1,10 @@
-import type { Connection as SdkConnection, HostId } from "@nyte-ai/sdk";
+import type { Connection as SdkConnection } from "@nyte-ai/sdk";
 import type {
-  HostEvent,
   NyteBridge,
   OpenWorkspaceOutcome,
   RegisterWorkspaceOutcome,
-  SelectedWorkspace,
 } from "../contract/bridge.ts";
-import { errorMessage } from "../contract/errors.ts";
-import { workspaceName } from "../data/workspaces.ts";
+import { registerFolder } from "../contract/register-folder.ts";
 import { connectHost } from "../data/connection.ts";
 import type { HostEndpoint } from "../contract/connection.ts";
 import { requestFolderPath } from "./add-folder.tsx";
@@ -20,13 +17,15 @@ export interface Connection {
 
 export interface ConnectOptions {
   readonly signal?: AbortSignal;
-  readonly relay?: true;
-  readonly expect?: HostId;
+  readonly expect?: HostEndpoint["expect"];
 }
 
 export interface WebBridge {
   readonly bridge: NyteBridge;
-  connect(connection: Connection, options?: ConnectOptions): Promise<HostId>;
+  connect(
+    connection: Connection,
+    options?: ConnectOptions,
+  ): Promise<Pick<SdkConnection, "hostId" | "publicKey">>;
 }
 
 const DIRECT_MS = 4_000;
@@ -83,17 +82,17 @@ async function openEndpoint(
 async function openDirect(
   options: ConnectOptions | undefined,
 ): Promise<{ readonly endpoint: HostEndpoint; readonly opened: SdkConnection } | undefined> {
-  const hostId = options?.expect;
+  const pin = options?.expect;
 
-  if (hostId === undefined) return undefined;
-  const url = await directRoute(hostId);
+  if (pin === undefined) return undefined;
+  const url = await directRoute(pin.hostId);
 
   if (url === undefined) return undefined;
 
   const endpoint: HostEndpoint = {
     url,
     credentials: { kind: "custom", headers: () => ({}) },
-    expect: { hostId },
+    expect: pin,
   };
 
   const deadline = AbortSignal.timeout(DIRECT_MS);
@@ -104,7 +103,7 @@ async function openDirect(
   return openEndpoint(endpoint, signal).then(
     (opened) => ({ endpoint, opened }),
     () => {
-      if (options?.signal?.aborted !== true) holdRoute(hostId);
+      if (options?.signal?.aborted !== true) holdRoute(pin.hostId);
 
       return undefined;
     },
@@ -124,13 +123,6 @@ function webPageUrl(url: string): string | undefined {
 export function createWebBridge(): WebBridge {
   let endpoint: HostEndpoint | undefined;
   let connection: SdkConnection | undefined;
-  let relay: true | undefined;
-  let selected: SelectedWorkspace | undefined;
-  const listeners = new Set<(event: HostEvent) => void>();
-
-  const emit = (event: HostEvent): void => {
-    for (const listener of listeners) listener(event);
-  };
 
   const connected = (): SdkConnection => {
     if (connection === undefined) throw new Error(NOT_CONNECTED);
@@ -138,54 +130,24 @@ export function createWebBridge(): WebBridge {
     return connection;
   };
 
-  const registerWorkspace = async ({
-    path,
-  }: {
-    path: string;
-  }): Promise<RegisterWorkspaceOutcome> => {
-    try {
-      const host = connected();
-      const seen = await host.workspaces.inspect({ kind: "local", path });
-      const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
-
-      if (added.kind === "stale")
-        return { kind: "failed", message: "The folder changed. Try again." };
-
-      if (added.kind === "unavailable")
-        return { kind: "failed", message: "This folder is not available on the server." };
-      const { trusted } = await host.workspace(added.workspace).info();
-
-      return {
-        kind: "registered",
-        workspace: { id: added.workspace, path, name: workspaceName(seen) },
-        needsTrust: trusted === null && seen.projectSources.length > 0,
-      };
-    } catch (cause) {
-      return { kind: "failed", message: errorMessage(cause) };
-    }
-  };
+  const registerWorkspace = ({ path }: { path: string }): Promise<RegisterWorkspaceOutcome> =>
+    registerFolder(async () => connected(), path, false, "server");
 
   const openWorkspace = async (input: { path: string }): Promise<OpenWorkspaceOutcome> => {
     const registered = await registerWorkspace(input);
 
-    if (registered.kind === "failed") return registered;
-    selected = registered.workspace;
-    emit({ kind: "workspace_opened", workspace: selected });
-
-    return { kind: "opened", workspace: selected, needsTrust: registered.needsTrust };
+    return registered.kind === "failed"
+      ? registered
+      : { kind: "opened", workspace: registered.workspace, needsTrust: registered.needsTrust };
   };
 
   const bridge: NyteBridge = {
     clientSurface: "web",
     platform: browserPlatform(),
     machineName: undefined,
-    get relay() {
-      return relay;
-    },
     host: {
       onMenuCommand: () => () => undefined,
       setThemePreference: () => undefined,
-      state: async () => ({ workspace: selected }),
       endpoint: async () => {
         if (endpoint === undefined) throw new Error(NOT_CONNECTED);
 
@@ -200,10 +162,6 @@ export function createWebBridge(): WebBridge {
         return path === undefined ? { kind: "cancelled" } : openWorkspace({ path });
       },
       pickFolder: () => requestFolderPath(connected().hostId),
-      closeWorkspace: async () => {
-        selected = undefined;
-        emit({ kind: "workspace_closed" });
-      },
       server: {
         state: () => Promise.resolve({ kind: "none" }),
         connect: refuse(SERVER),
@@ -248,11 +206,7 @@ export function createWebBridge(): WebBridge {
         if (held) window.addEventListener("beforeunload", keepUnsavedEdits);
         else window.removeEventListener("beforeunload", keepUnsavedEdits);
       },
-      onEvent: (listener) => {
-        listeners.add(listener);
-
-        return () => listeners.delete(listener);
-      },
+      onEvent: () => () => undefined,
     },
   };
 
@@ -262,7 +216,7 @@ export function createWebBridge(): WebBridge {
       const chosen: HostEndpoint = {
         url,
         credentials: { kind: "token", token },
-        ...(options?.expect === undefined ? {} : { expect: { hostId: options.expect } }),
+        expect: options?.expect,
       };
 
       const direct = await openDirect(options);
@@ -272,11 +226,9 @@ export function createWebBridge(): WebBridge {
       await connection?.close();
       connection = opened;
       endpoint = next;
-      relay = direct === undefined ? options?.relay : undefined;
-      selected = undefined;
       noteDirect(direct !== undefined);
 
-      return opened.hostId;
+      return opened;
     },
   };
 }

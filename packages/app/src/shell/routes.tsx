@@ -19,7 +19,6 @@ import { readSession, sessionRows } from "../data/session-rows.ts";
 import { routeSessionExists } from "./route-session.ts";
 import { sessionList } from "../data/directory.ts";
 import { preferences } from "../preferences/index.ts";
-import { loadHostSettings } from "../preferences/host.ts";
 import type { ShellSearch } from "../tabs/search.ts";
 import { SessionScreen } from "../panes/session-screen.tsx";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
@@ -30,12 +29,14 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { parseWindowOpen } from "../contract/desktop-window.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { CustomizeSurface } from "../customize/customize.tsx";
+import { openAppWindow } from "../commands/apps.ts";
 import { openWindowInEditor } from "../commands/window-commands.ts";
 import { ProjectOverview } from "../projects/project-overview.tsx";
 import {
   firstSettingsSection,
+  namesCustomSection,
   showsSettingsSection,
-  rememberWorkspaceHref,
+  routeSettings,
   SettingsSurface,
 } from "../settings/index.ts";
 
@@ -232,7 +233,7 @@ export const settingsRoute = createRoute({
   path: "/settings/$section",
   params: {
     parse: ({ section }) => {
-      if (!showsSettingsSection(section)) {
+      if (!showsSettingsSection(section) && !namesCustomSection(section)) {
         throw redirect({
           to: "/settings/$section",
           params: { section: firstSettingsSection() },
@@ -244,7 +245,6 @@ export const settingsRoute = createRoute({
     },
     stringify: ({ section }) => ({ section }),
   },
-  loader: () => loadHostSettings(),
   component: SettingsSurface,
 });
 
@@ -255,7 +255,11 @@ const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 export function startWindowTabs(desktopWindow: DesktopWindow): void {
   windowTabs.start(desktopWindow);
 
-  if (desktopWindow.open !== undefined) openWindowInEditor(parseWindowOpen(desktopWindow.open));
+  if (desktopWindow.open === undefined) return;
+  const open = parseWindowOpen(desktopWindow.open);
+
+  if (open.kind === "app") openAppWindow(open);
+  else openWindowInEditor(open);
 }
 
 export function windowTabRoute(): string {
@@ -278,11 +282,8 @@ export function createAppRouter({ history }: { history: RouterHistory }) {
     defaultStructuralSharing: true,
   });
 
-  router.subscribe("onResolved", () => {
-    if (!router.state.matches.some((match) => match.routeId === settingsRoute.id))
-      rememberWorkspaceHref(router.state.location.href);
-    leaveMissingSession(router);
-  });
+  router.subscribe("onResolved", () => leaveMissingSession(router));
+  routeSettings(router);
 
   return router;
 }

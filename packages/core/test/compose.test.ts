@@ -14,7 +14,7 @@ const echo: ToolDefinition<{ readonly text: string }> = {
   description: "Echo the text.",
   parameters: standard(Type.Object({ text: Type.String() })),
   class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => ({ content: [{ kind: "text", text: `echo: ${args.text}` }] }),
 };
 
@@ -111,6 +111,8 @@ describe("composeHost", () => {
       id: "reporter",
       activate(given) {
         api = given;
+
+        return {};
       },
     };
 
@@ -202,9 +204,7 @@ describe("composeHost", () => {
 
     const closed = host.close().then(() => "closed");
 
-    expect(
-      await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 0, "late"))]),
-    ).toBe("closed");
+    expect(await closed).toBe("closed");
     expect(await (await store.open()).refs.get(runRef(session.id, run))).not.toBeNull();
 
     const second = fakeModels();
@@ -249,7 +249,6 @@ describe("composeHost", () => {
     });
 
     await host.close();
-    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(fake.requests[0].options?.signal?.aborted).toBe(true);
     expect(logged).not.toContain("run:ended");
@@ -286,24 +285,24 @@ describe("composeHost", () => {
         settings: [
           {
             id: "theme",
-            label: "Theme",
+            title: "Theme",
             schema: standard(Type.Union([Type.Literal("light"), Type.Literal("dark")])),
             default: "light",
             scope: "host",
           },
           {
             id: "size",
-            label: "Size",
+            title: "Size",
             schema: standard(Type.Integer()),
             default: 1,
             scope: "host",
           },
           {
             id: "tone",
-            label: "Tone",
+            title: "Tone",
             schema: standard(Type.String()),
             default: "plain",
-            scope: "session",
+            scope: "chat",
           },
         ],
       },

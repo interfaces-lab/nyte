@@ -5,7 +5,7 @@ import { backup, DatabaseSync } from "node:sqlite";
 import fc from "fast-check";
 import { afterAll, expect, it } from "vitest";
 import { STORE_VERSION } from "@nyte-ai/core/store";
-import { sqliteStore } from "../../src/sqlite.ts";
+import { sqliteStore } from "../../src/store/sqlite.ts";
 import { MAPPING } from "./mapping.ts";
 import { scenario, writeStore } from "./scenario.ts";
 import { verifyMigration } from "./verify.ts";

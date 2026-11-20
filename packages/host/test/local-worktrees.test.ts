@@ -16,7 +16,7 @@ import {
   localProvider,
   localWorktrees,
 } from "../src/index.ts";
-import { findExecutable } from "../src/local/command.ts";
+import { findExecutable } from "../src/local/process/command.ts";
 import { fakeModels } from "./fixtures/fake-models.ts";
 import type { Reply, Request } from "./fixtures/fake-models.ts";
 

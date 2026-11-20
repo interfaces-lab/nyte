@@ -11,7 +11,6 @@ export interface AcpAgent {
   readonly command: string;
   readonly args: readonly string[];
   readonly env: Readonly<Record<string, string>>;
-  /** The ACP session mode each new session is set to, so the agent's permission asks reach Nyte; else the agent's own default. */
   readonly mode?: string;
 }
 

@@ -5,9 +5,10 @@ import { memoryStore } from "@nyte-ai/core/store";
 import type { Connection } from "@nyte-ai/core";
 import { listenFetch } from "@nyte-ai/host";
 import { chatOnly, fakeModels } from "@nyte-ai/bench";
-import { afterEach, assert, describe, expect, it } from "vitest";
-import { connect } from "../src/connect.ts";
-import { createSendJournal } from "../src/journal.ts";
+import { linkLost } from "@nyte-ai/protocol";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { connect } from "../src/connection/connect.ts";
+import { createSendJournal } from "../src/send/journal.ts";
 import { BASE, TOKEN_SECRET, readOperation, served } from "./served.ts";
 import type { Served } from "./served.ts";
 
@@ -83,6 +84,44 @@ describe("connect", () => {
     expect([refused.code, unreachable.code]).toEqual(["unauthenticated", "unavailable"]);
   });
 
+  it("fails a call the host never answers after 30 s as a lost link", async () => {
+    const host = await open();
+    let cut = false;
+
+    const connection = kept(
+      await connect({
+        url: BASE,
+        credentials: { kind: "token", token: TOKEN_SECRET },
+        fetch: (input, init) =>
+          cut
+            ? new Promise((_resolve, reject) =>
+                init?.signal?.addEventListener("abort", () =>
+                  reject(new DOMException("Aborted", "AbortError")),
+                ),
+              )
+            : host.fetch(input, init),
+      }),
+    );
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
+    cut = true;
+    let settled = false;
+    const listed = failure(() => connection.workspaces.list()).finally(() => (settled = true));
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const error = await listed;
+
+    expect({ code: error.code, lost: linkLost(error) }).toEqual({
+      code: "unavailable",
+      lost: true,
+    });
+  });
+
   it("reads custom headers again for every request", async () => {
     const host = await open();
     let reads = 0;
@@ -120,7 +159,8 @@ describe("connect", () => {
     const sent: string[] = [];
 
     host.intercept((request, next) => {
-      sent.push(request.headers.get("Authorization")?.split(" ")[0] ?? "");
+      if (new URL(request.url).pathname !== "/.nyte/identity")
+        sent.push(request.headers.get("Authorization")?.split(" ")[0] ?? "");
 
       return next(request);
     });
@@ -146,20 +186,40 @@ describe("connect", () => {
     expect(sent.at(-1)).toBe("Bearer");
   });
 
-  it("verifies the identity challenge and pins the host: another id or a forged signature is stale", async () => {
+  it("learns the host's key unpinned and pins it: another id, another key or a forged signature is stale", async () => {
     const host = await open({ identity: true });
     const credentials = { kind: "token", token: TOKEN_SECRET } as const;
-    const pin = { hostId: host.host.hostId };
+    const learned = kept(await connect({ url: BASE, credentials, fetch: host.fetch }));
+    assert(learned.publicKey !== undefined);
+    const pin = { hostId: host.host.hostId, publicKey: learned.publicKey };
     const pinned = kept(await connect({ url: BASE, credentials, fetch: host.fetch, expect: pin }));
 
     expect(pinned.hostId).toBe(host.host.hostId);
+    expect(pinned.publicKey).toBe(pin.publicKey);
 
     const other = await failure(() =>
-      connect({ url: BASE, credentials, fetch: host.fetch, expect: { hostId: asId("other") } }),
+      connect({
+        url: BASE,
+        credentials,
+        fetch: host.fetch,
+        expect: { ...pin, hostId: asId("other") },
+      }),
     );
 
     expect(other.code).toBe("stale");
     expect(other.hostId).toBe(host.host.hostId);
+
+    const rekeyed = await failure(() =>
+      connect({
+        url: BASE,
+        credentials,
+        fetch: host.fetch,
+        expect: { ...pin, publicKey: "A".repeat(43) },
+      }),
+    );
+
+    expect(rekeyed).toMatchObject({ code: "stale", hostId: host.host.hostId });
+    expect(rekeyed.message).toContain("pair again");
 
     host.intercept(async (request, next) => {
       const response = await next(request);
@@ -180,26 +240,23 @@ describe("connect", () => {
     expect(forged.code).toBe("stale");
   });
 
-  it("pins by the answering id when the host serves no identity challenge", async () => {
+  it("connects to a host that serves no identity challenge without a key, and refuses it with a pin", async () => {
     const host = await open();
     const credentials = { kind: "token", token: TOKEN_SECRET } as const;
+    const unpinned = kept(await connect({ url: BASE, credentials, fetch: host.fetch }));
 
-    const stale = await failure(() =>
-      connect({ url: BASE, credentials, fetch: host.fetch, expect: { hostId: asId("other") } }),
-    );
+    expect(unpinned.publicKey).toBeUndefined();
 
-    expect(stale).toMatchObject({ code: "stale", hostId: host.host.hostId });
-
-    const pinned = kept(
-      await connect({
+    const pinned = await failure(() =>
+      connect({
         url: BASE,
         credentials,
         fetch: host.fetch,
-        expect: { hostId: host.host.hostId },
+        expect: { hostId: host.host.hostId, publicKey: "A".repeat(43) },
       }),
     );
 
-    expect(pinned.hostId).toBe(host.host.hostId);
+    expect(pinned.code).toBe("stale");
   });
 
   it("names the operation each request posts", async () => {

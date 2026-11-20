@@ -9,6 +9,7 @@ import type {
 } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
+import { headAttention } from "@nyte-ai/plugin/client/presentation";
 import { shortId } from "../../lib/format.ts";
 import { completingCommands, indexSlash } from "../commands.ts";
 import { CLOSED, explicitMentionQuery, nextCompletion } from "../completion.ts";
@@ -66,18 +67,33 @@ export const factHandlers = {
       effects: [{ kind: "load-folder-catalog", workspace: msg.workspace }],
     }));
   },
-  view: followedOnly<MsgOf<"view">>((state, session, msg, now) =>
-    msg.view === session.view
-      ? stay(withFacts(state, { chat: { ...session, freshness: msg.freshness } }))
-      : viewArrived(state, { ...session, freshness: msg.freshness }, msg.view, now),
-  ),
+  view: followedOnly<MsgOf<"view">>((state, session, msg, now) => {
+    if (msg.view !== session.view)
+      return viewArrived(state, { ...session, freshness: msg.freshness }, msg.view, now);
+
+    if (msg.freshness === session.freshness) return stay(state);
+
+    return stay(withFacts(state, { chat: { ...session, freshness: msg.freshness } }));
+  }),
   health: (state, msg) => stay(withFacts(state, { health: msg.health })),
   "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) => {
     const next = withFacts(state, { chat: { ...session, info: msg.info } });
 
-    return session.view === null || drawnTip(msg.info) === drawnTip(session.info)
-      ? stay(next)
-      : see(next);
+    const shown =
+      session.view === null || unreadTip(msg.info) === unreadTip(session.info)
+        ? stay(next)
+        : see(next);
+
+    const { workspace } = msg.info;
+
+    if (workspace === session.info.workspace) return shown;
+
+    return andThen(shown, (current) =>
+      andThen(trustOnEntry(state, current, workspace), (trusting) => ({
+        state: trusting,
+        effects: [{ kind: "chat-moved", session: session.id, workspace }],
+      })),
+    );
   }),
   selection: (state, msg) => {
     const { chat } = state.facts;
@@ -222,15 +238,13 @@ function latestRun(execution: Execution): RunId | null {
   return execution.kind === "idle" ? (execution.lastRun?.id ?? null) : execution.run.id;
 }
 
-function drawnTip(info: SessionInfo): CommitId | null {
-  const tip = info.heads.find((head) => head.name === "main")?.tip;
-
-  return tip?.kind === "commit" ? tip.id : null;
+function unreadTip(info: SessionInfo): CommitId | null {
+  return headAttention(info).unreadTip?.commit ?? null;
 }
 
 function see(state: State): Step {
   const session = followedSession(state);
-  const tip = session === null ? null : drawnTip(session.info);
+  const tip = session === null ? null : unreadTip(session.info);
 
   if (!state.facts.focused || session === null || tip === null) return stay(state);
 
@@ -560,12 +574,7 @@ function draftChanged(
 export function completionLookup(before: State["local"]["completion"], next: State): Step {
   const after = next.local.completion;
 
-  if (
-    after.kind !== "open" ||
-    after.directories !== null ||
-    after.explicit !== null ||
-    after.suggestions !== null
-  )
+  if (after.kind !== "open" || after.explicit !== null || after.suggestions !== null)
     return stay(next);
 
   if (
@@ -575,9 +584,6 @@ export function completionLookup(before: State["local"]["completion"], next: Sta
   )
     return stay(next);
   const { cwd } = next.facts.workspace;
-
-  if (after.token.trigger === "cd")
-    return { state: next, effects: [{ kind: "list-directory", path: after.token.query, cwd }] };
 
   if (after.token.trigger === "argument" && next.facts.chat !== null)
     return {
@@ -605,6 +611,7 @@ function scrolled(state: State, atBottom: boolean): State {
     followedSession(state)?.view ?? null,
     followedShells(state),
     transcript,
+    followedSession(state)?.info ?? null,
   );
 
   if (atBottom && model.window.end === model.rows.length)

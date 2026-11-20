@@ -15,16 +15,13 @@ interface TrustInput {
   readonly args: readonly string[];
   readonly output: Output;
   readonly signal: AbortSignal;
-  /** Opens the host connection, starting a host when none runs. */
   readonly connection: () => Promise<Connection>;
 }
 
-/** What `projectResources` holds for the folder and what its files are, as the host sees them now. */
 interface Folder {
   readonly path: string;
   readonly decision: boolean | null;
   readonly trusted: boolean | null;
-  /** From a fresh scan; the workspace record keeps the list from when the folder was added. */
   readonly sources: readonly string[];
 }
 
@@ -34,17 +31,8 @@ const SHOWN = 5;
 
 const CANCELED = new CliError("canceled", "Canceled. Nothing changed.");
 
-/**
- * A trust change reloads every chat the host has loaded (core's `trustChanged`), and the MCP API
- * reads trust on each call, so the next `nyte mcp list` sees it.
- */
 const APPLIES: Row = { label: "Open chats", value: "Reload with the change now" };
 
-/**
- * `nyte trust [<FOLDER>] [--yes] [--json]`. Trusted project files can run code, so this is the
- * confirmation tier: the preview lists them and asks on a terminal; otherwise only `--yes` goes
- * ahead, and that check runs before any host work.
- */
 export async function trustCommand(input: TrustInput): Promise<void> {
   const args = parseCommandArgs("trust", input.args, 1);
   const path = await resolveFolder(args.positionals[0], "trust");
@@ -87,7 +75,6 @@ export async function trustCommand(input: TrustInput): Promise<void> {
   answer(out, args.has("json"), after, "trusted");
 }
 
-/** `nyte untrust [<FOLDER>] [--json]`: the ordinary tier, so it never asks. It records `false` even when no decision made the folder untrusted already. */
 export async function untrustCommand(input: TrustInput): Promise<void> {
   const args = parseCommandArgs("untrust", input.args, 1);
   const path = await resolveFolder(args.positionals[0], "untrust");
@@ -107,10 +94,6 @@ export async function untrustCommand(input: TrustInput): Promise<void> {
   answer(out, args.has("json"), after, "untrusted");
 }
 
-/**
- * The folder's absolute real path, the form the host keys trust by. The home folder is refused:
- * the host never trusts it (`readFolderTrust`), because its `.nyte` files are the user's own.
- */
 async function resolveFolder(
   given: string | undefined,
   verb: "trust" | "untrust",
@@ -131,7 +114,6 @@ async function resolveFolder(
   return real;
 }
 
-/** Reads without registering: a folder the host doesn't have yet has no decision on a workspace. */
 async function readFolder(host: Connection, path: string): Promise<Folder> {
   const seen = await host.workspaces.inspect({ kind: "local", path });
   const info = seen.registered === null ? null : await host.workspace(seen.registered).info();
@@ -144,7 +126,6 @@ async function readFolder(host: Connection, path: string): Promise<Folder> {
   };
 }
 
-/** Registers the folder, since it was named, then records the decision and reads it back. */
 async function decide(host: Connection, folder: Folder, trusted: boolean): Promise<Folder> {
   const workspace = host.workspace(await addFolder(host, folder.path));
   const outcome = await workspace.update({ projectResources: trusted });
@@ -173,7 +154,6 @@ function showPreview(out: Output, folder: Folder): void {
   );
 }
 
-/** One row per file under `label`, at most `SHOWN`, then `and <N> more`. */
 function listRows(label: string, sources: readonly string[], empty: string): Row[] {
   if (sources.length === 0) return [{ label, value: empty }];
   const rest = sources.length - SHOWN;
@@ -196,7 +176,6 @@ function unchanged(
   answer(out, json, folder, "unchanged");
 }
 
-/** The folder is the identifier: its path on stdout for a script, or the whole state with `--json`. */
 function answer(out: Output, json: boolean, folder: Folder, outcome: Outcome): void {
   if (json) {
     out.json({

@@ -1,4 +1,4 @@
-import { asId, SdkError, SESSIONS_LIMIT } from "@nyte-ai/schema";
+import { asId, digestIdSet, SdkError, SESSIONS_LIMIT } from "@nyte-ai/schema";
 import type {
   Configuration,
   ConfigurationPatch,
@@ -6,6 +6,7 @@ import type {
   Execution,
   HeadInfo,
   HeadName,
+  Held,
   MessageId,
   Paged,
   ParentFilter,
@@ -37,8 +38,8 @@ import { forkSession } from "../engine/fork.ts";
 import { completeSessionCommand, runCommand } from "../extend/registry.ts";
 import { configure } from "../extend/settings.ts";
 import { isolateWorkspace, releaseWorktree } from "../env/worktrees.ts";
-import { backgroundItems, countBackground } from "../fold/background.ts";
-import { commit } from "../fold/commit.ts";
+import { backgroundItems, countBackground } from "../watch/background.ts";
+import { commit } from "../watch/commit.ts";
 import { headRef, seenRef, sessionRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,
@@ -247,17 +248,21 @@ async function listSessions(
 
 interface SessionsWindow {
   readonly parents?: ParentFilter;
+  readonly pinned?: boolean;
+  readonly query?: string;
   readonly limit?: number;
 }
 
 export async function readSessions(
   kernel: Kernel,
   principal: PrincipalId,
-  input?: SessionsWindow & { readonly resume?: { readonly seq: number } },
+  input?: SessionsWindow & { readonly resume?: { readonly seq: number; readonly held?: Held } },
 ): Promise<SessionsRead> {
   const read = await kernel.store.sessions.changed({
     since: input?.resume?.seq ?? 0,
     parents: input?.parents ?? { kind: "all" },
+    pinned: input?.pinned,
+    query: input?.query,
     limit: Math.max(1, input?.limit ?? DEFAULT_LIMIT),
   });
 
@@ -269,9 +274,17 @@ export async function readSessions(
     }),
   );
 
+  const held = input?.resume?.held;
+
+  const kept =
+    held !== undefined && held.count === read.ids.length && held.digest === digestIdSet(read.ids)
+      ? held.count
+      : undefined;
+
   return {
     seq: read.seq,
-    ids: read.ids,
+    ids: kept === undefined ? read.ids : [],
+    kept,
     rows: rows.flatMap((info) => (info === null ? [] : [info])),
   };
 }
@@ -538,7 +551,9 @@ async function update(
 
   if (moved !== null) {
     await kernel.environments.detach(session);
-    await Promise.allSettled([kernel.plugins.reload(session)]);
+
+    if (kernel.plugins.runtimes().has(session))
+      await kernel.plugins.reload(session).catch(() => undefined);
     await releaseWorktree(kernel, session, moved);
   }
 

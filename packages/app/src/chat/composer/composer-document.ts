@@ -143,7 +143,15 @@ export interface ComposerCompletion extends CompletionTrigger {
   readonly end: number;
 }
 
-export function composerReferences(doc: ProseMirrorNode): readonly MessageReference[] {
+const projections = new WeakMap<
+  ProseMirrorNode,
+  { readonly text: string; readonly references: readonly MessageReference[] }
+>();
+
+function projected(doc: ProseMirrorNode) {
+  const cached = projections.get(doc);
+
+  if (cached !== undefined) return cached;
   const references: MessageReference[] = [];
   doc.descendants((node) => {
     const reference = composerReference(node);
@@ -151,12 +159,23 @@ export function composerReferences(doc: ProseMirrorNode): readonly MessageRefere
     if (reference !== undefined) references.push(reference);
   });
 
-  return references;
+  const projection = {
+    text: doc.textBetween(0, doc.content.size, "\n\n", draftLeafText),
+    references,
+  };
+
+  projections.set(doc, projection);
+
+  return projection;
+}
+
+export function composerReferences(doc: ProseMirrorNode): readonly MessageReference[] {
+  return projected(doc).references;
 }
 
 export function composerSubmission(doc: ProseMirrorNode): ComposerSubmission {
   return {
-    text: doc.textBetween(0, doc.content.size, "\n\n", draftLeafText),
+    text: projected(doc).text,
     references: composerReferences(doc),
     parts: submissionParts(doc),
   };
@@ -243,7 +262,7 @@ export function readComposerDocument(state: EditorState): ComposerDocumentState 
   const headOffset = anchor === head ? anchorOffset : draftOffset(state.doc, head);
 
   return {
-    text: state.doc.textBetween(0, state.doc.content.size, "\n\n", draftLeafText),
+    text: projected(state.doc).text,
     selectionStart: Math.min(anchorOffset, headOffset),
     selectionEnd: Math.max(anchorOffset, headOffset),
   };
@@ -453,7 +472,7 @@ export function refreshComposerReferences(
     const file = files.get(reference.file.url);
 
     if (file !== undefined && file !== reference.file)
-      tr.setNodeMarkup(pos, undefined, { reference: { kind: "file", file } });
+      tr.setNodeMarkup(pos, undefined, { reference: { ...reference, file } });
   });
 
   return referenceTokens(tr, [{ from: 0, to: tr.doc.content.size }], {

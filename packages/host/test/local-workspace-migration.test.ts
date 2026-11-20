@@ -9,9 +9,9 @@ import { fakeModels } from "./fixtures/fake-models.ts";
 import { sha256 } from "../src/hash.ts";
 import { folderIdentity } from "../src/local/identity.ts";
 import { localProvider } from "../src/local/provider.ts";
-import { migrateLocalWorkspaceIdentities } from "../src/local/workspace-migration.ts";
+import { migrateLocalWorkspaceIdentities } from "../src/local/migrations/workspace-identities.ts";
 import { openHost } from "../src/open.ts";
-import { sqliteStore } from "../src/sqlite.ts";
+import { sqliteStore } from "../src/store/sqlite.ts";
 
 const folders: string[] = [];
 

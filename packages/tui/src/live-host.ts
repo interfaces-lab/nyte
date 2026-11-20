@@ -1,91 +1,37 @@
-import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView, SessionId, SessionInfo } from "@nyte-ai/schema";
-import { headView, openHost, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
+import { errorMessage } from "./lib/format.ts";
+import type { RefusedSend } from "./effects/ports.ts";
 import type {
-  HeadStore,
+  Chat,
+  ClientConnection,
+  Freshness,
   HeadView,
   Health,
-  HostConnection,
   SessionsWindow,
-  StreamedText,
-  UnsentSends,
 } from "@nyte-ai/sdk/client";
-import type { Connection } from "@nyte-ai/sdk";
-import type { LocalEndpoint } from "@nyte-ai/service";
-import { VERSION } from "./version.ts";
-
-const MAIN = asId<"head">("main");
-
-const TAIL = 200;
 
 interface Opened<T> {
   read(): T | null;
+  freshness?(): Freshness;
   close(): void;
 }
 
-export function openLiveHost(endpoint: LocalEndpoint, kind: "tui" | "cli"): HostConnection {
-  return openHost(endpoint.url, {
-    credentials: { kind: "token", token: endpoint.token },
-    client: { kind, name: "nyte", version: VERSION },
-  });
-}
-
-export function openChat(live: HostConnection, session: SessionId): HeadStore {
-  return live.head(session, MAIN, { tail: TAIL });
-}
-
-export function chatSends(connection: Connection, session: SessionId): UnsentSends {
-  return unsentSends(connection, session, MAIN);
-}
-
-export function chatViews(
-  live: HostConnection,
-  store: HeadStore,
-  unsent: UnsentSends | null,
-): AsyncIterable<HeadView> {
-  return liveValues((changed) => {
-    let texts: StreamedText = new Map();
-    const stopStore = store.subscribe(changed);
-    const stopUnsent = unsent?.subscribe(changed);
-
-    const stopText = live.text((update) => {
-      texts = streamText(texts, update);
-      changed();
-    });
-
-    return {
-      read() {
-        const snapshot = store.snapshot();
-
-        if (snapshot === null) return null;
-        const freshness = store.freshness();
-        const view = headView(snapshot);
-
-        return withStreamedText(
-          unsent === null
-            ? view
-            : unsent.lay(view, freshness.kind === "fresh" ? freshness.seq : null),
-          texts,
-        );
-      },
-      close() {
-        stopStore();
-        stopUnsent?.();
-        stopText();
-        store.close();
-      },
-    };
-  });
+export function chatViews(chat: Chat): AsyncIterable<HeadView> {
+  return liveValues((changed) => ({
+    read: () => chat.snapshot().view,
+    freshness: () => chat.snapshot().freshness,
+    close: chat.subscribe(changed),
+  }));
 }
 
 export async function readPart(
-  live: HostConnection,
+  connection: ClientConnection,
   session: SessionId,
   part: PartId,
   signal: AbortSignal,
 ): Promise<PartView | null> {
   const snapshots = liveValues((changed) => {
-    const store = live.part(session, part);
+    const store = connection.part(session, part);
     const stop = store.subscribe(changed);
 
     return {
@@ -113,11 +59,11 @@ export async function readPart(
 }
 
 export function sessionLists(
-  live: HostConnection,
+  connection: ClientConnection,
   window: SessionsWindow,
 ): AsyncIterable<readonly SessionInfo[]> {
   return liveValues((changed) => {
-    const store = live.directory(window);
+    const store = connection.sessions.open(window);
     const stop = store.subscribe(changed);
 
     return {
@@ -140,16 +86,35 @@ export function sessionLists(
   });
 }
 
-export function healthUpdates(live: HostConnection): AsyncIterable<Health> {
+export function healthUpdates(connection: ClientConnection): AsyncIterable<Health> {
   return liveValues((changed) => ({
-    read: () => live.health.snapshot(),
-    close: live.health.subscribe(changed),
+    read: () => connection.health.snapshot(),
+    close: connection.health.subscribe(changed),
   }));
 }
 
-export async function whenOpen<T>(live: HostConnection, ask: () => Promise<T>): Promise<T> {
+export function refusedSends(connection: ClientConnection): AsyncIterable<readonly RefusedSend[]> {
+  return liveValues((changed) => ({
+    read() {
+      const listed = connection.refused.snapshot();
+
+      if (listed.length === 0) return null;
+
+      for (const send of listed) connection.refused.take(send.id);
+
+      return listed.map((send) => ({
+        session: send.session,
+        content: send.content,
+        reason: errorMessage(send.error),
+      }));
+    },
+    close: connection.refused.subscribe(changed),
+  }));
+}
+
+export async function whenOpen<T>(connection: ClientConnection, ask: () => Promise<T>): Promise<T> {
   for (;;) {
-    const since = await openSince(live);
+    const since = await openSince(connection);
 
     const answer = await ask().then(
       (value) => ({ value }),
@@ -157,17 +122,16 @@ export async function whenOpen<T>(live: HostConnection, ask: () => Promise<T>): 
     );
 
     if ("value" in answer) return answer.value;
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const health = live.health.snapshot();
+    const health = connection.health.snapshot();
 
     if (health.kind === "open" && health.since === since) throw answer.error;
   }
 }
 
-function openSince(live: HostConnection): Promise<number> {
+function openSince(connection: ClientConnection): Promise<number> {
   return new Promise((resolve, reject) => {
     const check = (): boolean => {
-      const health = live.health.snapshot();
+      const health = connection.health.snapshot();
 
       if (health.kind === "open") resolve(health.since);
       else if (health.kind === "blocked") reject(health.error);
@@ -178,7 +142,7 @@ function openSince(live: HostConnection): Promise<number> {
 
     if (check()) return;
 
-    const stop = live.health.subscribe(() => {
+    const stop = connection.health.subscribe(() => {
       if (check()) stop();
     });
   });
@@ -189,6 +153,8 @@ function liveValues<T>(open: (changed: () => void) => Opened<T>): AsyncIterable<
     [Symbol.asyncIterator]() {
       let dirty = true;
       let closed = false;
+      let last: T | null = null;
+      let lastFreshness: Freshness | undefined;
       let wake: (() => void) | null = null;
 
       const resume = (): void => {
@@ -210,9 +176,13 @@ function liveValues<T>(open: (changed: () => void) => Opened<T>): AsyncIterable<
             if (dirty) {
               dirty = false;
               const value = opened.read();
+              const freshness = opened.freshness?.();
 
-              if (value !== null) return { done: false, value };
-              continue;
+              if (value === null || (value === last && freshness === lastFreshness)) continue;
+              last = value;
+              lastFreshness = freshness;
+
+              return { done: false, value };
             }
 
             await new Promise<void>((resolve) => {

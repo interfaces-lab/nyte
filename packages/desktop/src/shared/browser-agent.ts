@@ -1,10 +1,20 @@
 import type { SessionId } from "@nyte-ai/sdk";
+import type { HostWindow } from "./host-window.ts";
 
 export type BrowserOwner =
   | { readonly kind: "home" }
   | { readonly kind: "project"; readonly path: string };
 
-export type BrowserHolder = `view:${string}` | `session:${string}`;
+export type BrowserHolder =
+  | { readonly kind: "tab"; readonly window: HostWindow }
+  | { readonly kind: "board"; readonly window: HostWindow }
+  | { readonly kind: "session"; readonly session: SessionId };
+
+export function holderKey(holder: BrowserHolder): string {
+  return holder.kind === "session"
+    ? `session:${holder.session}`
+    : `${holder.kind}:${String(holder.window)}`;
+}
 
 export interface BrowserRect {
   readonly x: number;

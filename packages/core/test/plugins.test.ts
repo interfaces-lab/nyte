@@ -1,11 +1,11 @@
-import { asId, asSeq, catalogRowKey } from "@nyte-ai/schema";
+import { asId, asSeq, catalogRowKey, SdkError } from "@nyte-ai/schema";
 import type { SessionCatalogView } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
 import { toolSource } from "../src/extend/registry.ts";
 import { LOCAL, text } from "../src/index.ts";
-import type { Plugin, PluginApi } from "../src/index.ts";
-import { attachSession } from "../src/api/attach.ts";
+import type { Command, Plugin, PluginApi } from "../src/index.ts";
+import { attachSession } from "../src/api/session-attachment.ts";
 import { main, setup, until } from "../src/harness.ts";
 import { memoryStore } from "../src/store.ts";
 import { world } from "./fake-env.ts";
@@ -29,7 +29,6 @@ describe("plugin runtime", () => {
       },
       activate(api) {
         deactivated = api.signal;
-        api.contribute.tools.add({ ...echo, name: "half" });
 
         throw new Error("No config.");
       },
@@ -37,13 +36,16 @@ describe("plugin runtime", () => {
 
     const { kernel, session, runtime } = await loaded([]);
 
-    const outcomes = await runtime.load([
-      { id: "tools", contribute: { tools: [echo] }, environment: provider("local") },
-      { id: "twin" },
-      { id: "twin" },
-      { id: "sandbox", environment: provider("local") },
-      broken,
-    ]);
+    const outcomes = await runtime.load(
+      [
+        { id: "tools", contribute: { tools: [echo] }, environment: provider("local") },
+        { id: "twin" },
+        { id: "twin" },
+        { id: "sandbox", environment: provider("local") },
+        broken,
+      ],
+      null,
+    );
 
     expect(outcomes.map((outcome) => [outcome.id, outcome.kind])).toEqual([
       ["tools", "activated"],
@@ -103,12 +105,16 @@ describe("plugin runtime", () => {
         contribute: { commands: [says("hello", "v1")] },
         activate(api) {
           first = api.signal;
+
+          return {};
         },
       },
       {
         id: "gone",
         activate(api) {
           gone = api.signal;
+
+          return {};
         },
       },
     ]);
@@ -118,6 +124,8 @@ describe("plugin runtime", () => {
       contribute: { commands: [says("hello", "v2")] },
       activate() {
         starts += 1;
+
+        return {};
       },
     };
 
@@ -252,6 +260,8 @@ describe("plugin runtime", () => {
         id: "keeper",
         activate(api) {
           signal = api.signal;
+
+          return {};
         },
       },
     ]);
@@ -259,6 +269,74 @@ describe("plugin runtime", () => {
     expect(await session.remove()).toEqual({ kind: "removed" });
     expect(signal?.aborted).toBe(true);
     expect(kernel.plugins.runtimes().has(session.id)).toBe(false);
+  });
+
+  it("rejects a plugin whose activate returns nothing, and says what to return", async () => {
+    const { runtime } = await loaded([{ id: "untyped", activate: () => JSON.parse("null") }]);
+
+    expect(runtime.outcomes().find((outcome) => outcome.id === "untyped")).toMatchObject({
+      kind: "rejected",
+      issues: [
+        {
+          message:
+            "Activation failed: activate returned nothing. Return what the plugin adds, or {} for nothing.",
+        },
+      ],
+    });
+  });
+
+  it("keeps an item only while its when is true: by the chat's parent, by a setting as it changes, and never when it throws", async () => {
+    const gated: Plugin<"core"> = {
+      id: "gated",
+      contribute: {
+        settings: [
+          { id: "gated.on", title: "On", type: "switch" },
+          {
+            id: "gated.key",
+            title: "Key",
+            type: "text",
+            when: (chat) => chat.settings["gated.on"] === true,
+          },
+        ],
+        tools: [
+          { ...echo, name: "by-setting", when: (chat) => chat.settings["gated.on"] === true },
+          { ...echo, name: "top-level", when: (chat) => chat.parent === null },
+          { ...echo, name: "child-only", when: (chat) => chat.parent !== null },
+          {
+            ...echo,
+            name: "broken",
+            when: () => {
+              throw new Error("No.");
+            },
+          },
+        ],
+        commands: [{ ...says("never", "x"), when: () => false }],
+        prompt: [{ id: "hidden", text: "Hidden.", when: () => false }],
+      },
+    };
+
+    const { kernel, host, runtime } = await loaded([gated]);
+    const tools = () => runtime.registries.tools.list().map((tool) => tool.name);
+    const settings = () => runtime.registries.settings.list().map((setting) => setting.id);
+
+    expect(tools()).toEqual(["top-level"]);
+    expect(settings()).toEqual(["gated.on"]);
+    expect(runtime.registries.commands.list()).toEqual([]);
+    expect(runtime.registries.prompt.list().map((section) => section.id)).not.toContain("hidden");
+    expect(kernel.host.current().plugins.find((row) => row.id === "gated")?.issues).toMatchObject([
+      { path: ["tools", "broken", "when"], message: "when failed, so broken is left out: No." },
+    ]);
+
+    expect(await host.settings.apply("gated.on", true)).toEqual({ kind: "applied" });
+    await until(() => (tools().includes("by-setting") ? true : undefined));
+
+    expect(tools()).toEqual(["by-setting", "top-level"]);
+    expect(settings()).toEqual(["gated.on", "gated.key"]);
+
+    expect(await host.settings.apply("gated.on", false)).toEqual({ kind: "applied" });
+    await until(() => (tools().includes("by-setting") ? undefined : true));
+
+    expect(settings()).toEqual(["gated.on"]);
   });
 });
 
@@ -272,6 +350,8 @@ describe("plugin api", () => {
         id: "mcp",
         activate(given) {
           api = given;
+
+          return {};
         },
       },
     ]);
@@ -283,8 +363,8 @@ describe("plugin api", () => {
     assert(!view.done);
 
     expect(view.value.plugins).toEqual([
-      { id: "test-environment", source: "inline", path: null, issues: [] },
-      { id: "system-prompt", source: "builtin", path: null, issues: [] },
+      { id: "test-environment", source: "builtin", path: null, issues: [] },
+      { id: "system-prompt", source: "inline", path: null, issues: [] },
       {
         id: "mcp",
         source: "inline",
@@ -306,31 +386,39 @@ describe("plugin api", () => {
     const { kernel, runtime } = await loaded([
       {
         id: "lister",
-        activate(api) {
-          api.contribute.prompt.add((draft, siblings) => {
-            draft.set("tools", {
-              id: "tools",
-              text: siblings.tools
-                .list()
-                .map((tool) => `${tool.name}: ${tool.exposure ?? "model"}`)
-                .join("\n"),
-            });
-          });
-        },
+        activate: () => ({
+          contribute: {
+            prompt: [
+              (draft, siblings) => {
+                draft.set("tools", {
+                  id: "tools",
+                  text: siblings.tools
+                    .list()
+                    .map((tool) => `${tool.name}: ${tool.exposure ?? "model"}`)
+                    .join("\n"),
+                });
+              },
+            ],
+          },
+        }),
       },
       {
         id: "mcp",
         contribute: { tools: [echo] },
-        activate(api) {
-          api.contribute.tools.add((draft) => {
-            draft.set("search", { ...echo, name: "search", exposure: "deferred" });
-          });
-          api.contribute.tools.add((draft) => {
-            draft.delete("echo");
+        activate: () => ({
+          contribute: {
+            tools: [
+              (draft) => {
+                draft.set("search", { ...echo, name: "search", exposure: "deferred" });
+              },
+              (draft) => {
+                draft.delete("echo");
 
-            throw new Error("Server down.");
-          });
-        },
+                throw new Error("Server down.");
+              },
+            ],
+          },
+        }),
       },
     ]);
 
@@ -348,36 +436,36 @@ describe("plugin api", () => {
     ]);
   });
 
-  it("coalesces registry writes and reloads before a microtask into one pass", async () => {
+  it("coalesces reloads before a microtask into one pass", async () => {
     let passes = 0;
     let api: PluginApi<"core"> | undefined;
 
-    const { kernel, session } = await loaded([
+    await loaded([
       {
         id: "counter",
         activate(given) {
           api = given;
-          given.contribute.prompt.add(() => {
-            passes += 1;
-          });
+
+          return {
+            contribute: {
+              prompt: [
+                () => {
+                  passes += 1;
+                },
+              ],
+            },
+          };
         },
       },
     ]);
 
     assert(api !== undefined);
     const before = passes;
-    api.contribute.tools.add({ ...echo, name: "a" });
-    api.contribute.tools.add({ ...echo, name: "b" });
     api.reload();
     api.reload();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await until(() => (passes > before ? true : undefined));
 
     expect(passes).toBe(before + 1);
-    expect(
-      toolSource(kernel.plugins.runtime(session.id))
-        .list()
-        .map((tool) => tool.name),
-    ).toEqual(["a", "b"]);
   });
 
   it("shows a chat's catalog to a client of a restarted host without starting the chat's plugins", async () => {
@@ -517,6 +605,135 @@ describe("plugin api", () => {
     stop();
     attached.release();
   });
+
+  it("gives every callback the plugin's api: a command acts with its caller's authority, the rest as a participant, and only calls get an api of their own", async () => {
+    const seen = new Map<string, Record<string, string>>();
+    const apis = new Map<string, PluginApi<"core">>();
+
+    const tried = async (run: () => unknown): Promise<string> => {
+      try {
+        await run();
+
+        return "ok";
+      } catch (error) {
+        return error instanceof SdkError ? error.code : String(error);
+      }
+    };
+
+    const probe = async (where: string, api: PluginApi<"core">): Promise<void> => {
+      apis.set(where, api);
+      seen.set(where, {
+        "host.principals.list": await tried(() => api.host.principals.list()),
+        env: await tried(() => api.env.cwd),
+        project: await tried(() => api.project.contextFiles),
+        "registries.tools.list": await tried(() => api.registries.tools.list()),
+        "registries.settings.value": await tried(() => api.registries.settings.value("probe.on")),
+        "registries.settings.set": await tried(() => api.registries.settings.set("probe.on", true)),
+        "storage.set": await tried(() => api.storage.set("k", where)),
+        "session.info": await tried(() => api.session.info()),
+        wrapEnv: await tried(() => api.wrapEnv((inner) => inner)()),
+      });
+    };
+
+    const command: Command<"core"> = {
+      name: "probe",
+      title: "Probe",
+      description: "",
+      run: async (_text, context) => {
+        await probe("command", context.api);
+
+        return "done";
+      },
+    };
+
+    const plugin: Plugin<"core"> = {
+      id: "probe",
+      contribute: {
+        settings: [{ id: "probe.on", title: "On", type: "switch" }],
+        tools: [
+          {
+            ...echo,
+            name: "probe",
+            execute: async (_args, invocation) => {
+              await probe("tool", invocation.api);
+
+              return { content: [] };
+            },
+          },
+        ],
+        commands: [command],
+        prompt: [
+          {
+            id: "probe",
+            text: async (context) => {
+              if (!seen.has("prompt text")) await probe("prompt text", context.api);
+
+              return null;
+            },
+          },
+        ],
+      },
+      hooks: {
+        before_tool: async (_call, context) => {
+          await probe("decide hook", context.api);
+
+          return { action: "continue" };
+        },
+        run_started: async (_run, context) => {
+          await probe("observe hook", context.api);
+        },
+      },
+      async activate(api) {
+        await probe("activate", api);
+
+        return {};
+      },
+    };
+
+    const fake = fakeModels();
+    fake.reply(
+      { content: [{ type: "toolCall", id: "c", name: "probe", arguments: { text: "x" } }] },
+      { content: [{ type: "text", text: "Done." }] },
+    );
+    await using host = await open(fake, { plugins: [plugin] });
+    const { session, receipt } = await host.sessions.start({ content: "Hi." });
+    await receipt.settled();
+    await until(() => (seen.has("observe hook") ? true : undefined));
+
+    expect(await session.command("probe", "")).toEqual({ kind: "ran", output: "done" });
+
+    const works = {
+      env: "ok",
+      project: "ok",
+      "registries.tools.list": "ok",
+      "registries.settings.value": "ok",
+      "registries.settings.set": "ok",
+      "storage.set": "ok",
+      "session.info": "ok",
+      wrapEnv: "ok",
+    };
+
+    const participant = { ...works, "host.principals.list": "denied" };
+
+    expect(Object.fromEntries(seen)).toEqual({
+      activate: participant,
+      "observe hook": participant,
+      "prompt text": participant,
+      "decide hook": participant,
+      tool: participant,
+      command: { ...works, "host.principals.list": "ok" },
+    });
+    expect(
+      Object.fromEntries([...apis].map(([where, api]) => [where, api === apis.get("activate")])),
+    ).toEqual({
+      activate: true,
+      "observe hook": true,
+      "prompt text": true,
+      "decide hook": false,
+      tool: false,
+      command: false,
+    });
+  });
 });
 
 describe("commands", () => {
@@ -638,32 +855,43 @@ describe("commands", () => {
 
     const folder: Plugin<"core"> = {
       id: "folder",
-      activate(api) {
-        api.contribute.commands.add({
-          name: "probe",
-          title: "Probe",
-          description: "Answers from the folder.",
-          run: () => "answered",
-        });
-        api.contribute.commands.add({
-          name: "ask",
-          title: "Ask",
-          description: "Starts a chat.",
-          run: () => ({ prompt: "Review this." }),
-        });
-      },
+      activate: () => ({
+        contribute: {
+          commands: [
+            {
+              name: "probe",
+              title: "Probe",
+              description: "Answers from the folder.",
+              run: () => "answered",
+            },
+            {
+              name: "ask",
+              title: "Ask",
+              description: "Starts a chat.",
+              run: () => ({ prompt: "Review this." }),
+            },
+          ],
+        },
+      }),
     };
 
     const chatOnly: Plugin<"core"> = {
       id: "chat-only",
       async activate(api) {
         await api.session.info();
-        api.contribute.commands.add({
-          name: "never",
-          title: "Never",
-          description: "Needs a chat.",
-          run: () => "never",
-        });
+
+        return {
+          contribute: {
+            commands: [
+              {
+                name: "never",
+                title: "Never",
+                description: "Needs a chat.",
+                run: () => "never",
+              },
+            ],
+          },
+        };
       },
     };
 

@@ -1,6 +1,18 @@
-import type { EditorSelection, Range } from "@nyte-ai/ui/diffs/edit";
+import type { Editor, EditorSelection, Range } from "@nyte-ai/ui/diffs/edit";
+import type { CodeViewHandle } from "@nyte-ai/ui/diffs/react";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { Value } from "typebox/value";
+import { currentLights, shine } from "../../light/light.ts";
+import type { Subject } from "../../light/light.ts";
 import { ADD_TO_CHAT_LABEL, addToChatShortcut } from "../../references/add-to-chat.ts";
+import type { FileTarget } from "./file-store.ts";
+
+const SURFACE = "editor";
+
+interface TextPosition {
+  readonly line: number;
+  readonly character: number;
+}
 
 export const SELECTION_ACTION_CSS = `
 [data-add-selection] {
@@ -41,11 +53,6 @@ export function selectedLines(
   return { start: start.line + 1, end: last + 1 };
 }
 
-/**
- * Selects whole lines `start` to `end` of `text`, one-based and inclusive, clamped to the file: up to
- * the next line's start, or the last line's end at the end of the file. Backward, so the caret stays
- * on the first line.
- */
 export function wholeLineSelection(
   text: string,
   lines: { readonly start: number; readonly end: number },
@@ -63,6 +70,93 @@ export function wholeLineSelection(
         : { line: last, character: rows[last]?.length ?? 0 },
     direction: "backward",
   };
+}
+
+/**
+ * Moves the person's light to what they selected in a file, or to the file when the selection is a bare caret. Offsets
+ * come from the editor's document, which counts them without building the file's text.
+ */
+export function shineSelection(
+  path: string,
+  text: { readonly eol: string; offsetAt(position: TextPosition): number },
+  selection: EditorSelection,
+): void {
+  const collapsed =
+    selection.start.line === selection.end.line &&
+    selection.start.character === selection.end.character;
+
+  const start = collapsed ? 0 : fileOffset(text, selection.start);
+  const end = collapsed ? 0 : fileOffset(text, selection.end);
+
+  const subject: Subject = collapsed
+    ? { kind: "file", path }
+    : { kind: "span", path, start: Math.min(start, end), end: Math.max(start, end) };
+
+  if (Value.Equal(currentLights().you?.subject, subject)) return;
+  shine(subject, SURFACE);
+}
+
+/** Where the editor lands for a span of a file's text: from its first character to the one after its last. */
+export function spanTarget(
+  text: string,
+  start: number,
+  end: number,
+): Extract<FileTarget, { readonly kind: "range" }> {
+  const from = textPosition(text, start);
+  const to = textPosition(text, end);
+
+  return {
+    kind: "range",
+    line: from.line + 1,
+    column: from.character + 1,
+    endLine: to.line + 1,
+    endColumn: to.character + 1,
+  };
+}
+
+function fileOffset(
+  text: { readonly eol: string; offsetAt(position: TextPosition): number },
+  position: TextPosition,
+): number {
+  return text.offsetAt(position) + position.line * (text.eol.length - 1);
+}
+
+function textPosition(text: string, offset: number): TextPosition {
+  const rows = text.slice(0, offset).split("\n");
+
+  return { line: rows.length - 1, character: rows.at(-1)?.length ?? 0 };
+}
+
+/** Puts the selection in the editor and shows it: unmoved when its line is already in view, centred otherwise. */
+export function revealSelection(
+  viewer: Pick<CodeViewHandle<undefined, undefined>, "scrollTo">,
+  editor: Pick<Editor, "focus" | "getRangeRect" | "setSelections">,
+  input: {
+    readonly path: string;
+    readonly selection: Range & { readonly direction: "none" | "forward" | "backward" };
+    readonly box: HTMLElement | null;
+  },
+): void {
+  const head = input.selection.start;
+  const shown = inView(editor.getRangeRect({ start: head, end: head }), input.box);
+
+  editor.setSelections([input.selection]);
+  editor.focus({ preventScroll: true });
+
+  if (!shown)
+    viewer.scrollTo({ type: "line", id: input.path, lineNumber: head.line + 1, align: "center" });
+}
+
+/** Whether a caret's rectangle shows inside a box; a line the editor hasn't drawn has none. */
+export function inView(caret: DOMRect | undefined, box: HTMLElement | null): boolean {
+  const bounds = box?.getBoundingClientRect();
+
+  return (
+    caret !== undefined &&
+    bounds !== undefined &&
+    caret.top >= bounds.top &&
+    caret.bottom <= bounds.bottom
+  );
 }
 
 export function selectionAction(mac: boolean, add: () => void): HTMLElement {

@@ -87,6 +87,7 @@ export class RelayServer {
   resets = 0;
   received = 0;
   uploaded = 0;
+  pings = 0;
   muted = false;
   private readonly server: WebSocketServer;
   private readonly options: RelayServerOptions;
@@ -286,6 +287,8 @@ export class RelayServer {
       }
 
       if (frame.t === "ping") {
+        this.pings += 1;
+
         if (!this.muted) socket.send(RELAY_PONG);
 
         return;

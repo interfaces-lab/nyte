@@ -25,14 +25,14 @@ export const ICON_CONSUMERS = [
   },
   {
     name: "docs",
-    package: "packages/docs",
+    package: "services/web",
     central: ["central-icons"],
     selected: "src/lib/icon-set/selected.generated.ts",
     sets: { central: "./central.ts", lucide: "./lucide.ts" },
   },
   {
     name: "mobile",
-    package: "packages/mobile",
+    package: "packages/ios",
     central: ["central-icons"],
     selected: "scripts/icon-set/selected.generated.mjs",
     sets: { central: "./central.mjs", lucide: "./lucide.mjs" },
@@ -46,9 +46,6 @@ function centralInstalled(consumer) {
 }
 
 /**
- * The set a package builds with. Throws when NYTE_ICONS asks for Central and
- * it isn't installed, since a silent fallback would hide the mismatch.
- *
  * @returns {"central" | "lucide"}
  */
 export function iconSet(name, env = process.env) {

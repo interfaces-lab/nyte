@@ -48,12 +48,13 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
 
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {
   const language = getFiletypeFromFileName(path);
-  const lines = contents.split(/\r?\n/u);
 
-  if (language === "markdown" || language === "mdx") return headings(lines);
-  const patterns = PATTERNS.get(language) ?? [];
+  if (language === "markdown" || language === "mdx") return headings(contents.split(/\r?\n/u));
+  const patterns = PATTERNS.get(language);
 
-  return lines.flatMap((text, index): OutlineSymbol[] => {
+  if (patterns === undefined) return [];
+
+  return contents.split(/\r?\n/u).flatMap((text, index): OutlineSymbol[] => {
     for (const [pattern, kind] of patterns) {
       const name = pattern.exec(text)?.[1];
 

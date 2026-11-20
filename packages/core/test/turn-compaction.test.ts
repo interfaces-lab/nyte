@@ -307,7 +307,7 @@ describe("turn compaction", () => {
     const moved = await (
       await session.move(
         { kind: "commit", id: first.status.commit },
-        { abandoned: { summarize: {} } },
+        { abandoned: { kind: "summarize" } },
       )
     ).settled();
 

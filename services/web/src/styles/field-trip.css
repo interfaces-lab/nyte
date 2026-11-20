@@ -1,0 +1,257 @@
+@layer components {
+  .design-trip-figure {
+    margin: 16px 0 40px;
+  }
+
+  .design-trip-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .design-trip-figure[data-size="icon"] .design-trip-image {
+    width: min(100%, 288px);
+  }
+
+  .design-trip-figure[data-size="sheet"] {
+    max-width: 1040px;
+  }
+
+  .design-trip-image[data-rounded] {
+    border-radius: 22.5%;
+  }
+
+  .design-trip-image[data-framed] {
+    border: 1px solid var(--design-line);
+  }
+
+  .design-trip-caption {
+    max-width: var(--design-measure);
+    margin-top: 12px;
+    color: var(--color-muted-foreground);
+    font-size: 14px;
+    line-height: 22px;
+    text-wrap: pretty;
+  }
+
+  .design-trip-caption p {
+    margin: 0;
+  }
+
+  .design-trip-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr));
+    gap: 24px 20px;
+    max-width: 920px;
+    margin: 16px 0 40px;
+  }
+
+  .design-trip-gallery[data-size="large"] {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+    max-width: 640px;
+  }
+
+  .design-trip-gallery .design-trip-figure {
+    margin: 0;
+  }
+
+  .design-trip-gallery .design-trip-figure[data-size] .design-trip-image {
+    width: 100%;
+  }
+
+  .design-trip-gallery .design-trip-caption {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  .design .design-article > .design-trip-feedback {
+    max-width: calc(var(--design-measure) + 2 * var(--design-inset));
+    margin: 8px 0 24px;
+  }
+
+  .design-trip-feedback > * {
+    margin: 0;
+    padding-block: 0 10px;
+    padding-inline-start: 16px;
+    border-inline-start: 2px solid var(--design-accent);
+    color: var(--color-foreground);
+  }
+
+  .design-trip-feedback > :last-child {
+    padding-block-end: 2px;
+  }
+
+  .design-trip-feedback .design-trip-feedback-label {
+    padding-block-end: 4px;
+    color: var(--design-accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .design-trip-plate {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    max-width: 1040px;
+    margin: 16px 0 48px;
+  }
+
+  @container (min-width: 840px) {
+    .design-trip-plate {
+      grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+      gap: 40px;
+      align-items: start;
+    }
+  }
+
+  .design-trip-drawing {
+    width: 100%;
+    max-width: 400px;
+    height: auto;
+    overflow: visible;
+    color: var(--color-foreground);
+    font-family: var(--font-mono);
+    font-size: 4.5px;
+  }
+
+  .design-trip-facts-caption {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .design-trip-plate-title {
+    color: var(--color-foreground);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 22px;
+  }
+
+  .design-trip-facts {
+    margin: 0;
+    border-top: 1px solid var(--design-line);
+  }
+
+  .design-trip-fact {
+    display: grid;
+    grid-template-columns: minmax(0, 13ch) minmax(0, 1fr);
+    gap: 16px;
+    padding-block: 8px;
+    border-bottom: 1px solid var(--design-line);
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .design-trip-fact dt {
+    color: var(--color-tertiary-foreground);
+  }
+
+  .design-trip-fact dd {
+    margin: 0;
+    color: var(--color-foreground);
+    overflow-wrap: anywhere;
+  }
+
+  .design-trip-tile {
+    fill: none;
+    stroke: var(--design-tick);
+    stroke-width: 0.35;
+  }
+
+  .design-trip-gridline {
+    fill: none;
+    stroke: var(--design-line);
+    stroke-width: 0.35;
+  }
+
+  .design-trip-ticks path {
+    fill: none;
+    stroke: var(--design-tick);
+    stroke-width: 0.4;
+  }
+
+  .design-trip-axis text {
+    fill: var(--color-tertiary-foreground);
+  }
+
+  .design-trip-margin {
+    fill: none;
+    stroke: var(--design-accent);
+    stroke-width: 0.4;
+    stroke-dasharray: 2 1.5;
+  }
+
+  .design-trip-circle {
+    fill: currentColor;
+    fill-opacity: 0.06;
+    stroke: currentColor;
+    stroke-width: 0.5;
+  }
+
+  .design-trip-circle[data-light] {
+    fill-opacity: 0.14;
+  }
+
+  .design-trip-point {
+    fill: currentColor;
+  }
+
+  .design-trip-touch {
+    fill: var(--design-accent);
+  }
+
+  .design-trip-measure path {
+    fill: none;
+    stroke: var(--design-accent);
+    stroke-width: 0.5;
+  }
+
+  .design-trip-measure path[data-ray] {
+    stroke-dasharray: 1.5 1.5;
+  }
+
+  .design-trip-measure text {
+    fill: var(--design-accent);
+  }
+
+  .design-trip-shape {
+    fill: currentColor;
+    fill-opacity: 0.08;
+    stroke: currentColor;
+    stroke-width: 0.6;
+  }
+
+  .design-trip-patch {
+    fill: none;
+    stroke: var(--design-accent);
+    stroke-width: 0.6;
+  }
+
+  .design-trip-swatch {
+    stroke: var(--design-line);
+    stroke-width: 0.5;
+  }
+
+  .design-trip-callout path {
+    fill: none;
+    stroke-width: 0.5;
+  }
+
+  .design-trip-specimen {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .design-trip-construction circle {
+    fill: none;
+    stroke: var(--design-accent);
+    stroke-width: 0.5;
+  }
+
+  .design-trip-construction circle[data-point] {
+    fill: var(--design-accent);
+    stroke: none;
+  }
+}

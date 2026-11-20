@@ -1,7 +1,3 @@
-/**
- * The grid check's overlay. `drawOverlay` and `clearOverlay` run through `page.evaluate`, which sends
- * their source text, so neither may reference anything outside its own body.
- */
 import type { Rect } from "./collect.ts";
 
 export interface Mark {

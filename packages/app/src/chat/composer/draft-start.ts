@@ -8,10 +8,10 @@ import { readStartCatalog } from "../../data/catalog.ts";
 import { findProject } from "../../data/projects.ts";
 import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { connected } from "../../data/connection.ts";
-import { chatStore } from "../../data/chat-store.ts";
-import { selectedModelOption } from "./model-picker-state.ts";
+import { chatStore, warmSession } from "../../data/chat-store.ts";
+import { draftModel, selectedModelOption } from "./model-picker-state.ts";
 import { startComposerChat } from "./composer-send.ts";
-import type { ComposerSendPlan } from "./composer-send.ts";
+import type { ComposerSendPlan } from "./composer-plan.ts";
 
 async function connectedWhileWaiting(
   store: SessionViewStateStore,
@@ -51,7 +51,7 @@ export async function startDraft(
     const named = draft?.project === undefined ? undefined : findProject(draft.project);
     const project = named?.workspace === workspace ? named : undefined;
 
-    const model = draft?.choice?.model ?? project?.models.coordinator ?? catalog.defaults?.model;
+    const model = draftModel(draft?.choice, project, catalog.defaults);
 
     const listed = selectedModelOption(
       catalog.models.filter((option) => option.listed),
@@ -92,8 +92,9 @@ export async function startDraft(
       },
       plan,
     );
+    warmSession(id);
     await chatStore(id)
-      .next()
+      .until(() => true)
       .catch(() => undefined);
     actions.openDraftChat(draftId, id);
   } catch (cause: unknown) {

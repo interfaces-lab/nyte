@@ -1,144 +1,84 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Popover } from "@nyte-ai/ui/popover";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
-import { skipToken, useQuery } from "@tanstack/react-query";
-// oxlint-disable-next-line no-restricted-imports -- the compiler skips memoizing the file index because later closures capture it, so it would rebuild on every keystroke
-import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useDeferredValue,
+  useId,
+  useLayoutEffect,
+  // oxlint-disable-next-line no-restricted-imports -- the compiler skips memoizing the file index because later closures capture it, so it would rebuild on every keystroke
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ReactElement, RefObject } from "react";
-import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
 import type { MentionFile } from "../../data/files.ts";
-import type { CommandCompletion, CommandInfo } from "@nyte-ai/sdk";
-import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";
+import type { CommandCompletion } from "@nyte-ai/sdk";
+import type { SessionCatalogView } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
 import type { ComposerComboboxState, ComposerEditorHandle } from "./composer-editor.tsx";
-import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts";
-import type { FileSuggestion, MentionSuggestion } from "./composer-suggestion-ranking.ts";
-import { composerEnterAction } from "./composer-keys.ts";
+import {
+  rememberSuggestion,
+  useRecentSuggestions,
+  useSuggestionFrecency,
+} from "./composer-recent.ts";
+import {
+  createMentionSuggestionRanking,
+  knownMentionFiles,
+} from "./composer-suggestion-ranking.ts";
+import {
+  argumentToken,
+  CLOSED_MENU,
+  descriptionExcerpt,
+  findQuery,
+  liveToken,
+  menuKey,
+  nextMenu,
+  pickFor,
+  suggestionAttribution,
+  suggestionEmptyText,
+  suggestionGroup,
+  suggestionPreviewTitle,
+  suggestionReference,
+  suggestionsFor,
+} from "./composer-suggestion-menu.ts";
+import type {
+  ArgumentSuggestion,
+  ComposerSource,
+  ComposerSuggestion,
+  MenuEvent,
+  MenuState,
+  SuggestionSources,
+  SuggestionToken,
+} from "./composer-suggestion-menu.ts";
+import { useChatFolder } from "../chat-folder.ts";
+import { activeEditorFile } from "../../workbench/model.ts";
+import { workbenchViewKey } from "../../workbench/paths.ts";
+import { workbench } from "../../workbench/store.ts";
 import { mentionPreviewRows } from "../../references/mention-preview.ts";
-import { CONVERSATION_MENTION, sameReference } from "../../references/message-references.ts";
+import { sameReference } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
 const NONE: readonly never[] = [];
 
-interface SkillSuggestion {
-  readonly kind: "skill";
-  readonly id: string;
-  readonly label: string;
-  readonly description: string;
-  readonly icon: "skills";
-  readonly skill: SkillInfo;
-}
+const ARGUMENT_DELAY_MS = 120;
 
-interface PluginCommandSuggestion {
-  readonly kind: "plugin-command";
-  readonly id: string;
-  readonly label: string;
-  readonly description: string;
-  readonly icon: "command";
-  readonly command: CommandInfo;
-}
-
-interface ArgumentSuggestion {
-  readonly kind: "argument";
-  readonly id: string;
-  readonly label: string;
-  readonly description: string;
-  readonly icon: "command";
-  readonly value: string;
-}
-
-type ComposerSuggestion =
-  | ArgumentSuggestion
-  | PluginCommandSuggestion
-  | SkillSuggestion
-  | MentionSuggestion
-  | FileSuggestion;
-
-type ChipSuggestion = Exclude<ComposerSuggestion, PluginCommandSuggestion | ArgumentSuggestion>;
-
-type SuggestionMenuState =
-  | {
-      readonly kind: "mention";
-      readonly start: number;
-      readonly end: number;
-      readonly query: string;
-    }
-  | {
-      readonly kind: "slash";
-      readonly start: number;
-      readonly end: number;
-      readonly query: string;
-    }
-  | {
-      readonly kind: "argument";
-      readonly command: string;
-      readonly start: number;
-      readonly end: number;
-      readonly query: string;
-    };
-
-function argumentToken(
-  document: ComposerDocumentState,
-  commands: readonly CommandInfo[],
-): SuggestionMenuState | undefined {
-  const argument = findCommandArgument(document.text, document.selectionStart);
-
-  if (
-    argument === undefined ||
-    document.selectionStart !== document.selectionEnd ||
-    !commands.some((candidate) => candidate.name === argument.command && candidate.completes)
-  )
-    return undefined;
-
-  return { kind: "argument", ...argument, end: document.text.length };
-}
+type ArgumentResult =
+  | { readonly status: "ready"; readonly suggestions: readonly ArgumentSuggestion[] }
+  | { readonly status: "error"; readonly message: string };
 
 interface ArgumentAnswer {
   readonly command: string;
   readonly query: string;
-  readonly suggestions: readonly ArgumentSuggestion[];
+  readonly result: ArgumentResult;
 }
-
-function liveToken(
-  document: ComposerDocumentState,
-  menu: SuggestionMenuState,
-  commands: readonly CommandInfo[],
-): SuggestionMenuState | undefined {
-  if (menu.kind === "argument") {
-    const argument = argumentToken(document, commands);
-
-    return argument?.kind === "argument" &&
-      argument.command === menu.command &&
-      argument.start === menu.start
-      ? argument
-      : undefined;
-  }
-
-  const token = completionTrigger(
-    document.text.slice(menu.start),
-    document.selectionStart - menu.start,
-  );
-
-  if (
-    token?.start !== 0 ||
-    document.selectionStart !== document.selectionEnd ||
-    token.kind !== (menu.kind === "mention" ? "@" : "/") ||
-    (token.kind === "@" && token.query.startsWith("file://"))
-  )
-    return undefined;
-
-  return { kind: menu.kind, start: menu.start, end: menu.start + token.end, query: token.query };
-}
-
-type ComposerSource<T> =
-  | { readonly status: "loading" }
-  | { readonly status: "error" }
-  | { readonly status: "ready"; readonly data: T };
 
 export type ComposerSuggestionCatalog = ComposerSource<
   Pick<SessionCatalogView, "commands" | "skills">
@@ -152,8 +92,6 @@ export function composerSource<T>(data: T | undefined, failed: boolean): Compose
   return failed ? { status: "error" } : { status: "loading" };
 }
 
-const NYTE_COMMAND_OWNERS = new Set(["", "rename", "web"]);
-
 function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
   if (list === null) return;
   const top = option.offsetTop;
@@ -161,168 +99,6 @@ function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
 
   if (top < list.scrollTop) list.scrollTop = top;
   else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
-}
-
-interface RankedSuggestion {
-  readonly suggestion: ComposerSuggestion;
-  readonly index: number;
-  readonly rank: number;
-}
-
-function rankSuggestions(
-  suggestions: readonly ComposerSuggestion[],
-  query: string,
-): readonly ComposerSuggestion[] {
-  if (query === "") return suggestions;
-
-  return suggestions
-    .flatMap((suggestion, index): RankedSuggestion[] => {
-      const label = suggestion.label.toLocaleLowerCase();
-      const description = suggestion.description.toLocaleLowerCase();
-
-      const rank = label.startsWith(query)
-        ? 0
-        : label.includes(query)
-          ? 1
-          : description.includes(query)
-            ? 2
-            : undefined;
-
-      return rank === undefined ? [] : [{ suggestion, index, rank }];
-    })
-    .sort((left, right) => left.rank - right.rank || left.index - right.index)
-    .map(({ suggestion }) => suggestion);
-}
-
-function suggestionsFor(
-  kind: Exclude<SuggestionMenuState["kind"], "argument">,
-  rawQuery: string,
-  commands: readonly CommandInfo[],
-  skills: readonly SkillInfo[],
-  rankMentions: ReturnType<typeof createMentionSuggestionRanking>,
-  hasConversationContext: boolean,
-): readonly ComposerSuggestion[] {
-  if (kind === "mention") {
-    return rankMentions(rawQuery, hasConversationContext);
-  }
-
-  const query = rawQuery.trim().toLocaleLowerCase();
-
-  return rankSuggestions(
-    [
-      ...commands.map((command): ComposerSuggestion => ({
-        kind: "plugin-command",
-        id: `plugin-command:${command.name}`,
-        label: command.name,
-        description: command.description,
-        icon: "command",
-        command,
-      })),
-      ...skills.map((skill): ComposerSuggestion => ({
-        kind: "skill",
-        id: `skill:${skill.name}`,
-        label: skill.name,
-        description: skill.description,
-        icon: "skills",
-        skill,
-      })),
-    ],
-    query,
-  );
-}
-
-type SuggestionGroup = "context" | "files" | "commands" | "skills";
-
-function suggestionGroup(suggestion: ComposerSuggestion): SuggestionGroup {
-  switch (suggestion.kind) {
-    case "mention":
-      return "context";
-    case "file":
-      return "files";
-    case "plugin-command":
-    case "argument":
-      return "commands";
-    case "skill":
-      return "skills";
-    default: {
-      const _exhaustive: never = suggestion;
-
-      return _exhaustive;
-    }
-  }
-}
-
-function suggestionPreviewTitle(suggestion: ComposerSuggestion): string {
-  if (suggestion.kind !== "skill") return suggestion.label;
-
-  return suggestion.label
-    .split(/[-_]/u)
-    .filter((part) => part !== "")
-    .map((part) => `${part.slice(0, 1).toLocaleUpperCase()}${part.slice(1)}`)
-    .join(" ");
-}
-
-function suggestionAttribution(suggestion: ComposerSuggestion): string | undefined {
-  switch (suggestion.kind) {
-    case "plugin-command":
-      return NYTE_COMMAND_OWNERS.has(suggestion.command.owner)
-        ? "Created by Nyte"
-        : `Created by ${suggestion.command.owner}`;
-    case "skill":
-      return suggestion.skill.location;
-    case "mention":
-    case "argument":
-    case "file":
-      return undefined;
-    default: {
-      const _exhaustive: never = suggestion;
-
-      return _exhaustive;
-    }
-  }
-}
-
-function suggestionEmptyText(
-  kind: Exclude<SuggestionMenuState["kind"], "argument">,
-  source: ComposerSource<unknown>,
-  slashSubject: "commands and skills" | "skills",
-): string {
-  switch (source.status) {
-    case "loading":
-      return kind === "mention" ? "Loading files…" : `Loading ${slashSubject}…`;
-    case "error":
-      return kind === "mention" ? "Couldn’t load workspace files" : `Couldn’t load ${slashSubject}`;
-    case "ready":
-      return kind === "mention" ? "No Context Found" : "No Matches Found";
-    default: {
-      const _exhaustive: never = source;
-
-      return _exhaustive;
-    }
-  }
-}
-
-function findQuery(
-  text: string,
-  query: string,
-): { readonly start: number; readonly end: number } | undefined {
-  const needle = query.trim().toLocaleLowerCase();
-
-  if (needle === "") return undefined;
-  const [before = "", ...after] = text.toLocaleLowerCase().split(needle);
-
-  if (after.length === 0) return undefined;
-
-  return { start: before.length, end: before.length + needle.length };
-}
-
-function descriptionExcerpt(description: string, query: string): string {
-  const match = findQuery(description, query);
-
-  if (match === undefined || match.start <= 36) return description;
-  const start = Math.max(0, match.start - 24);
-
-  return `${start === 0 ? "" : "…"}${description.slice(start)}`;
 }
 
 function HighlightedSuggestionText({
@@ -356,19 +132,23 @@ function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElem
         <div
           key={`${String(depth)}:${row.label}`}
           {...props(
-            text.sm,
+            text.base,
             composerStyles.suggestionPreviewPathRow,
-            composerStyles.suggestionPreviewPathIndent(depth),
             depth === rows.length - 1 && composerStyles.suggestionPreviewPathLeaf,
           )}
         >
-          {row.kind === "file" ? (
-            <FileTypeIcon path={row.label} />
-          ) : (
-            <span aria-hidden="true" {...props(composerStyles.suggestionPreviewPathIcon)}>
-              <Icon name="folder" size="xs" />
+          {Array.from({ length: depth }, (_, level) => (
+            <span key={level} aria-hidden="true" {...props(composerStyles.suggestionPreviewGuide)}>
+              <span {...props(composerStyles.suggestionPreviewGuideLine, hairline.inlineStart)} />
             </span>
-          )}
+          ))}
+          <span aria-hidden="true" {...props(composerStyles.suggestionPreviewPathIcon)}>
+            {row.kind === "file" ? (
+              <FileTypeIcon path={row.label} />
+            ) : (
+              <Icon name="folder" size="xs" />
+            )}
+          </span>
           <span {...props(composerStyles.suggestionPreviewPathLabel)}>{row.label}</span>
         </div>
       ))}
@@ -381,6 +161,7 @@ function SuggestionPreview({
 }: {
   readonly suggestion: ComposerSuggestion;
 }): ReactElement {
+  if (suggestion.kind === "file") return <MentionPathPreview file={suggestion.file} />;
   const attribution = suggestionAttribution(suggestion);
 
   return (
@@ -396,33 +177,13 @@ function SuggestionPreview({
           {attribution}
         </div>
       )}
-      {suggestion.kind === "file" ? (
-        <MentionPathPreview file={suggestion.file} />
-      ) : (
-        suggestion.kind !== "mention" && (
-          <div {...props(text.base, composerStyles.suggestionPreviewDescription)}>
-            {suggestion.description}
-          </div>
-        )
+      {suggestion.kind !== "mention" && (
+        <div {...props(text.base, composerStyles.suggestionPreviewDescription)}>
+          {suggestion.description}
+        </div>
       )}
     </>
   );
-}
-
-function suggestionReference(suggestion: ChipSuggestion): MessageReference {
-  switch (suggestion.kind) {
-    case "skill":
-      return { kind: "skill", name: suggestion.skill.name, path: suggestion.skill.location };
-    case "mention":
-      return CONVERSATION_MENTION;
-    case "file":
-      return { kind: "file", file: suggestion.file };
-    default: {
-      const exhaustive: never = suggestion;
-
-      return exhaustive;
-    }
-  }
 }
 
 interface ComposerSuggestionsOptions {
@@ -453,6 +214,11 @@ interface ComposerSuggestions {
   readonly menu: ReactElement;
 }
 
+interface LiveToken {
+  readonly token: SuggestionToken;
+  readonly text: string;
+}
+
 export function useComposerSuggestions({
   editorRef,
   anchorRef,
@@ -466,11 +232,23 @@ export function useComposerSuggestions({
 }: ComposerSuggestionsOptions): ComposerSuggestions {
   const listRef = useRef<HTMLDivElement>(null);
   const [activeOption, setActiveOption] = useState<HTMLDivElement | null>(null);
-  const [menu, setMenu] = useState<SuggestionMenuState>();
-  const [index, setIndex] = useState(0);
-  const [highlighted, setHighlighted] = useState(false);
+  const [menuState, setMenuState] = useState<MenuState>(CLOSED_MENU);
+  const [argumentAnswer, setArgumentAnswer] = useState<ArgumentAnswer>();
+  const generation = useRef(0);
+  const requested = useRef<string | undefined>(undefined);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const menu = menuState.token;
+  const highlighted = menuState.highlighted;
   const popupId = useId();
   const deferredQuery = useDeferredValue(menu?.query ?? "");
+  const root = useChatFolder()?.path;
+  const viewKey = workbenchViewKey(root);
+
+  const workbenchView = useSyncExternalStore(
+    workbench.subscribe,
+    () => (menu?.kind === "mention" ? workbench.getView(viewKey) : undefined),
+    () => undefined,
+  );
 
   const commands =
     suggestionCatalog.status === "ready" && onCommand !== undefined
@@ -479,89 +257,168 @@ export function useComposerSuggestions({
 
   const skills = suggestionCatalog.status === "ready" ? suggestionCatalog.data.skills : NONE;
   const files = mentionFiles.status === "ready" ? mentionFiles.data : NONE;
-  const rankMentions = useMemo(() => createMentionSuggestionRanking(files), [files]);
+  const scanning = mentionFiles.status === "loading";
+  const recent = useRecentSuggestions();
+  const frecency = useSuggestionFrecency();
+
+  const recency = useMemo(
+    () => ({
+      accepted: recent,
+      opened:
+        workbenchView === undefined
+          ? NONE
+          : [
+              ...new Set(
+                [activeEditorFile(workbenchView), ...workbenchView.tabs].flatMap((tab) =>
+                  tab?.kind === "file" ? [tab.path] : [],
+                ),
+              ),
+            ],
+    }),
+    [recent, workbenchView],
+  );
+
+  const known = useMemo(
+    () => (scanning && root !== undefined ? knownMentionFiles(root, recency) : files),
+    [scanning, root, recency, files],
+  );
+
+  const rankMentions = useMemo(() => createMentionSuggestionRanking(known), [known]);
+
+  const sources = useMemo(
+    (): SuggestionSources => ({
+      commands,
+      skills,
+      mentions: rankMentions,
+      hasConversationContext,
+      recency,
+      frecency,
+    }),
+    [commands, skills, rankMentions, hasConversationContext, recency, frecency],
+  );
+
   const kind = menu?.kind;
   const argument = menu?.kind === "argument" ? menu : undefined;
 
-  const completions = useQuery({
-    queryKey: ["command-completion", popupId, argument?.command, argument?.query],
-    queryFn:
-      argument === undefined || completeCommand === undefined
-        ? skipToken
-        : async (): Promise<ArgumentAnswer> => {
-            const answer = await completeCommand(argument.command, argument.query).catch(
-              (): readonly CommandCompletion[] => [],
-            );
+  const answerFor = (token: SuggestionToken): ArgumentAnswer | undefined =>
+    token.kind === "argument" &&
+    argumentAnswer?.command === token.command &&
+    argumentAnswer.query === token.query
+      ? argumentAnswer
+      : undefined;
 
-            return {
-              command: argument.command,
-              query: argument.query,
-              suggestions: answer.map((completion) => ({
-                kind: "argument",
-                id: `argument:${completion.value}`,
-                label: completion.label,
-                description: completion.description ?? "",
-                icon: "command",
-                value: completion.value,
-              })),
-            };
-          },
-  });
+  const argumentResult = argument === undefined ? undefined : answerFor(argument)?.result;
 
-  const answer = completions.data;
-
-  const answered = (token: SuggestionMenuState): readonly ComposerSuggestion[] =>
-    token.kind === "argument" && answer?.command === token.command && answer.query === token.query
-      ? answer.suggestions
+  const heldArguments =
+    argument !== undefined &&
+    argumentAnswer?.command === argument.command &&
+    argumentAnswer.result.status === "ready"
+      ? argumentAnswer.result.suggestions
       : NONE;
-
-  const argumentSuggestions = menu === undefined ? NONE : answered(menu);
 
   const listed = useMemo(
     () =>
       kind === undefined || kind === "argument"
         ? NONE
-        : suggestionsFor(
-            kind,
-            deferredQuery,
-            commands,
-            skills,
-            rankMentions,
-            hasConversationContext,
-          ),
-    [kind, deferredQuery, commands, skills, rankMentions, hasConversationContext],
+        : suggestionsFor(kind, deferredQuery, sources),
+    [kind, deferredQuery, sources],
   );
 
-  const suggestions = kind === "argument" ? argumentSuggestions : listed;
-  const open = menu !== undefined && (menu.kind !== "argument" || suggestions.length > 0);
+  const suggestions = kind === "argument" ? heldArguments : listed;
 
-  const activeIndex = Math.min(index, Math.max(0, suggestions.length - 1));
-  const activeSuggestion = menu === undefined ? undefined : suggestions[activeIndex];
+  const typedInFull = listed.some(
+    (suggestion) =>
+      suggestion.kind === "plugin-command" &&
+      !suggestion.command.takesText &&
+      suggestion.label.toLocaleLowerCase() === deferredQuery.trim().toLocaleLowerCase(),
+  );
+
+  const open =
+    menu !== undefined &&
+    !typedInFull &&
+    (menu.kind !== "argument" || completeCommand !== undefined);
+
+  const activeSuggestion =
+    suggestions.find((suggestion) => suggestion.id === menuState.active) ?? suggestions[0];
+
+  const activeIndex = activeSuggestion === undefined ? -1 : suggestions.indexOf(activeSuggestion);
+
+  if (
+    menuState.active !== undefined &&
+    !suggestions.some((suggestion) => suggestion.id === menuState.active)
+  )
+    setMenuState((current) =>
+      nextMenu(current, { kind: "rows", ids: suggestions.map((suggestion) => suggestion.id) }),
+    );
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- scrolls the active suggestion into view before paint
   useLayoutEffect(() => {
     if (activeOption !== null) revealSuggestion(listRef.current, activeOption);
   }, [activeOption]);
 
-  const show = (next: SuggestionMenuState | undefined): void => {
-    const continuesCurrentToken =
-      menu !== undefined &&
-      next !== undefined &&
-      menu.kind === next.kind &&
-      menu.start === next.start;
+  const dispatch = (event: MenuEvent): void => setMenuState((current) => nextMenu(current, event));
 
-    if (!continuesCurrentToken) {
-      setIndex(0);
-      setHighlighted(false);
-    }
+  const requestArguments = (token: SuggestionToken | undefined): void => {
+    const request = token?.kind === "argument" ? token : undefined;
+    const key = request === undefined ? undefined : `${request.command}\n${request.query}`;
 
-    setMenu(next);
+    if (key === requested.current) return;
+    requested.current = key;
+    generation.current += 1;
+    clearTimeout(timer.current);
+
+    if (request === undefined || completeCommand === undefined) return;
+    const ticket = generation.current;
+
+    const settle = (result: ArgumentResult): void => {
+      if (ticket === generation.current)
+        setArgumentAnswer({ command: request.command, query: request.query, result });
+    };
+
+    timer.current = setTimeout(() => {
+      void completeCommand(request.command, request.query).then(
+        (answer) =>
+          settle({
+            status: "ready",
+            suggestions: answer.map((completion) => ({
+              kind: "argument",
+              id: `argument:${completion.value}`,
+              label: completion.label,
+              description: completion.description ?? "",
+              icon: "command",
+              value: completion.value,
+            })),
+          }),
+        (error: unknown) =>
+          settle({
+            status: "error",
+            message: error instanceof Error ? error.message : "Couldn’t load suggestions",
+          }),
+      );
+    }, ARGUMENT_DELAY_MS);
   };
 
-  const clampedActivate = (nextIndex: number): void => {
-    if (suggestions.length === 0) return;
-    setHighlighted(true);
-    setIndex(Math.max(0, Math.min(suggestions.length - 1, nextIndex)));
+  useMountEffect(() => () => {
+    generation.current += 1;
+    clearTimeout(timer.current);
+  });
+
+  const show = (token: SuggestionToken | undefined): void => {
+    dispatch({ kind: "token", token });
+    requestArguments(nextMenu(menuState, { kind: "token", token }).token);
+  };
+
+  const readToken = (): LiveToken | undefined => {
+    const document = editorRef.current?.readDocument();
+
+    const token =
+      menu === undefined || document === undefined
+        ? undefined
+        : liveToken(document, menu, commands);
+
+    return token === undefined || document === undefined
+      ? undefined
+      : { token, text: document.text };
   };
 
   const addReference = (reference: MessageReference, start: number, end: number): void => {
@@ -577,11 +434,7 @@ export function useComposerSuggestions({
     editorRef.current?.insertReference(reference, start, end);
   };
 
-  const select = (
-    suggestion: ComposerSuggestion,
-    token: SuggestionMenuState,
-    text: string,
-  ): void => {
+  const select = (suggestion: ComposerSuggestion, token: SuggestionToken, text: string): void => {
     if (suggestion.kind === "argument") {
       editorRef.current?.replaceText(token.start, token.end, suggestion.value);
     } else if (suggestion.kind === "plugin-command") {
@@ -598,37 +451,35 @@ export function useComposerSuggestions({
       addReference(suggestionReference(suggestion), token.start, token.end);
     }
 
+    if (suggestion.kind !== "argument") rememberSuggestion(suggestion.id);
     show(undefined);
   };
 
-  const rankLive = (token: SuggestionMenuState): readonly ComposerSuggestion[] =>
-    token.kind === "argument"
-      ? answered(token)
-      : suggestionsFor(
-          token.kind,
-          token.query,
-          commands,
-          skills,
-          rankMentions,
-          hasConversationContext,
-        );
+  const rankLive = (token: SuggestionToken): readonly ComposerSuggestion[] => {
+    if (token.kind !== "argument") return suggestionsFor(token.kind, token.query, sources);
+    const result = answerFor(token)?.result;
+
+    return result?.status === "ready" ? result.suggestions : NONE;
+  };
+
+  const showsLive = (token: SuggestionToken): boolean =>
+    token.kind === "argument" ? answerFor(token) !== undefined : token.query === deferredQuery;
+
+  const offered = (suggestion: ComposerSuggestion): LiveToken | undefined => {
+    const live = readToken();
+
+    if (live === undefined) return undefined;
+
+    return showsLive(live.token) ||
+      rankLive(live.token).some((candidate) => candidate.id === suggestion.id)
+      ? live
+      : undefined;
+  };
 
   const click = (suggestion: ComposerSuggestion): void => {
-    const document = editorRef.current?.readDocument();
+    const live = offered(suggestion);
 
-    const token =
-      menu === undefined || document === undefined
-        ? undefined
-        : liveToken(document, menu, commands);
-
-    if (token === undefined || document === undefined) return;
-
-    if (
-      token.query !== deferredQuery &&
-      !rankLive(token).some((candidate) => candidate.id === suggestion.id)
-    )
-      return;
-    select(suggestion, token, document.text);
+    if (live !== undefined) select(suggestion, live.token, live.text);
   };
 
   const insertTrigger = (trigger: "@" | "/"): void => {
@@ -641,70 +492,68 @@ export function useComposerSuggestions({
     editor.replaceText(start, current.selectionEnd, `${leadingSpace}${trigger}`);
   };
 
+  const pick = (): void => {
+    const live = readToken();
+
+    if (live === undefined) {
+      show(undefined);
+
+      return;
+    }
+
+    const choice = pickFor(showsLive(live.token), suggestions, activeSuggestion?.id, () =>
+      rankLive(live.token),
+    );
+
+    if (choice.kind === "accept") select(choice.suggestion, live.token, live.text);
+
+    if (choice.kind === "select") dispatch({ kind: "select", id: choice.id });
+  };
+
   const onKeyDown = (event: KeyboardEvent): boolean => {
     if (menu === undefined || !open) return false;
+    const key = menuKey(event, { index: Math.max(0, activeIndex), count: suggestions.length });
 
-    if (event.key === "Escape") {
-      event.preventDefault();
-      show(undefined);
-
-      return true;
-    }
-
-    const down =
-      event.key === "ArrowDown" || (event.ctrlKey && (event.key === "n" || event.key === "j"));
-
-    const up =
-      event.key === "ArrowUp" || (event.ctrlKey && (event.key === "p" || event.key === "k"));
-
-    if (down || up) {
-      event.preventDefault();
-      clampedActivate(activeIndex + (down ? 1 : -1));
-
-      return true;
-    }
-
-    if (event.key === "Home" || event.key === "End") {
-      event.preventDefault();
-      clampedActivate(event.key === "Home" ? 0 : suggestions.length - 1);
-
-      return true;
-    }
-
-    if (event.key === "PageDown" || event.key === "PageUp") {
-      event.preventDefault();
-      clampedActivate(activeIndex + (event.key === "PageDown" ? 9 : -9));
-
-      return true;
-    }
-
-    const picks =
-      composerEnterAction(event) === "submit" || (event.key === "Tab" && !event.shiftKey);
-
-    if (!picks) return false;
-    const document = editorRef.current?.readDocument();
-    const token = document === undefined ? undefined : liveToken(document, menu, commands);
-
-    if (token === undefined || document === undefined) {
-      event.preventDefault();
-      show(undefined);
-
-      return true;
-    }
-
-    const active = token.query === deferredQuery ? suggestions[activeIndex] : rankLive(token)[0];
-
-    if (active === undefined) {
-      show(undefined);
-
-      return false;
-    }
-
+    if (key.kind === "pass") return false;
     event.preventDefault();
-    select(active, token, document.text);
+
+    if (key.kind === "close") {
+      dispatch({ kind: "dismiss" });
+      requestArguments(undefined);
+    }
+
+    const moved = key.kind === "move" ? suggestions[key.to] : undefined;
+
+    if (moved !== undefined) dispatch({ kind: "select", id: moved.id });
+
+    if (key.kind === "pick") pick();
 
     return true;
   };
+
+  const status = (): string | undefined => {
+    if (menu === undefined) return undefined;
+
+    if (menu.kind === "argument") {
+      if (argumentResult?.status === "error") return argumentResult.message;
+
+      if (suggestions.length > 0) return undefined;
+
+      return argumentResult === undefined ? "Loading…" : "No matches";
+    }
+
+    if (menu.kind === "mention" && scanning) return "Loading files…";
+
+    return suggestions.length === 0
+      ? suggestionEmptyText(
+          menu.kind,
+          menu.kind === "mention" ? mentionFiles : suggestionCatalog,
+          onCommand === undefined ? "skills" : "commands and skills",
+        )
+      : undefined;
+  };
+
+  const statusText = status();
 
   const menuElement = (
     <>
@@ -716,9 +565,10 @@ export function useComposerSuggestions({
           const target = details.event.target;
 
           if (
-            (details.reason === "outside-press" || details.reason === "focus-out") &&
-            target instanceof Node &&
-            anchorRef.current?.contains(target) === true
+            details.reason === "escape-key" ||
+            ((details.reason === "outside-press" || details.reason === "focus-out") &&
+              target instanceof Node &&
+              anchorRef.current?.contains(target) === true)
           ) {
             details.cancel();
 
@@ -740,11 +590,12 @@ export function useComposerSuggestions({
               id={popupId}
               role="listbox"
               initialFocus={false}
-
               aria-busy={
                 menu?.kind === "mention"
-                  ? mentionFiles.status === "loading"
-                  : suggestionCatalog.status === "loading"
+                  ? scanning
+                  : menu?.kind === "argument"
+                    ? argumentResult === undefined
+                    : suggestionCatalog.status === "loading"
               }
               aria-label={
                 menu?.kind === "mention"
@@ -759,67 +610,68 @@ export function useComposerSuggestions({
               xstyle={composerStyles.suggestionMenu}
             >
               <div ref={listRef} {...props(composerStyles.suggestionList)}>
-                {suggestions.length === 0 ? (
-                  <div role="status" {...props(text.base, composerStyles.suggestionEmpty)}>
-                    {menu === undefined || menu.kind === "argument"
-                      ? undefined
-                      : suggestionEmptyText(
-                          menu.kind,
-                          menu.kind === "mention" ? mentionFiles : suggestionCatalog,
-                          onCommand === undefined ? "skills" : "commands and skills",
-                        )}
-                  </div>
-                ) : (
-                  suggestions.map((suggestion, optionIndex) => {
-                    const previous = suggestions[optionIndex - 1];
+                {suggestions.map((suggestion, optionIndex) => {
+                  const previous = suggestions[optionIndex - 1];
 
-                    const startsGroup =
-                      previous !== undefined &&
-                      suggestionGroup(previous) !== suggestionGroup(suggestion);
+                  const startsGroup =
+                    previous !== undefined &&
+                    suggestionGroup(previous) !== suggestionGroup(suggestion);
 
-                    const optionId = `${popupId}-${String(optionIndex)}`;
-                    const selected = activeIndex === optionIndex;
-                    const description = descriptionExcerpt(suggestion.description, deferredQuery);
+                  const optionId = `${popupId}-${String(optionIndex)}`;
+                  const selected = activeIndex === optionIndex;
 
-                    return (
-                      <div
-                        key={suggestion.id}
-                        id={optionId}
-                        ref={selected ? setActiveOption : undefined}
-                        role="option"
-                        tabIndex={-1}
-                        aria-selected={selected}
-                        {...props(
-                          text.base,
-                          composerStyles.suggestionItem,
-                          selected && highlighted && composerStyles.suggestionItemHighlighted,
-                          startsGroup && composerStyles.suggestionGroupStart,
-                        )}
-                        onPointerMove={() => {
-                          setHighlighted(true);
+                  const description =
+                    suggestion.kind === "file"
+                      ? suggestion.description
+                      : descriptionExcerpt(suggestion.description, deferredQuery);
 
-                          if (!selected) setIndex(optionIndex);
-                        }}
-                        onPointerDown={(event) => event.preventDefault()}
-                        onClick={() => click(suggestion)}
-                      >
-                        <span aria-hidden="true" {...props(composerStyles.suggestionIcon)}>
+                  return (
+                    <div
+                      key={suggestion.id}
+                      id={optionId}
+                      ref={selected ? setActiveOption : undefined}
+                      role="option"
+                      tabIndex={-1}
+                      aria-selected={selected}
+                      {...props(
+                        text.base,
+                        composerStyles.suggestionItem,
+                        selected && highlighted && composerStyles.suggestionItemHighlighted,
+                        startsGroup && composerStyles.suggestionGroupStart,
+                      )}
+                      onPointerMove={() => dispatch({ kind: "select", id: suggestion.id })}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => click(suggestion)}
+                    >
+                      <span aria-hidden="true" {...props(composerStyles.suggestionIcon)}>
+                        {suggestion.kind === "file" && suggestion.file.kind === "file" ? (
+                          <FileTypeIcon path={suggestion.file.path} />
+                        ) : (
                           <Icon name={suggestion.icon} size="xs" />
+                        )}
+                      </span>
+                      <span {...props(composerStyles.suggestionText)}>
+                        <span {...props(composerStyles.suggestionLabel)}>
+                          <HighlightedSuggestionText
+                            text={suggestion.label}
+                            query={deferredQuery}
+                          />
                         </span>
-                        <span {...props(composerStyles.suggestionText)}>
-                          <span {...props(composerStyles.suggestionLabel)}>
-                            <HighlightedSuggestionText
-                              text={suggestion.label}
-                              query={deferredQuery}
-                            />
-                          </span>
-                          <span {...props(text.base, composerStyles.suggestionDescription)}>
+                        <span {...props(text.base, composerStyles.suggestionDescription)}>
+                          {suggestion.kind === "file" ? (
+                            description
+                          ) : (
                             <HighlightedSuggestionText text={description} query={deferredQuery} />
-                          </span>
+                          )}
                         </span>
-                      </div>
-                    );
-                  })
+                      </span>
+                    </div>
+                  );
+                })}
+                {statusText !== undefined && (
+                  <div role="status" {...props(text.base, composerStyles.suggestionEmpty)}>
+                    {statusText}
+                  </div>
                 )}
               </div>
             </Popover.Popup>
@@ -838,10 +690,11 @@ export function useComposerSuggestions({
         activeSuggestion.kind === "argument" ||
         activeOption === null ? null : (
           <PreviewCardContent
-            anchor={activeOption}
+            anchor={listRef}
             side="right"
-            align="end"
-            sideOffset={6}
+            align="start"
+            sideOffset={-12}
+            alignOffset={-8}
             collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "end" }}
             aria-label={`Details for ${activeSuggestion.label}`}
             xstyle={composerStyles.suggestionPreview}
@@ -858,8 +711,7 @@ export function useComposerSuggestions({
     combobox: {
       expanded: open,
       popupId: open ? popupId : undefined,
-      activeOption:
-        !open || suggestions.length === 0 ? undefined : `${popupId}-${String(activeIndex)}`,
+      activeOption: !open || activeIndex === -1 ? undefined : `${popupId}-${String(activeIndex)}`,
     },
     files,
     onCompletionChange: (completion, document) =>

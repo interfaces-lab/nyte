@@ -1,11 +1,11 @@
 import { asId } from "@nyte-ai/schema";
 import type { CallId, HeadName, Json, RunId, SessionId, WaitTarget } from "@nyte-ai/schema";
 import { assert, describe, expect, it, vi } from "vitest";
-import { attachSession } from "../src/api/attach.ts";
+import { attachSession } from "../src/api/session-attachment.ts";
 import { driveInProcess } from "../src/drive/execution.ts";
 import { runStep } from "../src/engine/durable.ts";
 import { endRun } from "../src/engine/runs.ts";
-import { pollStore } from "../src/fold/watch.ts";
+import { pollStore } from "../src/watch/watch.ts";
 import { envelope, headRef, inboxRef, leaseRef, memoryStore } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Durable, StoreConnection } from "../src/index.ts";
@@ -393,12 +393,10 @@ describe("dispatch (§42p, §42s)", () => {
     const { session } = await host.sessions.start({ content: "One." });
     await session.send("Two.");
     await until(() => (calls.length === 1 ? true : undefined));
-    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(calls).toHaveLength(1);
 
     gates[0]?.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 10));
     await session.send("Three.");
     await until(() => (calls.length === 2 ? true : undefined));
     gates[1]?.resolve();

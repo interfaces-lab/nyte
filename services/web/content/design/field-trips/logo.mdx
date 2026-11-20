@@ -1,0 +1,592 @@
+---
+title: "Field trip: Nyte's new logo"
+description: "The new mark, round by round, with the measurements. Not yet released."
+---
+
+This is how Nyte's new logo was made. The work ran as one long session in Nyte, on 13 and 14 November 2026. The designer directed. An agent in Nyte drew every version in code and rendered it. No drawing app was used. The geometry lives in Python scripts, even for the Blender scenes, and macOS's own tools made the pictures. The scripts named on this page sit in a local folder that is not part of the repository.
+
+Everything here comes from the notes the agent kept and the files the session left. Where that record is thin, the page says so. Read it top to bottom. Each round shows what was tried, what the designer said and what changed because of it, wrong turns included. The page opens with the brief and two references, and the last sections check the final shape against both.
+
+Where things stand:
+
+- The new icon is in the working tree. It is not committed and not released.
+- The motion work is unfinished. Eight patterns exist and none is chosen. Nothing from it is built into the site or the apps.
+- Pictures of the icon with glass edges are drawn by Apple's own `ictool` from the Icon Composer document, so they show what macOS draws.
+
+<TripGallery size="large">
+  <TripFigure
+    src="/field-trips/logo/icon-night.webp"
+    alt="The new icon in its night look. A dark navy tile holds a large moon in blue that pales toward its lower left. A smaller cream circle breaks the moon's upper right rim and has a soft shadow on its left edge."
+    width={640}
+    height={640}
+  >
+    The night look.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/icon-day.webp"
+    alt="The new icon in its day look. A pale blue tile holds a large navy moon. A smaller white circle breaks the moon's upper right rim and has a soft shadow on its left edge."
+    width={640}
+    height={640}
+  >
+    The day look.
+  </TripFigure>
+</TripGallery>
+
+The designer's feedback appears in boxes marked Feedback. The record of the session keeps a summary of what was said, not a transcript, so the boxes are paraphrase.
+
+## The brief
+
+The job was to rethink Nyte as a brand and make one macOS app icon, 1024 by 1024 pixels, that reads at a glance as a dark night-time app. The designer asked for:
+
+- A simple, iconic shape built from circles, lines and deliberate ratios, and delicate up close.
+- A warm feeling, a child's wonder, and a sense of being made with care.
+- Originality. No people and nothing literal.
+- Bright or washed colours, and distinct layers, the way a Blender scene has them.
+
+Those are the feelings the rest of the page is checked against. The section called Where the brief landed goes through them one at a time, including the ones that did not land.
+
+## References
+
+Two references shaped the work. Both are other people's, and neither is reproduced here.
+
+The first is the app icons of [Gavin Nelson](https://nelson.co), a designer whose site has an App icons section. The designer likes them, and the session kept a sheet of them to look at. The notes do not say which icons, or which qualities of them, the designer meant.
+
+The second is a thread by Martin Grasser, one of the three designers of Twitter's bird. On 24 July 2023 he [posted how the bird was drawn](https://x.com/martingrasser/status/1683266038602010624). The part that mattered here is the method. The team built their drawings from circles, and he says that gave the bird an underlying neutrality and simplicity. In the session, the designer pointed at the thread when asking for a bunch of circles to be drawn and a pattern to be found in them. That is the circles round below.
+
+## The icon it replaced
+
+The old icon is a 12-cell dithered moon, lit from the upper left. The moon is `#c1d0f6`, on a plate that fades from `#232a44` to `#0c1020`. The notes do not record why the designer wanted to replace it.
+
+The new icon keeps those plate colours. The old moon's blue, `#c1d0f6`, is the pale end of the new moon. This page calls it Nyte blue.
+
+<TripFigure
+  src="/field-trips/logo/old-icon.webp"
+  alt="The old Nyte app icon. A dark navy rounded square holds a round moon made of small pale-blue squares, bright at the upper left and fading to dim squares toward the lower right."
+  width={480}
+  height={480}
+>
+  The old icon, from the last commit.
+</TripFigure>
+
+## Scenes in paper and Blender
+
+The first scenes all told one story. Night is a lid over the light. Each is a script with a preview render.
+
+The paper scene is a shadowbox of cut paper lit from behind. A disc of night sky is slid aside and uncovers a crescent, and the offsets are powers of the golden ratio. The Blender scene makes the same idea as a real object, a matte slab with a round well, terraces down to a floor that shines, and a lacquer lid resting beside it. The phases scene stacks sheets with a round hole in each, all the holes touching at one point, and each crescent is the golden ratio times as wide as the one above. The fan scene lays five equal discs out like cards, each one a phase of the moon.
+
+<TripGallery>
+  <TripFigure
+    src="/field-trips/logo/scene-paper.webp"
+    alt="A deep blue tile with small stars. A glowing crescent in peach, pink and violet shows beside a large dark disc that has been slid across it."
+    width={480}
+    height={480}
+    rounded
+  >
+    Paper. A lid of night slid aside.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/scene-blender.webp"
+    alt="A rendered scene on a blue tile. A round well glows cream and pink, and a glossy dark lid rests half over it."
+    width={480}
+    height={480}
+    rounded
+  >
+    Blender. A well, and a lacquer lid.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/scene-phases.webp"
+    alt="A blue tile with stacked round holes that touch at one edge. They show a pink and violet crescent, a peach crescent and a cream disc."
+    width={480}
+    height={480}
+    rounded
+  >
+    Phases. Sheets with round holes.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/scene-fan.webp"
+    alt="Five equal discs fanned along a diagonal on a blue tile, from a cream disc at the lower left through peach, orchid and periwinkle to a glossy dark disc on top."
+    width={480}
+    height={480}
+    rounded
+  >
+    Fan. Five equal discs.
+  </TripFigure>
+</TripGallery>
+
+<TripFeedback>Too many layers. Cut to two or three, and make variants.</TripFeedback>
+
+What changed: the work left Blender. The next round used two or three discs, written as Icon Composer documents and drawn by macOS.
+
+## Two and three discs
+
+An Icon Composer document holds flat shapes and colours only. macOS adds its own glass edge, highlight and shadow to every layer, and redraws the icon for the default, dark, clear and tinted appearances. A script, `icon_composer.py`, wrote every document. The variants that survive in it are `cradle-dusk`, `cradle-trio`, `pair-dusk`, `trio-turn`, `lid`, `lid-dusk` and `lunes`.
+
+<TripGallery>
+  <TripFigure
+    src="/field-trips/logo/variant-cradle-dusk.webp"
+    alt="A cream disc breaks the upper right rim of a larger disc that shades from peach to violet, on a dark blue tile."
+    width={480}
+    height={480}
+  >
+    cradle-dusk. A moon breaking the rim of a dusk disc.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/variant-cradle-trio.webp"
+    alt="Three nested discs on a dark blue tile, violet, then peach and pink, then a cream disc at the top right."
+    width={480}
+    height={480}
+  >
+    cradle-trio. Three nested discs.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/variant-pair-dusk.webp"
+    alt="A cream disc inside a larger disc that shades from peach to violet, on a dark blue tile."
+    width={480}
+    height={480}
+  >
+    pair-dusk. Two discs in dusk colours.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/variant-trio-turn.webp"
+    alt="Three discs on a dark blue tile, each turned a step round the one under it, violet, peach and cream."
+    width={480}
+    height={480}
+  >
+    trio-turn. Three discs, each turned a step.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/variant-lid.webp"
+    alt="A cream disc at the lower left and a dark translucent pane over its upper right, on a dark blue tile."
+    width={480}
+    height={480}
+  >
+    lid. Two circles, one a translucent pane.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/variant-lid-dusk.webp"
+    alt="A cream disc at the lower left and a translucent pane over its upper right with a peach to violet gradient, on a dark blue tile."
+    width={480}
+    height={480}
+  >
+    lid-dusk. The same, with a dusk gradient.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/variant-lunes.webp"
+    alt="One large disc cut into three parts by two arcs, violet on the left, pink in the middle and cream on the right."
+    width={480}
+    height={480}
+  >
+    lunes. One circle cut into phases.
+  </TripFigure>
+</TripGallery>
+
+These pictures were drawn again for this page, from the script that still holds the variants, in macOS's default look. The session's own sheet of variants was last drawn before the final shadow work.
+
+The notes record no designer feedback in this round. Instead, a fresh agent was shown a render with no context and asked what it saw. No transcripts were kept, and the notes do not say how many readers there were. The findings:
+
+- Nested discs read as an eyeball or a fried egg.
+- `lid` read as a dark-mode toggle or a Venn diagram.
+- `cradle-dusk`, a moon breaking the rim of a larger disc, read best.
+
+What changed: a moon breaking the rim of a larger disc became halo, and halo's circles became the final mark. Lid stayed in play too. The script's own comment on `cradle-dusk` says it goes pale under the moon, so its cut is hard to see, which is the problem the next round names.
+
+## Measure it
+
+<TripFeedback>
+  Take it apart and measure it with maths. The contrast at the cut is too low, and there is too much
+  gradient.
+</TripFeedback>
+
+Everything moved onto Apple's grid, 8 cells across a 1024 pixel tile, so a cell is 128 pixels, with a margin of one cell. Two tools came out of this round.
+
+`measure.py` measures each edge on the picture macOS draws, not on the flat colours, because macOS adds a shadow, a rim light and its own shading. Along an edge it compares a patch inside with a patch outside, as a WCAG contrast ratio. A ratio of 1 means no difference and 21 is black on white. WCAG asks for 3 where a shape has to be made out.
+
+`midway` in `icon_composer.py` computes the tone at the cut so that it sits equally far, by contrast, from the light and from the plate. A third script, `deconstruct.py`, drew a sheet that takes a design apart.
+
+<TripFigure
+  src="/field-trips/logo/halo-measured.webp"
+  alt="A diagram of the halo icon taken apart on an 8-cell grid. Two large circles are outlined over a dimmed icon, with their radii and centres marked. A panel on the right lists the grid sizes, the contrast across each edge and four tones."
+  width={1200}
+  height={757}
+  size="sheet"
+  framed
+>
+  The halo design taken apart. It is the design of that round, not the final one, but its two
+  circles are the final mark's: a 3-cell circle at (4, 4) and a 2-cell circle at (5, 3). The sheet
+  calls them dusk and moon. The sheet's ring tone, at the cream disc's edge, sits 3.13 from the
+  night and 3.12 from the cream, the same method that later gives the final blue.
+</TripFigure>
+
+The notes record no separate change for the gradient in this round. The final design has one short gradient, on the moon alone.
+
+## A bunch of circles
+
+<TripFeedback>
+  Draw a bunch of circles and look for the pattern. Martin Grasser's thread on the Twitter bird is
+  the model.
+</TripFeedback>
+
+`circles.py` drew eight studies on the grid. Each study is one rule for laying circles down, drawn twice, once as see-through discs so the places where many overlap come up brightest, and once as hairlines. The studies are called corner, poles, kiss, slide, spiral, pearls, rosette and lattice.
+
+<TripFigure
+  src="/field-trips/logo/circles.webp"
+  alt="Eight studies of overlapping circles on the icon's grid, each drawn as see-through discs above and as outlines below. The labels read corner, poles, kiss, slide, spiral, pearls, rosette and lattice."
+  width={1200}
+  height={1251}
+  size="sheet"
+  framed
+>
+  Eight rules for laying down circles. Corner puts circles of radius 1, 2, 3, 5 and 8 against the
+  top and right margin lines. Radius 3 and radius 2 land at (4, 4) and (5, 3), which are the final
+  mark's circles. The record does not say the final came from this study, only that the arithmetic
+  matches.
+</TripFigure>
+
+Two designs were on the table. Pearls is a Pappus chain of beads between two circles, and blind readers saw a daisy or a loading spinner in it. Halo is two whole discs, the smaller breaking the rim of the larger, and it was kept.
+
+<TripGallery>
+  <TripFigure
+    src="/field-trips/logo/variant-pearls.webp"
+    alt="A large cream disc ringed by pink and peach beads that shrink to tiny ones toward the upper right, on a dark blue tile."
+    width={480}
+    height={480}
+  >
+    pearls. A chain of beads.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/variant-halo.webp"
+    alt="A cream disc breaks the upper right rim of a larger disc that shades from violet to peach, on a dark blue tile."
+    width={480}
+    height={480}
+  >
+    halo. Two whole discs. Kept.
+  </TripFigure>
+</TripGallery>
+
+The designer liked halo and lid, and asked for both in black and white first, as lines and as panes. `forms.py` drew six forms of each. In every column the top row is the rims as lines, the middle row is the same circles as grey films laid over one another, and the bottom row is the flat black and white mark.
+
+<TripFigure
+  src="/field-trips/logo/forms-halo.webp"
+  alt="Six forms of the halo design in black and white. The top row shows outlines, the middle row grey panes and the bottom row a flat white mark, with two small sizes under each column."
+  width={1200}
+  height={687}
+  size="sheet"
+  framed
+>
+  Halo. The columns are now, ring, equal, echo, peek and trail. The first, now, is a 3-cell circle
+  and a 2-cell circle.
+</TripFigure>
+
+<TripFigure
+  src="/field-trips/logo/forms-lid.webp"
+  alt="Six forms of the lid design in black and white. Two overlapping circles appear as outlines in the top row, as panes in the middle row and as rings and discs in the bottom row."
+  width={1200}
+  height={687}
+  size="sheet"
+  framed
+>
+  Lid. The columns are now, counter, link, link uneven, hoop and orbit.
+</TripFigure>
+
+What changed: the first halo form, the 3-cell and 2-cell pair, is the geometry the final mark keeps. The notes do not say why it won over its five siblings.
+
+## A first look at motion
+
+The designer asked to explore animation. Halo was to move as now and peek, and lid as two circles orbiting in three dimensions but drawn in two. `animate.py` rendered every frame through macOS, so the glass, the blur under the pane and the shadows are the real ones. It wrote GIFs, videos and a strip of frames.
+
+<TripFigure
+  src="/field-trips/logo/motion-first.webp"
+  alt="Two strips of ten frames. The top strip shows the halo design, a cream disc with a violet and peach disc coming forward from behind it. The bottom strip shows two circles, one cream and one translucent, circling each other on a dark blue tile."
+  width={1400}
+  height={287}
+  size="sheet"
+  framed
+>
+  The first motion test. Top, halo comes forward, from hidden to peek to now. Bottom, lid circles.
+  Both show the designs of that round, not the final one.
+</TripFigure>
+
+The notes record no reaction to these. The next feedback is about the still design, so the page shows only the strip and not the clips.
+
+## Wax
+
+<TripFeedback>
+  Remove the stars. Make the gradient moon the top layer. Pick one colour.
+</TripFeedback>
+
+From here the big gradient disc is the moon and the smaller cream disc is the light. The variants from this round on are named `wax`.
+
+The first reading of the feedback was a wrong turn. The agent took it to mean a full disc on top, which would cover the light. The designer corrected it. A full disc on top was no longer a waxing moon. The fix was a crescent, with the light still showing. The designer liked it.
+
+The agent then suggested violet as the one colour. The designer asked for Nyte blue. The files this page is built from hold no picture of the full-disc misreading or of the violet crescent. The crescent in Nyte blue appears in the Connected round below.
+
+## Blue, day and night
+
+<TripFeedback>
+  Use Nyte blue and a darker background. Make a light mode and a dark mode. Make an actual logo SVG.
+  The notes add two more lines, that the flaw is levelling and pixels, and a question about which
+  app the mark should be drawn in.
+</TripFeedback>
+
+The design became a day look and a night look, described in the final section. A second script, `logo.py`, wrote the flat mark as SVG, with no tile and no glass.
+
+The advice given on the question about the app was to keep the code as the source of the geometry. Another script, `ship.py`, writes every icon file the repository ships from the same two circles.
+
+<TripFigure
+  src="/field-trips/logo/mark-sizes.webp"
+  alt="The flat mark at eight sizes from large to tiny, in three rows. The first row is navy with a grey circle on white. The second is a dimmed pale-blue moon with a bright pale-blue circle on dark. The third is the blue gradient moon with a cream circle on dark."
+  width={800}
+  height={797}
+  size="sheet"
+  framed
+>
+  The flat mark, from 256 to 16 pixels, in the two one-colour forms and the colour form. A
+  one-colour mark is for use inside an interface, and a later section explains how its two shades
+  are chosen.
+</TripFigure>
+
+## Connected
+
+<TripFeedback>The two pieces are not connected. Are they supposed to be?</TripFeedback>
+
+A 16 pixel channel had separated the light from the moon. The channel was removed, and the two now touch edge to edge. The older version survives in the script as the variant `wax-channel`.
+
+<TripGallery>
+  <TripFigure
+    src="/field-trips/logo/variant-wax-channel.webp"
+    alt="A pale-blue crescent moon on a dark navy tile, with a thin dark channel between it and a cream circle set into its curve."
+    width={480}
+    height={480}
+  >
+    Before. A 16 pixel channel between two pieces of glass.
+  </TripFigure>
+  <TripFigure
+    src="/field-trips/logo/variant-wax-flush-night.webp"
+    alt="The night icon with the pale-blue moon and the cream circle touching edge to edge. There is no channel and no shadow."
+    width={480}
+    height={480}
+  >
+    After. The pieces touch, with no shadow yet.
+  </TripFigure>
+</TripGallery>
+
+## Shadows
+
+<TripFeedback>
+  Play with shadows. The highlighted part is too bright, and the sharp edges have no shadow to give
+  a feeling of depth.
+</TripFeedback>
+
+The first answer got it backwards. The light floated above the moon, and its shadow was painted on the moon. The designer pointed at the renders and said the light and the main object were reversed.
+
+The fix made the moon the piece in front. Its edge casts a soft shadow onto the light, which makes the moon read as the nearer piece. The two shapes are one piece of glass, and the shadow is a layer painted on top of the light. The day plate was toned down from `#f3f6fe` so that its top edge would not glare.
+
+macOS lets a shadow be made stronger or weaker, but not softer, wider or moved. So the shadow is painted as its own layer, which also means it does not follow macOS's lighting. The sheet shows the shadow at seven settings in both looks, with one dial turned at a time.
+
+<TripFigure
+  src="/field-trips/logo/shadows.webp"
+  alt="Two rows of seven icons, the day look above and the night look below. Each column sets the painted shadow differently, from none through weaker and stronger, shallower and deeper, and a different hour. Captions under the day icons name each setting."
+  width={1400}
+  height={425}
+  size="sheet"
+  framed
+>
+  The shadow dials. From the left, none, strength 0.3, the setting in use, strength 0.8, 0.2 cells
+  across, 0.7 cells across, and deepest at 7.30.
+</TripFigure>
+
+## Into the app
+
+<TripFeedback>
+  Very good. Replace the whole app with this logo. But what about the brand version, the flat,
+  non-glossy one? Or should the same logo be used?
+</TripFeedback>
+
+The answer was one shape in three finishes, described below. Only the glass finish uses macOS's lighting. The flat finishes are drawn from the same circles.
+
+## The first animation
+
+<TripFeedback>
+  Make a proper animated version of the logo for the web and the app, animate it with GSAP, then
+  turn it into a GIF.
+</TripFeedback>
+
+The first answer was a single animation. The light shrinks into the corner and swells back.
+
+<TripFeedback>
+  That is a zoom in and out. No animation pattern has been decided on yet, so make variants.
+</TripFeedback>
+
+This was the animation the designer called a zoom, and the call was fair. It had one idea, scale, and offered it as the answer. Eight patterns followed, each built on a different kind of movement. They are in the motion section below, and none is chosen.
+
+## The final design, measured
+
+The source of truth is the variant `wax` in `icon_composer.py`. Every figure below is drawn from numbers that script sets, or from a calculation on them. The drawings are inline SVG.
+
+### The grid
+
+The tile is 1024 pixels, split into 8 cells of 128. The moon has a radius of 3 cells, 384 pixels, and sits at the tile's centre. The light has a radius of 2 cells, 256 pixels, and sits one cell up and one cell right of it. The light breaks the moon's rim by about 53 pixels. Both circles touch the lines one cell in from the tile's top and right edges.
+
+<LogoGrid />
+
+As a mark, in a box of 96 units, one cell is 16 units. The moon is a circle of radius 48 at (48, 48), and the light a circle of radius 32 at (64, 32).
+
+### Two thirds
+
+The two circles are related by one ratio. The light is the moon scaled by two thirds toward the point where the top and right margin lines meet. That point is (7, 1). The moon's centre is 3√2 cells from it and the light's is 2√2, and the radii run 3 and 2.
+
+<LogoScaling />
+
+This is why the two circles touch the same two lines. A scale about a point keeps every tangent line through that point where it was.
+
+### The blue at the cut
+
+The moon is deepest where the light meets it, and `#647fcb` is computed, not picked. It is the tone that stands as far from the cream light as from the plate, by WCAG contrast, at the hue of Nyte blue. Unrounded, it sits 3.65 from the light and 3.65 from the plate's top colour. Once it is rounded to a hex code the two ratios drift to 3.64 and 3.66, which the drawing shows.
+
+The moon then pales toward its far side by a radial gradient centred on the light, in 17 steps from `#647fcb` to Nyte blue.
+
+<LogoCutTone />
+
+### How an edge is read
+
+A reading compares a small patch just inside an edge with one just outside, 26 pixels away, on the picture macOS draws. The patches are 3 by 3 pixels, averaged. Readings are taken every 2 degrees wherever the edge is on view. The notes record the method, and no run of `measure.py` on the final icon.
+
+<LogoEdgeReading />
+
+### One ink
+
+For use inside an interface, the mark can be drawn in a single colour. The two shapes are then told apart by how much of the ink each gets, and the light is always the lighter shape. On a dark ground the moon is drawn at 47% and the light at full strength. On a light ground the moon is full and the light is at 58%.
+
+The two opacities are computed the same way as the moon's deep blue. The function `between` in `logo.py` finds the opacity at which the dimmed shape sits as far, by contrast, from the other shape as from the ground. On a dark ground the moon is the one dimmed, halfway between the light and the ground. On a light ground it is the light, halfway between the moon and the ground. The result is rounded to the nearest hundredth, which is why the two sides of each pair differ a little.
+
+<LogoOneInk />
+
+In the working tree, the design site's header mark follows the same rule, with the site's accent colour as the ink.
+
+### The shadow
+
+The moon's shadow on the light has three numbers. Its strength is 0.55 at the moon's edge. It reaches 0.4 cells across the light at its deepest, which is 51.2 pixels. And it is deepest at 9 o'clock on the light's rim, thinning to nothing toward 12 and 6 o'clock. It is drawn only where the light lies inside the moon's circle, because the part of the light that hangs past the moon has nothing over it.
+
+<LogoShadow />
+
+## Two looks, three finishes
+
+The icon has two looks, drawn from one Icon Composer document.
+
+| Look  | Plate                  | Moon                                         | Light     |
+| ----- | ---------------------- | -------------------------------------------- | --------- |
+| Night | `#232a44` to `#0c1020` | `#647fcb` at the light, paling to `#c1d0f6`  | `#fff9d8` |
+| Day   | `#d4dffb` to `#aabdec` | `#2a3354` at the light, lifting to `#4c609c` | `#ffffff` |
+
+macOS 26 picks the look from the Icon and widget style setting, not from light or dark mode. Default shows the day look, even when the system is dark, and Dark shows the night look. A test bundle on a Mac in dark mode confirmed this.
+
+<TripFigure
+  src="/field-trips/logo/looks.webp"
+  alt="Six versions of the icon from one document. The top row is light, with the pale blue default, a grey clear look and a purple tinted look. The bottom row is dark, with the navy default, a grey clear look and a dark purple tinted look."
+  width={1200}
+  height={800}
+  size="sheet"
+  framed
+>
+  The six appearances macOS draws from the one document, default, clear and tinted, each in light
+  and dark.
+</TripFigure>
+
+One shape ships in three finishes. All three are in the working tree, and none is released.
+
+| Finish    | What it is                               | Where it is used                                                                                                             |
+| --------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Glass     | The Icon Composer document, lit by macOS | The Mac app on macOS 26 and later, live. Pictures of its night look everywhere else an operating system shows the app's icon |
+| Flat tile | The night tile as plain SVG              | Favicons, the README, the app's About window and the iPhone home screen                                                      |
+| Mark      | The two circles alone, with no tile      | The web app's share card, the design site's header and share cards, and the iPhone welcome screen                            |
+
+Four things turned up on the way that a reader may not know:
+
+- The whole Icon Composer document is written by a script and drawn with `ictool`, a command-line tool inside Icon Composer's app bundle.
+- macOS treats the background as the backdrop. It goes near-black in Dark, clear in Clear and tinted in Tinted. So the night is the background and the moon is a layer. Left the other way round, the moon goes black in Dark.
+- A document with a plain fill ignores its per-appearance fills, so every fill is given as a list of appearances.
+- macOS's SVG renderer ignores `fill-opacity` on an inherited fill, so the one-ink marks dim with `opacity`.
+
+Four places still show the old dithered moon, on purpose. They are the terminal's welcome animation, the docs landing page's ASCII moons, the docs site's main share image and the spinner.
+
+One decision is open. The Dock icon could be the night look in both modes. It is a one-line change.
+
+## Where the brief landed
+
+The brief's feelings, the two references and the shape that came out, one row each. The right column says what backs the claim, and where nothing does.
+
+| In the brief                          | In the final shape                                                                                                            | What backs it                                                                    |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Night, dark, at a glance              | The night look is dark. The day look is pale and is not dark.                                                                 | Plate colours are in the files. No blind reader has seen the final design.       |
+| Simple, built from circles and ratios | Two circles on an 8-cell grid, 3 cells and 2 cells, related by two thirds.                                                    | The grid, the scaling and the touch points are drawn above.                      |
+| Delicate up close                     | Unsettled. The thin bright line on the glass edges is macOS's own, and no setting for it was found.                           | The notes record no judgement either way.                                        |
+| Warm                                  | The cream light, `#fff9d8`, is the one warm tone in the night look. The day look's light is plain white.                      | Colour values in the files.                                                      |
+| A child's wonder                      | Not something the record can show.                                                                                            | Nothing in the notes. Nobody outside the session has looked at the final design. |
+| Made with care                        | Every tone and opacity is computed, and every circle sits on the grid.                                                        | The scripts and the figures above.                                               |
+| Original                              | The mark is two circles. The notes do not say how close it sits to any other mark.                                            | No comparison was made.                                                          |
+| No people, nothing literal            | No people. The mark is a moon and a light, which names its subject plainly. Whether that counts as literal is an open call.   | The designer's call, not the record's.                                           |
+| Bright or washed colours              | Washed. One pale blue and a cream. The bright dusk gradients went when the designer asked for one colour.                     | The Wax round.                                                                   |
+| Distinct layers, as in Blender        | Two layers and a painted shadow, in one piece of glass. macOS adds its own edge and highlight. The Blender scenes came first. | The shadows round.                                                               |
+| Grasser: circles as construction      | The mark is two circles. The corner study's arithmetic lands on them.                                                         | The circles round. The notes do not say the final came from that study.          |
+| Nelson's icons                        | The notes do not say which qualities were wanted, so nothing can be checked.                                                  | Nothing recorded.                                                                |
+
+## Motion, an open question
+
+This section is a proposal, not shipped work. Eight patterns exist and none is chosen.
+
+`logo-motion.mjs` holds the drawing and the eight timelines. A second script steps them into frames, and a preview page plays them. Each is a 6 second loop that starts and ends on the finished mark. The timelines are GSAP, and only the local, untracked lab package installs GSAP, so the published site cannot import it today. That is why this page has stills and a video, and no live animation.
+
+| Variant | Pattern         | What happens                                                                       |
+| ------- | --------------- | ---------------------------------------------------------------------------------- |
+| Swell   | Scale           | The light shrinks into the corner to a point and swells back                       |
+| Turn    | Rotation        | The whole mark turns once about the moon's centre                                  |
+| Orbit   | Path in depth   | The two circle each other. The light passes in front, then behind the moon         |
+| Land    | Travel          | The light leaves through the corner, flies back and lands. The moon gives a little |
+| Lift    | Tilt and layers | The mark tips back and the light stands off the moon with a shadow                 |
+| Draw    | Line drawing    | The fill fades to the grid and two outlines, which are drawn again and filled      |
+| Phase   | Wipe            | The light wanes to a thin crescent and waxes back                                  |
+| Lamp    | Light only      | The light goes out and flickers back on with a glow                                |
+
+Swell describes the same movement as the first answer, the one the designer called a zoom.
+
+<TripFigure
+  src="/field-trips/logo/motion-strip.webp"
+  alt="Eight rows of fourteen frames, one row for each motion pattern. The rows are labelled swell, turn, orbit, land, lift, draw, phase and lamp, and each starts and ends on the finished icon."
+  width={1400}
+  height={935}
+  size="sheet"
+  framed
+>
+  Each pattern as a row of frames, in order from the left.
+</TripFigure>
+
+<TripVideo
+  src="/field-trips/logo/motion-variants.mp4"
+  poster="/field-trips/logo/motion-variants-poster.webp"
+  width={850}
+  height={486}
+  label="All eight motion patterns playing side by side on the app icon"
+>
+  All eight together, 6 seconds, in a loop. It does not play until you press play.
+</TripVideo>
+
+The agent judged these from frame strips and held frames. It never watched them play. Nobody has checked them at small sizes, and there is no reduced-motion version yet.
+
+## What is weak and what is undecided
+
+Known weak points, as the designer was told:
+
+- At 32 pixels and below the shadow disappears, and the icon reads as a dot inside a ring.
+- The painted shadow does not follow macOS's lighting.
+- The thin bright line on the glass edges is macOS's own highlight. No setting for it was found.
+- No blind reader has seen the final design.
+- In light mode the icon is not dark, which the brief asked for.
+
+Left undecided or unchecked:
+
+- Which of the eight motion patterns, if any. The motion has not been watched, checked small, or given a reduced-motion form.
+- Whether the Dock icon should be the night look in both modes.
+- Whether the final design's edges meet the contrast of 3 on the picture macOS draws. `measure.py` was built for the earlier two-disc designs, and the notes record no run on the final.
+- How the early blind reads were run. The count of readers is not recorded and no transcripts were kept.
+- Why the old icon was replaced. The notes do not say.
+- The icon is uncommitted and unreleased. Nothing on this page has shipped.

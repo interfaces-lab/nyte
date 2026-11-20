@@ -1,10 +1,6 @@
 import type { Api, Model } from "../../src/types.ts";
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
-import {
-  detectOpenAICompletionsCompat,
-  mergeAnthropicMessagesCompat,
-  namesDaybreakBlue,
-} from "./compat-metadata.ts";
+import { detectOpenAICompletionsCompat, mergeAnthropicMessagesCompat } from "./compat-metadata.ts";
 import type { ModelsDevMetadata } from "./models-dev.ts";
 
 type ThinkingLevelMap = NonNullable<Model<Api>["thinkingLevelMap"]>;
@@ -53,6 +49,8 @@ const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
   "gpt-5.6-luna",
 ]);
 
+const OPENAI_EFFORT_REQUIRED_MODEL_IDS = new Set(["gpt-6-astra", "gpt-6.2-astra", "gpt-6.2-sol"]);
+
 const ANTHROPIC_ADAPTIVE_THINKING_ID_PARTS = [
   "opus-4-6",
   "opus-4.6",
@@ -71,10 +69,6 @@ const ANTHROPIC_ADAPTIVE_THINKING_ID_PARTS = [
   "fable-5",
 ];
 
-/**
- * Claude models that accept `thinking: {type: "disabled"}` although models.dev lists no thinking
- * toggle for them. https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking
- */
 const ANTHROPIC_DISABLED_THINKING_MODEL = /(?:^|[./])claude-opus-5(?:-\d{8})?$/;
 
 const ANTHROPIC_FIXED_TEMPERATURE_ID_PARTS = [
@@ -178,8 +172,7 @@ function supportsOpenAiXhigh(modelId: string): boolean {
     modelId.includes("gpt-5.4") ||
     modelId.includes("gpt-5.5") ||
     modelId.includes("gpt-5.6") ||
-    modelId.startsWith("gpt-6") ||
-    namesDaybreakBlue(modelId)
+    modelId.startsWith("gpt-6")
   );
 }
 
@@ -216,7 +209,7 @@ export function applyThinkingLevelMetadata(model: Model<Api>): void {
   }
 
   if (
-    (model.id.includes("gpt-5.6") || model.id.startsWith("gpt-6") || namesDaybreakBlue(model.id)) &&
+    (model.id.includes("gpt-5.6") || model.id.startsWith("gpt-6")) &&
     (model.api === "openai-responses" ||
       model.api === "azure-openai-responses" ||
       model.api === "openai-codex-responses" ||
@@ -229,15 +222,11 @@ export function applyThinkingLevelMetadata(model: Model<Api>): void {
     mergeThinkingLevelMap(model, { minimal: null });
   }
 
-  if (model.id === "gpt-6-astra") {
+  if (OPENAI_EFFORT_REQUIRED_MODEL_IDS.has(model.id)) {
     mergeThinkingLevelMap(model, { off: null, minimal: null });
   }
 
   if (model.provider === "openai-codex" && model.id.startsWith("gpt-6")) {
-    mergeThinkingLevelMap(model, { off: null });
-  }
-
-  if (namesDaybreakBlue(model.id)) {
     mergeThinkingLevelMap(model, { off: null });
   }
 

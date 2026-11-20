@@ -4,7 +4,7 @@ The wire contract for Nyte Connect, Nyte's account-based remote access. The brok
 
 A host is a running Nyte that serves sessions: the desktop app, or the `nyte` CLI on a machine without a screen. Its operator links it to a Nyte account and turns sharing on. Any phone or browser signed in to the same account then lists the host, enrolls itself and connects, with no approval step on the host. Users need no Tailscale, no shared network, no open port and no Cloudflare account of their own. Nyte runs one broker Worker, with a relay Durable Object per linked host, and one Clerk instance for everyone. The broker is served at `https://nyte-connect.daniel-fu90.workers.dev`, with no DNS zone or custom domain.
 
-The broker lives in [`@nyte-ai/connect-broker`](../connect-broker/README.md). Its README and `wrangler.jsonc` own the binding names and broker internals. The user steps are in the [remote access guide](../docs/content/docs/remote-access.mdx). Nothing in this repository creates, deploys or configures a live resource, so every operator step below is manual.
+The broker lives in [`@nyte-ai/connect-broker`](../../services/connect-broker/README.md). Its README and `wrangler.jsonc` own the binding names and broker internals. The user steps are in the [remote access guide](../../services/web/content/docs/remote-access.mdx). Nothing in this repository creates, deploys or configures a live resource, so every operator step below is manual.
 
 ## Entry points
 
@@ -139,7 +139,7 @@ To end a device:
 
 Results use `EnvironmentList`, `EnvironmentSummary` and `EnrollResponse`. Broker failures are `BrokerError`, with `failure` typed as `BrokerFailure`. `BrokerClient` is the exported client type.
 
-The Worker allows exactly `https://app.nyte.sh`, `http://localhost:5179` and `http://127.0.0.1:5179`, both as browser origins and as Clerk authorized parties. The shared client refuses a local HTTP broker URL. The broker README lists the routes that allow CORS and how to remove the dev origins, under [Browser access](../connect-broker/README.md#browser-access).
+The Worker allows exactly `https://app.nyte.sh`, `http://localhost:5179` and `http://127.0.0.1:5179`, both as browser origins and as Clerk authorized parties. The shared client refuses a local HTTP broker URL. The broker README lists the routes that allow CORS and how to remove the dev origins, under [Browser access](../../services/connect-broker/README.md#browser-access).
 
 ## Configuration
 
@@ -164,12 +164,12 @@ The iOS app signs in through `@clerk/expo`, which needs iOS 17 and brings `expo-
 
 ### Worker
 
-The broker README lists the Worker's vars, secrets and bindings, and how to generate and rotate `BROKER_SIGNING_KEYS`. See [Configuration](../connect-broker/README.md#configuration).
+The broker README lists the Worker's vars, secrets and bindings, and how to generate and rotate `BROKER_SIGNING_KEYS`. See [Configuration](../../services/connect-broker/README.md#configuration).
 
 ## Deploy
 
 1. Create the Clerk instance and configure it as in [Clerk](#clerk).
-2. Deploy the broker as its [Operator setup](../connect-broker/README.md#operator-setup) describes.
+2. Deploy the broker as its [Operator setup](../../services/connect-broker/README.md#operator-setup) describes.
 3. Point the Clerk webhook at the deployed `/v1/clerk/webhook` and send a test event.
 4. Build the desktop, the CLI, the web app and the iOS app with the public values above.
 5. Link a host, enroll a phone, revoke the phone from the desktop, and confirm its streams close within a minute.

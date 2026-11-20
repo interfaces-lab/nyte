@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { durableObjectStore } from "../src/durable-object.ts";
+import { durableObjectStore } from "../src/store/durable-object.ts";
 import { doSqlStub } from "./do-sql-stub.ts";
 import { storeConformance, storeMigrationConformance } from "./store-conformance.ts";
 

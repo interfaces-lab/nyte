@@ -40,7 +40,7 @@ const operations = await transport.invoke("operations.describe", {});
 
 `decodeOutput` decodes an answer leniently. It ignores unknown fields and skips array records of an unknown kind. The sdk then rebuilds `Set`s and `Map`s from their wire forms.
 
-`openHostSocket` opens the host's WebSocket, which carries events and streamed text. The [host protocol](../../docs/host-protocol/README.md) describes it.
+`openHostSocket` opens the host's WebSocket, which carries events and streamed text.
 
 ## Development
 

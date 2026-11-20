@@ -1,4 +1,4 @@
-import { asId, isJsonObject, SdkError, SessionCatalogViewSchema } from "@nyte-ai/schema";
+import { asId, isJsonObject, SessionCatalogViewSchema } from "@nyte-ai/schema";
 import type { CatalogId, Json, SessionCatalogView } from "@nyte-ai/schema";
 import type { StoreConnection } from "../contract/store.ts";
 import { textDigest } from "../util/content.ts";
@@ -13,6 +13,7 @@ export async function encodeCatalog(
   return { id: asId<"catalog">((await textDigest(body)).slice(0, 16)), body };
 }
 
+/** Null when no catalog has the id, or the one stored is in a shape this version doesn't read: a catalog is derived from a chat's plugins, which publish it again the next time they load. */
 export async function readCatalog(
   store: StoreConnection,
   id: CatalogId,
@@ -22,10 +23,7 @@ export async function readCatalog(
   if (body === null) return null;
   const result = SessionCatalogViewSchema["~standard"].validate(decodeObject(body));
 
-  if (result instanceof Promise || result.issues !== undefined)
-    throw new SdkError("internal", `The catalog ${id} is malformed.`);
-
-  return result.value;
+  return result instanceof Promise || result.issues !== undefined ? null : result.value;
 }
 
 function sortKeys(_key: string, value: Json | undefined): Json | undefined {

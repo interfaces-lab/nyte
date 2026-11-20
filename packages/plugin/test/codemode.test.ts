@@ -4,7 +4,7 @@ import { standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, expect, it } from "vitest";
 import codemode from "../src/codemode.ts";
-import { fakeModels, open } from "./fake-models.ts";
+import { fakeModels, open, startChat } from "./fake-models.ts";
 import { getSystemMessageText } from "@nyte-ai/schema/model";
 
 const text = standard(Type.Object({ text: Type.String() }));
@@ -14,7 +14,7 @@ const echo: ToolDefinition<{ text: string }> = {
   description: "Echo the text.",
   parameters: text,
   class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => ({ content: [{ kind: "text", text: `echo: ${args.text}` }] }),
 };
 
@@ -25,7 +25,7 @@ const shout: ToolDefinition<{ text: string }, { loud: string }> = {
   output: standard(Type.Object({ loud: Type.String() })),
   exposure: "code",
   class: () => ({ kind: "custom", label: "Shouting" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => ({ content: [], output: { loud: args.text.toUpperCase() } }),
 };
 
@@ -124,3 +124,39 @@ it("runs a script that calls two tools, one exposed to code only, and keeps its 
   );
   expect(getSystemMessageText(system)).toContain("Upper-case the text; callable from code only.");
 });
+
+const peek: ToolDefinition<{ text: string }> = {
+  ...echo,
+  name: "peek",
+  description: "Read the text back; callable from code only.",
+  exposure: "code",
+  class: () => ({ kind: "read", path: "notes.md" }),
+};
+
+it.each([
+  ["main", ["peek", "shout"]],
+  ["side", ["peek"]],
+  ["subagent", ["peek"]],
+] as const)(
+  "a %s chat's prompt lists the code-only tools it may call: %j",
+  async (chat, listed) => {
+    const fake = fakeModels();
+
+    await using host = await open(fake, [
+      codemode,
+      { id: "tools", contribute: { tools: [echo, shout, peek] } },
+    ]);
+
+    const { receipt, first } = await startChat(host, fake, chat, [
+      { content: [{ type: "text", text: "Done." }] },
+    ]);
+
+    await receipt.settled();
+
+    const [system] = fake.requests[first]?.context.messages ?? [];
+    assert(system?.role === "system");
+    const prompt = getSystemMessageText(system);
+
+    expect(["peek", "shout"].filter((name) => prompt.includes(`### \`${name}\``))).toEqual(listed);
+  },
+);

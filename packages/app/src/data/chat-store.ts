@@ -1,31 +1,34 @@
 import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView } from "@nyte-ai/schema";
-import { pagedViews, tracePaints } from "@nyte-ai/sdk";
-import type { PagedViews, SessionId } from "@nyte-ai/sdk";
-import { headView, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
+import { paintSpans, SdkError } from "@nyte-ai/sdk";
+import type { MessageId, SessionId } from "@nyte-ai/sdk";
 import type {
+  Chat,
+  ChatSnapshot,
+  ClientConnection,
   Freshness,
-  HeadStore,
   HeadView,
-  HostConnection,
-  StreamedText,
+  PartSnapshot,
 } from "@nyte-ai/sdk/client";
+import { useSyncExternalStore } from "react";
 import { countWork } from "../lib/work-counts.ts";
-import { connection, registries } from "./connection.ts";
+import { heldSessions, nextExpiry, nextHolds, NO_HOLDS } from "./chat-holds.ts";
+import type { HoldEvent } from "./chat-holds.ts";
+import { connection, onInstall } from "./connection.ts";
+import { reconcile } from "./keep.ts";
 import { createTextPacer } from "./paced-text.ts";
 import { sessionActivityProjector } from "./session-activity.ts";
 import type { SessionActivity } from "./session-activity.ts";
-import { liveFamily, liveValues } from "./watch-store.ts";
+import { watchFamily } from "./watch-store.ts";
+import type { LiveView, Shown, WatchState } from "./watch-store.ts";
 
 export interface ChatView extends HeadView {
   readonly seq: number;
   readonly freshness: Freshness;
   readonly activity: SessionActivity;
+  readonly expired: readonly MessageId[];
+  readonly stopping: ChatSnapshot["stopping"];
 }
-
-type LaidView = HeadView & { readonly seq: number; readonly freshness: Freshness };
-
-const MAIN = asId<"head">("main");
 
 const OPENING_TAIL = 40;
 
@@ -39,190 +42,210 @@ export function paceTranscripts(shown: () => ReadonlySet<SessionId>): void {
   shownTranscripts = shown;
 }
 
-const pagers = new Map<SessionId, PagedViews<LaidView>>();
+const chats = new Map<SessionId, Chat>();
+
+const chatsChanged = new Set<() => void>();
+
+function changeChats(change: () => void): void {
+  change();
+
+  for (const listener of chatsChanged) listener();
+}
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
-export const chatStore = liveFamily((live, session: SessionId): AsyncIterable<ChatView> => ({
-  [Symbol.asyncIterator]() {
-    const known = chatStore(session).value?.messages.length ?? 0;
-    const tail = Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL);
+export const chatStore = watchFamily(openChat, (view) => staleChat(view, Date.now()));
 
-    const views = pagedViews<LaidView>({
-      watch: () => laidViews(live, live.head(session, MAIN, { tail }), session),
-      history: (query) => connection().session(session).history(query),
-    });
+function openChat(opened: ClientConnection, session: SessionId): LiveView<ChatView> {
+  const known = chatStore(session).value?.messages.length ?? 0;
+  const tail = Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL);
+  const chat = opened.chat(session, { tail });
+  const activity = sessionActivityProjector();
+  const paint = paintSpans<ChatView>(session, nextFrame);
+  let drawn: ChatSnapshot | undefined;
+  performance.mark("nyte:session-requested", { detail: session });
 
-    const iterator = tracePaints(views, session, nextFrame)[Symbol.asyncIterator]();
-    const activity = sessionActivityProjector();
+  const pacer = createTextPacer<ChatView>(
+    () => shownTranscripts().has(session),
+    (view) => chatStore(session).revise(view),
+  );
 
-    const pacer = createTextPacer<ChatView>(
-      () => shownTranscripts().has(session),
-      (view) => chatStore(session).revise(view),
-    );
+  changeChats(() => chats.set(session, chat));
 
-    pagers.set(session, views);
+  return {
+    subscribe: (listener) => chat.subscribe(listener),
+    show(previous) {
+      const snapshot = chat.snapshot();
 
-    return {
-      async next() {
-        const next = await iterator.next();
+      if (snapshot === drawn && previous !== undefined) return { kind: "shown", value: previous };
+      const shown = showChat(snapshot, activity);
 
-        if (next.done === true) return next;
-        countWork(`publish:view:${session}`);
+      if (shown.kind !== "shown") return shown;
 
-        return {
-          done: false,
-          value: pacer.receive({ ...next.value, activity: activity(next.value) }),
-        };
-      },
-      async return() {
-        pacer.dispose();
+      if (drawn === undefined) performance.mark("nyte:session-view", { detail: session });
+      drawn = snapshot;
+      paint(shown.value);
+      countWork(`publish:view:${session}`);
 
-        if (pagers.get(session) === views) pagers.delete(session);
-        await iterator.return?.();
+      return { kind: "shown", value: pacer.receive(shown.value) };
+    },
+    close() {
+      pacer.dispose();
 
-        return { done: true, value: undefined };
-      },
-    };
-  },
-}));
+      if (chats.get(session) === chat) changeChats(() => chats.delete(session));
+    },
+  };
+}
 
-function laidViews(
-  live: HostConnection,
-  store: HeadStore,
-  session: SessionId,
-): AsyncIterable<LaidView> {
-  return liveValues<LaidView>((changed) => {
-    const unsent = unsentSends(connection(), session, MAIN);
-    let texts: StreamedText = new Map();
-    let seq = 0;
-    let shown: { readonly source: HeadView; readonly view: LaidView } | null = null;
-    const stops = [store.subscribe(changed), unsent.subscribe(changed)];
+function staleChat(view: ChatView, since: number): ChatView {
+  return view.freshness.kind === "stale"
+    ? view
+    : { ...view, freshness: { kind: "stale", since, error: null } };
+}
 
-    const stopText = live.text((update) => {
-      texts = streamText(texts, update);
-      changed();
-    });
+export function showChat(
+  snapshot: ChatSnapshot,
+  activity: (view: HeadView) => SessionActivity,
+): Shown<ChatView> {
+  const view = snapshot.view;
+  const freshness = snapshot.freshness;
 
-    return {
-      read() {
-        const snapshot = store.snapshot();
-        const freshness = store.freshness();
+  if (view === null)
+    return freshness.kind === "stale" && freshness.error !== null
+      ? { kind: "failed", error: freshness.error }
+      : { kind: "waiting" };
 
-        if (snapshot === null) {
-          if (freshness.kind === "stale" && freshness.error !== null) throw freshness.error;
-
-          return null;
-        }
-
-        if (freshness.kind === "fresh") seq = freshness.seq;
-
-        const source = withStreamedText(
-          unsent.lay(headView(snapshot), freshness.kind === "fresh" ? freshness.seq : null),
-          texts,
-        );
-
-        if (shown?.source === source && shown.view.freshness === freshness) return shown.view;
-        shown = { source, view: { ...source, seq, freshness } };
-
-        return shown.view;
-      },
-      close() {
-        for (const stop of stops) stop();
-        stopText();
-        store.close();
-      },
-    };
-  });
+  return {
+    kind: "shown",
+    value: {
+      ...view,
+      seq: snapshot.seq,
+      freshness,
+      expired: snapshot.expired,
+      stopping: snapshot.stopping,
+      activity: activity(view),
+    },
+  };
 }
 
 export type ShownPart = { readonly part: PartView | null; readonly staleSince: number | null };
 
-const partStores = liveFamily((live, key: string): AsyncIterable<ShownPart> =>
-  liveValues<ShownPart>((changed) => {
-    const [session = "", part = ""] = key.split(" ");
-    const store = live.part(asId<"session">(session), asId<"part">(part));
-    const stop = store.subscribe(changed);
-    let shown = partStores(key).value ?? null;
+const partStores = watchFamily((opened, key: string): LiveView<ShownPart> => {
+  const [session = "", part = ""] = key.split(" ");
+  const store = opened.part(asId<"session">(session), asId<"part">(part));
+  const retained = partStores(key).value;
 
-    return {
-      read() {
-        const freshness = store.freshness();
-        const staleSince = freshness.kind === "stale" ? freshness.since : null;
-        const snapshot = store.snapshot();
-        const found = snapshot === null ? shown?.part : snapshot.part;
+  return {
+    subscribe: (listener) => store.subscribe(listener),
+    show: (previous) =>
+      showPart({ snapshot: store.snapshot(), freshness: store.freshness() }, previous ?? retained),
+    close: () => store.close(),
+  };
+});
 
-        if (found === undefined) {
-          if (freshness.kind === "stale" && freshness.error !== null) throw freshness.error;
+export function showPart(
+  store: { readonly snapshot: PartSnapshot | null; readonly freshness: Freshness },
+  previous: ShownPart | undefined,
+): Shown<ShownPart> {
+  const freshness = store.freshness;
+  const staleSince = freshness.kind === "stale" ? freshness.since : null;
+  const found = store.snapshot === null ? previous?.part : store.snapshot.part;
 
-          return null;
-        }
+  if (found === undefined)
+    return freshness.kind === "stale" && freshness.error !== null
+      ? { kind: "failed", error: freshness.error }
+      : { kind: "waiting" };
 
-        if (shown?.part === found && shown.staleSince === staleSince) return shown;
-        shown = { part: found, staleSince };
+  if (previous?.part === found && previous.staleSince === staleSince)
+    return { kind: "shown", value: previous };
 
-        return shown;
-      },
-      close() {
-        stop();
-        store.close();
-      },
-    };
-  }),
-);
+  return { kind: "shown", value: { part: found, staleSince } };
+}
 
 export function partStore(session: SessionId, part: PartId) {
   return partStores(`${session} ${part}`);
 }
 
-const KEPT_CHATS = 8;
+let holds = NO_HOLDS;
 
-const kept = new Map<SessionId, () => void>();
+const held = new Map<SessionId, () => void>();
 
-registries.add({
-  clear() {
-    for (const release of kept.values()) release();
-    kept.clear();
-  },
-});
+let expiry: ReturnType<typeof setTimeout> | undefined;
 
-export function keepChat(session: SessionId): void {
-  const held = kept.get(session) ?? chatStore(session).subscribe(() => undefined);
-  kept.delete(session);
-  kept.set(session, held);
+function hold(event: HoldEvent): void {
+  holds = nextHolds(holds, event);
+  reconcile(
+    held,
+    heldSessions(holds),
+    (session) => {
+      const store = chatStore(session);
 
-  for (const [oldest, release] of kept) {
-    if (kept.size <= KEPT_CHATS) break;
-    kept.delete(oldest);
-    release();
-  }
+      return store.subscribe(() => {
+        if (chatGone(store.getState())) queueMicrotask(() => hold({ kind: "gone", session }));
+      });
+    },
+    (release) => release(),
+  );
+  clearTimeout(expiry);
+  const until = nextExpiry(holds);
+
+  expiry =
+    until === null
+      ? undefined
+      : setTimeout(() => hold({ kind: "tick", now: Date.now() }), until - Date.now());
 }
 
-const WARM_SESSIONS = 3;
+onInstall((replaced) => {
+  if (replaced) hold({ kind: "replaced" });
+});
 
-const WARM_MS = 5_000;
+export function chatGone(state: WatchState<ChatView>): boolean {
+  const freshness = state.value?.freshness;
+  const error = state.error ?? (freshness?.kind === "stale" ? freshness.error : null);
 
-const hotSet = new Map<SessionId, () => void>();
+  return error instanceof SdkError && error.code === "unknown";
+}
+
+export function keepChat(session: SessionId): void {
+  hold({ kind: "keep", session });
+}
 
 export function warmSession(session: SessionId): void {
-  const hold = chatStore(session).subscribe(() => undefined);
+  hold({ kind: "warm", session, now: Date.now() });
+}
 
-  const release = (): void => {
-    clearTimeout(timer);
+export function resendMessage(session: SessionId, message: MessageId): Promise<void> {
+  return connection().chat(session).resend(message);
+}
 
-    if (hotSet.get(session) === release) hotSet.delete(session);
-    hold();
-  };
+export function stopChat(session: SessionId): Promise<void> {
+  return chats.get(session)?.stop() ?? Promise.resolve();
+}
 
-  const timer = setTimeout(release, WARM_MS);
-  hotSet.get(session)?.();
-  hotSet.set(session, release);
+export function useChatStopping(session: SessionId): ChatSnapshot["stopping"] {
+  return useSyncExternalStore(
+    (notice) => {
+      let leave = chats.get(session)?.subscribe(notice);
 
-  if (hotSet.size > WARM_SESSIONS) hotSet.values().next().value?.();
+      const follow = (): void => {
+        leave?.();
+        leave = chats.get(session)?.subscribe(notice);
+        notice();
+      };
+
+      chatsChanged.add(follow);
+
+      return () => {
+        chatsChanged.delete(follow);
+        leave?.();
+      };
+    },
+    () => chats.get(session)?.snapshot().stopping ?? "no",
+  );
 }
 
 export async function loadEarlierMessages(session: SessionId, limit: number): Promise<number> {
-  return (await pagers.get(session)?.earlier(limit)) ?? 0;
+  return (await chats.get(session)?.earlier(limit)) ?? 0;
 }

@@ -369,7 +369,7 @@ export function followed(view: SessionView, id = "s1"): FollowedSession {
     info,
     view,
     freshness: FRESH,
-    selection: { model: CONFIGURATION.model, effort: CONFIGURATION.thinking, fast: false },
+    selection: { model: CONFIGURATION.model, effort: CONFIGURATION.thinking, modes: [] },
   };
 }
 

@@ -1,5 +1,6 @@
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
+import { captureWindow } from "./window-capture.ts";
 import {
   chatPane,
   chatRow,
@@ -61,18 +62,16 @@ test("a held response can be stopped", async ({ desktop }, testInfo) => {
   const stop = chatPane(page).getByRole("button", { name: "Stop response" });
   await expect(stop).toBeVisible();
   await expect(messages(page).getByRole("paragraph").last()).toContainText("Holding");
-  await expect(
-    page.getByRole("tab", { selected: true }).getByRole("img", { name: "Working" }),
-  ).toBeVisible();
+  await expect(page.getByRole("tab", { selected: true })).toHaveAccessibleName("/hold, working");
   await stop.click();
   await expect(stop).toBeHidden();
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
   await send(page, "After stopping");
   await expect(messages(page).getByRole("paragraph").last()).toHaveText("Echo: After stopping");
-  await testInfo.attach("chat-after-stop", {
-    body: await page.screenshot(),
-    contentType: "image/png",
-  });
+  await testInfo.attach(
+    "chat-after-stop",
+    await captureWindow(desktop, testInfo.outputPath("chat-after-stop.png")),
+  );
   await testInfo.attach("chat-after-stop-accessibility", {
     body: await page.locator("body").ariaSnapshot(),
     contentType: "text/plain",
@@ -108,10 +107,10 @@ test("a steer sent during a response shows in the transcript, never in the queue
   await expect(messages(page).getByRole("paragraph").filter({ hasText: "Steer in" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Queued messages" })).toHaveCount(0);
   await expect(page.locator("body")).not.toHaveAttribute("data-queued-steer", "seen");
-  await testInfo.attach("steer-pending", {
-    body: await page.screenshot(),
-    contentType: "image/png",
-  });
+  await testInfo.attach(
+    "steer-pending",
+    await captureWindow(desktop, testInfo.outputPath("steer-pending.png")),
+  );
   await chatPane(page).getByRole("button", { name: "Stop response" }).click();
   await expect(messages(page).getByRole("paragraph").last()).toHaveText("Echo: Steer in");
 });

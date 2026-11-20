@@ -40,7 +40,7 @@ const SPACE = /\s/u;
 
 const BLANK = /^\s*$/u;
 
-const FOOTNOTE = /\[\^[\w-]{1,200}\]/u;
+const FOOTNOTE_DEFINITION = /^ {0,3}\[\^[\w-]{1,200}\]:/mu;
 
 const CHUNK_CLASSES = props(proseStyles.chunk).className?.split(" ");
 
@@ -55,7 +55,7 @@ export const FadeEnd = createContext<((node: HastElement | undefined) => void) |
 );
 
 export function findStreamingTail(markdown: string, blocks: readonly string[]): number {
-  if (blocks.length === 1 && FOOTNOTE.test(markdown)) return -1;
+  if (blocks.length === 1 && FOOTNOTE_DEFINITION.test(markdown)) return -1;
 
   return blocks.findLastIndex((block, index) => index === 0 || !BLANK.test(block));
 }

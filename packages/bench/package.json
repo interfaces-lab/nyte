@@ -9,7 +9,11 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
+    "bench:snapshots": "node scripts/bench-snapshots.ts",
+    "bench:snapshots:gate": "node scripts/bench-snapshots.ts --gate",
     "bench:stream": "node scripts/bench-stream.ts",
+    "bench:wire": "node scripts/bench-wire.ts",
+    "bench:wire:gate": "node scripts/bench-wire.ts --idle-ms 2000 --gate",
     "simulate": "node scripts/simulate.ts",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit"
@@ -21,14 +25,14 @@
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "typebox": "^1.4.6",
-    "ws": "^8.22.0"
+    "typebox": "^1.4.7",
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@nyte-ai/connect": "workspace:*",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=26.4.0"

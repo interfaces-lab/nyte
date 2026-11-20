@@ -86,6 +86,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
   let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   let lastSize = "";
   let inputAt = "";
+  let closed = false;
 
   const send = (bytes: Uint8Array): void => {
     if (bytes.length === 0) return;
@@ -109,22 +110,36 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
   };
 
   const syncSize = (): void => {
-    const terminal = surface.terminal;
-    const size = `${String(terminal.cols)}:${String(terminal.rows)}`;
+    const size = surface.fitted();
+    const tab = getTerminal(id);
+    const key = `${String(size.cols)}:${String(size.rows)}`;
 
-    if (size === lastSize || !running(getTerminal(id))) return;
-    lastSize = size;
-    void terminalActions.resize(id, terminal.cols, terminal.rows).catch((cause: unknown) => {
-      toast.add({
-        type: "error",
-        title: "Couldn't resize terminal",
-        id: `terminal-resize-${id}`,
-        description: errorMessage(cause),
+    if (tab?.kind === "shell" && tab.state.kind === "starting") return;
+
+    if (key === lastSize || !running(tab)) {
+      surface.resize(size);
+
+      return;
+    }
+
+    lastSize = key;
+    void terminalActions
+      .resize(id, size.cols, size.rows)
+      .catch((cause: unknown) => {
+        toast.add({
+          type: "error",
+          title: "Couldn't resize terminal",
+          id: `terminal-resize-${id}`,
+          description: errorMessage(cause),
+        });
+      })
+      .then(() => {
+        if (!closed && lastSize === key) surface.resize(size);
       });
-    });
   };
 
   const surface = await openTerminalSurface(engine, stage, {
+    grid: shell ? "program" : "element",
     cursor: shell ? "shell" : "none",
     newlineMode: !shell,
     reply: sendToRunning,
@@ -225,7 +240,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
     send: sendToRunning,
     focus: focusInput,
     selecting: () => surface.draw(true),
-    settled: () => setTimeout(() => notifySelection(id)),
+    settled: () => notifySelection(id),
     scrolled: () => surface.draw(true),
     linkModifier: (event) => (nyte.platform === "darwin" ? event.metaKey : event.ctrlKey),
     link: (at) =>
@@ -267,6 +282,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
   views.set(id, view);
   attachTerminalOutput(id, {
     reset() {
+      lastSize = "";
       terminal.reset();
       terminal.clearSelection();
       disposeMarks();
@@ -286,6 +302,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
     },
     visible: () => attached && element.checkVisibility(),
     dispose() {
+      closed = true;
       clearTimeout(mirrorTimer);
       clearTimeout(resizeTimer);
       element.removeEventListener("focus", focusInput);

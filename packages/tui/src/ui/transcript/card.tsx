@@ -45,7 +45,6 @@ function Panel(props: { readonly text: string; readonly error: boolean }): JSX.E
   );
 }
 
-/** A heading chunk; a code chunk asks for its highlights while it is mounted and colors itself once they land. */
 function Chunk(props: { readonly chunk: HeadingChunk }): JSX.Element {
   const { kit } = useApp();
   const [ranges, setRanges] = createSignal<readonly SimpleHighlight[]>([]);

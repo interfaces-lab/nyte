@@ -1,7 +1,3 @@
-/**
- * The renderer side of the grid check. `collect` runs through `page.evaluate`, which sends its source
- * text, so it may not reference anything outside its own body.
- */
 import type { BoxFact, Locate, RegionName } from "./rules.ts";
 
 export interface PlannedRail {

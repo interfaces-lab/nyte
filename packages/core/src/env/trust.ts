@@ -4,7 +4,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import { decodeTrustRecord } from "../contract/records.ts";
 import type { TrustRecord, WorkspaceRecord } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { kvRef, trustRef, trustTarget } from "../store/refs.ts";
 import { load, put, readKv } from "../store/session.ts";
 import { workspaceRecords } from "./environment.ts";

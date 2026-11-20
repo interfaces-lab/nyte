@@ -59,9 +59,12 @@ export interface SessionIndex {
     readonly after?: { readonly at: number; readonly id: SessionId };
     readonly limit: number;
   }): Promise<readonly SessionIndexRow[]>;
+  /** The ids `parents`, `pinned` and `query` select, in `list`'s order, and those of them stamped after `since`. `query` keeps the sessions whose name holds it, ignoring case, and none without a name. Both filters read the index alone: pinned sessions through their own index, a query by walking the activity order until `limit` match. */
   changed(input: {
     readonly since: number;
     readonly parents: ParentFilter;
+    readonly pinned?: boolean;
+    readonly query?: string;
     readonly limit: number;
   }): Promise<{
     readonly seq: number;

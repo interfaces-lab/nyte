@@ -6,6 +6,8 @@ export const CANVAS_GLOBAL = "__nyteCanvas";
 
 export const CANVAS_STARTUP_CONTEXT = "__nyteCanvasContext";
 
+export const CANVAS_LAYOUT_GLOBAL = "__nyteCanvasLayout";
+
 export const KIT_SPECIFIER = "nyte/canvas";
 
 export const CANVAS_ENTRY = "main.tsx";

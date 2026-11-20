@@ -22,20 +22,24 @@
     "./core/browser-client": "./src/browser-client.ts",
     "./core/browser-tools": "./src/browser-tools.ts",
     "./core/canvas": "./src/canvas/canvas.ts",
+    "./core/cd": "./src/cd.ts",
     "./core/canvas-client": "./src/canvas/canvas-client.ts",
     "./core/canvas-compile": "./src/canvas/canvas-compile.ts",
     "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
     "./core/claude-code-sdk": "./src/claude-code-sdk/index.ts",
     "./core/codemode": "./src/codemode.ts",
+    "./core/design-guide": "./src/design/design-guide.ts",
     "./core/desktop-settings": "./src/desktop-settings/desktop-settings.ts",
     "./core/codemode-runtime": "./src/codemode-runtime.ts",
     "./core/codemode-worker": "./src/codemode-worker.ts",
+    "./core/language-tools": "./src/language-tools.ts",
     "./core/openai-astra-context": "./src/openai-astra-context.ts",
     "./core/openai-compaction": "./src/openai-compaction.ts",
     "./core/question": "./src/question/question.ts",
     "./core/rename": "./src/rename.ts",
     "./core/secret": "./src/secret/secret.ts",
     "./core/subagents": "./src/subagents.ts",
+    "./core/threads": "./src/threads.ts",
     "./core/telemetry": "./src/telemetry.ts",
     "./core/tool-search": "./src/tool-search.ts",
     "./core/web": "./src/web/index.ts",
@@ -48,11 +52,15 @@
     "./client/transcript": "./src/client/transcript.tsx",
     "./client/transcript-tui": "./src/client/transcript-tui.ts",
     "./approvals/schema": "./src/approvals/schema.ts",
+    "./browser/schema": "./src/browser/schema.ts",
     "./canvas/protocol": "./src/canvas/canvas-protocol.ts",
     "./canvas/schema": "./src/canvas/schema.ts",
+    "./codemode/schema": "./src/codemode/schema.ts",
+    "./design/board-protocol": "./src/design/board-protocol.ts",
     "./desktop-settings/schema": "./src/desktop-settings/schema.ts",
     "./question/schema": "./src/question/schema.ts",
-    "./secret/schema": "./src/secret/schema.ts"
+    "./secret/schema": "./src/secret/schema.ts",
+    "./web/schema": "./src/web/schema.ts"
   },
   "publishConfig": {
     "exports": {
@@ -112,9 +120,17 @@
         "types": "./dist/src/codemode-worker.d.ts",
         "import": "./dist/src/codemode-worker.js"
       },
+      "./core/design-guide": {
+        "types": "./dist/src/design/design-guide.d.ts",
+        "import": "./dist/src/design/design-guide.js"
+      },
       "./core/desktop-settings": {
         "types": "./dist/src/desktop-settings/desktop-settings.d.ts",
         "import": "./dist/src/desktop-settings/desktop-settings.js"
+      },
+      "./core/language-tools": {
+        "types": "./dist/src/language-tools.d.ts",
+        "import": "./dist/src/language-tools.js"
       },
       "./core/openai-astra-context": {
         "types": "./dist/src/openai-astra-context.d.ts",
@@ -128,6 +144,10 @@
         "types": "./dist/src/question/question.d.ts",
         "import": "./dist/src/question/question.js"
       },
+      "./core/cd": {
+        "types": "./dist/src/cd.d.ts",
+        "import": "./dist/src/cd.js"
+      },
       "./core/rename": {
         "types": "./dist/src/rename.d.ts",
         "import": "./dist/src/rename.js"
@@ -139,6 +159,10 @@
       "./core/subagents": {
         "types": "./dist/src/subagents.d.ts",
         "import": "./dist/src/subagents.js"
+      },
+      "./core/threads": {
+        "types": "./dist/src/threads.d.ts",
+        "import": "./dist/src/threads.js"
       },
       "./core/telemetry": {
         "types": "./dist/src/telemetry.d.ts",
@@ -188,6 +212,10 @@
         "types": "./dist/src/approvals/schema.d.ts",
         "import": "./dist/src/approvals/schema.js"
       },
+      "./browser/schema": {
+        "types": "./dist/src/browser/schema.d.ts",
+        "import": "./dist/src/browser/schema.js"
+      },
       "./canvas/protocol": {
         "types": "./dist/src/canvas/canvas-protocol.d.ts",
         "import": "./dist/src/canvas/canvas-protocol.js"
@@ -195,6 +223,14 @@
       "./canvas/schema": {
         "types": "./dist/src/canvas/schema.d.ts",
         "import": "./dist/src/canvas/schema.js"
+      },
+      "./codemode/schema": {
+        "types": "./dist/src/codemode/schema.d.ts",
+        "import": "./dist/src/codemode/schema.js"
+      },
+      "./design/board-protocol": {
+        "types": "./dist/src/design/board-protocol.d.ts",
+        "import": "./dist/src/design/board-protocol.js"
       },
       "./desktop-settings/schema": {
         "types": "./dist/src/desktop-settings/schema.d.ts",
@@ -207,6 +243,10 @@
       "./secret/schema": {
         "types": "./dist/src/secret/schema.d.ts",
         "import": "./dist/src/secret/schema.js"
+      },
+      "./web/schema": {
+        "types": "./dist/src/web/schema.d.ts",
+        "import": "./dist/src/web/schema.js"
       }
     },
     "access": "public",
@@ -219,32 +259,32 @@
     "build:package": "bun ../../scripts/sdk-packages.mjs build plugin"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^2.4.0",
-    "@anthropic-ai/claude-agent-sdk": "^0.3.317",
-    "@earendil-works/pi-codemode": "^1.5.0",
+    "@agentclientprotocol/sdk": "^2.7.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.325",
+    "@earendil-works/pi-codemode": "^1.5.2",
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@opentelemetry/api": "^1.10.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.300.0",
-    "@opentelemetry/resources": "^3.0.0",
-    "@opentelemetry/sdk-trace": "^3.0.0",
-    "@opentelemetry/semantic-conventions": "^1.44.0",
-    "es-module-lexer": "^3.0.4",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.301.2",
+    "@opentelemetry/resources": "^3.1.1",
+    "@opentelemetry/sdk-trace": "^3.1.1",
+    "@opentelemetry/semantic-conventions": "^1.45.0",
+    "es-module-lexer": "^3.0.5",
     "htmlparser2": "^12.0.0",
     "sucrase": "^3.35.1",
-    "typebox": "^1.4.6",
+    "typebox": "^1.4.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@opentui/core": "^0.8.3",
+    "@opentui/core": "^0.9.2",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "react": "^19.3.1",
     "vitest": "^5.1.0"
   },
   "peerDependencies": {
-    "@opentui/core": "^0.8.2",
+    "@opentui/core": "^0.9.2",
     "react": "^19.3.1"
   },
   "peerDependenciesMeta": {

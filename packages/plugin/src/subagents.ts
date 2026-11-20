@@ -1,10 +1,9 @@
 import { Type } from "typebox";
-import { asId, standard } from "@nyte-ai/schema";
+import { asId, enabledModels, matchModels, standard } from "@nyte-ai/schema";
 import type {
   ConfigurationPatch,
   Infer,
   Message,
-  ModelInfo,
   ModelRef,
   RunEnd,
   RunId,
@@ -13,8 +12,10 @@ import type {
   WaitOutcome,
 } from "@nyte-ai/schema";
 import { clipText, isPart, text, tool } from "@nyte-ai/core";
-import type { Session, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
+import type { Session, ToolDefinition, ToolInvocation, When } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/plugin/core";
+
+const CAPITALIZED = { subagent: "Subagent", chat: "Chat" } as const;
 
 const SCHEDULED: Readonly<Record<Schedule["kind"], string>> = {
   joined: "it joins the work in progress",
@@ -26,13 +27,14 @@ const SCHEDULED: Readonly<Record<Schedule["kind"], string>> = {
 const selectionParameters = {
   agent: Type.Optional(
     Type.String({
-      description: "A registered agent to run as, only when the user names one.",
+      description:
+        "A registered agent to run as, only when the user names one. The system prompt lists them.",
     }),
   ),
   model: Type.Optional(
     Type.String({
       description:
-        "A model to run on, only when the user asks for one: provider/id or an id from /model.",
+        "A model to run on, only when the user asks for one: an enabled model the system prompt lists, as provider/id.",
     }),
   ),
   thinking: Type.Optional(
@@ -80,20 +82,24 @@ const createParameters = standard(
   }),
 );
 
+const sessionField = Type.String({
+  description: "Id from `task`, `create`, `thread_start` or `thread_list`.",
+});
+
 const sendParameters = standard(
   Type.Object({
-    session: Type.String({ description: "The id from task or create." }),
-    prompt: Type.String({ description: "The message for the subagent." }),
+    session: sessionField,
+    prompt: Type.String(),
   }),
 );
 
 const awaitParameters = standard(
   Type.Object({
-    session: Type.String({ description: "The id from task or create." }),
+    session: sessionField,
     timeout: Type.Optional(
       Type.Integer({
         minimum: 1,
-        description: "Seconds to wait.",
+        description: "Seconds. A timeout doesn't stop it.",
       }),
     ),
   }),
@@ -101,13 +107,13 @@ const awaitParameters = standard(
 
 const readParameters = standard(
   Type.Object({
-    session: Type.String({ description: "The id from task or create." }),
+    session: sessionField,
   }),
 );
 
 const stopParameters = standard(
   Type.Object({
-    session: Type.String({ description: "The id from task or create." }),
+    session: sessionField,
   }),
 );
 
@@ -117,9 +123,9 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
     "Run a subagent and get its answer as this call's result, whenever you need the answer this turn. Several task calls in one response run in parallel. It does not see this conversation.",
   parameters: taskParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
-  replay: "safe",
+  rerun: "safe",
   async execute(args, invocation) {
-    const { session: child, receipt } = await invocation.sdk.sessions.start({
+    const { session: child, receipt } = await invocation.host.sessions.start({
       parent: invocation.session.id,
       name: args.title,
       configuration: await childConfiguration(invocation, args),
@@ -139,7 +145,7 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
       targets: [{ kind: "run", session: child.id, run }],
       untilInput: true,
     });
-    const answer = await readSubagentReply(child, run, outcome);
+    const answer = await readSubagentReply({ session: child, noun: "subagent" }, run, outcome);
     const worktree = await describeWorktree(invocation, child);
 
     return reply(clipText(worktree === null ? answer : `${worktree}\n\n${answer}`, "head"));
@@ -152,10 +158,10 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
     "Start a subagent in the background and return its id, for work you won't wait on or a subagent you'll message again with send. Its answer reaches you on its own. When you need the answer this turn, use task instead. Link it in a reply as [short title](agent:<id>).",
   parameters: createParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "create", title: args.title ?? null }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
-    const { session: child } = await invocation.sdk.sessions.start({
+    const { session: child } = await invocation.host.sessions.start({
       parent: invocation.session.id,
       name: args.title,
       configuration: await childConfiguration(invocation, args),
@@ -175,8 +181,7 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
 
 const send: ToolDefinition<Infer<typeof sendParameters>> = {
   name: "send",
-  description:
-    "Send a message to a subagent from create. It runs once current work ends, so don't await first; await gets its answer.",
+  description: "Send to a subagent or any chat. It queues behind current work. Answer: `await`.",
   parameters: sendParameters,
   class: (args) => ({
     kind: "delegate",
@@ -184,23 +189,25 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
     role: "send",
     title: null,
   }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
-    const child = await requireChildSession(invocation, args.session);
+    const target = await findTarget(invocation, args.session, "steer");
+    const child = target.session;
     const receipt = await child.send(args.prompt, {
       id: asId<"receipt">(`${invocation.call}:${child.id}`),
     });
     const view = await child.view();
     const message = [...view.messages, ...view.queue].find((entry) => entry.id === receipt.message);
 
-    return reply(`Sent to subagent ${child.id}; ${scheduled(message)}.`);
+    return reply(`Sent to ${target.noun} ${child.id}; ${scheduled(message)}.`);
   },
 };
 
 const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
   name: "await",
-  description: "Wait for a subagent to finish its current work and return its answer.",
+  description:
+    "Wait for a subagent or chat to finish its current work, and get its answer. Idle: its last answer, at once.",
   parameters: awaitParameters,
   class: (args) => ({
     kind: "delegate",
@@ -208,9 +215,10 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
     role: "await",
     title: null,
   }),
-  replay: "safe",
+  rerun: "safe",
   async execute(args, invocation) {
-    const child = await requireChildSession(invocation, args.session);
+    const target = await findTarget(invocation, args.session, "read");
+    const child = target.session;
     const run = await invocation.memo("run", async () => {
       const { execution } = await child.view();
 
@@ -221,11 +229,12 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
       const execution = (await child.view()).execution;
       const last = execution.kind === "idle" ? execution.lastRun : null;
 
-      if (last === null) return reply(`Subagent ${child.id} has not worked on anything yet.`);
+      if (last === null)
+        return reply(`${CAPITALIZED[target.noun]} ${child.id} has not worked on anything yet.`);
 
       return reply(
         clipText(
-          await readSubagentReply(child, last.id, {
+          await readSubagentReply(target, last.id, {
             kind: "run",
             session: child.id,
             run: last.id,
@@ -249,13 +258,13 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
           },
     );
 
-    return reply(clipText(await readSubagentReply(child, run, outcome), "head"));
+    return reply(clipText(await readSubagentReply(target, run, outcome), "head"));
   },
 };
 
 const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
   name: "read_agent",
-  description: "Read a subagent's conversation so far, newest last.",
+  description: "Read a subagent's or chat's transcript, newest last.",
   parameters: readParameters,
   class: (args) => ({
     kind: "delegate",
@@ -263,10 +272,11 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
     role: "read",
     title: null,
   }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
-    const child = await requireChildSession(invocation, args.session);
+    const target = await findTarget(invocation, args.session, "read");
+    const child = target.session;
     const view = await child.view();
     const execution = view.execution.kind;
 
@@ -278,15 +288,15 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
 
     return reply(
       transcript === ""
-        ? `Subagent ${child.id} is ${state} and has no messages yet.`
-        : clipText(`${transcript}\n\nSubagent ${child.id} is ${state}.`, "tail"),
+        ? `${CAPITALIZED[target.noun]} ${child.id} is ${state} and has no messages yet.`
+        : clipText(`${transcript}\n\n${CAPITALIZED[target.noun]} ${child.id} is ${state}.`, "tail"),
     );
   },
 };
 
 const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   name: "stop",
-  description: "Stop a subagent's current work.",
+  description: "Stop a subagent's or chat's work and drop its queued messages.",
   parameters: stopParameters,
   class: (args) => ({
     kind: "delegate",
@@ -294,34 +304,51 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
     role: "stop",
     title: null,
   }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   async execute(args, invocation) {
-    const child = await requireChildSession(invocation, args.session);
+    const target = await findTarget(invocation, args.session, "steer");
+    const child = target.session;
     const { stopped, withdrawn } = await child.stop();
 
     return reply(
-      `Stopped ${stopped.length} run${stopped.length === 1 ? "" : "s"} of subagent ${child.id} and withdrew ${withdrawn.length} pending message${withdrawn.length === 1 ? "" : "s"}.`,
+      `Stopped ${stopped.length} run${stopped.length === 1 ? "" : "s"} of ${target.noun} ${child.id} and withdrew ${withdrawn.length} pending message${withdrawn.length === 1 ? "" : "s"}.`,
     );
   },
 };
 
+const topLevel: When = (chat) => chat.parent === null;
+
 export default {
   id: "subagents",
-  async activate(api) {
-    if ((await api.session.info()).parent !== null) return;
+  contribute: {
+    tools: [task, create, send, awaitChild, readAgent, stop].map((definition) => ({
+      ...definition,
+      when: topLevel,
+    })),
+    prompt: [
+      {
+        id: "subagents",
+        order: 97,
+        when: topLevel,
+        text: async (context) => {
+          const models = enabledModels(await context.api.host.models.list());
+          const agents = context.api.registries.agents.list();
 
-    for (const definition of [task, create, send, awaitChild, readAgent, stop])
-      api.contribute.tools.add(definition);
+          return [
+            `Enabled models, for the model of task and create: ${models.length === 0 ? "none" : models.map((info) => `${info.ref.provider}/${info.ref.id}`).join(", ")}.`,
+            ...(agents.length === 0
+              ? []
+              : [
+                  `Registered agents, for their agent: ${agents.map((agent) => agent.id).join(", ")}.`,
+                ]),
+          ].join("\n");
+        },
+      },
+    ],
   },
 } satisfies Plugin;
 
-/**
- * A chat that runs as a registered agent starts subagents of its own type: its agent, and its
- * model and thinking level unless the call names a model. Any other chat's subagents run on what
- * the call names and the defaults. An agent no plugin registers is read as the model it names,
- * alone or with `model`, as a model asked for loosely ("astra", or "sol" with "6.1") often is.
- */
 async function childConfiguration(
   invocation: ToolInvocation,
   args: Pick<Infer<typeof taskParameters>, "agent" | "model" | "thinking">,
@@ -354,7 +381,7 @@ async function childConfiguration(
 }
 
 async function findModel(invocation: ToolInvocation, name: string): Promise<ModelRef> {
-  const models = await listModels(invocation);
+  const models = enabledModels(await invocation.host.models.list());
   const matches = matchModels(models, name);
   const [only, ...others] = matches;
 
@@ -371,19 +398,18 @@ async function findModel(invocation: ToolInvocation, name: string): Promise<Mode
     `/model has no ${name}. Choose one of:\n${models
       .map(
         (info) =>
-          `- ${info.ref.provider}/${info.ref.id} (thinking: ${info.thinking.join(", ")})${info.fast === null ? "" : `, fast: ${info.fast.provider}/${info.fast.id}`}`,
+          `- ${info.ref.provider}/${info.ref.id} (thinking: ${info.thinking.join(", ")})${info.variants.map((variant) => `, ${variant.modes.join(" + ")}: ${variant.ref.provider}/${variant.ref.id}`).join("")}`,
       )
       .join("\n")}`,
   );
 }
 
-/** The one model `agent`, which no plugin registers, names with `model`, with `model` alone or by itself. */
 async function findAgentModel(
   invocation: ToolInvocation,
   agent: string,
   model: string | undefined,
 ): Promise<ModelRef> {
-  const models = await listModels(invocation);
+  const models = enabledModels(await invocation.host.models.list());
   const names = model === undefined ? [agent] : [model, `${agent} ${model}`, agent];
 
   const [found] = names.flatMap((name) => {
@@ -397,63 +423,11 @@ async function findAgentModel(
   return found;
 }
 
-async function listModels(invocation: ToolInvocation): Promise<readonly ModelInfo[]> {
-  return (await invocation.sdk.models.list()).providers.flatMap((provider) =>
-    provider.credential === "unknown" ||
-    provider.credential === "configured" ||
-    provider.credential === "verified"
-      ? provider.models
-      : [],
-  );
-}
-
-/** The refs `name` means: its exact `provider/id`, else its exact id, else the closest loose match. */
-function matchModels(models: readonly ModelInfo[], name: string): readonly ModelRef[] {
-  const refs = models.flatMap((info) => (info.fast === null ? [info.ref] : [info.ref, info.fast]));
-  const exact = refs.filter((ref) => `${ref.provider}/${ref.id}` === name);
-
-  if (exact.length > 0) return exact;
-  const ids = refs.filter((ref) => ref.id === name);
-
-  return ids.length > 0 ? ids : closestModels(refs, name);
-}
-
-/**
- * The refs a loosely written name means: those whose `provider/id` holds every word of `name`,
- * letters and numbers apart, with the fewest other words in the id. "sol 6.1" finds gpt-6.1-sol
- * and "astra" gpt-6-astra over its fast variant. A name with no letters means none.
- */
-function closestModels(refs: readonly ModelRef[], name: string): readonly ModelRef[] {
-  const wanted = modelWords(name);
-
-  if (!wanted.some((word) => /[a-z]/u.test(word))) return [];
-
-  const held = refs.flatMap((ref) => {
-    const words = modelWords(`${ref.provider}/${ref.id}`);
-
-    return wanted.every((word) => countWord(words, word) >= countWord(wanted, word))
-      ? [{ ref, extra: modelWords(ref.id).length }]
-      : [];
-  });
-
-  const fewest = Math.min(...held.map((entry) => entry.extra));
-
-  return held.flatMap((entry) => (entry.extra === fewest ? [entry.ref] : []));
-}
-
-function modelWords(source: string): readonly string[] {
-  return source.toLowerCase().match(/[a-z]+|\d+/gu) ?? [];
-}
-
-function countWord(words: readonly string[], word: string): number {
-  return words.filter((entry) => entry === word).length;
-}
-
 async function describeWorktree(
   invocation: ToolInvocation,
   child: Session,
 ): Promise<string | null> {
-  const workspace = await invocation.sdk.workspace((await child.info()).workspace).info();
+  const workspace = await invocation.host.workspace((await child.info()).workspace).info();
 
   if (workspace.isolation === null) return null;
   const folder = "path" in workspace.target ? workspace.target.path : workspace.id;
@@ -461,25 +435,38 @@ async function describeWorktree(
   return `It works in the worktree ${folder} on branch ${workspace.isolation.branch}.`;
 }
 
+type Target = { readonly session: Session; readonly noun: keyof typeof CAPITALIZED };
+
 function reply(content: string): ToolResult<unknown> {
   return { content: [{ kind: "text", text: content }] };
 }
 
-async function requireChildSession(invocation: ToolInvocation, id: string): Promise<Session> {
-  const child = invocation.sdk.session(asId<"session">(id));
+async function findTarget(
+  invocation: ToolInvocation,
+  id: string,
+  access: "read" | "steer",
+): Promise<Target> {
+  const session = invocation.host.session(asId<"session">(id));
 
-  if ((await child.info()).parent !== invocation.session.id)
-    throw new Error(`Session ${id} is not a subagent of this session.`);
+  if (session.id === invocation.session.id) throw new Error("That is this chat.");
+  const info = await session.info();
+  const grant = (await invocation.session.info()).mcp?.grant;
 
-  return child;
+  if (access === "steer" && grant !== undefined && info.mcp?.grant !== grant)
+    throw new Error(
+      `Chat ${id} wasn't started through this chat's MCP grant, so this chat may not message or stop it.`,
+    );
+
+  return { session, noun: info.parent === invocation.session.id ? "subagent" : "chat" };
 }
 
 async function readSubagentReply(
-  child: Session,
+  target: Target,
   run: RunId,
   outcome: WaitOutcome,
 ): Promise<string> {
-  const header = `Subagent ${child.id} ${describeSubagentOutcome(outcome)}.`;
+  const child = target.session;
+  const header = `${CAPITALIZED[target.noun]} ${child.id} ${describeSubagentOutcome(outcome)}.`;
   const view = await child.view();
   const turn = view.turns.find((entry) => entry.run === run)?.id;
 

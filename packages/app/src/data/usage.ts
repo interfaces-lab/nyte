@@ -50,7 +50,12 @@ export function useUsageReport(window: UsageWindow): UsageQueryView {
 function accountLimitsOptions(generation: string) {
   return {
     queryKey: keys.accountLimits(generation),
-    queryFn: async () => (await connected()).models.usage(),
+    queryFn: async () => {
+      const accounts = await (await connected()).models.usage();
+
+      return { accounts, readAt: Date.now() };
+    },
+    placeholderData: keepPreviousData,
     refetchOnMount: true,
     staleTime: USAGE_STALE_AFTER_MS,
     gcTime: Infinity,

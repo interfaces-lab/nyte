@@ -5,7 +5,6 @@ export type StartupProblem = Exclude<ConnectionProblem["kind"], "network">;
 
 type StartupConnection =
   | { readonly kind: "connecting" }
-  | { readonly kind: "migrating" }
   | { readonly kind: "connected" }
   | { readonly kind: "unreachable" }
   | { readonly kind: "failed"; readonly problem: StartupProblem; readonly retry: () => void };
@@ -33,6 +32,8 @@ const startupReads = Promise.withResolvers<void>();
 
 let holdingStartupReads = false;
 
+let waitingScreens = 0;
+
 export function holdStartupReads(): void {
   holdingStartupReads = true;
 }
@@ -45,18 +46,26 @@ export function releaseStartupReads(): void {
   if (!holdingStartupReads) return;
 
   const release = (): void => {
+    if (waitingScreens > 0) return;
     holdingStartupReads = false;
     startupReads.resolve();
   };
 
   requestAnimationFrame(() => {
     if ("requestIdleCallback" in window) requestIdleCallback(release, { timeout: 500 });
-    else setTimeout(release, 0);
+    else requestAnimationFrame(release);
   });
 }
 
-export function StartupReadsRelease(): null {
-  useMountEffect(releaseStartupReads);
+export function StartupReadsHold(): null {
+  useMountEffect(() => {
+    waitingScreens += 1;
+
+    return () => {
+      waitingScreens -= 1;
+      releaseStartupReads();
+    };
+  });
 
   return null;
 }

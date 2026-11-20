@@ -11,6 +11,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "dev/**/*.ts",
+    "dev/**/*.tsx",
     "test/**/*.ts",
     "test/**/*.tsx",
     "qa/**/*.ts",

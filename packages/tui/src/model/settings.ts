@@ -63,16 +63,16 @@ export function settingRows(state: State): readonly SettingRow[] {
       : [
           {
             id: setting.id,
-            label: setting.label,
+            label: setting.title,
             current: jsonId(setting.value),
             choices: setting.choices.map((choice) => ({
               id: jsonId(choice.value),
-              label: choice.label,
-              description: choice.badge ?? "",
+              label: choice.title,
+              description: choice.note ?? "",
               apply: {
                 kind: "apply-setting",
                 id: setting.id,
-                label: setting.label,
+                label: setting.title,
                 scope: setting.scope,
                 value: choice.value,
               },
@@ -99,7 +99,7 @@ export function settingRows(state: State): readonly SettingRow[] {
           selection: {
             model: model.ref,
             effort: clampThinking(model, selection?.effort ?? "medium"),
-            fast: false,
+            modes: [],
           },
         },
       })),

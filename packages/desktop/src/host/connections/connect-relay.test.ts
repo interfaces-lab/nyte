@@ -509,7 +509,7 @@ test("a relay that stops answering pings is dropped and dialed again", async () 
   const connection = open();
   connection.start();
   await connected(connection);
-  await sleep(350);
+  await vi.waitFor(() => assert.ok(relay.pings >= 3));
   assert.equal(relay.auths, 1);
 
   relay.muted = true;
@@ -544,7 +544,7 @@ test("a proof or dial that lands after a close or a newer dial opens nothing", a
   await vi.waitFor(() => assert.equal(proofs.length, 1));
   closed.close();
   proofs[0]?.resolve(PROOF);
-  await sleep(100);
+  await proofs[0]?.promise;
   assert.equal(dials, 0, "closed while its proof was being signed");
   assert.deepEqual(closed.status(), { kind: "stopped" });
 
@@ -559,7 +559,7 @@ test("a proof or dial that lands after a close or a newer dial opens nothing", a
   proofs[3]?.resolve(PROOF);
   await connected(woken);
   proofs[1]?.resolve(PROOF);
-  await sleep(100);
+  await proofs[1]?.promise;
   assert.equal(
     dials,
     2,

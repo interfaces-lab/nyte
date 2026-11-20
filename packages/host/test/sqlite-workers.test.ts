@@ -2,9 +2,8 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { setTimeout } from "node:timers/promises";
-import { afterEach, expect, it } from "vitest";
-import { sqliteWorkers } from "../src/sqlite-workers.ts";
+import { afterEach, expect, it, vi } from "vitest";
+import { sqliteWorkers } from "../src/store/sqlite-workers.ts";
 
 const folders: string[] = [];
 
@@ -25,20 +24,11 @@ async function setup() {
   return { database, workers, path, folder };
 }
 
-async function until(check: () => boolean): Promise<void> {
-  const deadline = Date.now() + 5_000;
-
-  while (!check()) {
-    if (Date.now() > deadline) throw new Error("SQLite worker did not finish");
-    await setTimeout(10);
-  }
-}
-
 it("runs a large read without blocking the event loop or a concurrent writer", async () => {
   const { database, workers } = await setup();
 
   try {
-    expect(await workers.read("SELECT n FROM values_kept", [])).toEqual([{ n: 7 }]);
+    const ahead = workers.read("SELECT n FROM values_kept", []);
 
     const reading = workers.read(
       "WITH RECURSIVE numbers(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM numbers WHERE n < 1000000) SELECT sum(n) AS total FROM numbers",
@@ -49,7 +39,7 @@ it("runs a large read without blocking the event loop or a concurrent writer", a
     void reading.then(() => {
       finished = true;
     });
-    await setTimeout(0);
+    expect(await ahead).toEqual([{ n: 7 }]);
     database.exec("UPDATE values_kept SET n = 8");
 
     expect(finished).toBe(false);
@@ -68,16 +58,22 @@ it("checkpoints a large WAL in the worker so its next write can shrink it", asyn
 
   try {
     database.exec("PRAGMA journal_size_limit = 1048576");
-    await until(
-      () => database.prepare("PRAGMA wal_autocheckpoint").get()?.wal_autocheckpoint === 10000,
+    await vi.waitFor(
+      () =>
+        expect(database.prepare("PRAGMA wal_autocheckpoint").get()).toEqual({
+          wal_autocheckpoint: 10000,
+        }),
+      { timeout: 5_000 },
     );
     database.prepare("INSERT INTO values_kept VALUES (11, ?)").run(new Uint8Array(8 * 1024 * 1024));
     workers.check();
-    await until(() => {
-      const row = database.prepare("PRAGMA wal_checkpoint(NOOP)").get();
-
-      return row?.log === row?.checkpointed;
-    });
+    await vi.waitFor(
+      () => {
+        const row = database.prepare("PRAGMA wal_checkpoint(NOOP)").get();
+        expect(row?.log).toBe(row?.checkpointed);
+      },
+      { timeout: 5_000 },
+    );
     database.exec("INSERT INTO values_kept VALUES (12, NULL)");
 
     expect((await stat(`${path}-wal`)).size).toBeLessThanOrEqual(1048576);
@@ -98,7 +94,7 @@ it("rejects an in-flight read when closed and prevents further reads", async () 
   const { database, workers } = await setup();
 
   try {
-    expect(await workers.read("SELECT n FROM values_kept", [])).toEqual([{ n: 7 }]);
+    const ahead = workers.read("SELECT n FROM values_kept", []);
 
     const reading = workers.read(
       "WITH RECURSIVE numbers(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM numbers WHERE n < 1000000) SELECT sum(n) AS total FROM numbers",
@@ -106,7 +102,7 @@ it("rejects an in-flight read when closed and prevents further reads", async () 
     );
 
     const rejected = expect(reading).rejects.toThrow("closed");
-    await setTimeout(0);
+    expect(await ahead).toEqual([{ n: 7 }]);
     await workers.close();
     await rejected;
 

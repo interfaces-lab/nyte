@@ -35,13 +35,7 @@ const pty = await openPty({
   height: 40,
 });
 
-const state = { ended: false };
-
-const exited = pty.exited().then((code) => {
-  state.ended = true;
-
-  return code;
-});
+const exited = pty.exited();
 
 const reply = (message: Record<string, unknown>): void => {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -69,17 +63,15 @@ for await (const line of createInterface({ input: process.stdin })) {
       reply({ id: command.id, ok: true });
       break;
     case "wait": {
-      const deadline = performance.now() + (command.timeoutMs ?? 20_000);
-      let found = false;
-
-      while (performance.now() < deadline && !state.ended) {
-        if (matches(command, pty.screen().text)) {
-          found = true;
-          break;
-        }
-
-        await Bun.sleep(25);
-      }
+      const found = await Promise.race([
+        pty
+          .waitFor((screen) => matches(command, screen.text), command.timeoutMs ?? 20_000)
+          .then(
+            () => true,
+            () => false,
+          ),
+        exited.then(() => false),
+      ]);
 
       reply({
         id: command.id,

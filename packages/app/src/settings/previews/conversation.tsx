@@ -74,7 +74,7 @@ const RUNNING: readonly ToolMessage[] = [
 const REPLY = `Added \`balanced\` between the two densities:
 
 \`\`\`ts
-export type Density = "compact" | "balanced" | "detailed"; // Compact previews the running step, Detailed keeps finished steps open
+export type Density = "compact" | "balanced" | "detailed";
 \`\`\`
 
 Running the checks now.`;

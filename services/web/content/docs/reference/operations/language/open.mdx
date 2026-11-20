@@ -1,0 +1,210 @@
+---
+title: language.open
+description: Opens a document with the client's text and version, starting its language server if none runs.
+---
+
+Hands a document's text to its language server, which from then on reads the client's text instead of the disk's, and starts the server if it isn't running. It answers the server's row, or null for a file no language handles. Opening a document again replaces its text and version. A server that was `missing` or `failed` is looked for and started again.
+
+## When to call it
+
+When an editor opens a file it will edit. Then send every edit with [`language.change`](/docs/reference/operations/language/change) and end with [`language.close`](/docs/reference/operations/language/close).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "main.go",
+  "text": "package main\n\nfunc main() {}\n",
+  "version": 1
+}
+```
+
+Response:
+
+```json
+{
+  "language": "go",
+  "server": "gopls",
+  "root": "",
+  "state": { "kind": "ready" },
+  "version": "v0.24.0",
+  "executable": "/Users/ada/go/bin/gopls"
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "text", "version"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "version": {
+      "type": "number"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["language", "server", "root", "state", "version", "executable"],
+      "properties": {
+        "language": {
+          "enum": ["go", "typescript"]
+        },
+        "server": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "starting"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "ready"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "title", "percent"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "busy"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "percent": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "hint"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "missing"
+                },
+                "hint": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "reason"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "failed"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "idle"
+                }
+              }
+            }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "null"
+    }
+  ]
+}
+```
+
+{/* generated:end */}

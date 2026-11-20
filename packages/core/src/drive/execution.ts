@@ -22,19 +22,20 @@ import type { ExecutionState, Kernel, LandedInput } from "../contract/kernel.ts"
 import { decodeLease, decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord, SessionRecord } from "../contract/records.ts";
 import { landing, selectRunStart } from "../engine/admission.ts";
-import { LEASE_MS } from "../engine/durable.ts";
+import { HOST_CLOSING, LEASE_MS, RENEW_MS } from "../engine/durable.ts";
 import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
 import { readChildState } from "../store/children.ts";
 import { begin, endRun, newRun } from "../engine/runs.ts";
 import { reapJobs } from "../engine/jobs.ts";
+import { recoverReports } from "../engine/reports.ts";
 import { BEAT_MS } from "../engine/presence.ts";
 import { recoverStarts } from "../engine/start.ts";
 import { crashLooping, interruption, parkedFailure } from "../engine/interruptions.ts";
 import { earliestWake, loadWaits } from "../engine/waits.ts";
-import { commit } from "../fold/commit.ts";
-import { withFold } from "../fold/reads.ts";
+import { commit } from "../watch/commit.ts";
+import { withFold } from "../watch/reads.ts";
 import { leaseRef, runRef } from "../store/refs.ts";
 import {
   coveredSessions,
@@ -49,16 +50,15 @@ import {
 import type { Found } from "../store/session.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
-
-const RENEW_MS = 10_000;
+import { endOverdue, OVERDUE, outlasting } from "./stop-grace.ts";
 
 const PAGE = 100;
 
 const ADVANCE_RETRY = { baseDelayMs: 1_000, maxAgentDelayMs: 60_000 } as const;
 
-type Refused = Extract<AdvanceReport, { readonly kind: "busy" | "fenced" }>;
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
-const FENCED: Refused = { kind: "fenced" };
+type Refused = Extract<AdvanceReport, { readonly kind: "busy" | "fenced" }>;
 
 export function createExecutionState(): ExecutionState {
   return {
@@ -163,7 +163,11 @@ export async function advance(
     if (found === null || !found.record.heads.some((entry) => entry.name === head))
       return { kind: "idle" };
     kernel.children.link(found.record, null, 0);
-    await kernel.plugins.runtime(session).ready;
+    const runtime = kernel.plugins.runtime(session);
+    await runtime.ready;
+
+    if (JSON.stringify(runtime.assigned()) !== JSON.stringify(found.record.plugins ?? null))
+      await kernel.plugins.reload(session);
     const refused = await claim(kernel, session, head);
 
     if (refused !== null) return refused;
@@ -298,6 +302,8 @@ async function recover(
     await recoverStarts(kernel, session);
   }
 
+  await recoverReports(kernel, session);
+
   const runnable: HeadName[] = [];
 
   for (const head of record.heads)
@@ -346,7 +352,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 
         if (due.size > 0) schedule(Math.min(...due));
       },
-      Math.max(0, next - Date.now()),
+      Math.min(MAX_TIMER_MS, Math.max(0, next - Date.now())),
     );
   };
 
@@ -402,7 +408,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
         retries.delete(retry);
         step(session, head);
       },
-      Math.max(0, until - Date.now()),
+      Math.min(MAX_TIMER_MS, Math.max(0, until - Date.now())),
     );
 
     retries.add(retry);
@@ -440,6 +446,9 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
   if (coverage.kind === "all")
     void (async () => {
       await covering;
+      await reapJobs(kernel).catch((error) =>
+        fault("execution", "reaping failed", { error: formatError(error) }),
+      );
       let cursor: Cursor | undefined;
 
       do {
@@ -461,7 +470,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       for (const retry of retries) clearTimeout(retry);
       retries.clear();
       const state = kernel.executionState;
-      state.closing.abort();
+      state.closing.abort(HOST_CLOSING);
       await Promise.all(inflight.values());
       state.closing = new AbortController();
       await covering.then(
@@ -605,6 +614,8 @@ async function settleLive(
     const resumed = await resume(kernel, session, head, run);
 
     if (resumed.refused !== null) return resumed.refused;
+
+    if (resumed.overdue) return endOverdue(kernel, session, head, run);
     await endRun(kernel, session, run, { kind: "stopped" });
 
     return null;
@@ -624,6 +635,14 @@ async function settleLive(
     )?.record;
 
     if (record === undefined) return null;
+
+    if (record.stopping) {
+      if (resumed.overdue) return endOverdue(kernel, session, head, run);
+      await endRun(kernel, session, run, { kind: "stopped" });
+
+      return null;
+    }
+
     const held = await holding(kernel.store, session, record);
 
     if (held !== null) return held;
@@ -653,18 +672,22 @@ async function resume(
   session: SessionId,
   head: HeadName,
   run: RunId,
-): Promise<{ readonly refused: Refused | null; readonly unreadable: readonly string[] }> {
+): Promise<{
+  readonly refused: Refused | null;
+  readonly unreadable: readonly string[];
+  readonly overdue: boolean;
+}> {
   const renewal = holdHead(kernel, session, head);
-
+  const stopped = kernel.runs.start(session, run).signal;
   const signal = AbortSignal.any([
-    kernel.runs.start(session, run).signal,
+    stopped,
     renewal.lease.signal,
     kernel.executionState.closing.signal,
   ]);
-
   const runtime = kernel.plugins.runtime(session);
   const release = runtime.hold();
   const unreadable: string[] = [];
+  let overdue = false;
 
   try {
     await runtime.ready;
@@ -679,7 +702,7 @@ async function resume(
         continue;
       }
 
-      await executeCall(kernel, {
+      const called = executeCall(kernel, {
         session,
         head,
         run,
@@ -697,6 +720,11 @@ async function resume(
         },
         signal,
       });
+
+      if ((await outlasting(kernel, session, run, stopped, called)) === OVERDUE) {
+        overdue = true;
+        break;
+      }
     }
   } finally {
     renewal.lease.stop();
@@ -707,7 +735,7 @@ async function resume(
 
   if (refused !== null) kernel.runs.end(run);
 
-  return { refused, unreadable };
+  return { refused, unreadable, overdue };
 }
 
 async function runnableCalls(
@@ -733,7 +761,7 @@ function holdHead(kernel: Kernel, session: SessionId, head: HeadName) {
 
   return {
     lease,
-    refused: (): Refused | null => refused ?? (lease.signal.aborted ? FENCED : null),
+    refused: (): Refused | null => refused ?? (lease.signal.aborted ? { kind: "fenced" } : null),
   };
 }
 
@@ -746,12 +774,8 @@ async function drive(
   kernel.executionState.driving.set(run.id, session);
   const closing = kernel.executionState.closing.signal;
   const renewal = holdHead(kernel, session, head);
-
-  const signal = AbortSignal.any([
-    kernel.runs.start(session, run.id).signal,
-    closing,
-    renewal.lease.signal,
-  ]);
+  const stopped = kernel.runs.start(session, run.id).signal;
+  const signal = AbortSignal.any([stopped, closing, renewal.lease.signal]);
 
   const unrenew = (): void => renewal.lease.stop();
   closing.addEventListener("abort", unrenew, { once: true });
@@ -780,7 +804,13 @@ async function drive(
       kernel.executionState.driving.delete(run.id);
     });
 
-  const ended = await Promise.race([turned, closed.promise]);
+  const ended = await outlasting(
+    kernel,
+    session,
+    run.id,
+    stopped,
+    Promise.race([turned, closed.promise]),
+  );
 
   if (ended === null && kernel.presence !== null)
     kernel.executionState.undrained.add(leaseRef(session, head));
@@ -791,6 +821,12 @@ async function drive(
     kernel.runs.end(run.id);
 
     return refused;
+  }
+
+  if (ended === OVERDUE) {
+    unrenew();
+
+    return endOverdue(kernel, session, head, run.id);
   }
 
   if (ended === null || (closing.aborted && !stopping)) return null;
@@ -931,48 +967,4 @@ function failed(cause: unknown): RunEnd {
 
 function formatError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
-}
-
-const DISPATCH_RETRIES = 3;
-
-const DISPATCH_BACKOFF_MS = 50;
-
-export function dispatchHead(
-  kernel: Kernel,
-  execution: Extract<Kernel["execution"], { readonly kind: "dispatch" }>,
-  session: SessionId,
-  head: HeadName,
-): void {
-  const pending = kernel.executionState.pending;
-  const key = JSON.stringify([session, head]);
-
-  if (pending.has(key)) {
-    pending.set(key, true);
-
-    return;
-  }
-
-  pending.set(key, false);
-
-  void (async () => {
-    for (let tries = 0; tries <= DISPATCH_RETRIES; tries += 1) {
-      if (tries > 0)
-        await new Promise((resolve) => setTimeout(resolve, DISPATCH_BACKOFF_MS * 2 ** tries));
-      dev("execution", "dispatch", { session, head, tries });
-
-      const dispatched = await Promise.resolve()
-        .then(() => execution.dispatch({ session, head }))
-        .then(
-          () => true,
-          () => false,
-        );
-
-      if (dispatched) break;
-    }
-
-    const again = pending.get(key) === true;
-    pending.delete(key);
-
-    if (again) dispatchHead(kernel, execution, session, head);
-  })();
 }

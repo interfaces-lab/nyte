@@ -21,18 +21,13 @@ import { useComposerSuggestions } from "./composer-suggestions.tsx";
 import type { ComposerMentionFiles, ComposerSuggestionCatalog } from "./composer-suggestions.tsx";
 import {
   carriesFiles,
-  carriesTreeFiles,
-  droppedTreeFiles,
+  carriesWorkbenchFiles,
+  droppedWorkbenchFiles,
   transferredFiles,
 } from "../../references/composer-file-drop.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
-import {
-  composerEnterAction,
-  enterBehavior,
-  recallDirection,
-  submissionDelivery,
-} from "./composer-keys.ts";
-import type { SubmitAction } from "./composer-keys.ts";
+import { composerKey, draftEmpty, enterBehavior, submissionDelivery } from "./composer-keys.ts";
+import type { KeyAction, KeySituation, SubmitAction } from "./composer-keys.ts";
 import type { RecallDirection } from "./composer-history.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
@@ -74,13 +69,12 @@ interface ComposerFrameProps {
   busy?: boolean;
   stopping?: boolean;
   onAbort?: () => void;
-  onDismissTray?: () => boolean;
+  tray?: { readonly open: boolean; readonly close: () => void };
   floating?: boolean;
-  onEmptySubmit?: () => boolean;
+  onSteerQueued?: () => void;
   onRecall?: (direction: RecallDirection) => boolean;
   model?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
-  onFocusChange?: (focused: boolean) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
   completeCommand?: (name: string, prefix: string) => Promise<readonly CommandCompletion[]>;
   mentionFiles: ComposerMentionFiles;
@@ -98,6 +92,7 @@ interface ComposerFrameProps {
   editing?: ComposerEditing;
   runningMessagePreference?: RunningMessagePreference;
   answering?: boolean;
+  onMoveToNewChat?: () => void;
 }
 
 export function ComposerFrame({
@@ -110,13 +105,12 @@ export function ComposerFrame({
   busy = false,
   stopping = false,
   onAbort,
-  onDismissTray,
+  tray,
   floating = false,
-  onEmptySubmit,
+  onSteerQueued,
   onRecall,
   model,
   inputRef,
-  onFocusChange,
   suggestionCatalog,
   completeCommand,
   mentionFiles,
@@ -131,6 +125,7 @@ export function ComposerFrame({
   editing,
   runningMessagePreference = "steer",
   answering = false,
+  onMoveToNewChat,
 }: ComposerFrameProps): ReactElement {
   const frameRef = useRef<HTMLFormElement>(null);
   const areaRef = useRef<ComposerEditorHandle>(null);
@@ -141,6 +136,7 @@ export function ComposerFrame({
   const [focused, setFocused] = useState(false);
   const [references, setReferences] = useState<readonly MessageReference[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const claimed = useRef(false);
 
   const [picker] = useState(() => ({
     keyShortcuts: clientActionAriaShortcut(clientActions.selectModel, nyte.platform === "darwin"),
@@ -171,12 +167,13 @@ export function ComposerFrame({
 
     if (canAttach && carriesFiles(event)) return "files";
 
-    return carriesTreeFiles(event) ? "mention" : undefined;
+    return carriesWorkbenchFiles(event) ? "mention" : undefined;
   };
 
-  const hasInstructionChip = references.some((reference) => reference.kind !== "mention");
-  const hasSubmission = document.text.trim() !== "" || attached || hasInstructionChip;
-  const canSubmit = !disabled && !submitting && !attachmentBusy && hasSubmission;
+  const holdsSubmission = (text: string, held: readonly MessageReference[]): boolean =>
+    text.trim() !== "" || attached || held.some((reference) => reference.kind !== "mention");
+
+  const hasSubmission = holdsSubmission(document.text, references);
   const messageEdit = editing?.kind === "message";
   const collapsed = surface !== "new-chat" && narrow && !focused && !messageEdit && !submitting;
 
@@ -237,7 +234,7 @@ export function ComposerFrame({
 
   const resizeEditor = useEffectEvent((): void => measureExpansion());
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- observes frame and textarea sizes before paint
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- observes frame and textarea sizes before paint; the observer's first report arrives after the frame's own layout, so the first read forces none
   useLayoutEffect(() => {
     const area = areaRef.current?.readElement();
     const frame = frameRef.current;
@@ -249,7 +246,6 @@ export function ComposerFrame({
       resizeEditor();
     };
 
-    measure();
     const observer = new ResizeObserver(() => flushSync(measure));
     observer.observe(area);
     observer.observe(frame);
@@ -258,22 +254,91 @@ export function ComposerFrame({
   }, [surface, editorNeedsExpansion]);
 
   const submit = async (action: SubmitAction): Promise<void> => {
-    if (!canSubmit) return;
     const area = areaRef.current;
 
-    if (area === null) return;
+    if (disabled || claimed.current || attachmentBusy || area === null) return;
     const submission = area.read();
+
+    if (!holdsSubmission(submission.text, submission.references)) return;
     const currentDocument = area.readDocument();
 
     if (frameRef.current?.contains(window.document.activeElement)) {
       area.focus({ preventScroll: true });
     }
 
+    claimed.current = true;
     setSubmitting(true);
 
     return Promise.resolve(
       onSubmit(submission, submissionDelivery(action, send.delivery), currentDocument),
-    ).finally(() => setSubmitting(false));
+    ).finally(() => {
+      claimed.current = false;
+      setSubmitting(false);
+    });
+  };
+
+  const keySituation = (from: KeySituation["from"]): KeySituation => {
+    const shown = areaRef.current?.read();
+
+    return {
+      from,
+      disabled,
+      submitting,
+      editing: editing !== undefined,
+      empty:
+        draftEmpty(shown?.text ?? document.text, attachments.length) &&
+        (shown?.references ?? references).length === 0,
+      steerQueued: onSteerQueued !== undefined,
+      trayOpen: tray?.open === true,
+      menuOpen: suggestionMenu.open,
+      canStop: busy && !stopping && onAbort !== undefined,
+      canRecall: onRecall !== undefined,
+    };
+  };
+
+  const runKey = (action: KeyAction, event: KeyboardEvent): void => {
+    switch (action.kind) {
+      case "pass":
+        return;
+      case "recall":
+        if (onRecall?.(action.direction) === true) event.preventDefault();
+
+        return;
+      case "submit":
+        event.preventDefault();
+        void submit(action.action);
+
+        return;
+      case "steer-queued":
+        event.preventDefault();
+        onSteerQueued?.();
+
+        return;
+      case "cancel-edit":
+        event.preventDefault();
+        editing?.onCancel();
+
+        return;
+      case "swallow":
+        event.preventDefault();
+
+        return;
+      case "dismiss-tray":
+        event.preventDefault();
+        tray?.close();
+
+        return;
+      case "stop":
+        event.preventDefault();
+        onAbort?.();
+
+        return;
+      default: {
+        const _exhaustive: never = action;
+
+        return _exhaustive;
+      }
+    }
   };
 
   const editingIndicator =
@@ -414,18 +479,10 @@ export function ComposerFrame({
       onFocus={() => setFocused(true)}
       onBlur={(event) => setFocused(event.currentTarget.contains(event.relatedTarget))}
       onKeyDown={(event) => {
-        if (
-          event.key !== "Escape" ||
-          event.defaultPrevented ||
-          disabled ||
-          submitting ||
-          suggestionMenu.open ||
-          editing === undefined
-        )
-          return;
+        if (composerKey(keySituation("form"), event.nativeEvent).kind !== "cancel-edit") return;
         event.preventDefault();
         event.stopPropagation();
-        editing.onCancel();
+        editing?.onCancel();
       }}
       onSubmit={(event) => {
         event.preventDefault();
@@ -462,7 +519,7 @@ export function ComposerFrame({
           return;
         }
 
-        const files = droppedTreeFiles(event);
+        const files = droppedWorkbenchFiles(event);
 
         if (files.length > 0)
           areaRef.current?.dropReferences(
@@ -551,59 +608,9 @@ export function ComposerFrame({
               suggestionMenu.onCompletionChange(answering ? undefined : completion, next);
             }}
             onFilesSelected={onFilesSelected}
-            onFocusChange={onFocusChange}
             onKeyDown={(event) => {
               if (!answering && suggestionMenu.onKeyDown(event)) return;
-              const recall = recallDirection(event);
-
-              if (recall !== undefined && onRecall?.(recall) === true) {
-                event.preventDefault();
-
-                return;
-              }
-
-              const enter = composerEnterAction(event);
-
-              if (enter === "submit" || enter === "submit-alternate") {
-                event.preventDefault();
-
-                if (
-                  enter === "submit" &&
-                  !disabled &&
-                  !submitting &&
-                  editing === undefined &&
-                  document.text.trim() === "" &&
-                  attachments.length === 0 &&
-                  references.length === 0 &&
-                  onEmptySubmit?.() === true
-                )
-                  return;
-                void submit(enter);
-
-                return;
-              }
-
-              if (event.key !== "Escape" || suggestionMenu.open || disabled) return;
-
-              if (editing !== undefined) {
-                event.preventDefault();
-
-                if (submitting) return;
-                editing.onCancel();
-
-                return;
-              }
-
-              if (onDismissTray?.()) {
-                event.preventDefault();
-
-                return;
-              }
-
-              if (busy && !stopping && onAbort !== undefined) {
-                event.preventDefault();
-                onAbort();
-              }
+              runKey(composerKey(keySituation("editor"), event), event);
             }}
           />
         </div>
@@ -656,6 +663,17 @@ export function ComposerFrame({
                       </MenuItem>
                     </>
                   )}
+                  {onMoveToNewChat !== undefined &&
+                    hasSubmission &&
+                    !submitting &&
+                    !attachmentBusy && (
+                      <>
+                        <MenuSeparator />
+                        <MenuItem icon="new-chat" onClick={onMoveToNewChat}>
+                          Move to New Chat
+                        </MenuItem>
+                      </>
+                    )}
                 </MenuContent>
               </Menu>
               <span

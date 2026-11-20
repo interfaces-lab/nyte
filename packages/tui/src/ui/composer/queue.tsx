@@ -32,7 +32,7 @@ function dropTarget(
 
   if (from === -1 || to === -1 || from === to) return null;
 
-  return { before: to < from ? onto : (pending[to + 1] ?? null) };
+  return { kind: "before", message: to < from ? onto : (pending[to + 1] ?? null) };
 }
 
 interface RowMark {

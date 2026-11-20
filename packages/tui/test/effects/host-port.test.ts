@@ -7,11 +7,12 @@ import { question } from "@nyte-ai/plugin/core/question";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { asId } from "@nyte-ai/schema";
 import type { MessageId } from "@nyte-ai/sdk";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { expect, test } from "bun:test";
 import { hostPort } from "../../src/effects/host-port.ts";
 import { parseFlags } from "../../src/flags.ts";
-import type { HostPort, SessionPort } from "../../src/effects/ports.ts";
+import type { HostPort, SendEnd, SessionPort } from "../../src/effects/ports.ts";
 import { fallbackSelection } from "../../src/effects/session.ts";
 import { openTestHost, until } from "../fixture/host.ts";
 
@@ -49,7 +50,7 @@ async function viewWhere(
 
 test("a start under an id another start took answers taken, and a replay answers started", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Hi." }] });
   const id = asId<"session">(crypto.randomUUID());
   const selection = fallbackSelection(await port.listModels(), "off");
@@ -65,9 +66,77 @@ test("a start under an id another start took answers taken, and a replay answers
   });
 });
 
+test.each<[string, "answers" | "loses the link" | "refuses", SendEnd["kind"]]>([
+  ["the host answers", "answers", "sent"],
+  ["the link closes while the post is on its way", "loses the link", "unsent"],
+  ["the host refuses it", "refuses", "refused"],
+])(
+  "a send resolves once the journal holds it; when %s, delivered ends as the journal says",
+  async (_name, posts, end) => {
+    const lost = Promise.withResolvers<void>();
+
+    await using fixture = await openTestHost({
+      fetch: async (url, init) => {
+        if (posts === "loses the link" && new URL(url).pathname === "/head.send") {
+          lost.resolve();
+
+          throw new TypeError("fetch failed");
+        }
+
+        return fetch(url, init);
+      },
+    });
+
+    const port = hostPort(fixture.client, null);
+    fixture.reply({ content: [{ type: "text", text: "Hi." }] });
+    fixture.reply({ content: [{ type: "text", text: "Later." }] });
+    const { session } = await startChat(port, "first");
+
+    const target =
+      posts === "refuses" ? port.session(asId<"session">(crypto.randomUUID())) : session;
+
+    const sending = await target.send("later", { delivery: "queue" });
+
+    if (posts === "loses the link") await lost.promise.then(() => fixture.client.close());
+
+    expect((await sending.delivered).kind).toBe(end);
+  },
+);
+
+test("a send the journal replays at connect and the host refuses is listed once, with its content", async () => {
+  await using fixture = await openTestHost();
+  const journal = createSendJournal();
+
+  await journal.put({
+    id: asId<"receipt">(crypto.randomUUID()),
+    host: fixture.client.hostId,
+    session: asId<"session">("stranded"),
+    head: asId<"head">("main"),
+    content: "Typed offline.",
+    options: {},
+    at: Date.now(),
+  });
+
+  await using replaying = await connect({
+    url: fixture.endpoint.url,
+    credentials: { kind: "token", token: fixture.endpoint.token },
+    client: { kind: "tui", name: "nyte", version: "0.0.0" },
+    journal,
+  });
+
+  for await (const refused of hostPort(replaying, null).refusedSends()) {
+    expect(refused).toEqual([
+      { session: asId("stranded"), content: "Typed offline.", reason: expect.any(String) },
+    ]);
+    break;
+  }
+
+  expect(replaying.refused.snapshot()).toEqual([]);
+});
+
 test("send, withdraw and stop round trips with real views", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Working on it." }], hold: true });
   const { session, message: firstMessage } = await startChat(port, "first");
   const first = { message: firstMessage };
@@ -98,7 +167,7 @@ test("send, withdraw and stop round trips with real views", async () => {
 
 test("revise replaces a pending message in place and refuses one that landed", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Hold." }], hold: true });
   const { session, message: firstMessage } = await startChat(port, "first");
   const first = { message: firstMessage };
@@ -123,7 +192,7 @@ test("revise replaces a pending message in place and refuses one that landed", a
 
 test("answer settles a question part once; a different answer afterwards is refused", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Asking." }] });
   const { session, message: prompt } = await startChat(port, "ask me");
   await viewWhere(
@@ -171,7 +240,11 @@ test("--no-context-files starts the run's sessions without the folder's AGENTS.m
 
   const probe: Plugin<"core"> = {
     id: "probe",
-    activate: (api) => void seen.set(api.session.id, api.inputs.contextFiles),
+    activate(api) {
+      seen.set(api.session.id, api.project.contextFiles);
+
+      return {};
+    },
   };
 
   try {
@@ -187,11 +260,11 @@ test("--no-context-files starts the run's sessions without the folder's AGENTS.m
     const flags = parseFlags(["--no-context-files"]);
 
     const without = await startChat(
-      hostPort(fixture.host, fixture.live, null, undefined, { contextFiles: flags.contextFiles }),
+      hostPort(fixture.client, null, undefined, { contextFiles: flags.contextFiles }),
       "hi",
     );
 
-    const plain = await startChat(hostPort(fixture.host, fixture.live, null), "hi");
+    const plain = await startChat(hostPort(fixture.client, null), "hi");
 
     expect(await until(() => seen.get(without.session.id))).toEqual([]);
     expect((await until(() => seen.get(plain.session.id)))?.map((file) => file.content)).toEqual([
@@ -204,7 +277,7 @@ test("--no-context-files starts the run's sessions without the folder's AGENTS.m
 
 test("the host port lists the catalog, root sessions and tasks, and configures the head", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Hello." }] });
   const { session, message: greeted } = await startChat(port, "hi");
   await viewWhere(

@@ -250,7 +250,7 @@ it("runs scenario D over the CI MCP server: log tail, canvas, test, fix, rerun, 
   const changes = await git.api.changes({ kind: "worktree" });
 
   expect(changes.files.map((file) => file.path)).toEqual(["src/sum.js"]);
-  expect(await git.api.commit({ message: "Fix sum", files: "all" })).toMatchObject({
+  expect(await git.api.commit({ message: "Fix sum", files: { kind: "all" } })).toMatchObject({
     kind: "applied",
   });
   expect((await git.api.changes({ kind: "worktree" })).files).toEqual([]);

@@ -90,7 +90,9 @@ describe("input", () => {
 
     const up = await dragged("third", "first");
 
-    expect(up).toEqual([{ kind: "reorder", message: asId("q3"), to: { before: asId("q1") } }]);
+    expect(up).toEqual([
+      { kind: "reorder", message: asId("q3"), to: { kind: "before", message: asId("q1") } },
+    ]);
     expect(position(up)).toEqual([
       { message: asId("q3"), position: { kind: "before", message: asId("q1") } },
     ]);
@@ -107,7 +109,9 @@ describe("input", () => {
 
     const lastFromTop = await dragged("first", "third");
 
-    expect(lastFromTop).toEqual([{ kind: "reorder", message: asId("q1"), to: { before: null } }]);
+    expect(lastFromTop).toEqual([
+      { kind: "reorder", message: asId("q1"), to: { kind: "before", message: null } },
+    ]);
     expect(position(lastFromTop)).toEqual([{ message: asId("q1"), position: { kind: "last" } }]);
   });
 

@@ -27,7 +27,13 @@ import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
 import type { SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
-import type { DocumentsApi, ImageProcessor, ModelsApi, OpenOptions } from "./contract/host.ts";
+import type {
+  ClientsApi,
+  DocumentsApi,
+  ImageProcessor,
+  ModelsApi,
+  OpenOptions,
+} from "./contract/host.ts";
 import type {
   Kernel,
   PluginHost,
@@ -39,6 +45,7 @@ import type {
 } from "./contract/kernel.ts";
 import type { PartDefinitions } from "./contract/parts.ts";
 import type { ServedHost } from "./contract/server.ts";
+import { resolveSetting } from "./contract/plugin.ts";
 import type { Plugin } from "./contract/plugin.ts";
 import type { Member } from "./contract/presence.ts";
 import { decodeHostIdentity, envelope } from "./contract/records.ts";
@@ -52,12 +59,14 @@ import type {
   McpHubFactory,
   PageTable,
 } from "./contract/workspace.ts";
-import { createExecutionState, dispatchHead, driveInProcess } from "./drive/execution.ts";
+import { dispatchHead } from "./drive/dispatch.ts";
+import { createExecutionState, driveInProcess } from "./drive/execution.ts";
+import { HOST_CLOSING } from "./engine/durable.ts";
 import { createChildTable } from "./engine/children.ts";
 import { createJobTable, jobHandle } from "./engine/jobs.ts";
 import { openPresence } from "./engine/presence.ts";
-import { createPartDefinitions } from "./engine/part-definitions.ts";
-import { createConnectionRegistry } from "./engine/principals.ts";
+import { createPartDefinitions } from "./extend/part-definitions.ts";
+import { createConnectionRegistry } from "./api/principals.ts";
 import { stopStart } from "./engine/start.ts";
 import { createWaitRegistry } from "./engine/waits.ts";
 import { createPageTable } from "./env/browser.ts";
@@ -67,23 +76,23 @@ import { createWorkspaces, createWorkspaceState } from "./env/workspaces.ts";
 import { createConfigurationResolver, createModelsApi, rememberChoice } from "./extend/models.ts";
 import { pluginSecrets } from "./extend/plugin-api.ts";
 import {
-  checkPlugins,
   createPluginRuntime,
   createPluginState,
   hostPluginRows,
   replacePlugins,
 } from "./extend/plugin-runtime.ts";
+import { checkPlugins } from "./extend/plugin-checks.ts";
 import { bumpGeneration } from "./extend/registry.ts";
 import { publishViews } from "./extend/part-views.ts";
 import { reportUserPluginFailures, userPluginFolder } from "./extend/plugin-folders.ts";
 import { closeWatches, forgetScans, resourcesPlugin, watchHome } from "./extend/resources.ts";
 import { settingInfos } from "./extend/setting-definitions.ts";
 import { createSettingsApi } from "./extend/settings.ts";
-import { createBus } from "./fold/bus.ts";
-import { createFoldCache, createLogPublisher, pollStore } from "./fold/watch.ts";
+import { createBus } from "./watch/bus.ts";
+import { createFoldCache, createLogPublisher, pollStore } from "./watch/watch.ts";
 import { createModelState } from "./store/model-state.ts";
 import { createPartTable } from "./store/parts.ts";
-import { hostIdentityRef, kvRef } from "./store/refs.ts";
+import { hostIdentityRef, kvRef, parseSessionRef } from "./store/refs.ts";
 import { loadSecretCipherKey } from "./store/secrets.ts";
 import { readHeld, readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
@@ -144,6 +153,10 @@ const BUILTINS: readonly Plugin<"core">[] = [
 ];
 
 const CLEAN_WORKTREES_MS = 24 * 60 * 60 * 1000;
+
+const RUNTIME_IDLE_MS = 10 * 60 * 1000;
+
+const EVICT_RUNTIMES_MS = 60 * 1000;
 
 export async function composeHost(options: ComposeOptions): Promise<ServedHost> {
   return (await composeServer(options)).host;
@@ -253,12 +266,23 @@ export async function composeServer(
     .then(clean);
   const cleaning = setInterval(clean, CLEAN_WORKTREES_MS);
 
+  const evicting = setInterval(
+    () =>
+      void evictIdleRuntimes(kernel).catch((error: unknown) =>
+        dev("plugins", "eviction failed", { error: String(error) }),
+      ),
+    EVICT_RUNTIMES_MS,
+  );
+
+  if (typeof evicting === "object") evicting.unref();
+
   const host = createHost(kernel, { credential: { kind: "token", token: "" } });
   let closing: Promise<void> | null = null;
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
       clearInterval(cleaning);
+      clearInterval(evicting);
       unpoll();
       await host.close();
       await release(kernel, driver);
@@ -299,12 +323,12 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
   const issues: ValidationIssue[] = [];
   let applied = 0;
 
-  const declared = [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap(
-    (plugin) => plugin.contribute?.settings ?? [],
+  const declared = [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap((plugin) =>
+    (plugin.contribute?.settings ?? []).map(resolveSetting),
   );
 
   const sessionScoped = new Set(
-    declared.flatMap((setting) => (setting.scope === "session" ? [setting.id] : [])),
+    declared.flatMap((setting) => (setting.scope === "chat" ? [setting.id] : [])),
   );
 
   const secret = new Set(declared.flatMap((setting) => (setting.secret ? [setting.id] : [])));
@@ -382,6 +406,7 @@ async function composeKernel(
     execution: options.execution,
     models: options.models,
     mcp: options.mcp,
+    clients: options.clients,
     github: options.github,
     documents: options.documents,
     images: options.images,
@@ -401,7 +426,7 @@ async function composeKernel(
   presence?.revoked.addEventListener(
     "abort",
     () => {
-      kernel.executionState.closing.abort();
+      kernel.executionState.closing.abort(HOST_CLOSING);
       options.revoked?.();
     },
     { once: true },
@@ -436,6 +461,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly poll?: number;
     readonly models?: Models;
     readonly mcp?: McpHubFactory;
+    readonly clients?: ClientsApi;
     readonly github?: GitHubAccountApi;
     readonly documents?: DocumentsApi;
     readonly images?: ImageProcessor;
@@ -576,6 +602,7 @@ export function createKernel(input: KernelOptions): Kernel {
     get secretKey() {
       return (secretKey ??= kernel.secrets === null ? null : loadSecretCipherKey(kernel.secrets));
     },
+    clients: input.clients ?? null,
     github: input.github ?? null,
     documents: input.documents ?? null,
     images: input.images ?? null,
@@ -603,7 +630,12 @@ export function createKernel(input: KernelOptions): Kernel {
       host: input.hostPlugins ?? [],
       sources: input.pluginSources ?? new Map(),
       state: createPluginState(),
-      runtime: (session) => runtimes.get(session) ?? install(session, null),
+      runtime(session) {
+        const found = runtimes.get(session) ?? install(session, null);
+        found.touch();
+
+        return found;
+      },
       reload: (session) => install(session, runtimes.get(session) ?? null).ready,
       runtimes: () => runtimes,
       async close(session) {
@@ -612,7 +644,9 @@ export function createKernel(input: KernelOptions): Kernel {
         if (runtime === undefined) return;
         runtimes.delete(session);
         forgetScans(kernel, (key) => key === session);
+        const detached = kernel.environments.detach(session);
         await runtime.close();
+        await detached;
       },
       api: (owner, session) =>
         kernel.plugins.runtime(session).api(owner) ??
@@ -648,9 +682,9 @@ export function createKernel(input: KernelOptions): Kernel {
 }
 
 async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
-  await kernel.modelState.close();
-  await kernel.mcp?.close();
   await driver?.close();
+  await kernel.mcp?.close();
+  await kernel.modelState.close();
 
   const workspaces = (await kernel.store.refs.list("workspaces/")).map((ref) =>
     asId<"workspace">(ref.name.slice("workspaces/".length)),
@@ -664,11 +698,8 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   await Promise.allSettled(running.map((job) => jobHandle(kernel, job.view.id).settled()));
 
   await closeWatches(kernel);
-  const sessions = [...kernel.plugins.runtimes().keys()];
 
-  for (const session of sessions) await kernel.plugins.close(session);
-
-  for (const session of sessions) await kernel.environments.detach(session);
+  for (const session of kernel.plugins.runtimes().keys()) await kernel.plugins.close(session);
 
   for (const workspace of workspaces) await kernel.environments.detachWorkspace(workspace);
   await kernel.folds.close();
@@ -681,6 +712,32 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
       return held === undefined ? [] : [{ name, expect: held.revision }];
     }),
   );
+}
+
+async function evictIdleRuntimes(kernel: Kernel): Promise<void> {
+  const now = Date.now();
+  const driving = new Set(kernel.executionState.driving.values());
+  const parts = kernel.partTable;
+  const awaited = new Set([...parts.waiters.keys(), ...parts.acting.keys()].map(parseSessionRef));
+
+  const idle = [...kernel.plugins.runtimes()].flatMap(([session, runtime]) => {
+    const since = runtime.idleSince();
+
+    return since === null ||
+      now - since < RUNTIME_IDLE_MS ||
+      driving.has(session) ||
+      awaited.has(session) ||
+      kernel.folds.folding(session) ||
+      kernel.plugins.state.inline.has(session) ||
+      kernel.jobs.background(session).some((job) => job.item.state === "working")
+      ? []
+      : [session];
+  });
+
+  for (const session of idle)
+    if (kernel.sessions.activation(session).kind === "active") kernel.sessions.forget(session);
+
+  await Promise.all(idle.map((session) => kernel.plugins.close(session)));
 }
 
 async function storedIdentity(store: StoreConnection): Promise<HostIdentity | null> {
@@ -733,7 +790,6 @@ function createSessionDirectory(bus: SessionBus): SessionDirectory {
 
   return {
     activation: (session) => activations.get(session) ?? INACTIVE,
-    activations: () => activations,
     setActivation(session, activation) {
       activations.set(session, activation);
       bus.publish(session, { ...now(), kind: "activation", activation });

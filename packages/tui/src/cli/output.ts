@@ -3,34 +3,17 @@ import type { Row, Gutter } from "./format.ts";
 import type { Json } from "@nyte-ai/sdk";
 import type { Mode } from "./mode.ts";
 
-/**
- * The two streams of a one-shot command. stdout holds only the answer; everything else goes to
- * stderr. Writes never go through `console`, which Bun paints red on a terminal.
- * A closed stdout (EPIPE) drops later stdout writes and aborts `closed`; it never throws.
- */
 export interface Output {
   readonly mode: Mode;
-  /** Aborts when stdout closes. A follow command stops on it; a read just finishes. */
   readonly closed: AbortSignal;
-  /** The answer, as given. */
   result(text: string): void;
-  /** One JSON document and a newline on stdout: indented 2 on a terminal, one line otherwise. */
   json(value: Json): void;
-  /** One human line on stderr. */
   say(text: string): void;
-  /** Label/value rows on stderr, through `formatRows`. */
   rows(rows: readonly Row[]): void;
-  /** One status line on stderr, through `formatStatus`. */
   status(gutter: Gutter, text: string): void;
-  /**
-   * The phase of long work on stderr, such as `Downloading nyte 0.0.28…` with a `40%` detail.
-   * Rich and interactive: one line redrawn in place, which the next write to either stream clears.
-   * Otherwise each new phase prints once and `detail` is dropped.
-   */
   progress(phase: string, detail?: string): void;
 }
 
-/** A stderr that fails has no one left to tell, so its error listener only keeps Bun from throwing. */
 export function createOutput(
   mode: Mode,
   streams: { readonly stdout: NodeJS.WriteStream; readonly stderr: NodeJS.WriteStream },

@@ -9,12 +9,6 @@ import type {
 } from "../../src/types.ts";
 import type { ModelsDevMetadata } from "./models-dev.ts";
 
-export const OPENAI_DAYBREAK_BLUE_MODEL_ID = "gpt-daybreak-blue-latest";
-
-export function namesDaybreakBlue(modelId: string): boolean {
-  return modelId === "gpt-daybreak-blue" || modelId === OPENAI_DAYBREAK_BLUE_MODEL_ID;
-}
-
 const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
   "gpt-5.4",
   "gpt-5.4-mini",
@@ -27,15 +21,10 @@ const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
   "gpt-6-sol",
   "gpt-6-luna",
   "gpt-6.1-sol",
-  OPENAI_DAYBREAK_BLUE_MODEL_ID,
+  "gpt-6.2-astra",
+  "gpt-6.2-sol",
 ]);
 
-/**
- * Public OpenAI documents additional_tools for applications that load tools
- * outside the normal tool-search flow. Codex currently uses the input item for
- * its Responses Lite GPT-5.6 models.
- * https://developers.openai.com/api/docs/guides/tools-tool-search#add-tools-at-a-specific-point-in-the-input
- */
 const OPENAI_ADDITIONAL_TOOLS_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
 
 const OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
@@ -48,7 +37,8 @@ const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
   "gpt-6-sol",
   "gpt-6-luna",
   "gpt-6.1-sol",
-  OPENAI_DAYBREAK_BLUE_MODEL_ID,
+  "gpt-6.2-astra",
+  "gpt-6.2-sol",
 ]);
 
 export const TOGETHER_REASONING_ONLY_MODELS = new Set([
@@ -385,7 +375,7 @@ export function applyOpenAIGrammarToolCompatMetadata(model: Model<Api>): void {
     return;
   const match = /^gpt-(\d+)/.exec(model.id);
 
-  if (!(namesDaybreakBlue(model.id) || (match && Number(match[1]) >= 5))) return;
+  if (!match || Number(match[1]) < 5) return;
   model.compat = {
     ...model.compat,
     supportsOpenAIGrammarTools: true,
@@ -477,18 +467,32 @@ export function applyOpenAIExplicitPromptCacheMetadata(model: Model<Api>): void 
   };
 }
 
-/**
- * Anthropic ephemeral entries have a hard five-minute lifetime; `ttl: "1h"`
- * extends it to one hour. Only direct Anthropic is annotated so cache warming
- * does not assume equivalent behavior through proxies.
- * https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
- */
 const ANTHROPIC_PROMPT_CACHE: ModelPromptCache = { short: 300, long: 3600 };
 
 export function applyPromptCacheMetadata(model: Model<Api>): void {
   if (model.provider === "anthropic" && model.api === "anthropic-messages") {
     model.promptCache = ANTHROPIC_PROMPT_CACHE;
   }
+}
+
+const OPENAI_DAYBREAK_MODEL_IDS = new Set([
+  "gpt-5.5",
+  "gpt-5.6-sol",
+  "gpt-6-sol",
+  "gpt-6-luna",
+  "gpt-6-astra",
+  "gpt-6.1-sol",
+  "gpt-6.2-astra",
+  "gpt-6.2-sol",
+]);
+
+export function applyDaybreakModeMetadata(model: Model<Api>): void {
+  const servesDaybreak =
+    (model.provider === "openai" && model.api === "openai-responses") ||
+    model.provider === "openai-codex";
+
+  if (!servesDaybreak || !OPENAI_DAYBREAK_MODEL_IDS.has(model.id)) return;
+  model.modes = [...(model.modes ?? []), "daybreak"];
 }
 
 export function applyModelsDevModeMetadata(model: Model<Api>, metadata: ModelsDevMetadata): void {

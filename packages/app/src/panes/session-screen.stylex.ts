@@ -18,7 +18,7 @@ export const sessionScreenStyles = create({
     position: "absolute",
     insetInline: conversation.gutter,
     bottom: conversation.gutter,
-    zIndex: layer.workbench,
+    zIndex: layer.floatingContent,
     maxWidth: 608,
     marginInline: "auto",
     pointerEvents: "none",
@@ -30,8 +30,12 @@ export const sessionScreenStyles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "clip",
+    /** Always on, so covering the panes doesn't change containment and restyle the document. */
+    contain: "style",
   },
   panesCovered: { contentVisibility: "hidden" },
+  /** A Code window's chat panel sits after the editor. */
+  panesTrailing: { order: 1 },
   layout: {
     position: "relative",
     flex: 1,
@@ -41,8 +45,6 @@ export const sessionScreenStyles = create({
     containerType: "size",
   },
   layoutTab: { position: "absolute", display: "flex", minWidth: 0, minHeight: 0, overflow: "clip" },
-  layoutTabHidden: { contentVisibility: "hidden" },
-  layoutTabZoomed: { zIndex: 1 },
   pane: {
     position: "relative",
     display: "flex",

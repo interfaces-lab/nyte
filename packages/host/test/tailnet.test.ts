@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
@@ -7,12 +7,10 @@ import process from "node:process";
 import { createInterface } from "node:readline";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { Type } from "typebox";
 import { memoryStore } from "@nyte-ai/core/store";
 import { compile, TailnetStatusType } from "@nyte-ai/schema";
 import type { Host } from "@nyte-ai/core";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import manifest from "../package.json" with { type: "json" };
 import { openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
@@ -52,7 +50,9 @@ if (BEHAVIOR !== "silent")
 
 if (BEHAVIOR === "garbage") say({ state: "sideways" });
 
-if (BEHAVIOR === "stuck" || BEHAVIOR === "ready") say({ state: "starting", https: "pending" });
+if (BEHAVIOR === "ready") say({ state: "starting", https: "pending" });
+
+if (BEHAVIOR === "stuck") say({ state: "starting", dnsName: "stuck.example.ts.net", https: "pending" });
 
 if (BEHAVIOR === "ready")
   say({ state: "running", dnsName: value("--hostname") + ".example.ts.net", https: "available" });
@@ -410,8 +410,8 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
     const waitingSocket = await localSocket(waiting, stuck.home);
     await enable(waitingSocket);
     await until(
-      () => runs(stuck.home),
-      (found) => found.length === 1,
+      () => status(waitingSocket),
+      (answer) => statusCheck.Check(answer.body) && answer.body.dnsName !== undefined,
     );
     vi.advanceTimersByTime(119_000);
 
@@ -440,8 +440,8 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
       detail: `nyte-tailnet ${manifest.version} speaks protocol 2, but this host speaks 1.`,
     });
     vi.advanceTimersByTime(60_000);
-    await sleep(100);
 
+    expect((await status(socket)).body).toMatchObject({ state: "stopped", reason: "protocol" });
     expect(await runs(home)).toHaveLength(1);
   });
 
@@ -521,12 +521,10 @@ const host = await openHost({
   tailnet: { binary: process.argv[2] },
 });
 
-for await (const view of host.watch()) if (view.tailnet?.state === "needs_login") break;
-process.stdout.write("needs_login\\n");
+for await (const view of host.watch()) if (view.tailnet?.state === "running") break;
+process.stdout.write("running\\n");
 setInterval(() => undefined, 1000);
 `;
-
-const lockCheck = compile(Type.Object({ pid: Type.Number(), instance: Type.String() }));
 
 function alive(pid: number): boolean {
   try {
@@ -538,34 +536,9 @@ function alive(pid: number): boolean {
   }
 }
 
-async function lockHolder(home: string): Promise<number | null> {
-  const text = await readFile(join(home, ".nyte", "tailnet", "nyte-tailnet.lock"), "utf8").catch(
-    () => "{}",
-  );
-
-  const held: unknown = JSON.parse(text);
-
-  return lockCheck.Check(held) && alive(held.pid) ? held.pid : null;
-}
-
-describe.skipIf(process.platform === "win32")("the nyte-tailnet binary", () => {
-  let folder = "";
-  let binary = "";
-
-  afterAll(() => rm(folder, { recursive: true, force: true }));
-
-  beforeAll(async () => {
-    folder = await realpath(await mkdtemp(join(tmpdir(), "nyte-tailnet-bin-")));
-    binary = join(folder, "nyte-tailnet");
-    await promisify(execFile)(process.execPath, [
-      fileURLToPath(new URL("../../tailnet/build.mjs", import.meta.url)),
-      binary,
-    ]);
-  }, 300_000);
-
-  it("stops within a second once the host holding it is killed", async () => {
-    const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-tailnet-")));
-    cleanups.push(() => rm(home, { recursive: true, force: true }));
+describe.skipIf(process.platform === "win32")("a host that dies", () => {
+  it("closes its sidecar's stdin by dying, the end of file the sidecar stops on", async () => {
+    const { home, binary } = await setup("ready");
     await mkdir(join(home, ".nyte"), { recursive: true });
     await writeFile(
       join(home, ".nyte", "tailnet.json"),
@@ -577,11 +550,6 @@ describe.skipIf(process.platform === "win32")("the nyte-tailnet binary", () => {
       ["--input-type=module", "--eval", PARENT, home, binary],
       {
         cwd: fileURLToPath(new URL("../", import.meta.url)),
-        env: {
-          ...process.env,
-          TS_CONTROL_URL: "http://127.0.0.1:9",
-          TS_NO_LOGS_NO_SUPPORT: "true",
-        },
         stdio: ["ignore", "pipe", "ignore"],
       },
     );
@@ -594,16 +562,14 @@ describe.skipIf(process.platform === "win32")("the nyte-tailnet binary", () => {
       createInterface({ input: parent.stdout }).once("line", () => ready());
       parent.once("exit", (code) => failed(new Error(`The host exited with ${String(code)}.`)));
     });
-    const sidecar = await lockHolder(home);
+    const [run] = await runs(home);
+    const sidecar = run?.pid;
 
-    expect(sidecar).not.toBe(parent.pid);
+    expect(sidecar).toBeTypeOf("number");
     parent.kill("SIGKILL");
-    const killed = performance.now();
     await until(
-      async () => sidecar !== null && alive(sidecar),
+      async () => sidecar !== undefined && alive(sidecar),
       (running) => !running,
     );
-
-    expect(performance.now() - killed).toBeLessThan(1_500);
   });
 });

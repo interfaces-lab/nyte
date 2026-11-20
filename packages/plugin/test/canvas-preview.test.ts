@@ -21,26 +21,47 @@ const report: CanvasPreviewReport = {
   heights: { chat: 312, phone: 2400 },
   errors: [{ phase: "render", message: "TypeError: x is undefined (chart.tsx:4:9)", stack: null }],
   console: [{ level: "warn", text: "three: low precision" }],
+  findings: [
+    {
+      rule: "lead",
+      component: "Card",
+      at: "main.tsx:9",
+      measured: 0,
+      floor: 12,
+      message: "Card (main.tsx:9) starts 0 px below Heading (main.tsx:8)",
+      fix: "Set the gap",
+      widths: [808, 358],
+    },
+  ],
 };
 
-it("drives a shell page: installs the harness once the shell runs, captures at the chat width, then measures a phone", async () => {
+const finding = (measured: number) => ({
+  rule: "overflow",
+  component: "Table",
+  at: "main.tsx:4",
+  measured,
+  floor: 0,
+  message: `Table (main.tsx:4) runs ${String(-measured)} px past the canvas`,
+  fix: "Wrap it",
+});
+
+it("drives a shell page: installs the harness, captures at the chat width, then measures a phone and checks the layout at both", async () => {
   const heights = [300, 312, 640];
-  let starts = 0;
   let width = 0;
   let captured = 0;
   const page: CanvasPreviewPage = {
     async evaluate(expression) {
+      if (expression.endsWith("?.check() ?? []"))
+        return width === CANVAS_PREVIEW_WIDTHS.chat ? [finding(-4)] : [finding(-90)];
       if (expression.startsWith("globalThis.__nytePreview.settle"))
         return {
           height: heights.shift() ?? 0,
           errors: [],
           console: [{ level: "log", text: "hi" }],
         };
-      starts += 1;
-
       expect(expression).toContain('"method":"nyte/notifications/render"');
 
-      return starts > 1;
+      return true;
     },
     async resize(next) {
       width = next;
@@ -61,6 +82,7 @@ it("drives a shell page: installs the harness once the shell runs, captures at t
     heights: { chat: 312, phone: 640 },
     errors: [],
     console: [{ level: "log", text: "hi" }],
+    findings: [{ ...finding(-90), widths: [808, 358] }],
   });
   expect(captured).toBe(CANVAS_PREVIEW_WIDTHS.chat);
 });
@@ -112,6 +134,9 @@ it("previews through the host's previewer and answers with the screenshot, heigh
           "At 358 px wide (a phone) it is 2400 px tall, so it scrolls past 2000 px.",
           "Errors (1):",
           "- render: TypeError: x is undefined (chart.tsx:4:9)",
+          "Layout findings (1):",
+          "lead: Set the gap.",
+          "- Card (main.tsx:9) starts 0 px below Heading (main.tsx:8).",
           "Console (1):",
           "- [warn] three: low precision",
         ].join("\n"),

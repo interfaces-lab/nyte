@@ -156,5 +156,5 @@ func writeError(w http.ResponseWriter, code int, kind, message string) {
 	body, _ := json.Marshal(map[string]string{"code": kind, "message": message})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	w.Write(body)
+	_, _ = w.Write(body)
 }

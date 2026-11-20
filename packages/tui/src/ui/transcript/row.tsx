@@ -8,7 +8,6 @@ import { Column } from "./block.tsx";
 import { ShellCard } from "./shell-card.tsx";
 import { MessageView, TurnView } from "./turn.tsx";
 
-/** One mounted row, looked up by its position among the mounted keys; `key` names it for good. */
 export function RowView(props: {
   readonly key: string;
   readonly row: Accessor<Row | undefined>;

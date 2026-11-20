@@ -1,15 +1,9 @@
 import type { ReactElement } from "react";
 import { ModelPicker } from "../chat/composer/model-picker.tsx";
 import { modelRefFor, selectedModelOption } from "../chat/composer/model-picker-state.ts";
-import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { useCatalog, useSetPreference } from "../data/catalog.ts";
-import { NumberRow, SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
-
-const CACHE_WARMING = [
-  { value: "off", label: "Off" },
-  { value: "streaming", label: "While running" },
-  { value: "idle", label: "Also when idle" },
-] as const;
+import { SettingsRow, SettingsSection } from "./rows.tsx";
 
 export function AgentSettings(): ReactElement {
   const catalog = useCatalog();
@@ -35,33 +29,14 @@ export function AgentSettings(): ReactElement {
           catalog={catalog.data}
           current={selected?.option}
           thinkingLevel={selected === undefined ? undefined : saved[selected.option.key]?.thinking}
-          fast={selected?.fast === true}
+          modes={selected?.modes ?? []}
           loading={catalog.isPending || setPreference.isPending}
           onChange={(change) => {
             if (setPreference.isPending) return;
-            setPreference.mutate(modelRefFor(change.option, change.fast));
+            setPreference.mutate(modelRefFor(change.option, change.modes));
           }}
         />
       </SettingsRow>
-      <SwitchRow
-        setting={hostSetting("autoCompaction")}
-        title="Automatic compaction"
-        description="Summarize older turns when a chat nears the model's context limit"
-      />
-      <NumberRow
-        setting={hostSetting("compactionKeepRecentTokens")}
-        title="Recent context kept"
-        description="Tokens kept word for word when older turns are summarized"
-        min={5_000}
-        max={100_000}
-        step={5_000}
-      />
-      <SelectRow
-        setting={hostSetting("cacheWarming")}
-        title="Prompt cache warming"
-        description="Refresh the prompt cache before it expires, when that is expected to save money"
-        options={CACHE_WARMING}
-      />
     </SettingsSection>
   );
 }

@@ -149,11 +149,11 @@ describe("a session token that is slow to come", () => {
       },
     });
 
-    return { broker, requests, resolve, calls: () => calls };
+    return { broker, requests, token, resolve, calls: () => calls };
   }
 
   it("rejects as soon as the caller aborts, and never sends the token that comes later", async () => {
-    const { broker, requests, resolve } = pendingToken();
+    const { broker, requests, token, resolve } = pendingToken();
     const controller = new AbortController();
     const pending = failure(
       broker.revokeDevice({ environmentId, deviceId, signal: controller.signal }),
@@ -162,7 +162,7 @@ describe("a session token that is slow to come", () => {
     controller.abort();
     expect(await pending).toEqual({ kind: "network" });
     resolve("late-jwt");
-    await new Promise((settle) => setTimeout(settle, 10));
+    await token;
     expect(requests).toEqual([]);
   });
 

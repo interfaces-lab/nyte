@@ -1,0 +1,330 @@
+---
+title: language.resolveCompletion
+description: Fills in a completion's documentation and edits, or answers null for a stale token.
+---
+
+Asks the server for the rest of one completion item: its documentation, detail and the edits it makes elsewhere, such as an import. The token names one item of one answer of one server run, so a later completion or a server restart makes it stale and the answer null.
+
+## When to call it
+
+When the user selects or accepts a completion item.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "token": {
+    "kind": "completion",
+    "server": "4f8c2a1e-0b6d-4e3f-9a7c-5d2e1f0a3b4c",
+    "answer": 3,
+    "item": 0
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "label": "Names",
+  "kind": "method",
+  "tail": "()",
+  "type": "[]string",
+  "documentation": "Names returns the channel names in alphabetical order.",
+  "filter": "Names",
+  "sort": "00000",
+  "insert": { "text": "Names", "stops": [], "replace": null },
+  "additionalEdits": [],
+  "commitCharacters": [],
+  "preselect": false,
+  "deprecated": false,
+  "invocation": "withoutArguments",
+  "resolve": {
+    "kind": "completion",
+    "server": "4f8c2a1e-0b6d-4e3f-9a7c-5d2e1f0a3b4c",
+    "answer": 3,
+    "item": 0
+  }
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "token"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "token": {
+      "type": "object",
+      "required": ["kind", "server", "answer", "item"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "completion"
+        },
+        "server": {
+          "type": "string"
+        },
+        "answer": {
+          "type": "number"
+        },
+        "item": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": [
+        "label",
+        "kind",
+        "tail",
+        "type",
+        "documentation",
+        "filter",
+        "sort",
+        "insert",
+        "additionalEdits",
+        "commitCharacters",
+        "preselect",
+        "deprecated",
+        "invocation",
+        "resolve"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "method",
+            "function",
+            "constructor",
+            "field",
+            "variable",
+            "class",
+            "interface",
+            "module",
+            "property",
+            "unit",
+            "value",
+            "enum",
+            "keyword",
+            "snippet",
+            "color",
+            "file",
+            "reference",
+            "folder",
+            "enumMember",
+            "constant",
+            "struct",
+            "event",
+            "operator",
+            "typeParameter"
+          ]
+        },
+        "tail": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "documentation": {
+          "type": "string"
+        },
+        "filter": {
+          "type": "string"
+        },
+        "sort": {
+          "type": "string"
+        },
+        "insert": {
+          "type": "object",
+          "required": ["text", "stops", "replace"],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "stops": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["utf16Start", "utf16Length"],
+                "properties": {
+                  "utf16Start": {
+                    "type": "number"
+                  },
+                  "utf16Length": {
+                    "type": "number"
+                  }
+                }
+              }
+            },
+            "replace": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["start", "end"],
+                  "properties": {
+                    "start": {
+                      "type": "object",
+                      "required": ["line", "utf16Column"],
+                      "properties": {
+                        "line": {
+                          "type": "number"
+                        },
+                        "utf16Column": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "end": {
+                      "type": "object",
+                      "required": ["line", "utf16Column"],
+                      "properties": {
+                        "line": {
+                          "type": "number"
+                        },
+                        "utf16Column": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "additionalEdits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["range", "text"],
+            "properties": {
+              "range": {
+                "type": "object",
+                "required": ["start", "end"],
+                "properties": {
+                  "start": {
+                    "type": "object",
+                    "required": ["line", "utf16Column"],
+                    "properties": {
+                      "line": {
+                        "type": "number"
+                      },
+                      "utf16Column": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "end": {
+                    "type": "object",
+                    "required": ["line", "utf16Column"],
+                    "properties": {
+                      "line": {
+                        "type": "number"
+                      },
+                      "utf16Column": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "commitCharacters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preselect": {
+          "type": "boolean"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "invocation": {
+          "enum": ["none", "withoutArguments", "withArguments"]
+        },
+        "resolve": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind", "server", "answer", "item"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "completion"
+                },
+                "server": {
+                  "type": "string"
+                },
+                "answer": {
+                  "type": "number"
+                },
+                "item": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "null"
+    }
+  ]
+}
+```
+
+{/* generated:end */}

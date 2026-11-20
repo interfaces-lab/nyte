@@ -4,7 +4,11 @@ import { request } from "node:http";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { Listener } from "@nyte-ai/core";
+import { Type } from "typebox";
+import { compile } from "@nyte-ai/schema";
 import { assert } from "vitest";
+
+const answerCheck = compile(Type.Object({ id: Type.String() }));
 
 export async function rawConnect(listener: Listener, token: string) {
   const address = new URL(listener.address ?? "");
@@ -34,31 +38,48 @@ export async function rawConnect(listener: Listener, token: string) {
   );
 
   const socket = upgraded.socket;
+  const chunks = socket.iterator({ destroyOnReturn: false });
+  let buffered = upgraded.head;
+
+  const nextFrame = async (): Promise<ReturnType<typeof readFrame>> => {
+    for (;;) {
+      const frame = readFrame(buffered);
+
+      if (frame !== null) {
+        buffered = buffered.subarray(frame.size);
+
+        return frame;
+      }
+
+      const chunk = await chunks.next();
+
+      if (chunk.done === true) return null;
+      assert(Buffer.isBuffer(chunk.value));
+      buffered = Buffer.concat([buffered, chunk.value]);
+    }
+  };
 
   return {
     write(text: string): void {
       socket.write(maskedFrame(Buffer.from(text, "utf8")));
     },
-    async closing(): Promise<{ readonly code: number; readonly reason: string }> {
-      let buffered = upgraded.head;
+    async answered(id: string): Promise<void> {
+      for (let frame = await nextFrame(); frame !== null; frame = await nextFrame()) {
+        if (frame.opcode !== 1) continue;
+        const answer: unknown = JSON.parse(frame.payload.toString("utf8"));
 
-      for await (const chunk of socket) {
-        assert(Buffer.isBuffer(chunk));
-        buffered = Buffer.concat([buffered, chunk]);
-
-        for (;;) {
-          const frame = readFrame(buffered);
-
-          if (frame === null) break;
-          buffered = buffered.subarray(frame.size);
-
-          if (frame.opcode === 8)
-            return {
-              code: frame.payload.readUInt16BE(0),
-              reason: frame.payload.subarray(2).toString("utf8"),
-            };
-        }
+        if (answerCheck.Check(answer) && answer.id === id) return;
       }
+
+      throw new Error(`The socket ended before answering ${id}.`);
+    },
+    async closing(): Promise<{ readonly code: number; readonly reason: string }> {
+      for (let frame = await nextFrame(); frame !== null; frame = await nextFrame())
+        if (frame.opcode === 8)
+          return {
+            code: frame.payload.readUInt16BE(0),
+            reason: frame.payload.subarray(2).toString("utf8"),
+          };
 
       return { code: 0, reason: "ended" };
     },

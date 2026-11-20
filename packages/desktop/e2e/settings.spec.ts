@@ -1,3 +1,4 @@
+import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import { leaveSettings, mac, openSettings, settingsNav, sidebar } from "./ui.ts";
 
@@ -39,14 +40,18 @@ test("the settings journey", async ({ desktop }) => {
     await expect(page.getByRole("region", { name: "This Mac" })).toContainText(/\S/u);
   });
 
-  await test.step("General shows startup, chat and link defaults", async () => {
+  await test.step("General shows startup, chat, link and folder defaults", async () => {
     await openSettings(page, "General");
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
       "Startup",
       "Chat",
       "Links",
+      "Folders",
       "System",
     ]);
+    await expect(
+      page.getByRole("combobox", { name: "A folder's own plugins and skills" }),
+    ).toHaveText("Ask first");
     await expect(page.getByRole("combobox", { name: "Window restoration" })).toHaveText("New chat");
     await expect(page.getByRole("combobox", { name: "Messages while running" })).toHaveText(
       "Steer",
@@ -110,20 +115,28 @@ test("the settings journey", async ({ desktop }) => {
       "aria-selected",
       "true",
     );
-    await expect(page.getByRole("region", { name: "Spend" })).toContainText("0% cache hit");
-    await expect(page.getByRole("img", { name: "Spend per day" })).toBeVisible();
-    const split = page.getByRole("tablist", { name: "Split spend by" });
-    await expect(split.getByRole("tab")).toHaveText(["Models", "Folders", "Chats", "Tools"]);
-    const models = page.getByRole("table", { name: "Spend by model" });
-    await expect(models.getByRole("columnheader")).toHaveText([
-      "Model",
-      "Cache hit",
-      "Trend",
-      "Cost",
-    ]);
-    await expect(models.getByRole("row", { name: /scripted/u })).toBeVisible();
+    const spend = page.getByRole("region", { name: "Spend" });
+    await expect(spend).toContainText("Spent, the last 30 days");
+    await expect(
+      spend.getByRole("group", { name: /^Running total over the last 30 days\./u }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: "Models" })
+        .getByRole("list", { name: "Top models" })
+        .getByRole("button", { name: /^scripted\S* by Anthropic, .* 0% cache$/u }),
+    ).toBeVisible();
+    const split = page.getByRole("tablist", { name: "Split by" });
+    await expect(split.getByRole("tab")).toHaveText(["Folders", "Chats", "Tools"]);
+    await expect(
+      page.getByRole("table", { name: "Spend by folder" }).getByRole("row", { name: /^home /u }),
+    ).toBeVisible();
     await split.getByRole("tab", { name: "Chats" }).click();
-    await expect(page.getByRole("tabpanel", { name: "Chats" })).toBeVisible();
+    await expect(
+      page
+        .getByRole("table", { name: "Spend by chat" })
+        .getByRole("row", { name: new RegExp(`^${FIXTURES.long} `, "u") }),
+    ).toBeVisible();
     await range.getByRole("tab", { name: "All time" }).click();
     await expect(range.getByRole("tab", { name: "All time" })).toHaveAttribute(
       "aria-selected",

@@ -1,4 +1,5 @@
 import "../../../test/window-bridge.ts";
+import { selectSession } from "../../../test/panes.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
@@ -181,14 +182,12 @@ const catalog = {
 
 const host = { workspace: undefined } satisfies HostState;
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function frames(count: number): Promise<void> {
-  for (let frame = 0; frame < count; frame += 1) await painted();
+  for (let frame = 0; frame < count; frame += 1) await nextFrame();
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
@@ -196,7 +195,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -223,15 +222,15 @@ export async function run(): Promise<string> {
   });
 
   const root = createRoot(container);
-  const panes = windowTabs.controller();
-  panes.selectSession(ID);
+  const panes = windowTabs.panes();
+  selectSession(panes, ID);
 
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -319,7 +318,7 @@ export async function run(): Promise<string> {
       "a reader's 2 px upward wheel stops following",
     );
 
-    panes.selectSession(COLD);
+    selectSession(panes, COLD);
     await frames(10);
     check(!coldSeen, "an unread chat isn't marked read before its view arrives");
     coldOpened.resolve();

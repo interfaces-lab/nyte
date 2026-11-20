@@ -1,6 +1,16 @@
 import { ipcRenderer } from "electron";
-import type { BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
-import { BROWSER_PAGE_KEY_CHANNEL } from "../shared/browser-page.ts";
+import { BROWSER_PAGE_PRESS_CHANNEL } from "@nyte-ai/app/contract/bridge.ts";
+import type { BrowserKey, BrowserWheel } from "@nyte-ai/app/contract/bridge.ts";
+import type { DesignPageMessage } from "../shared/ipc-inputs.ts";
+import {
+  BROWSER_PAGE_BOARD_CHANNEL,
+  BROWSER_PAGE_DESIGN_CHANNEL,
+  BROWSER_PAGE_KEY_CHANNEL,
+  WHEEL_DELTA_LIMIT,
+} from "../shared/browser-page.ts";
+import type { BoardMainMessage, DesignMainMessage } from "../shared/browser-page.ts";
+import { designMode } from "./design-mode/design-mode.ts";
+import { editsText } from "./edits-text.ts";
 
 const mac = process.platform === "darwin";
 
@@ -25,17 +35,9 @@ const editing = mac
       shifted: new Set(["v", "z"]),
     };
 
+const LINE_PIXELS = 40;
+
 const pageKeys = new Set(["Control", "Shift", "Alt", "Meta", "Insert", "Help"]);
-
-function editsText(event: KeyboardEvent): boolean {
-  const target = event.composedPath()[0];
-
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  );
-}
 
 function pageKeeps(event: KeyboardEvent): boolean {
   const named =
@@ -87,3 +89,63 @@ if (window.opener === null)
       repeat: event.repeat,
     } satisfies BrowserKey);
   });
+
+if (window.opener === null && window.top === window) {
+  window.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (event.isTrusted) ipcRenderer.sendToHost(BROWSER_PAGE_PRESS_CHANNEL);
+    },
+    true,
+  );
+
+  const design = designMode((message: DesignPageMessage) =>
+    ipcRenderer.send(BROWSER_PAGE_DESIGN_CHANNEL, message),
+  );
+
+  ipcRenderer.on(BROWSER_PAGE_DESIGN_CHANNEL, (_event, message: DesignMainMessage) =>
+    design.receive(message),
+  );
+
+  let entered = false;
+
+  const along = (delta: number, unit: number): number =>
+    Math.max(-WHEEL_DELTA_LIMIT, Math.min(WHEEL_DELTA_LIMIT, delta * unit));
+
+  // WARNING: keep handBack passive and first: a non-passive wheel listener holds every scroll on the page's main thread.
+  const handBack = (event: WheelEvent): void => {
+    if (!entered || !event.isTrusted || !(event.ctrlKey || event.metaKey)) return;
+
+    const unit =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? LINE_PIXELS
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? window.innerHeight
+          : 1;
+
+    ipcRenderer.send(BROWSER_PAGE_BOARD_CHANNEL, {
+      x: event.clientX,
+      y: event.clientY,
+      deltaX: along(event.deltaX, unit),
+      deltaY: along(event.deltaY, unit),
+      zoom: event.ctrlKey,
+    } satisfies BrowserWheel);
+
+    if (event.ctrlKey) event.stopImmediatePropagation();
+  };
+
+  const holdPan = (event: WheelEvent): void => {
+    if (!entered || !event.isTrusted || !event.metaKey || event.ctrlKey) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  window.addEventListener("wheel", handBack, { capture: true, passive: true });
+
+  ipcRenderer.on(BROWSER_PAGE_BOARD_CHANNEL, (_event, message: BoardMainMessage) => {
+    entered = message.entered;
+
+    if (entered) window.addEventListener("wheel", holdPan, { capture: true, passive: false });
+    else window.removeEventListener("wheel", holdPan, { capture: true });
+  });
+}

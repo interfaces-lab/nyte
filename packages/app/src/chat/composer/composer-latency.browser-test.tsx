@@ -124,6 +124,18 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+}
+
+async function within(done: () => boolean, ms: number): Promise<void> {
+  const deadline = performance.now() + ms;
+
+  while (!done() && performance.now() < deadline) await nextFrame();
+}
+
 export async function run(streaming: boolean): Promise<LatencyReport> {
   const client = new QueryClient();
   const host = document.createElement("div");
@@ -146,7 +158,12 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
       </StrictMode>,
     ),
   );
-  await wait(300);
+  await within(
+    () =>
+      failure !== undefined ||
+      document.querySelector("[aria-multiline][aria-label='Message']") !== null,
+    5_000,
+  );
 
   if (failure !== undefined) throw failure;
   const editor = editorElement();
@@ -157,7 +174,7 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
     await wait(KEY_INTERVAL_MS);
   }
 
-  await wait(200);
+  await nextFrame();
   const base = editor.textContent.length;
 
   const samples: FrameSample[] = [];
@@ -179,7 +196,7 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
     await wait(KEY_INTERVAL_MS);
   }
 
-  await wait(120);
+  await within(() => (samples.at(-1)?.length ?? 0) >= TYPED.length, 1_000);
   sampling = false;
 
   let maxCharsPerFrame = 0;

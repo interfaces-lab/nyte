@@ -13,6 +13,7 @@ Each ui module sits on one engine. Find it before changing the module.
 | Pierre `@pierre/trees`      | File tree (`FileTree`, `useFileTree`), file-type icons (`FileTypeIcon`)                                                               |
 | Pierre `@pierre/highlights` | Syntax tokens (`codeToTokens`), themes (`codeThemes`)                                                                                 |
 | Base UI                     | The controls: buttons, menus, dialogs, popovers, selects, tabs, tooltips and the rest                                                 |
+| TanStack Table              | Table (`Table`, `TableHead`, `TableResizer` and the other parts), column sizing and resizing                                          |
 | StyleX                      | Every style, through the tokens and roles the nyte-styles skill describes                                                             |
 
 ## Pierre
@@ -32,6 +33,51 @@ Each ui module sits on one engine. Find it before changing the module.
   version. Pin a patched Pierre package to an exact version when you upgrade it, then redo its patch
   with `pnpm patch` and check that every change in it still applies and is still needed.
 
+## TanStack Table
+
+- TanStack Table v9 is a dependency of `@nyte-ai/ui` only. Other packages import its names from
+  `@nyte-ai/ui/table`, which re-exports them unchanged beside the styled parts;
+  `no-restricted-imports` rejects `@tanstack/react-table` outside ui. Add a name there before using
+  it.
+- TanStack ships its agent skills in the package. List them with `npx @tanstack/intent@latest list`
+  from the ui package and load one with
+  `npx @tanstack/intent@latest load @tanstack/react-table#getting-started`. Load
+  `@tanstack/table-core#table-features` before adding a feature.
+
+## Pierre surfaces
+
+These hold for every surface that renders through Pierre: the Editor, Changes, chat diffs, the
+declaration peek, the settings previews and the file trees.
+
+- One worker pool, `PierreWorkerProvider`. It highlights anything up to `mainThreadMaxCharacters`
+  (100,000) on the main thread, as Pierre's docs ask for the highlights backend; only larger files
+  and diffs start a worker. Never mount `WorkerPoolContextProvider` or a second pool.
+- No pool around an edited file. The `Editor` tokenizes on the main thread and drops pool output.
+  If a pool must serve an editable surface, give it `useTokenTransformer: true`.
+- One `CodeView` per scroll region that lists only files and diffs, such as Changes. A list that
+  mixes other content, such as the chat transcript, keeps its own virtualizer and renders each diff
+  with `FileDiff`.
+- Keep `options` equal between renders. The React `CodeView` and `FileDiff` compare them shallowly,
+  and any unequal value re-renders the whole viewer. Nested objects (`layout`, `searchOptions`,
+  `itemMetrics`) are module constants or cached per input; callbacks read the latest state through
+  a store or ref instead of closing over per-render data.
+- `onPostRender` runs for every item Pierre renders or recycles, so it never reads computed style
+  or layout. Colours that depend on the appearance go on the surface's root once per appearance
+  (`applyDiffScopes`); the shadow host inherits them.
+- `itemMetrics` matches what the CSS draws: the line height from the code font size, and the hunk
+  separator and header heights whenever `unsafeCSS` or a custom header changes them.
+- A `cacheKey` names the content, such as a digest or a revision, never only a path. An accepted
+  edit gets a fresh one.
+- Key annotation UI by a stable metadata ID, not a line number.
+- File trees create their model once with `useFileTree`, push path changes with `resetPaths` or
+  `batch`, and statuses with `setGitStatus`. The tree reads its options once, so callbacks read the
+  latest props through a ref.
+- Chat code blocks highlight with `@pierre/highlights` directly (`codeToTokens`, `StreamTokenizer`),
+  not through a diffs component.
+- Measure a change to any of these with the desktop `pierre-surfaces` bench
+  (`NYTE_PIERRE_SURFACES`): a long chat of diffs, a 40-file Changes stack, a 6-file review and the
+  explorer on golang.org/x/tools.
+
 ## Pierre in tests
 
 - Pierre renders into open shadow roots: `diffs-container` for the editor, code view and diff,
@@ -45,6 +91,22 @@ Each ui module sits on one engine. Find it before changing the module.
 - There is no shared Pierre helper. A browser test that runs through `testRenderer` uses DOM
   queries, which stop at a shadow root: read the host element's `shadowRoot`, then query by `role`
   or by Pierre's `data-*` attributes.
+- Gutter cells carry `data-column-number`; source cells carry `data-line`.
+
+## Base UI
+
+- A trigger that shrinks on `:active` must not anchor a `Select` with `alignItemWithTrigger`: Base
+  UI reads the scale as zoom and opens the popup off the trigger. Give it `scale: 1`, as
+  `PickerTrigger` does.
+- To animate a popup with Motion, keep the Root controlled, wrap `{open && <X.Portal keepMounted>}`
+  in `AnimatePresence`, and pass the element form `render={<motion.div />}`. The function form
+  needs a cast.
+- Base UI ends the closing phase only for a Motion exit that animates `opacity`. Otherwise call
+  `eventDetails.preventUnmountOnClose()` and later `actionsRef.current.unmount()`.
+
+# Tests
+
+- ui has no test script, so an empty, zero-exit `pnpm --dir packages/ui test` is not a pass.
 
 # Typography
 
@@ -56,7 +118,7 @@ Reserve line-height: 1 and leading-none for non-text glyphs, icons, or deliberat
 
 <!-- STYLEX-CAPS:START -->
 
-StyleX v0.19.1. Use CSS-native solutions. Don't build JS workarounds for supported features.
+StyleX v0.19.2. Use CSS-native solutions. Don't build JS workarounds for supported features.
 
 | Group | Works | Doesn't work |
 | --- | --- | --- |
@@ -76,7 +138,7 @@ StyleX v0.19.1. Use CSS-native solutions. Don't build JS workarounds for support
 
 - Hover on touch: guard it with `@media (hover: hover)`.
 - Dialog or popover entry: `@starting-style` with `transitionBehavior: allow-discrete`, not `useState` plus `requestAnimationFrame`.
-- Parent state that styles a child: `stylex.when.ancestor(':hover', marker)` with a `stylex.defineMarker()` from a `.stylex.ts` file, not CSS nesting. The ancestor must pass `marker` to its `stylex.props()` call. Prefer a component-scoped `defineMarker()` over `defaultMarker()`, which leaks state from outer containers.
+- Parent state that styles a child: `stylex.when.ancestor(':hover', marker)` with a `stylex.defineMarker()` exported from a StyleX module, not CSS nesting. The ancestor must pass `marker` to its `stylex.props()` call. Prefer a component-scoped `defineMarker()` over `defaultMarker()`, which leaks state from outer containers.
 - Responsive to a container: `@container`, not `ResizeObserver`.
 - Zebra striping: `:nth-child(even)`, not `index % 2` in JS.
 - CSS fallback values: `stylex.firstThatWorks()`, not a manual fallback.

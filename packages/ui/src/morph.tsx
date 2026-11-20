@@ -8,10 +8,8 @@ import type { StyledProps } from "./style.ts";
 import { layer } from "./styles/schema.stylex.ts";
 import { role } from "./styles/vars.stylex.ts";
 
-// Mirrors motion.durationSlow and motion.easeOutQuint; Motion can't read CSS variables.
 const MORPH_TRANSITION = { duration: 0.2, ease: [0.16, 1, 0.3, 1] } as const;
 
-// Mirrors motion.durationFast.
 const FADE_TRANSITION = { duration: 0.1 } as const;
 
 const MorphContext = createContext<{

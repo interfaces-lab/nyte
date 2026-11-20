@@ -5,7 +5,6 @@ const MAX_CHARS = 2000;
 
 const NONE: readonly SimpleHighlight[] = [];
 
-/** Tree-sitter's highlight ranges for one label; none for a blank or long label, or when the parser fails. */
 export async function labelHighlights(
   text: string,
   filetype: string,

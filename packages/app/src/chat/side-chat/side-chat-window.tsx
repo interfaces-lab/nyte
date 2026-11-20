@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { ComponentType, ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { mainHead, showsText } from "@nyte-ai/plugin/client/presentation";
+import { headAttention, showsText } from "@nyte-ai/plugin/client/presentation";
 import { Button } from "@nyte-ai/ui/button";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
@@ -14,6 +14,7 @@ import { nyte } from "../../contract/nyte.ts";
 import { addToChat, ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
+import { useChatWindow } from "../../window/index.ts";
 import type { ComposerDocumentState } from "../composer/composer-document.ts";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
@@ -34,7 +35,7 @@ import {
   useSideChats,
   useSideChatWindow,
 } from "./side-chats.ts";
-import type { SideChatShown } from "./side-chats.ts";
+import type { SideChatShown } from "./side-chat-state.ts";
 import type { PaneId } from "../../panes/layout.ts";
 
 const SIZE = { width: 380, height: 520 };
@@ -368,8 +369,9 @@ function Pill({
   readonly chat: SessionInfo | undefined;
   readonly onOpen: () => void;
 }): ReactElement {
-  const head = chat === undefined ? undefined : mainHead(chat);
-  const working = head?.execution.kind === "live";
+  const mark = chat === undefined ? "done" : headAttention(chat).mark;
+  const working = mark === "working" || mark === "retrying";
+  const unread = useChatWindow((snapshot) => chat !== undefined && snapshot.unread.has(chat.id));
 
   return (
     <div {...props(styles.pill)}>
@@ -382,7 +384,7 @@ function Pill({
       >
         {working && <Spinner />}
         <span {...props(styles.pillTitle)}>{title}</span>
-        {head?.unread === true && <span aria-label="New reply" {...props(styles.dot)} />}
+        {unread && <span aria-label="New reply" {...props(styles.dot)} />}
       </Button>
     </div>
   );

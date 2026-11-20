@@ -24,7 +24,7 @@ export const echo = {
   description: "Echo the text.",
   parameters: standard(Type.Object({ text: Type.String() })),
   class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => {
     echoes.push(args.text);
 
@@ -109,13 +109,8 @@ export async function readRun(kernel: Kernel, session: SessionId, run: RunId) {
 
 export function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[0]>["snapshots"] {
   return {
-    before: async () => {
-      taken.push("before");
-
-      return asId("s0");
-    },
-    after: async () => {
-      taken.push("after");
+    capture: async (scope) => {
+      taken.push(scope.kind === "workspace" ? scope.kind : scope.paths.join(","));
 
       return asId(taken.length === 1 ? "s0" : "s1");
     },

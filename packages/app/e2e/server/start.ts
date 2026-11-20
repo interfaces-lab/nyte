@@ -5,10 +5,11 @@ import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import process from "node:process";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
-import { localGitHubAccount, localProvider, sqliteStore } from "@nyte-ai/host";
+import { sqliteStore } from "@nyte-ai/host";
 import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/bench";
 import { sdk } from "@nyte-ai/sdk";
 import { E2E_PORT, E2E_TOKEN, README_LINE } from "./address.ts";
+import { warmReply } from "./design-edit.ts";
 
 const { models } = fakeModels({
   id: "echo",
@@ -20,6 +21,9 @@ const { models } = fakeModels({
   }),
   fallback: (request) => {
     const title = titleReply(request);
+    const warm = title === null ? warmReply(request) : undefined;
+
+    if (warm !== undefined) return warm;
 
     if (
       title === null &&
@@ -69,8 +73,12 @@ async function serveApp(request: Request): Promise<Response | undefined> {
     path.startsWith(appRoot) && extname(path) !== "" ? path : join(appRoot, "index.html");
 
   try {
+    const type = TYPES.get(extname(file)) ?? "application/octet-stream";
+
     return new Response(await readFile(file), {
-      headers: { "Content-Type": TYPES.get(extname(file)) ?? "application/octet-stream" },
+      headers: pathname.startsWith("/canvas/")
+        ? { "Content-Type": type, "Access-Control-Allow-Origin": "*" }
+        : { "Content-Type": type },
     });
   } catch {
     return new Response("Not found", { status: 404 });
@@ -93,8 +101,6 @@ for (const args of [
 const host = await sdk.open({
   store: sqliteStore({ memory: true }),
   models,
-  plugins: [{ id: "local", environment: localProvider({ home: cwd }) }],
-  github: localGitHubAccount({ home: cwd }),
   workspace: { kind: "local", path: cwd },
   home: cwd,
 });

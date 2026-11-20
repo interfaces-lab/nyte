@@ -221,7 +221,7 @@ export const hostOperations = {
   ),
   "sessions.read input": operation(
     OPERATIONS["sessions.read"].input,
-    { parents: { kind: "roots" }, limit: 300, resume: { seq: 41 } },
+    { parents: { kind: "roots" }, pinned: true, query: "fix", limit: 300, resume: { seq: 41 } },
     { resume: {} },
   ),
   "sessions.read output": operation(

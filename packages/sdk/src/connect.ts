@@ -1,192 +1,126 @@
-import { IdentityChallengeSchema, isJson, SdkError } from "@nyte-ai/schema";
-import type { CredentialSource, HostId, HostViewWire, Json } from "@nyte-ai/schema";
-import { dev } from "@nyte-ai/core/client";
-import type { ConnectOptions, Connection } from "@nyte-ai/core";
-import { createTransport, decodeError, decodeOutput } from "@nyte-ai/protocol";
-import type { Transport } from "@nyte-ai/protocol";
-import { createClient } from "./client.ts";
-import { createSendJournal } from "./journal.ts";
-import { parsed } from "./receipts.ts";
+import { asId } from "@nyte-ai/schema";
+import type {
+  ActionDeclaration,
+  ClientInfo,
+  CredentialSource,
+  Disposer,
+  HeadName,
+  PartId,
+  SessionId,
+} from "@nyte-ai/schema";
+import type { Clients, ConnectOptions, Connection, RequestJournal, Sessions } from "@nyte-ai/core";
+import type { CallName, OperationInput, OperationOutput } from "@nyte-ai/protocol";
+import { dial } from "./connection/connect.ts";
+import type { HostCredentials } from "./connection/connect.ts";
+import { openChat } from "./live/chat.ts";
+import type { Chat, ChatOptions } from "./live/chat.ts";
+import type { ClientsStore } from "./live/clients.ts";
+import type { HeadStore } from "./live/head.ts";
+import { openLink } from "./live/host-connection.ts";
+import type {
+  ActionHandler,
+  Fetch,
+  Health,
+  OpenSocket,
+  TextUpdate,
+} from "./live/host-connection.ts";
+import type { PartStore } from "./live/part.ts";
+import type { RefusedSends } from "./send/journal.ts";
+import type { SessionsStore, SessionsWindow } from "./live/sessions.ts";
+import type { Live } from "./live/store.ts";
 
-const paired = new Map<string, string>();
+export interface ClientConnectOptions {
+  readonly url: string;
+  /** A token, custom headers, or a pairing code, which the first request trades for a device token that becomes `credential`. */
+  readonly credentials: CredentialSource;
+  readonly expect?: ConnectOptions["expect"];
+  readonly client: Omit<ClientInfo, "actions">;
+  /** Where a send waits until the host has it. Give it storage that outlives the process (`createSendJournal(storage)`), or a message sent while the host is away is lost on quit. */
+  readonly journal: RequestJournal;
+  /** The global `fetch` and `WebSocket` when absent: a desktop bridge or React Native passes its own. */
+  readonly transport?: { readonly fetch?: Fetch; readonly socket?: OpenSocket };
+}
 
-const encoder = new TextEncoder();
+export interface ClientConnection extends Connection {
+  /** The credential every request and the socket send: a pairing code is traded for a device token before `connect` resolves. */
+  readonly credential: HostCredentials;
+  readonly sessions: Sessions & {
+    /** The sessions in `window`, kept current: the newest roots by default, `pinned`, a parent's children, or the roots whose name holds `query`. Close it when done. */
+    open(window?: SessionsWindow): SessionsStore;
+  };
+  /** The socket's state. The socket dials on the first use of anything below, so a connection that only makes requests opens none. */
+  readonly health: Live<Health>;
+  /** Call it when the link may have come back: the app came forward, the window got focus, the network returned. A link that is retrying or blocked dials now; an open one checks the host answers. */
+  retry(): void;
+  /** The chat of `session`'s `options.head` (main by default): its view, kept current, and the actions a chat screen takes. Each call returns its own chat. */
+  chat(session: SessionId, options?: ChatOptions): Chat;
+  head(session: SessionId, head: HeadName, options: { readonly tail: number }): HeadStore;
+  part(session: SessionId, part: PartId): PartStore;
+  text(listener: (update: TextUpdate) => void): Disposer;
+  readonly clients: Clients & {
+    /** The connected clients, kept current. Close it when done. */
+    open(): ClientsStore;
+  };
+  call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
+  offer(action: ActionDeclaration, handler: ActionHandler): Disposer;
+  /** The sends the journal replayed, at connect or on `resend`, that the host refused, kept until `take` so the client can give each one's text back. */
+  readonly refused: RefusedSends;
+}
 
-export async function connect(options: ConnectOptions): Promise<Connection> {
-  const { credentials } = options;
-  const send = options.fetch ?? fetch;
-  const key = credentials.kind === "pairing" ? `${options.url}\n${credentials.code}` : null;
-  const kept = key === null ? undefined : paired.get(key);
+const MAIN = asId<"head">("main");
 
-  const transport = createTransport({
+const TAIL = 200;
+
+/** Connects to the host at `options.url` and resolves once it has answered and proved itself as `sdk.connect` does: requests, the journal, the socket and every chat over one connection. `close()` closes all of it. */
+export async function connect(options: ClientConnectOptions): Promise<ClientConnection> {
+  const fetch = options.transport?.fetch;
+
+  const dialed = await dial({
     url: options.url,
-    fetch: send,
-    headers: () => readCredentialHeaders(credentials, transport.credential() ?? kept ?? null),
+    credentials: options.credentials,
+    expect: options.expect,
+    journal: options.journal,
+    fetch,
   });
 
-  if (options.expect !== undefined) await verifyIdentity(options.url, send, options.expect.hostId);
-  const { view: first, frames } = await firstView(transport);
+  const http = dialed.connection;
 
-  try {
-    return await openClient(options, transport, first, frames, key, kept);
-  } catch (error) {
-    await frames.return?.();
-    throw error;
-  }
-}
-
-async function openClient(
-  options: ConnectOptions,
-  transport: Transport,
-  first: HostViewWire,
-  frames: AsyncIterator<Json>,
-  key: string | null,
-  kept: string | undefined,
-): Promise<Connection> {
-  const { credentials } = options;
-  const answered = transport.host() ?? first.id;
-
-  if (options.expect !== undefined && (answered !== options.expect.hostId || first.id !== answered))
-    throw new SdkError("stale", `Host ${answered} answered instead of ${options.expect.hostId}.`, {
-      hostId: answered,
-    });
-
-  const token = credentials.kind === "pairing" ? deviceToken(transport, kept) : null;
-
-  if (key !== null && token !== null) paired.set(key, token);
-  const credential: CredentialSource = token === null ? credentials : { kind: "token", token };
-  const journal = options.journal ?? createSendJournal();
-  const journaled = await journal.load();
-
-  dev("sdk", "connected", {
-    hostId: first.id,
-    credential: credentials.kind,
-    journaled: journaled.length,
+  const link = openLink(options.url, {
+    credentials: dialed.credential,
+    client: options.client,
+    socket: options.transport?.socket,
+    fetch,
   });
 
-  return createClient(transport, {
-    hostId: first.id,
-    principal: first.principal,
-    credential,
-    journal,
-    journaled,
-    hostFrames: frames,
-  });
-}
-
-async function readCredentialHeaders(
-  credentials: CredentialSource,
-  device: string | null,
-): Promise<Readonly<Record<string, string>>> {
-  if (credentials.kind === "custom") return credentials.headers();
-
-  if (credentials.kind === "token") return { Authorization: `Bearer ${credentials.token}` };
-
-  return device === null
-    ? { Authorization: `Pairing ${credentials.code}` }
-    : { Authorization: `Bearer ${device}` };
-}
-
-function deviceToken(transport: Transport, kept: string | undefined): string {
-  const token = transport.credential() ?? kept;
-
-  if (token === undefined)
-    throw new SdkError(
-      "unauthenticated",
-      "The host returned no device credential for the pairing code.",
-    );
-
-  return token;
-}
-
-async function firstView(
-  transport: Transport,
-): Promise<{ readonly view: HostViewWire; readonly frames: AsyncIterator<Json> }> {
-  const frames = transport.frames("connection.watch", {})[Symbol.asyncIterator]();
-
-  try {
-    const next = await frames.next();
-
-    if (next.done === true)
-      throw new SdkError("unavailable", "The host closed the connection before it answered.");
-
-    return {
-      view: decodeOutput("connection.watch", next.value),
-      frames: replayFirst(next.value, frames),
-    };
-  } catch (error) {
-    await frames.return?.();
-    throw error;
-  }
-}
-
-function replayFirst(first: Json, rest: AsyncIterator<Json>): AsyncIterator<Json> {
-  let replayed = false;
+  const close = async (): Promise<void> => {
+    link.close();
+    await http.close();
+  };
 
   return {
-    async next() {
-      if (replayed) return rest.next();
-      replayed = true;
+    ...http,
+    ...link,
+    credential: dialed.credential,
+    refused: dialed.journal.refused,
+    sessions: { ...http.sessions, open: (window) => link.sessions(window) },
+    clients: { ...http.clients, open: () => link.clients() },
+    client: (id) => ({
+      perform: (action, input, options) => link.perform(id, action, input, options),
+    }),
+    chat(session, chat) {
+      const head = chat?.head ?? MAIN;
+      const tail = chat?.tail ?? TAIL;
 
-      return { done: false, value: first };
+      return openChat({
+        session: http.session(session),
+        head,
+        open: () => link.head(session, head, { tail }),
+        text: (listener) => link.text(listener),
+        health: link.health,
+        journal: dialed.journal,
+      });
     },
-    async return() {
-      await rest.return?.();
-
-      return { done: true, value: undefined };
-    },
+    close,
+    [Symbol.asyncDispose]: close,
   };
-}
-
-async function verifyIdentity(
-  url: string,
-  send: (url: string, init?: RequestInit) => Promise<Response>,
-  expected: HostId,
-): Promise<void> {
-  const nonce = crypto.randomUUID();
-  let response: Response;
-
-  try {
-    response = await send(
-      `${url.replace(/\/+$/, "")}/.nyte/identity?nonce=${encodeURIComponent(nonce)}`,
-    );
-  } catch (error) {
-    if (!(error instanceof TypeError)) throw error;
-
-    throw new SdkError("unavailable", error.message);
-  }
-
-  const body: unknown = await response.json().catch(() => null);
-
-  if (response.status === 404) return;
-
-  if (!response.ok) throw decodeError(isJson(body) ? body : null, response.status);
-  const challenge = parsed(IdentityChallengeSchema, body);
-
-  if (challenge === null || challenge.nonce !== nonce)
-    throw new SdkError("invalid", "The host answered the identity challenge with something else.");
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    Uint8Array.fromBase64(challenge.publicKey, { alphabet: "base64url" }),
-    "Ed25519",
-    false,
-    ["verify"],
-  );
-
-  const signed = await crypto.subtle.verify(
-    "Ed25519",
-    key,
-    Uint8Array.fromBase64(challenge.signature, { alphabet: "base64url" }),
-    encoder.encode(`nyte/identity\n${challenge.hostId}\n${nonce}`),
-  );
-
-  if (!signed || challenge.hostId !== expected)
-    throw new SdkError(
-      "stale",
-      signed
-        ? `Host ${challenge.hostId} answered instead of ${expected}.`
-        : `The identity signature of ${challenge.hostId} does not verify.`,
-      { hostId: challenge.hostId },
-    );
 }

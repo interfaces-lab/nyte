@@ -1,5 +1,4 @@
 #!/bin/sh
-# Assemble an already-built binary and the nyte-tailnet beside it. No build, signing, or release upload occurs here.
 set -eu
 if [ "$#" -ne 3 ]; then
 	echo "Usage: assemble-release.sh <binary> <output-directory> <target>; nyte-tailnet must sit beside <binary>" >&2

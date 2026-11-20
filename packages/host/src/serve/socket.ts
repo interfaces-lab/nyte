@@ -1,5 +1,6 @@
 import type { McpOwner } from "../mcp-server/grants.ts";
 import { Buffer } from "node:buffer";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   API_MIN_REVISION,
   API_REVISION,
@@ -7,7 +8,6 @@ import {
   compile,
   HELLO_MAX_BYTES,
   HelloFrameType,
-  isJson,
   OPERATIONS,
   SdkError,
   SOCKET_LIMITS,
@@ -39,9 +39,11 @@ import {
   decodeInput,
   encodeError,
   namesOperation,
+  readJson,
 } from "@nyte-ai/protocol";
+import { Type } from "typebox";
 import type { RawData, WebSocket } from "ws";
-import type { TailnetControl } from "../tailnet.ts";
+import type { TailnetControl } from "./tailnet.ts";
 import { bindConnection } from "./binding.ts";
 import { sharedClients } from "./clients.ts";
 import type { HostEvent, PerformEvent } from "./clients.ts";
@@ -113,14 +115,6 @@ type EventOut =
       readonly type: "event";
       readonly scope: "host";
       readonly seq: null;
-      readonly kind: "live";
-      readonly activations: { readonly [session: string]: Activation };
-    }
-  | {
-      readonly c: "e";
-      readonly type: "event";
-      readonly scope: "host";
-      readonly seq: null;
       readonly kind: "status";
       readonly version: string;
       readonly startedAt: number;
@@ -165,6 +159,12 @@ const MISSED_PONGS = 3;
 
 const HIGH_WATER = 64 * 1024;
 
+const GATHER_MS = 8;
+
+const PUSH_MS = 33;
+
+const SESSIONS_PUSH_MS = 250;
+
 const FRAGMENT_REVISION = 23;
 
 const FRAGMENT_ENVELOPE_BYTES = 1024;
@@ -177,7 +177,9 @@ const PIECE_UNITS = Math.floor(
 
 const hellos = compile(withJson(HelloFrameType));
 
-const calls = compile(withJson(CallFrameType));
+const calls = compile(
+  Type.Object({ ...CallFrameType.properties, input: Type.Optional(Type.Unsafe<Json>({})) }),
+);
 
 export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const binding = bindConnection(peer.connection, {
@@ -207,7 +209,36 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
   const subscriptions = new Map<string, Subscription>();
   const joining = new Map<string, Promise<void>>();
+  const unsent = new Set<() => void>();
+  let pushing: ReturnType<typeof setTimeout> | null = null;
+  let pushed = 0;
+  let gathers = false;
   let textOpen = false;
+
+  const push = (): void => {
+    if (pushing !== null) clearTimeout(pushing);
+    pushing = null;
+
+    if (unsent.size === 0) return;
+    pushed = Date.now();
+    const sends = [...unsent];
+    unsent.clear();
+
+    for (const send of sends) send();
+  };
+
+  const gather = (send: () => void): void => {
+    if (!gathers) {
+      send();
+
+      return;
+    }
+
+    unsent.add(send);
+
+    if (pushing !== null || closed) return;
+    pushing = setTimeout(push, Math.max(GATHER_MS, pushed + PUSH_MS - Date.now()));
+  };
 
   const outbox = openOutbox(socket, close, () => {
     textOpen = false;
@@ -325,7 +356,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       stream(subscription);
     };
 
-    const unsubscribe = attachment.subscribe(changed);
+    const unsubscribe = attachment.subscribe(() => gather(changed));
 
     const subscription: Subscription = {
       attachment,
@@ -333,6 +364,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       progress: new Map(),
       release() {
         unsubscribe();
+        unsent.delete(changed);
         attachment.release();
       },
     };
@@ -386,16 +418,6 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     const listeners = sharedListeners(peer.server);
 
-    const activations = (): void =>
-      outbox.event({
-        c: "e",
-        type: "event",
-        scope: "host",
-        seq: null,
-        kind: "live",
-        activations: Object.fromEntries(peer.server.wire.activations()),
-      });
-
     const status = (): void =>
       outbox.event({
         c: "e",
@@ -417,12 +439,10 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       kind: "live",
       clients: clients.rows(),
     });
-    activations();
     status();
 
     const stops = [
       clients.observe((event) => outbox.event(event)),
-      peer.server.wire.onActivation(activations),
       listeners.observe(status),
       peer.tailnet?.subscribe(status) ?? (() => undefined),
     ];
@@ -452,6 +472,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
         kind: "change",
         tables: next.value.tables,
       });
+      await sleep(SESSIONS_PUSH_MS, undefined, { ref: false });
     }
   };
 
@@ -513,7 +534,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     const value = Buffer.byteLength(data) > HELLO_MAX_BYTES ? undefined : readJson(data);
 
     if (!hellos.Check(value)) {
-      close(1008, "The first frame must be a hello of at most 4 KB.");
+      close(1008, "The first frame must be a hello of at most 64 KB.");
 
       return;
     }
@@ -526,8 +547,11 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       return;
     }
 
-    if (value.api_revision !== undefined && value.api_revision >= FRAGMENT_REVISION)
+    if (value.api_revision !== undefined && value.api_revision >= FRAGMENT_REVISION) {
       outbox.acceptFragments();
+      gathers = true;
+    }
+
     const id = asId<"client">(crypto.randomUUID());
 
     const membership = clients.join({
@@ -562,6 +586,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     try {
       const output = await dispatch(frame.op, frame.input ?? {}, flight.signal);
+      push();
       outbox.event({ c: "e", type: "result", id: frame.id, output });
     } catch (error) {
       outbox.event({ c: "e", type: "error", id: frame.id, error: encodeError(asSdkError(error)) });
@@ -676,6 +701,9 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   socket.once("close", () => {
     closed = true;
     clearInterval(heartbeat);
+
+    unsent.clear();
+    push();
     peer.signal.removeEventListener("abort", revoked);
 
     for (const flight of flights) flight.abort(new SdkError("unavailable", "The socket closed."));
@@ -875,16 +903,6 @@ function rawText(data: RawData): string {
   if (data instanceof ArrayBuffer) return Buffer.from(data).toString("utf8");
 
   return data.toString("utf8");
-}
-
-function readJson(text: string): Json | undefined {
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return isJson(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function truncate(reason: string): string {

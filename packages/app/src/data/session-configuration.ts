@@ -1,8 +1,19 @@
 import { mutationOptions } from "@tanstack/react-query";
+import { compile, ConfigurationPatchType, withJson } from "@nyte-ai/schema";
 import type { MutationState } from "@tanstack/react-query";
-import type { ConfigurationPatch, ModelRef, SessionId, SessionView, Thinking } from "@nyte-ai/sdk";
+import type {
+  Configuration,
+  ConfigurationPatch,
+  ModelRef,
+  SessionId,
+  SessionView,
+  Thinking,
+} from "@nyte-ai/sdk";
 import { connection } from "./connection.ts";
 import { chatStore } from "./chat-store.ts";
+import { queryClient } from "./query-client.ts";
+
+const CONFIGURE_PATCH = compile(withJson(ConfigurationPatchType));
 
 export type ConfigureSessionPatch = Pick<ConfigurationPatch, "model" | "thinking">;
 
@@ -15,7 +26,7 @@ interface SessionChoice {
 
 export function projectSessionChoice(
   view: Pick<SessionView, "configuration">,
-  pending: readonly PendingConfiguration[],
+  pending: readonly Pick<PendingConfiguration, "variables">[],
 ): SessionChoice {
   const stored = view.configuration.selected ?? view.configuration.effective;
 
@@ -31,17 +42,56 @@ export function projectSessionChoice(
   );
 }
 
+export function pendingConfigurations(
+  sessionId: SessionId,
+): readonly Pick<PendingConfiguration, "variables">[] {
+  return queryClient
+    .getMutationCache()
+    .findAll({ mutationKey: ["session", sessionId, "configure"], status: "pending" })
+    .flatMap((mutation) => {
+      const variables = mutation.state.variables;
+
+      return CONFIGURE_PATCH.Check(variables) ? [{ variables }] : [];
+    });
+}
+
+export function showsChoice(
+  view: Pick<SessionView, "configuration">,
+  selected: Pick<Configuration, "model" | "thinking">,
+): boolean {
+  const shown = projectSessionChoice(view, []);
+
+  return (
+    shown.model?.provider === selected.model.provider &&
+    shown.model.id === selected.model.id &&
+    shown.thinking === selected.thinking
+  );
+}
+
+const SHOWN_WITHIN_MS = 2_000;
+
+const waits = new Map<SessionId, AbortController>();
+
 export function sessionConfigurationOptions({ sessionId }: { readonly sessionId: SessionId }) {
   return mutationOptions({
     mutationKey: ["session", sessionId, "configure"],
     networkMode: "always",
     mutationFn: async (patch: ConfigureSessionPatch) => {
-      const next = chatStore(sessionId).next();
       const outcome = await connection().session(sessionId).configure(patch);
 
       if (outcome.kind !== "configured")
         throw new Error("That model setting is no longer available");
-      await next;
+      waits.get(sessionId)?.abort();
+      const bound = new AbortController();
+      waits.set(sessionId, bound);
+      const timer = setTimeout(() => bound.abort(), SHOWN_WITHIN_MS);
+
+      await chatStore(sessionId)
+        .until((view) => showsChoice(view, outcome.selected), bound.signal)
+        .catch(() => undefined);
+      clearTimeout(timer);
+
+      if (waits.get(sessionId) === bound) waits.delete(sessionId);
     },
   });
 }

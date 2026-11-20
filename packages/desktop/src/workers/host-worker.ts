@@ -2,9 +2,9 @@ import { fileURLToPath } from "node:url";
 import { loadQuickJSWasm } from "@nyte-ai/plugin/core/codemode-runtime";
 import { serveHostThread } from "@nyte-ai/service/host-worker";
 
-const DOCS = "../../../docs/content/docs/";
+const DOCS = "../../../../services/web/content/docs/";
 
-const pages = import.meta.glob<string>("../../../docs/content/docs/**/*", {
+const pages = import.meta.glob<string>("../../../../services/web/content/docs/**/*", {
   query: "?raw",
   import: "default",
   eager: true,

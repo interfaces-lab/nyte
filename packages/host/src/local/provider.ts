@@ -4,31 +4,34 @@ import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
-import type { EnvironmentProvider, ExecutionEnv } from "@nyte-ai/core";
+import type { EnvironmentProvider, ExecutionEnv, SnapshotsApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { pluginFilesIn } from "../plugins/loader.ts";
-import { localFiles } from "./files.ts";
-import { localGit } from "./git.ts";
-import { localGitHub } from "./github.ts";
+import { localFiles } from "./files/files.ts";
+import { localGit } from "./git/git.ts";
+import { localGitHub } from "./git/github.ts";
+import { localLanguage } from "./language/manager.ts";
 import { folderIdentity } from "./identity.ts";
-import { localExec } from "./jobs.ts";
-import { localSnapshots } from "./snapshots.ts";
-import { localWorktrees } from "./worktrees.ts";
+import { localExec } from "./process/jobs.ts";
+import { localSnapshots } from "./snapshots/snapshots.ts";
+import { localWorktrees } from "./git/worktrees.ts";
 
 const ROOT_SOURCES = [".nyte/SYSTEM.md", ".nyte/APPEND_SYSTEM.md", ".nyte/mcp.json"];
 
-/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity` (§41d), `available` when the path is a readable directory (else `unavailable { unreachable }`; a target without a path `unavailable { unsupported }`, identified by the hash of its locator), and the project sources present under it, relative to it, in this order: the plugin files in `.nyte/plugins` as the plugin loader finds them (`pluginFilesIn`), the skills `.nyte/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, then `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md` and `.nyte/mcp.json`: the files project trust gates. Context files such as `AGENTS.md` load without trust and are not listed. `attach` resolves the real path (a target that is not a directory throws `SdkError("unavailable")`) and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its file watches and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `github` is `localGitHub` (with `gh` and `git`; the login is the machine's, `localGitHubAccount`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`), and absent for a folder that contains `<home>/.nyte` or lies inside it outside `<home>/.nyte/worktrees` (the home folder itself, its ancestors, Nyte's own state): there a snapshot would walk or stage everything under home, the store and secrets included, to report changes in the store it just wrote; `worktrees` is `localWorktrees` (with `home` and `git`); `realpath` is `fs.promises.realpath` (the native one, which spells each name as the disk stores it), a relative path resolved against `env.cwd`, null where it fails; no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
 export function localProvider(options?: {
   readonly home?: string;
   readonly git?: string;
   readonly gh?: string;
   readonly ripgrep?: string;
   readonly formatter?: string;
+  /** Language servers pinned by program name, such as `{ gopls: "/opt/go/bin/gopls" }`; the rest are found on PATH. */
+  readonly languageServers?: Readonly<Record<string, string>>;
   /** The login shell a pty job without a command runs, read at each start; null or absent is `$SHELL`. */
   readonly shell?: () => string | null;
 }): EnvironmentProvider {
   const home = options?.home ?? homedir();
   const store = join(home, ".nyte", "snapshots");
+  const shared = new Map<string, SnapshotsApi>();
   let state: string | undefined;
   const github = localGitHub({ gh: options?.gh, git: options?.git });
 
@@ -85,13 +88,22 @@ export function localProvider(options?: {
     },
     git: (env) => localGit(env, { git: options?.git }),
     github,
+    language: (env) => localLanguage(env, { servers: options?.languageServers }),
     snapshots(env) {
       state ??= join(realpathOrSelf(home), ".nyte");
 
-      return nests(env.cwd, state) ||
+      if (
+        nests(env.cwd, state) ||
         (nests(state, env.cwd) && !nests(join(state, "worktrees"), env.cwd))
-        ? undefined
-        : localSnapshots(env, { store, git: options?.git });
+      )
+        return undefined;
+      const known = shared.get(env.cwd);
+
+      if (known !== undefined) return known;
+      const snapshots = localSnapshots(env.cwd, { store, git: options?.git });
+      shared.set(env.cwd, snapshots);
+
+      return snapshots;
     },
     worktrees: localWorktrees({ home, git: options?.git }),
     realpath: (env, path) =>

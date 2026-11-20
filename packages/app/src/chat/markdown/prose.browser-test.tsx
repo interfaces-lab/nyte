@@ -11,9 +11,9 @@ function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
-const painted = (): Promise<void> =>
+const nextFrame = (): Promise<void> =>
   new Promise((resolve) => {
-    requestAnimationFrame(() => setTimeout(resolve, 0));
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
@@ -21,7 +21,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -55,7 +55,7 @@ export async function run(): Promise<string> {
     await until(() => host.textContent?.includes("rerun.") === true, "the streamed answer");
     const paragraph = host.querySelector("p");
     draw(ANSWER, false);
-    await painted();
+    await nextFrame();
     check(paragraph?.isConnected === true, "Settling keeps the streamed paragraph mounted");
     check(host.textContent?.includes("rerun.") === true, "The settled answer is whole");
 
@@ -67,11 +67,11 @@ export async function run(): Promise<string> {
       "A streaming Mermaid fence draws as source",
     );
     draw(DIAGRAM, false);
-    await painted();
-    check(
-      host.querySelector('[aria-label="Mermaid diagram"]') !== null ||
+    await until(
+      () =>
+        host.querySelector('[aria-label="Mermaid diagram"]') !== null ||
         host.textContent?.includes("A --> B") === true,
-      "A settled Mermaid fence draws a diagram or its source",
+      "a settled Mermaid fence to draw a diagram or its source",
     );
 
     return "passed";

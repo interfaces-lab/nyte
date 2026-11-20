@@ -65,6 +65,12 @@ export const SKILL_PATHS = "skills.paths";
 
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
+const ended = new WeakSet<RootWatch>();
+
+const openers = new WeakMap<RootWatch, SessionId>();
+
+const WORKSPACE_PATHS = [...SKILL_DIRECTORIES, SHARED_DOCS, PLUGIN_FOLDER];
+
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const record = (await requireSession(kernel.store, session)).record;
   const workspace = record.workspace;
@@ -104,6 +110,12 @@ export function forgetScans(
 
   for (const [key, watch] of watches) {
     for (const session of watch.sessions) if (chosen(session)) watch.sessions.delete(session);
+    const opener = openers.get(watch);
+
+    if (watch.sessions.size > 0 && opener !== undefined && chosen(opener)) {
+      ended.add(watch);
+      void rewatch(kernel, key, watch);
+    }
 
     if (watch.sessions.size > 0 || watch.kept) continue;
     watches.delete(key);
@@ -162,26 +174,24 @@ export const resourcesPlugin: Plugin<"core"> = {
     settings: [
       {
         id: SKILL_PATHS,
-        label: "Skill paths",
+        title: "Skill paths",
         schema: standard(Type.Array(Type.String())),
         default: [],
-        scope: "host",
       },
       {
         id: WORKSPACE_TRUST,
-        label: "Project trust",
+        title: "Project trust",
         schema: standard(
           Type.Union([Type.Literal("ask"), Type.Literal("always"), Type.Literal("never")]),
         ),
         default: "ask",
-        scope: "host",
         choices: [
-          { value: "ask", label: "ask", badge: "Ask before loading a new folder's project files" },
-          { value: "always", label: "always", badge: "Load every folder's project files" },
+          { value: "ask", title: "ask", note: "Ask before loading a new folder's project files" },
+          { value: "always", title: "always", note: "Load every folder's project files" },
           {
             value: "never",
-            label: "never",
-            badge: "Load project files only from folders you trusted",
+            title: "never",
+            note: "Load project files only from folders you trusted",
           },
         ],
       },
@@ -190,52 +200,63 @@ export const resourcesPlugin: Plugin<"core"> = {
   activate(api) {
     const inputs = tryReadResources(api);
 
-    if (inputs === null) return;
+    if (inputs === null) return {};
 
     for (const issue of resourceIssues(inputs)) api.report(issue);
 
-    if (inputs.contextFiles.length > 0)
-      api.contribute.prompt.add({
-        id: "project-context",
-        order: 10,
-        text: [
-          "Instructions from the user and the project, in order; later files are more specific:",
-          ...inputs.contextFiles.map((file) => `# ${file.path}\n\n${file.content.trim()}`),
-        ].join("\n\n"),
-      });
+    return {
+      contribute: {
+        skills: [
+          (draft) => {
+            for (const skill of inputs.skills)
+              draft.set(skill.name, {
+                name: skill.name,
+                description: skill.description,
+                location: skill.location,
+              });
+          },
+        ],
+        prompt: [
+          ...(inputs.contextFiles.length === 0
+            ? []
+            : [
+                {
+                  id: "project-context",
+                  order: 10,
+                  text: [
+                    "Instructions from the user and the project, in order; later files are more specific:",
+                    ...inputs.contextFiles.map(
+                      (file) => `# ${file.path}\n\n${file.content.trim()}`,
+                    ),
+                  ].join("\n\n"),
+                },
+              ]),
+          (draft, siblings) => {
+            const skills = siblings.skills.list().toSorted((a, b) => a.name.localeCompare(b.name));
 
-    api.contribute.skills.add((draft) => {
-      for (const skill of inputs.skills)
-        draft.set(skill.name, {
-          name: skill.name,
-          description: skill.description,
-          location: skill.location,
-        });
-    });
+            if (skills.length === 0) return;
 
-    api.contribute.prompt.add((draft, siblings) => {
-      const skills = siblings.skills.list().toSorted((a, b) => a.name.localeCompare(b.name));
-
-      if (skills.length === 0) return;
-
-      draft.set("skills", {
-        id: "skills",
-        order: 90,
-        text: [
-          "Skills: read a skill's file when its description matches the task.",
-          ...skills.map(
-            (skill) =>
-              `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.location})`,
-          ),
-        ].join("\n"),
-      });
-    });
+            draft.set("skills", {
+              id: "skills",
+              order: 90,
+              text: [
+                "Skills: read a skill's file when its description matches the task.",
+                ...skills.map(
+                  (skill) =>
+                    `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.location})`,
+                ),
+              ].join("\n"),
+            });
+          },
+        ],
+      },
+    };
   },
 };
 
 function tryReadResources(api: PluginApi<"core">): Resources | null {
   try {
-    return api.inputs;
+    return api.project;
   } catch {
     return null;
   }
@@ -372,12 +393,21 @@ async function follow(kernel: Kernel, session: SessionId, workspace: WorkspaceId
   if (classifyFileSupport(kernel.environments.provider(record.target.kind)) !== "available") return;
   const env = await kernel.environments.attach(session).catch(() => null);
 
-  if (env !== null)
-    watchRoot(kernel, workspace, env.files, session, [
-      ...SKILL_DIRECTORIES,
-      SHARED_DOCS,
-      PLUGIN_FOLDER,
-    ]);
+  if (env !== null) watchRoot(kernel, workspace, env.files, session, WORKSPACE_PATHS);
+}
+
+async function rewatch(kernel: Kernel, key: string, watch: RootWatch): Promise<void> {
+  for (const session of watch.sessions) {
+    const env = await kernel.environments.attach(session).catch(() => null);
+
+    if (kernel.workspaceState.watches.get(key) !== watch) return;
+
+    if (env !== null && watch.sessions.has(session)) {
+      watchRoot(kernel, key, env.files, session, WORKSPACE_PATHS);
+
+      return;
+    }
+  }
 }
 
 async function homePaths(kernel: Kernel): Promise<readonly string[]> {
@@ -403,7 +433,7 @@ function watchRoot(
 
   if (kernel.workspaceState.closed) return;
 
-  if (known !== undefined && known.paths === joined && (known.kept || !kept)) {
+  if (known !== undefined && !ended.has(known) && known.paths === joined && (known.kept || !kept)) {
     if (session !== null) known.sessions.add(session);
 
     return;
@@ -422,6 +452,8 @@ function watchRoot(
   };
 
   watches.set(key, watch);
+
+  if (key !== HOME && session !== null) openers.set(watch, session);
   void drain(kernel, key, watch, events, changes);
 }
 
@@ -458,16 +490,7 @@ async function drain(
   } catch (error) {
     dev("resources", "watch failed", { key, error: String(error) });
   } finally {
-    if (kernel.workspaceState.watches.get(key) === watch) {
-      kernel.workspaceState.watches.delete(key);
-      void changes
-        .run(async () => {
-          for (const session of watch.sessions) await refresh(kernel, session);
-        })
-        .catch((error: unknown) =>
-          dev("resources", "refresh failed", { key, error: String(error) }),
-        );
-    }
+    ended.add(watch);
   }
 }
 
@@ -490,33 +513,44 @@ async function refreshRoot(
 
   if (key === HOME && plugins.length === paths.length) return;
 
-  for (const session of watch.sessions) await refresh(kernel, session);
+  for (const session of watch.sessions) {
+    const reloaded = await refresh(kernel, session);
+    dev("resources", "refreshed", { session, paths, reloaded });
+  }
 }
 
-async function refresh(kernel: Kernel, session: SessionId): Promise<void> {
+async function refresh(kernel: Kernel, session: SessionId): Promise<boolean> {
   const before = kernel.workspaceState.scans.get(session);
   dropScans(kernel, (key) => key === session);
   const runtime = kernel.plugins.runtimes().get(session);
 
-  if (runtime === undefined || kernel.workspaceState.closed) return;
-  const after = await scanResources(kernel, session);
-  const read = await before?.resources.catch(() => null);
-  const workspace = kernel.workspaceState.scans.get(session)?.workspace;
+  if (runtime === undefined || kernel.workspaceState.closed) return false;
+  const release = runtime.hold();
 
-  const plugins =
-    workspace === undefined
-      ? null
-      : await sessionPlugins(kernel, runtime, workspace).catch(() => null);
+  try {
+    const after = await scanResources(kernel, session);
+    const read = await before?.resources.catch(() => null);
+    const workspace = kernel.workspaceState.scans.get(session)?.workspace;
 
-  const unchanged =
-    read !== undefined &&
-    read !== null &&
-    sameInputs(read, after) &&
-    plugins !== null &&
-    samePlugins(runtime.requested(), plugins);
+    const plugins =
+      workspace === undefined
+        ? null
+        : await sessionPlugins(kernel, session, runtime, workspace).catch(() => null);
 
-  if (unchanged || kernel.workspaceState.closed) return;
-  await kernel.plugins.reload(session);
+    const unchanged =
+      read !== undefined &&
+      read !== null &&
+      sameInputs(read, after) &&
+      plugins !== null &&
+      samePlugins(runtime.requested(), plugins);
+
+    if (unchanged || kernel.workspaceState.closed) return false;
+    await kernel.plugins.reload(session);
+
+    return true;
+  } finally {
+    release();
+  }
 }
 
 function sameInputs(left: Resources, right: Resources): boolean {

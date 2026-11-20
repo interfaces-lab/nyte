@@ -9,6 +9,7 @@ import type {
   Cursor,
   ForkOutcome,
   HeadName,
+  Held,
   HistoryPage,
   MergeOutcome,
   MessageId,
@@ -25,6 +26,8 @@ import type {
   RemoveHeadOutcome,
   RemoveSessionOutcome,
   RequestOptions,
+  ReorderOutcome,
+  ReorderPlace,
   ReviseOptions,
   ReviseOutcome,
   Revision,
@@ -172,10 +175,13 @@ export interface Sessions {
     readonly limit?: number;
   }): Promise<Paged<SessionInfo>>;
 
+  /** `pinned` keeps the sessions pinned (true) or not (false); `query` keeps those whose name holds it, ignoring case. A `resume.held` that describes the ids selected answers `kept` with no `ids`. */
   read(input?: {
     readonly parents?: ParentFilter;
+    readonly pinned?: boolean;
+    readonly query?: string;
     readonly limit?: number;
-    readonly resume?: { readonly seq: number };
+    readonly resume?: { readonly seq: number; readonly held?: Held };
   }): Promise<SessionsRead>;
 }
 
@@ -186,6 +192,9 @@ export interface Head {
   send(content: UserContent, options?: SendOptions): Promise<SendReceipt>;
 
   revise(message: MessageId, content: UserContent, options?: ReviseOptions): Promise<ReviseOutcome>;
+
+  /** Moves a queued message, keeping its id, content and delivery. Never starts a run or lands anything. */
+  reorder(message: MessageId, place: ReorderPlace): Promise<ReorderOutcome>;
 
   hold(message: MessageId): Promise<HoldOutcome>;
 

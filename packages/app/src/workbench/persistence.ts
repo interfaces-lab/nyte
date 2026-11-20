@@ -2,6 +2,7 @@ import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
+import type { DesktopApp } from "../contract/desktop-app.ts";
 import { type Persisted, persisted, type StorageArea } from "../lib/storage.ts";
 import {
   FIRST_GROUP,
@@ -89,7 +90,9 @@ const sharedTabs = [
   persistedTerminalTab,
 ] as const;
 
-const persistedTab = Type.Union([...sharedTabs, persistedEditorTab]);
+const persistedDesignTab = Type.Object({ id: nonEmpty, kind: Type.Literal("design") }, strict);
+
+const persistedTab = Type.Union([...sharedTabs, persistedEditorTab, persistedDesignTab]);
 
 const persistedWorkbenchView = Type.Object({
   key: nonEmpty,
@@ -98,6 +101,7 @@ const persistedWorkbenchView = Type.Object({
   expanded: Type.Boolean(),
   maximized: Type.Boolean(),
   width: Type.Optional(Type.Number()),
+  sidebars: Type.Optional(Type.Array(nonEmpty)),
   browse: Type.Optional(
     Type.Union([
       Type.Object({ kind: Type.Literal("follow") }, strict),
@@ -139,6 +143,7 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
       return { id: tab.id, kind: "file", path: tab.path, preview: tab.preview };
     case "canvas":
     case "editor":
+    case "design":
     case "changes":
       return tab;
     case "browser":
@@ -200,7 +205,7 @@ export function restoreSnapshot(
             collapsed: "floating",
             layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
             width: stored.width === undefined ? DEFAULT_WIDTH : { pixels: stored.width },
-            sidebars: [],
+            sidebars: stored.sidebars ?? [],
             browse: stored.browse ?? FOLLOW_BROWSE,
           }),
         ];
@@ -226,17 +231,22 @@ export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnap
         tabs,
         active,
         expanded: view.expanded,
-        maximized: view.layout.kind === "maximized",
+        maximized: view.layout.kind === "maximized" && !view.layout.narrow,
         width: view.width.pixels,
+        sidebars: [...view.sidebars],
         browse: view.browse,
       };
     }),
   };
 }
 
-export function workbenchPersistence(area: StorageArea | undefined): WorkbenchPersistence {
+/** Each app keeps its own arrangement: a Code window maximized on the Editor leaves Nyte's arrangement of the project alone. */
+export function workbenchPersistence(
+  area: StorageArea | undefined,
+  app: DesktopApp = "nyte",
+): WorkbenchPersistence {
   const stored = persisted(
-    "nyte:desktop:workbench:v7",
+    app === "nyte" ? "nyte:desktop:workbench:v7" : `nyte:desktop:workbench:v7:${app}`,
     Type.Union([v7WorkbenchSnapshot, persistedWorkbenchSnapshot]),
     undefined,
     area,

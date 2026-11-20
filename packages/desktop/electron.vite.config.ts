@@ -6,7 +6,6 @@ import { resolvePhotonWasmPath } from "@nyte-ai/host/images";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { build, defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
-import { PICKER_SCRIPT } from "./src/main/browser/browser-picker-page.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 import {
   deferredChunks,
@@ -109,16 +108,6 @@ const main = (mode: string, host: boolean) =>
           } satisfies Plugin,
         ]
       : [
-          {
-            name: "nyte:browser-picker-page",
-            generateBundle() {
-              this.emitFile({
-                type: "asset",
-                fileName: "browser-picker-page.js",
-                source: PICKER_SCRIPT,
-              });
-            },
-          } satisfies Plugin,
           {
             name: "nyte:host",
             apply: "build",

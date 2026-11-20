@@ -1,0 +1,280 @@
+import Constants from "expo-constants";
+import { useState } from "react";
+import { Alert, ScrollView } from "react-native";
+import { SymbolView } from "expo-symbols";
+import { css, html } from "react-strict-dom";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAccount } from "../account/account-provider.tsx";
+import { ConnectSheet, type ConnectionSheetPage } from "../account/connect-panel.tsx";
+import { useHost } from "../connection/host-context.tsx";
+import { displayAddress } from "../connection/connection.ts";
+import { useHealth } from "../connection/live.ts";
+import { workspaceName, workspacePath } from "../chat/workspace-menu.ts";
+import { useRegistryFolders } from "../chat/workspace-start.tsx";
+import { Group, GroupRow } from "../ui/group.tsx";
+import { IconTile } from "../ui/icon-tile.tsx";
+import { SectionHeader } from "../ui/section-header.tsx";
+import { ChoiceRow, SwitchRow } from "./setting-rows.tsx";
+import {
+  useAppearance,
+  useDateSections,
+  useFilterCards,
+  useTranscriptFont,
+  useTwoLinePreview,
+} from "./preferences.ts";
+import { controls, list, spacing, textStyles, tokens, useTheme } from "../theme.ts";
+
+type HostStatus = "checking" | "connected" | "unreachable" | "refused";
+
+export function SettingsScreen() {
+  const theme = useTheme();
+  const { client, connection, saved, disconnect } = useHost();
+  const account = useAccount();
+  const [connectionPage, setConnectionPage] = useState<ConnectionSheetPage>();
+  const insets = useSafeAreaInsets();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const appearance = useAppearance();
+  const transcriptFont = useTranscriptFont();
+  const [filterCards, setFilterCards] = useFilterCards();
+  const [dateSections, setDateSections] = useDateSections();
+  const [twoLinePreview, setTwoLinePreview] = useTwoLinePreview();
+
+  const health = useHealth(client);
+  const registry = useRegistryFolders();
+
+  const version = Constants.expoConfig?.version ?? "0.0.0";
+
+  const refused = saved.kind === "managed" && health.kind === "blocked" && health.reason === "auth";
+
+  const status: HostStatus =
+    health.kind === "connecting" || health.kind === "retrying"
+      ? "checking"
+      : refused
+        ? "refused"
+        : health.kind === "blocked"
+          ? "unreachable"
+          : "connected";
+
+  function confirmDisconnect() {
+    if (busy) return;
+    Alert.alert(
+      `Disconnect from ${connection.name}?`,
+      saved.kind === "managed"
+        ? "To connect again, pick it from your Nyte account."
+        : "To connect again, you'll need its address and token.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Disconnect",
+          style: "destructive",
+          onPress: () => {
+            setBusy(true);
+            setError(undefined);
+            void disconnect().catch(() => {
+              setBusy(false);
+              setError("Couldn't remove the saved connection. Try again.");
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  const statusLabel =
+    status === "checking"
+      ? "Checking…"
+      : status === "connected"
+        ? "Connected"
+        : status === "refused"
+          ? "Not accepted"
+          : "Unreachable";
+
+  const statusColor =
+    status === "checking" ? theme.muted : status === "connected" ? theme.success : theme.danger;
+
+  const workspaceList = registry.kind === "ready" ? registry.ready : undefined;
+
+  return (
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{
+        flexGrow: 1,
+        paddingTop: spacing.sm,
+        paddingBottom: insets.bottom + spacing.lg,
+      }}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      <ConnectSheet
+        page={connectionPage}
+        onClose={() => setConnectionPage(undefined)}
+        account={account}
+        current={{ saved, reconnect: refused }}
+      />
+      <SectionHeader label="Display" first />
+      <Group>
+        <ChoiceRow label="Appearance" icon="circle.lefthalf.filled" setting={appearance} />
+        <ChoiceRow label="Message font" icon="textformat" setting={transcriptFont} />
+      </Group>
+      <SectionHeader label="Inbox" />
+      <Group>
+        <SwitchRow
+          label="Show filters"
+          icon="line.3.horizontal.decrease"
+          value={filterCards}
+          onChange={setFilterCards}
+        />
+        <SwitchRow
+          label="Sections by date"
+          icon="calendar"
+          value={dateSections}
+          onChange={setDateSections}
+        />
+        <SwitchRow
+          label="Two-line preview"
+          icon="text.alignleft"
+          value={twoLinePreview}
+          onChange={setTwoLinePreview}
+        />
+      </Group>
+      <SectionHeader label="Connection" />
+      <Group>
+        <GroupRow onClick={() => setConnectionPage("overview")}>
+          <IconTile name="laptopcomputer" color={theme.foreground} />
+          <html.div style={styles.rowText}>
+            <html.span style={textStyles.headline}>{connection.name}</html.span>
+            <html.div style={styles.metadata}>
+              <html.span style={textStyles.caption}>
+                {saved.kind === "managed"
+                  ? account?.status.kind === "signedIn" &&
+                    account.status.ownerId === saved.binding.ownerId
+                    ? account.status.label
+                    : "Nyte account"
+                  : displayAddress(connection)}
+              </html.span>
+              <html.div style={styles.status} aria-live="polite">
+                <html.div style={styles.statusDot(statusColor)} />
+                <html.span style={textStyles.caption}>{statusLabel}</html.span>
+              </html.div>
+            </html.div>
+          </html.div>
+          {account === undefined ? null : (
+            <SymbolView
+              name="chevron.right"
+              size={controls.iconXs}
+              weight="semibold"
+              tintColor={theme.interactiveTertiary}
+            />
+          )}
+        </GroupRow>
+        {status === "refused" ? (
+          <GroupRow
+            onClick={() => setConnectionPage(saved.kind === "manual" ? "manual" : "overview")}
+          >
+            <IconTile name="arrow.triangle.2.circlepath" />
+            <html.span style={textStyles.body}>Reconnect</html.span>
+          </GroupRow>
+        ) : (
+          <GroupRow
+            busy={status === "checking"}
+            onClick={() => {
+              client.retry();
+
+              if (registry.kind !== "loading") registry.refresh();
+            }}
+          >
+            <IconTile name="arrow.clockwise" />
+            <html.span style={textStyles.body}>
+              {status === "unreachable" ? "Retry connection" : "Check connection"}
+            </html.span>
+          </GroupRow>
+        )}
+        <GroupRow
+          onClick={() => setConnectionPage(saved.kind === "manual" ? "manual" : "overview")}
+        >
+          <IconTile name="pencil" />
+          <html.span style={textStyles.body}>
+            {saved.kind === "manual" ? "Edit connection" : "Manage connection"}
+          </html.span>
+        </GroupRow>
+      </Group>
+      {error !== undefined && (
+        <html.p role="alert" style={[textStyles.error, styles.error]}>
+          {error}
+        </html.p>
+      )}
+      {workspaceList !== undefined && workspaceList.length > 0 ? (
+        <>
+          <SectionHeader label="Workspaces" />
+          <Group>
+            {workspaceList.map((workspace) => (
+              <GroupRow key={workspace.id}>
+                <IconTile name="folder" />
+                <html.div style={styles.rowText}>
+                  <html.span style={textStyles.body}>{workspaceName(workspace)}</html.span>
+                  <html.span style={[textStyles.caption, styles.path]}>
+                    {workspacePath(workspace)}
+                  </html.span>
+                </html.div>
+              </GroupRow>
+            ))}
+          </Group>
+        </>
+      ) : null}
+      <html.div style={styles.disconnect}>
+        <Group>
+          <GroupRow busy={busy} onClick={confirmDisconnect}>
+            <IconTile name="rectangle.portrait.and.arrow.right" color={theme.danger} />
+            <html.span style={[textStyles.body, styles.danger]}>
+              {busy ? "Disconnecting…" : "Disconnect"}
+            </html.span>
+          </GroupRow>
+        </Group>
+      </html.div>
+      <html.div style={styles.colophon}>
+        <html.span style={textStyles.caption}>Nyte {version}</html.span>
+      </html.div>
+    </ScrollView>
+  );
+}
+
+const styles = css.create({
+  rowText: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: "flex-start",
+    gap: 2,
+  },
+  path: { textAlign: "start" },
+  metadata: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  status: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+    gap: spacing.xs,
+  },
+  statusDot: (color: string) => ({
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: color,
+  }),
+  danger: { color: tokens.danger },
+  error: { paddingInline: list.gutter },
+  disconnect: { marginBlockStart: list.sectionGap },
+  colophon: {
+    display: "flex",
+    alignItems: "center",
+    paddingBlock: spacing.xl,
+  },
+});

@@ -38,10 +38,15 @@ function changes(page: Page): Locator {
   return page.getByRole("region", { name: "Workspace changes" });
 }
 
-async function selectScope(page: Page, current: RegExp, next: RegExp): Promise<void> {
+async function selectScope(
+  page: Page,
+  current: RegExp,
+  next: RegExp,
+  shown: RegExp = next,
+): Promise<void> {
   await press(changes(page).getByRole("button", { name: current }));
   await press(page.getByRole("menuitemradio", { name: next }));
-  await expect(changes(page).getByRole("button", { name: next })).toBeVisible();
+  await expect(changes(page).getByRole("button", { name: shown })).toBeVisible();
 }
 
 async function dismissNotifications(page: Page): Promise<void> {
@@ -98,8 +103,8 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
   await test.step("the skill picked the CI MCP server, and the transcript shows it", async () => {
     expect(server.route()).toBe("mcp");
     await press(log.getByRole("button", { name: /^Explored SKILL\.md, ran 2 tools$/u }));
-    await expect(log.getByRole("button", { name: "ci: List check runs" })).toBeVisible();
-    await expect(log.getByRole("button", { name: "ci: Get job logs" })).toBeVisible();
+    await expect(log.getByRole("button", { name: "Ran List check runs in ci" })).toBeVisible();
+    await expect(log.getByRole("button", { name: "Ran Get job logs in ci" })).toBeVisible();
     await expect(log.getByText(/gh pr checks/u)).toHaveCount(0);
   });
 
@@ -114,16 +119,23 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
       /##\[error\]Process completed with exit code 1\.\s*\[File get_job_logs\.txt, 5242\d{3} bytes, text\/plain\]$/u,
     );
 
-    logRow.mountMs = await timeKeyToFrame(log.getByRole("button", { name: "ci: Get job logs" }), {
-      label: "Tool output",
-      text: "step 000001 ok",
-    });
+    logRow.mountMs = await timeKeyToFrame(
+      log.getByRole("button", { name: "Ran Get job logs in ci" }),
+      {
+        label: "Tool output",
+        text: "step 000001 ok",
+      },
+    );
 
     expect(logRow.mountMs).toBeLessThanOrEqual(LOG_ROW_BUDGET_MS);
   });
 
   await test.step("the agent ran the failing test, and its failure came back into the turn", async () => {
-    await press(log.getByRole("button", { name: /^Edited sum\.js, ran 2 commands, 1 tool$/u }));
+    await press(
+      log.getByRole("button", {
+        name: /^Edited sum\.js, ran 2 commands, 1 tool 1 added, 1 removed$/u,
+      }),
+    );
     await press(log.getByRole("button", { name: "Run the failing test" }));
     const output = log.getByRole("region", { name: "Command output" }).first();
     await expect(output).toContainText("✖ sum adds");
@@ -146,16 +158,19 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
 
   await test.step("a failure's link opens the file editor at its line", async () => {
     await press(canvas.getByRole("link", { name: "test/sum.test.js:6" }));
-    const files = page.getByRole("tabpanel", { name: "test/sum.test.js" });
+    const editor = page.getByRole("region", { name: "Editor", exact: true });
+    const files = editor.getByRole("tabpanel", { name: "test/sum.test.js" });
     await expect(files.getByRole("textbox", { name: "test/sum.test.js" })).toBeVisible();
-    await press(files.getByRole("button", { name: "File options" }));
+    await press(editor.getByRole("button", { name: "File options" }));
     await press(page.getByRole("menuitemcheckbox", { name: "Git Blame" }));
-    await expect(files.getByText("Line 6", { exact: true })).toBeVisible();
+    await expect(editor.getByText("Ln 6, Col 1", { exact: true })).toBeVisible();
+    await expect(editor.getByText(/^Fixture · /u)).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toBeHidden();
   });
 
   await test.step("the turn's Review opens the Changes panel on the agent's edit", async () => {
+    await press(chatPane(page).getByRole("button", { name: "Scroll to bottom", exact: true }));
     await press(log.getByRole("button", { name: "Review" }));
     await expect(
       changes(page).getByRole("button", { name: "This Chat 1 added, 1 removed" }),
@@ -186,7 +201,12 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
     await press(
       page.getByRole("tablist", { name: "Workbench tabs" }).getByRole("tab", { name: "Changes" }),
     );
-    await selectScope(page, /^This Chat/u, /^Uncommitted 1 file/u);
+    await selectScope(
+      page,
+      /^This Chat/u,
+      /^Uncommitted 1 file/u,
+      /^Uncommitted 1 added, 1 removed$/u,
+    );
     await changes(page).getByRole("textbox", { name: "Commit message" }).focus();
     await page.keyboard.type("Fix sum");
     await page.keyboard.press("Enter");
@@ -215,8 +235,18 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
 
   await test.step("a host restart and a reload bring back the same frame", async () => {
     await selectScope(page, /^Uncommitted/u, /^This Chat/u);
+    await expect(
+      changes(page)
+        .getByRole("button", { name: /^This Chat/u })
+        .locator("[data-nyte-icon]"),
+      "the scope's icon swap has settled: its glyph and the chevron",
+    ).toHaveCount(2);
     await press(log.getByRole("button", { name: /^Explored SKILL\.md, ran 2 tools$/u }));
-    await press(log.getByRole("button", { name: /^Edited sum\.js, ran 2 commands, 1 tool$/u }));
+    await press(
+      log.getByRole("button", {
+        name: /^Edited sum\.js, ran 2 commands, 1 tool 1 added, 1 removed$/u,
+      }),
+    );
     await expect(log.getByRole("region", { name: /output$/u })).toHaveCount(0);
     await pressUntilGone(chatPane(page).getByRole("button", { name: "Scroll to bottom" }));
     await dismissNotifications(page);
@@ -268,7 +298,12 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
       changes(page).getByRole("button", { name: "This Chat 1 added, 1 removed" }),
     ).toBeVisible();
     await expect(changes(page).getByRole("button", { name: /NOTES\.md/u })).toHaveCount(0);
-    await selectScope(page, /^This Chat/u, /^Uncommitted 1 file/u);
+    await selectScope(
+      page,
+      /^This Chat/u,
+      /^Uncommitted 1 file/u,
+      /^Uncommitted 1 added, 0 removed$/u,
+    );
     await expect(changes(page).getByRole("button", { name: "Collapse NOTES.md" })).toBeVisible();
     await expect(changes(page).getByRole("button", { name: /sum\.js/u })).toHaveCount(0);
     expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });

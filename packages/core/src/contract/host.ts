@@ -7,6 +7,8 @@ import type {
   ByteReader,
   CallId,
   CatalogId,
+  ClientId,
+  ClientRow,
   CredentialSource,
   Cursor,
   DecodedObjectView,
@@ -134,6 +136,8 @@ export interface OpenOptions {
       };
   readonly secrets?: { key(): Promise<Uint8Array> };
   readonly mcp?: McpHubFactory;
+  /** The clients on the host's socket, served as `Connection.clients` and `Connection.client`; absent, their calls throw `SdkError("not_supported")`. */
+  readonly clients?: ClientsApi;
   /** The serving machine's GitHub CLI login, served as `Connection.github`; absent, its calls throw `SdkError("unavailable")`. */
   readonly github?: GitHubAccountApi;
   /** Files on the serving machine by absolute path, served as `Connection.documents`; absent, its calls throw `SdkError("not_supported")`. */
@@ -186,7 +190,8 @@ export interface ImageProcessor {
 export interface ConnectOptions {
   readonly url: string;
   readonly credentials: CredentialSource;
-  readonly expect?: { readonly hostId: HostId };
+  /** The host this client trusted before: its id and the base64url raw Ed25519 public key it proved then (`Connection.publicKey`). The key is required because a pin that can be left out lets any server that signs with a key of its own pass. */
+  readonly expect?: { readonly hostId: HostId; readonly publicKey: string };
   readonly journal?: RequestJournal;
   readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 }
@@ -218,19 +223,63 @@ export interface PluginStorage {
   };
 }
 
+/** The clients connected to a host's socket, as the host that serves the socket gives them to core. */
+export interface ClientsApi {
+  rows(): readonly ClientRow[];
+  /** Asks `request.client` to run `request.action` for `principal`, and resolves with its answer. */
+  perform(
+    principal: PrincipalId,
+    request: {
+      readonly client: ClientId;
+      readonly action: string;
+      readonly input: Json;
+      readonly timeoutMs?: number;
+    },
+  ): Promise<Json>;
+}
+
+export interface Clients {
+  /** Every client connected to the host's socket now, with the actions each declared. */
+  read(): Promise<readonly ClientRow[]>;
+}
+
+export interface Client {
+  /**
+   * Asks this client to run `action` with `input` and resolves with what it answered.
+   *
+   * A client runs one request at a time, in the order they arrive. It answers within
+   * `options.timeoutMs`: 10 seconds when left out, and never more than 30.
+   *
+   * Throws `SdkError`: `unknown` when the client is not connected, `not_supported` when it
+   * declared no such action, `unavailable` when 16 requests already wait on it, `timeout` when it
+   * did not answer in time, and otherwise the error the client answered with. A client answers
+   * `denied` to a request from a principal other than its own unless its user lets other devices
+   * drive it.
+   */
+  perform(action: string, input: Json, options?: { readonly timeoutMs?: number }): Promise<Json>;
+}
+
 export interface Connection {
   readonly hostId: HostId;
+  /** The base64url raw Ed25519 public key the answering host proved by signing a fresh challenge while this connection was made; save it beside `hostId` to pass as `expect`. Absent when the host answers no identity challenge, and on an in-process connection, which has no answering host. */
+  readonly publicKey?: string;
   readonly principal: PrincipalId;
   readonly credential: CredentialSource;
   readonly sessions: Sessions;
   readonly workspaces: Workspaces;
   readonly projects: Projects;
 
+  /** The clients connected to the host's socket. A host that serves no socket throws `SdkError("not_supported")`. */
+  readonly clients: Clients;
+
   session(id: SessionId): Session;
 
   project(id: ProjectId): Project;
 
   workspace(id: WorkspaceId): Workspace;
+
+  /** One connected client, by the id `clients.read()` lists it under. */
+  client(id: ClientId): Client;
 
   watch(): AsyncIterable<HostView>;
 
@@ -252,7 +301,6 @@ export interface Connection {
 }
 
 export interface Projects {
-  /** Creates a project in a registered workspace. Its coordinator is the top-level chat started in it. */
   create(input: ProjectInput): Promise<ProjectInfo>;
 
   /** Drafts a setup for `input.goal` from the workspace's skills, shared docs and MCP servers with one request to `input.model`, saving nothing. An unknown workspace throws `SdkError("unknown")`, a model outside the catalog `SdkError("invalid")`; a refusal or a failed or unreadable answer throws `SdkError("unavailable")`. */
@@ -315,7 +363,6 @@ export interface ModelsApi {
     readonly browser?: "host" | "elsewhere";
   }): Login;
 
-  /** Removes the provider's active saved login while keeping its other accounts. */
   logout(provider: string): Promise<void>;
 }
 

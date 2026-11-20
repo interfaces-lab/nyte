@@ -1,6 +1,8 @@
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { useTranscriptScope } from "./transcript.tsx";
 import { conversation } from "../../theme/schema.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -41,6 +43,16 @@ const styles = create({
 });
 
 export function TranscriptSkeleton(): ReactElement {
+  const session = useTranscriptScope()?.sessionId;
+
+  useMountEffect(() => {
+    performance.mark("nyte:skeleton-shown", { detail: session });
+
+    return () => {
+      performance.mark("nyte:skeleton-removed", { detail: session });
+    };
+  });
+
   return (
     <div role="status" aria-label="Loading chat" {...props(styles.rows)}>
       <div {...props(styles.turn)}>

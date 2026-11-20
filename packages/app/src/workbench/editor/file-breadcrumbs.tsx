@@ -7,12 +7,12 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Popover } from "@nyte-ai/ui/popover";
+import { menu } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { MentionFile } from "../../data/files.ts";
 import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
 import { syncTreePaths } from "./tree-paths.ts";
 import { treeItemHeight } from "./tree-theme.ts";
-import { WORKBENCH_KINDS } from "../model.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
 
 const SEPARATOR_WIDTH = 10;
@@ -31,20 +31,30 @@ const styles = create({
     lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
   },
+  cramped: { visibility: "hidden" },
   crumb: { minWidth: 0 },
   label: { overflow: "hidden", textOverflow: "ellipsis" },
-  labelWidth: (width: number) => ({ maxWidth: width }),
   separator: { display: "inline-flex", flexShrink: 0, color: role.contentQuaternary },
   menu: { maxWidth: "min(320px, var(--available-width))" },
   popup: { width: "min(320px, var(--available-width))", padding: 0 },
-  tree: { display: "block", height: "min(320px, var(--available-height))", width: "100%" },
+  tree: {
+    display: "block",
+    boxSizing: "border-box",
+    height: "min(320px, var(--available-height))",
+    width: "100%",
+    paddingBlock: menu.padding,
+    "--trees-bg-override": "transparent",
+    "--trees-border-radius-override": menu.itemRadius,
+    "--trees-item-margin-x-override": "0px",
+    "--trees-item-padding-x-override": menu.itemPaddingInline,
+    "--trees-padding-inline-override": menu.padding,
+  },
 });
 
-interface CrumbFit {
-  readonly hidden: number;
-  readonly nameWidth: number | undefined;
-}
-
+/**
+ * The folders of the open file, without its name, which its tab shows. Leading folders fold into a `…` menu to fit the
+ * row, and the path hides when the file sits at the root or not even its nearest folder fits.
+ */
 export function FileBreadcrumbs({
   path,
   external,
@@ -57,46 +67,40 @@ export function FileBreadcrumbs({
   readonly onOpen: (file: MentionFile) => void;
 }): ReactElement {
   const nav = useRef<HTMLElement>(null);
-  const crumbs = external ? undefined : path;
-  const fit = useCrumbFit(nav, crumbs);
-  const segments = crumbs?.split("/") ?? [];
-  const hidden = segments.slice(0, Math.min(fit.hidden, segments.length - 1));
+  const folders = path === undefined || external ? [] : path.split("/").slice(0, -1);
+  const hidden = useHiddenFolders(nav, folders.join("/"));
+  const folded = folders.slice(0, Math.min(hidden, folders.length - 1));
 
   return (
-    <nav ref={nav} aria-label="File path" {...props(styles.path)}>
-      {path === undefined && WORKBENCH_KINDS.editor.label}
-      {external && (
+    <nav
+      ref={nav}
+      aria-label="File path"
+      {...props(styles.path, folders.length > 0 && hidden >= folders.length && styles.cramped)}
+    >
+      {external && path !== undefined && (
         <span title={path} {...props(styles.label)}>
-          {path}
+          {path.replace(/[\\/][^\\/]*$/u, "")}
         </span>
       )}
-      {hidden.length > 0 && (
+      {folded.length > 0 && (
         <HiddenFolders
-          directories={hidden.map((_, index) => segments.slice(0, index + 1).join("/"))}
+          directories={folded.map((_, index) => folders.slice(0, index + 1).join("/"))}
           files={files}
           onOpen={onOpen}
         />
       )}
-      {segments.map((segment, index, all) => {
-        if (index < hidden.length) return null;
-        const current = index === all.length - 1;
+      {folders.map((folder, index) => {
+        if (index < folded.length) return null;
+        const directory = folders.slice(0, index + 1).join("/");
 
         return (
-          <Fragment key={all.slice(0, index + 1).join("/")}>
+          <Fragment key={directory}>
             {index > 0 && (
               <span aria-hidden="true" {...props(styles.separator)}>
                 <Icon name="chevron-right" size="2xs" />
               </span>
             )}
-            <FileCrumb
-              label={segment}
-              path={all.slice(0, index + 1).join("/")}
-              directory={all.slice(0, current ? index : index + 1).join("/")}
-              current={current}
-              labelWidth={current ? fit.nameWidth : undefined}
-              files={files}
-              onOpen={onOpen}
-            />
+            <FileCrumb label={folder} directory={directory} files={files} onOpen={onOpen} />
           </Fragment>
         );
       })}
@@ -104,22 +108,22 @@ export function FileBreadcrumbs({
   );
 }
 
-function useCrumbFit(nav: RefObject<HTMLElement | null>, path: string | undefined): CrumbFit {
-  const [fit, setFit] = useState<CrumbFit>({ hidden: 0, nameWidth: undefined });
+function useHiddenFolders(nav: RefObject<HTMLElement | null>, path: string): number {
+  const [hidden, setHidden] = useState(0);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the path before paint and observes the bar's width
   useLayoutEffect(() => {
     const node = nav.current;
 
-    if (node === null || path === undefined) return;
-    const segments = path.split("/");
+    if (node === null || path === "") return;
+    const folders = path.split("/");
     const measurements = new Map<string, { readonly labels: number[]; readonly more: number }>();
 
     const measure = (): void => {
-      const current = node.querySelector('[aria-current="page"]');
+      const crumb = node.querySelector("button");
 
-      if (!(current instanceof HTMLElement)) return;
-      const style = getComputedStyle(current);
+      if (crumb === null) return;
+      const style = getComputedStyle(crumb);
       const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
       const padding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
 
@@ -129,21 +133,18 @@ function useCrumbFit(nav: RefObject<HTMLElement | null>, path: string | undefine
         Math.ceil(measureNaturalWidth(prepare(label, font, { letterSpacing })));
 
       const measured = measurements.get(font) ?? {
-        labels: segments.map(width),
+        labels: folders.map(width),
         more: width(HIDDEN_LABEL),
       };
 
       measurements.set(font, measured);
 
-      const next = fitCrumbs(
-        measured.labels.map((label) => label + padding),
-        measured.more + padding,
-        padding,
-        node.clientWidth,
-      );
-
-      setFit((previous) =>
-        previous.hidden === next.hidden && previous.nameWidth === next.nameWidth ? previous : next,
+      setHidden(
+        foldFolders(
+          measured.labels.map((label) => label + padding),
+          measured.more + padding,
+          node.clientWidth,
+        ),
       );
     };
 
@@ -154,34 +155,25 @@ function useCrumbFit(nav: RefObject<HTMLElement | null>, path: string | undefine
     return () => observer.disconnect();
   }, [nav, path]);
 
-  return fit;
+  return hidden;
 }
 
-function fitCrumbs(
-  crumbs: readonly number[],
-  more: number,
-  padding: number,
-  available: number,
-): CrumbFit {
-  const name = crumbs.at(-1) ?? 0;
-  const folders = crumbs.slice(0, -1);
-  const total = crumbs.reduce((sum, width) => sum + width, 0) + SEPARATOR_WIDTH * folders.length;
+function foldFolders(folders: readonly number[], more: number, available: number): number {
+  const kept =
+    folders
+      .map((_, index) => folders.length - index)
+      .find((count) => {
+        const fold = count < folders.length ? more + SEPARATOR_WIDTH : 0;
 
-  if (total <= available) return { hidden: 0, nameWidth: undefined };
-  const base = name + (folders.length === 0 ? 0 : more + SEPARATOR_WIDTH);
+        return (
+          folders
+            .slice(folders.length - count)
+            .reduce((sum, width) => sum + width + SEPARATOR_WIDTH, fold - SEPARATOR_WIDTH) <=
+          available
+        );
+      }) ?? 0;
 
-  const kept = folders
-    .toReversed()
-    .filter(
-      (_, index, nearest) =>
-        nearest.slice(0, index + 1).reduce((sum, width) => sum + width + SEPARATOR_WIDTH, base) <=
-        available,
-    ).length;
-
-  return {
-    hidden: folders.length - kept,
-    nameWidth: base <= available ? undefined : Math.max(0, name - padding - (base - available)),
-  };
+  return folders.length - kept;
 }
 
 function HiddenFolders({
@@ -201,7 +193,7 @@ function HiddenFolders({
       <Menu>
         <MenuTrigger
           render={
-            <Button ref={trigger} title={directories.at(-1)} xstyle={styles.crumb}>
+            <Button ref={trigger} variant="plain" title={directories.at(-1)} xstyle={styles.crumb}>
               {HIDDEN_LABEL}
             </Button>
           }
@@ -249,18 +241,12 @@ function HiddenFolders({
 
 function FileCrumb({
   label,
-  path,
   directory,
-  current,
-  labelWidth,
   files,
   onOpen,
 }: {
   readonly label: string;
-  readonly path: string;
   readonly directory: string;
-  readonly current: boolean;
-  readonly labelWidth: number | undefined;
   readonly files: readonly MentionFile[] | undefined;
   readonly onOpen: (file: MentionFile) => void;
 }): ReactElement {
@@ -270,18 +256,14 @@ function FileCrumb({
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         render={
-          <Button title={path} aria-current={current ? "page" : undefined} xstyle={styles.crumb}>
-            <span
-              {...props(styles.label, labelWidth !== undefined && styles.labelWidth(labelWidth))}
-            >
-              {label}
-            </span>
+          <Button variant="plain" title={directory} xstyle={styles.crumb}>
+            <span {...props(styles.label)}>{label}</span>
           </Button>
         }
       />
       <Popover.Portal>
         <Popover.Positioner align="start">
-          <Popover.Popup aria-label={directory || "Workspace files"} xstyle={styles.popup}>
+          <Popover.Popup aria-label={directory} xstyle={styles.popup}>
             {open && (
               <BreadcrumbTree
                 key={directory}
@@ -312,7 +294,7 @@ function BreadcrumbTree({
   const prefix = directory === "" ? "" : `${directory}/`;
 
   const paths = (files ?? [])
-    .filter((file) => file.displayPath.startsWith(prefix))
+    .filter((file) => file.displayPath.startsWith(prefix) && file.displayPath !== prefix)
     .map((file) => file.displayPath.slice(prefix.length));
 
   const [itemHeight] = useState(treeItemHeight);

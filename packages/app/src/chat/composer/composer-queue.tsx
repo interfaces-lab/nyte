@@ -1,9 +1,9 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
-import type { UserContent } from "@nyte-ai/sdk";
+import type { MessageId, UserContent } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { trayStyles } from "../../theme/tray.stylex.ts";
@@ -11,15 +11,12 @@ import { deliveryChoices } from "./composer-keys.ts";
 import { UserMessageText, messageImages } from "../transcript/message-content.tsx";
 import { contentDraftText } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
-
-export type PendingRowAction =
-  | { readonly kind: "cancelling" }
-  | { readonly kind: "sending" }
-  | { readonly kind: "failed"; readonly message: string };
+import type { PendingRowAction } from "./composer-session.ts";
 
 interface ComposerQueueProps {
   readonly pending: readonly UserMessage[];
   readonly unsent: readonly UserMessage[];
+  readonly expired: readonly MessageId[];
   readonly rowActions: ReadonlyMap<string, PendingRowAction>;
   readonly editingId: string | undefined;
   readonly canEdit: boolean;
@@ -28,8 +25,11 @@ interface ComposerQueueProps {
   readonly mac: boolean;
   readonly onEdit: (message: UserMessage) => void;
   readonly onSteer: (message: UserMessage) => void;
+  /** Moves the message right after `after`, or first when it is null. */
+  readonly onMove: (message: UserMessage, after: MessageId | null) => void;
   readonly onCancel: (message: UserMessage) => void;
   readonly onRemoveUnsent: (message: UserMessage) => void;
+  readonly onResend: (message: UserMessage) => void;
   readonly onEditBlocked: (reason: string) => void;
   readonly onReturn: () => void;
 }
@@ -58,6 +58,7 @@ function QueuedMessageContent({ content }: { readonly content: UserContent }): R
 export function ComposerQueue({
   pending,
   unsent,
+  expired,
   rowActions,
   editingId,
   canEdit,
@@ -66,14 +67,29 @@ export function ComposerQueue({
   mac,
   onEdit,
   onSteer,
+  onMove,
   onCancel,
   onRemoveUnsent,
+  onResend,
   onEditBlocked,
   onReturn,
 }: ComposerQueueProps): ReactElement | null {
   const listRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<UserMessage["id"]>();
+  const moving = useRef<UserMessage["id"]>(undefined);
   const count = pending.length + unsent.length;
+  const order = pending.map((item) => item.id).join(" ");
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- keeps DOM focus on a row moved by keyboard: reordering reinserts rows, which drops focus.
+  useLayoutEffect(() => {
+    const id = moving.current;
+
+    if (id === undefined || document.activeElement !== document.body) return;
+    moving.current = undefined;
+    const row = listRef.current?.querySelector(`[data-queue-row="${CSS.escape(id)}"]`);
+
+    if (row instanceof HTMLElement) row.focus({ preventScroll: true });
+  }, [order]);
 
   if (count === 0) return null;
 
@@ -82,7 +98,18 @@ export function ComposerQueue({
   const deleteKey = mac ? "Meta+Backspace" : "Control+Delete";
 
   const unsentDescription = `${mac ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`;
-  const description = `Enter steers. Space or Right Arrow edits. ${unsentDescription}`;
+  const moveKey = mac ? "Option" : "Alt";
+  const description = `Enter steers. Space or Right Arrow edits. ${moveKey}+Up Arrow or ${moveKey}+Down Arrow moves. ${unsentDescription}`;
+
+  const placeAfter = (item: UserMessage, step: -1 | 1): MessageId | null | undefined => {
+    const index = pending.findIndex((queued) => queued.id === item.id);
+
+    if (index < 0) return undefined;
+
+    if (step === 1) return pending[index + 1]?.id;
+
+    return index === 0 ? undefined : (pending[index - 2]?.id ?? null);
+  };
 
   const release = (button: Element): void => {
     if (button === document.activeElement) onReturn();
@@ -94,6 +121,25 @@ export function ComposerQueue({
     unsentRow: boolean,
   ): void => {
     if (event.defaultPrevented || event.target !== event.currentTarget) return;
+
+    if (!unsentRow && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      const action = rowActions.get(item.id);
+      const after = placeAfter(item, event.key === "ArrowUp" ? -1 : 1);
+
+      if (
+        event.repeat ||
+        after === undefined ||
+        editingId === item.id ||
+        action?.kind === "sending" ||
+        action?.kind === "cancelling"
+      )
+        return;
+      moving.current = item.id;
+      onMove(item, after);
+
+      return;
+    }
 
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
@@ -134,7 +180,16 @@ export function ComposerQueue({
       return;
     }
 
-    if (unsentRow || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+
+    if (unsentRow) {
+      if (event.key !== "Enter" || !expired.includes(item.id)) return;
+      event.preventDefault();
+      onReturn();
+      onResend(item);
+
+      return;
+    }
 
     if (event.key === "Enter") {
       event.preventDefault();
@@ -165,6 +220,8 @@ export function ComposerQueue({
           const action = rowActions.get(item.id);
           const editingThis = editingId === item.id;
           const busyRow = action?.kind === "cancelling" || action?.kind === "sending";
+          const above = placeAfter(item, -1);
+          const below = placeAfter(item, 1);
 
           return (
             <div
@@ -172,7 +229,7 @@ export function ComposerQueue({
               key={item.id}
               data-queue-row={item.id}
               tabIndex={focusKey === item.id ? 0 : -1}
-              aria-keyshortcuts={`ArrowUp ArrowDown Enter Space ArrowRight Escape ${deleteKey}`}
+              aria-keyshortcuts={`ArrowUp ArrowDown Alt+ArrowUp Alt+ArrowDown Enter Space ArrowRight Escape ${deleteKey}`}
               aria-description={description}
               onFocus={() => setActive(item.id)}
               onKeyDown={(event) => keyDown(event, item, false)}
@@ -225,6 +282,28 @@ export function ComposerQueue({
                       }}
                     />
                   )}
+                  {above !== undefined && (
+                    <Button
+                      iconOnly
+                      icon="arrow-up"
+                      aria-label="Move Up"
+                      onClick={(event) => {
+                        release(event.currentTarget);
+                        onMove(item, above);
+                      }}
+                    />
+                  )}
+                  {below !== undefined && (
+                    <Button
+                      iconOnly
+                      icon="arrow-down"
+                      aria-label="Move Down"
+                      onClick={(event) => {
+                        release(event.currentTarget);
+                        onMove(item, below);
+                      }}
+                    />
+                  )}
                   <Button
                     iconOnly
                     icon="trash"
@@ -241,6 +320,12 @@ export function ComposerQueue({
         })}
         {unsent.map((row) => {
           const retrying = row.status.kind === "unsent" ? row.status.retrying : null;
+          const stopped = expired.includes(row.id);
+
+          const reason =
+            retrying === null || /[.!?]$/u.test(retrying.reason)
+              ? (retrying?.reason ?? "")
+              : `${retrying.reason}.`;
 
           return (
             <div
@@ -248,8 +333,8 @@ export function ComposerQueue({
               key={row.id}
               data-queue-row={row.id}
               tabIndex={focusKey === row.id ? 0 : -1}
-              aria-keyshortcuts={`ArrowUp ArrowDown Escape ${deleteKey}`}
-              aria-description={unsentDescription}
+              aria-keyshortcuts={`ArrowUp ArrowDown ${stopped ? "Enter " : ""}Escape ${deleteKey}`}
+              aria-description={stopped ? `Enter sends. ${unsentDescription}` : unsentDescription}
               onFocus={() => setActive(row.id)}
               onKeyDown={(event) => keyDown(event, row, true)}
               data-error={retrying !== null}
@@ -269,11 +354,22 @@ export function ComposerQueue({
                       composerStyles.queuedError,
                     )}
                   >
-                    Couldn't send: {retrying.reason}. Retrying…
+                    {stopped ? `Couldn't send: ${reason}` : `Couldn't send: ${reason} Retrying…`}
                   </span>
                 )}
               </div>
               <div {...props(composerStyles.queueActions)}>
+                {stopped && (
+                  <Button
+                    iconOnly
+                    icon="arrow-up"
+                    aria-label="Send queued message"
+                    onClick={(event) => {
+                      release(event.currentTarget);
+                      onResend(row);
+                    }}
+                  />
+                )}
                 <Button
                   iconOnly
                   icon="trash"

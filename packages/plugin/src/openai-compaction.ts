@@ -7,18 +7,6 @@ import type { Models, Usage as ProviderUsage } from "@nyte-ai/ai";
 import type { Usage } from "@nyte-ai/schema";
 import type { Plugin } from "@nyte-ai/plugin/core";
 
-/**
- * Returns the plugin that compacts through OpenAI's own endpoint. On
- * `before_compaction`, when the session's model is OpenAI Responses (an API
- * key) or OpenAI Codex Responses (a ChatGPT account), it sends the messages
- * to summarise to the provider's compact endpoint and supplies the opaque
- * window it returns as the plan's `material`; core writes it without a
- * summary request. Any other model, or a provider without credentials,
- * leaves the plan to core. `models` is the host's, for credentials.
- *
- * @category plugins
- * @since 0.1.0
- */
 export function openaiCompaction(models: Pick<Models, "getModel" | "getAuth">): Plugin {
   return {
     id: "openai-compaction",

@@ -59,12 +59,12 @@ async function readGraph(entry: string): Promise<
     sources.set(name, text);
 
     for (const specifier of await localImports(name, text).catch(() => [])) {
-      const target = await resolveLocal(dirname(path), specifier);
+      const target = await resolveLocal(dirname(path), specifier, read);
 
       if (target === null) continue;
       const inside = relative(root, target);
 
-      if (inside.startsWith("..") || isAbsolute(inside))
+      if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside))
         return {
           kind: "failed",
           message: `${name} imports ${specifier}, outside the view's folder.`,
@@ -77,7 +77,11 @@ async function readGraph(entry: string): Promise<
   return { kind: "read", entry: relative(root, entry).split(sep).join("/"), sources, read };
 }
 
-async function resolveLocal(from: string, specifier: string): Promise<string | null> {
+async function resolveLocal(
+  from: string,
+  specifier: string,
+  read: Map<string, string | null>,
+): Promise<string | null> {
   const path = join(from, specifier);
   const bare = path.replace(/\.jsx?$/u, "");
 
@@ -87,8 +91,10 @@ async function resolveLocal(from: string, specifier: string): Promise<string | n
     `${bare}.ts`,
     join(path, "index.tsx"),
     join(path, "index.ts"),
-  ])
+  ]) {
     if ((await stat(candidate).catch(() => null))?.isFile() === true) return candidate;
+    read.set(candidate, null);
+  }
 
   return null;
 }

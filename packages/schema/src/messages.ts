@@ -16,8 +16,27 @@ export const ExcerptSourceType = Type.Union([
     end: Type.Number(),
   }),
   Type.Object({ kind: Type.Literal("terminal"), command: Type.Optional(Type.String()) }),
-  Type.Object({ kind: Type.Literal("browser"), url: Type.String(), selector: Type.String() }),
+  Type.Object({
+    kind: Type.Literal("browser"),
+    url: Type.String(),
+    selector: Type.String(),
+    region: Type.Optional(
+      Type.Object({
+        x: Type.Number(),
+        y: Type.Number(),
+        width: Type.Number(),
+        height: Type.Number(),
+      }),
+    ),
+  }),
   Type.Object({ kind: Type.Literal("chat"), session: idSchema<"session">(), title: Type.String() }),
+  Type.Object({
+    kind: Type.Literal("design"),
+    path: Type.String(),
+    frame: Type.Union([Type.String(), Type.Null()]),
+    start: Type.Integer({ minimum: 0 }),
+    end: Type.Integer({ minimum: 0 }),
+  }),
 ]);
 
 /**
@@ -25,7 +44,9 @@ export const ExcerptSourceType = Type.Union([
  * lines `start` to `end` on one side of its change: `new` counts in the file
  * as it is now, `old` as it was before. A `terminal` selection names the
  * command line its output followed, when one is known. A `browser` element
- * names the page `url` and a CSS `selector` that finds it there. A `chat` is a side chat brought
+ * names the page `url` and a CSS `selector` that finds it there; a `region` is an
+ * area of that page in CSS pixels from its top-left corner, and its `selector`
+ * names the element at the area's centre. A `chat` is a side chat brought
  * back into its parent: the side chat's `session` and `title`, its conversation as the text.
  */
 export type ExcerptSource = Decoded<typeof ExcerptSourceType>;

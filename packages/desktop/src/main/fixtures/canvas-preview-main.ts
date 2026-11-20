@@ -7,7 +7,7 @@ import process from "node:process";
 import { app } from "electron";
 import { readCanvasFixture } from "@nyte-ai/canvas/fixtures";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
-import { ACCOUNT_SCHEMES } from "../../shared/account/scheme.ts";
+import { DEVELOPMENT_ACCOUNT_SCHEME } from "../../shared/account/scheme.ts";
 import { offscreenCanvasPreviewer } from "../canvas-preview.ts";
 import { registerRenderer } from "../renderer-protocol.ts";
 import { exitWithParent } from "./exit-with-parent.ts";
@@ -35,7 +35,7 @@ app.commandLine.appendSwitch("use-fake-device-for-media-stream");
 
 app.on("window-all-closed", () => undefined);
 
-const scheme = ACCOUNT_SCHEMES.development;
+const scheme = DEVELOPMENT_ACCOUNT_SCHEME;
 
 process.env.ELECTRON_RENDERER_URL = "http://127.0.0.1:9";
 

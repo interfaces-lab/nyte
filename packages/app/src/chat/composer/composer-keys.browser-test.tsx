@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { selectSession, tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -22,6 +22,7 @@ import {
   viewStream,
 } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
+import { live, queued } from "./composer-states.fixture.ts";
 
 const SESSION = asId<"session">("composer-keys");
 
@@ -102,25 +103,38 @@ const historyReads: string[] = [];
 
 let historyGate = Promise.resolve();
 
-installScripted(
-  scriptedConnection({
-    sessions: [sessionRow(SESSION)],
-    views: new Map([[SESSION, viewStream(view)]]),
-    session: () => ({
-      history: async (input) => {
-        historyReads.push(input.before);
-        await historyGate;
-        const page = input.before === leading?.id ? turns.slice(0, 1) : [];
+let historyPending = 0;
 
-        return {
-          messages: page.flatMap((turn) => [turn.prompt, turn.reply]),
-          leadingPrompt: null,
-          turns: page.map((turn) => turn.info),
-        };
-      },
-    }),
+const views = viewStream(view);
+
+const steered: string[] = [];
+
+const scripted = scriptedConnection({
+  sessions: [sessionRow(SESSION)],
+  views: new Map([[SESSION, views]]),
+  session: () => ({
+    revise: async (message) => {
+      steered.push(message);
+
+      return { kind: "revised" };
+    },
+    history: async (input) => {
+      historyReads.push(input.before);
+      historyPending += 1;
+      await historyGate;
+      historyPending -= 1;
+      const page = input.before === leading?.id ? turns.slice(0, 1) : [];
+
+      return {
+        messages: page.flatMap((turn) => [turn.prompt, turn.reply]),
+        leadingPrompt: null,
+        turns: page.map((turn) => turn.info),
+      };
+    },
   }),
-);
+});
+
+installScripted(scripted);
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
   const deadline = performance.now() + 5_000;
@@ -131,8 +145,14 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
     if (value !== null && value !== undefined) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await nextFrame();
   }
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) =>
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
+  );
 }
 
 function press(target: EventTarget, key: string, modifiers: KeyboardEventInit = {}): void {
@@ -172,22 +192,20 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
 }
 
 async function editRecalledPrompt(editor: HTMLElement): Promise<void> {
+  const reads = (text: string) =>
+    until(() => (editor.innerText === text ? true : null), `the composer to read "${text}"`);
+
   press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
-  await until(
-    () => (editor.innerText === PROMPTS[2] ? true : null),
-    `the composer to read "${PROMPTS[2]}"`,
-  );
+  await reads(PROMPTS[2]);
   document.execCommand("insertText", false, " Edited.");
   const edited = `${PROMPTS[2]} Edited.`;
-  await until(() => (editor.innerText === edited ? true : null), "the edited prompt");
+  await reads(edited);
+  press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
+  await reads(PROMPTS[1]);
   press(editor, "ArrowDown", { ctrlKey: true, altKey: true });
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
-
-  if (editor.innerText !== edited)
-    throw new Error(`stepping newer replaced the edited prompt with "${editor.innerText}"`);
-  document.execCommand("selectAll");
-  document.execCommand("insertText", false, DRAFT);
-  await until(() => (editor.innerText === DRAFT ? true : null), "the draft to come back");
+  await reads(edited);
+  press(editor, "ArrowDown", { ctrlKey: true, altKey: true });
+  await reads(DRAFT);
 }
 
 async function typeWhileRecalling(editor: HTMLElement): Promise<void> {
@@ -210,7 +228,8 @@ async function typeWhileRecalling(editor: HTMLElement): Promise<void> {
   await until(() => (editor.innerText === typed ? true : null), "the typed text");
   gate.resolve();
   historyGate = Promise.resolve();
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+  await until(() => (historyPending === 0 ? true : null), "the late recall to answer");
+  await nextFrame();
 
   if (editor.innerText !== typed)
     throw new Error(`a late recall replaced the typed text with "${editor.innerText}"`);
@@ -262,6 +281,46 @@ async function pasteFromNowhere(editor: HTMLElement): Promise<void> {
   );
 }
 
+async function enterBeforeTheDraw(editor: HTMLElement): Promise<void> {
+  views.push({
+    ...view,
+    seq: asSeq(2),
+    execution: live(),
+    queue: [queued("waiting", "Then run the tests.")],
+  });
+  await until(
+    () => editor.closest("[data-composer-region]")?.querySelector("[data-queue-row='waiting']"),
+    "the queued message",
+  );
+  editor.focus();
+  document.execCommand("selectAll");
+  document.execCommand("delete");
+  await until(() => (editor.innerText.trim() === "" ? true : null), "an empty composer");
+  await until(
+    () =>
+      editor
+        .closest("[data-composer-region]")
+        ?.querySelector("button[aria-label='Send message']") === null
+        ? true
+        : null,
+    "the empty draft to draw",
+  );
+  const sends = scripted.sent.length;
+  document.execCommand("insertText", false, "Now.");
+  await Promise.resolve();
+  press(editor, "Enter");
+  await until(
+    () => (scripted.sent.length > sends || steered.length > 0 ? true : null),
+    "Enter to do something",
+  );
+  const content = scripted.sent.at(-1)?.content;
+
+  if (steered.length > 0 || content !== "Now.")
+    throw new Error(
+      `Enter right after "Now." ${steered.length > 0 ? "steered the queued message" : `sent ${JSON.stringify(content)}`}`,
+    );
+}
+
 export async function run(): Promise<string> {
   queryClient.setQueryData(keys.host, { workspace: undefined } satisfies HostState);
   queryClient.setQueryData(keys.modelCatalog("initial"), {
@@ -276,7 +335,7 @@ export async function run(): Promise<string> {
   });
 
   const panes = tabPanes();
-  panes.selectSession(SESSION);
+  selectSession(panes, SESSION);
   const stage = document.createElement("div");
   stage.style.cssText = "position:relative;display:flex;flex-direction:column;height:560px;";
   document.body.append(stage);
@@ -287,7 +346,7 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -315,8 +374,9 @@ export async function run(): Promise<string> {
     await typeWhileRecalling(editor);
     await openModelPicker(editor);
     await pasteFromNowhere(editor);
+    await enterBeforeTheDraw(editor);
 
-    flushSync(() => panes.newChat());
+    flushSync(() => panes.window.newChat(panes.tabId));
     await openModelPicker(
       await until(
         () => stage.querySelector<HTMLElement>("[data-placeholder^='Ask Nyte']"),

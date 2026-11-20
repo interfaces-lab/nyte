@@ -1,9 +1,11 @@
 import { isPart, text, thinking, tool } from "@nyte-ai/core/client";
 import type { PartState } from "@nyte-ai/core";
 import type {
+  CommitId,
   Execution,
   Failure,
   HeadInfo,
+  HeadName,
   Message,
   RunEnd,
   RunId,
@@ -11,12 +13,14 @@ import type {
   ToolClass,
   ToolPartState,
 } from "@nyte-ai/schema";
+import type { AlertState } from "../desktop-settings/schema.ts";
 
 export { jobTaskState } from "@nyte-ai/schema";
 export { parseCitation } from "./citation.ts";
 export type { Citation } from "./citation.ts";
 export { showsAnswer, showsReport, shownContent } from "./user-messages.ts";
 export type { AnswerMessage, ReportMessage } from "./user-messages.ts";
+export { alertsOnChat } from "./alerts.ts";
 
 export type UserMessage = Extract<Message, { readonly kind: "user" }>;
 
@@ -48,12 +52,6 @@ export function showsThinking(message: Message): message is ThinkingMessage {
  */
 export type RawPart = { readonly format: "text" | "json"; readonly body: string };
 
-/**
- * Reads a part's state raw, for a part kind or state shape this client does
- * not know, such as one a newer host or an absent plugin sent.
- *
- * @category presentation
- */
 export function readRawPart(message: PartMessage): RawPart {
   const { state } = message;
 
@@ -127,11 +125,6 @@ export function toolStatus(message: Pick<ToolMessage, "state" | "status">): Tool
   }
 }
 
-/**
- * A settled call's text: its text content, failure message or rejection reason.
- *
- * @category presentation
- */
 export function toolOutput(state: ToolPartState): string {
   if (state.phase !== "settled") return "";
 
@@ -194,11 +187,6 @@ export function taskEnded(state: TaskState): boolean {
   return state === "done" || state === "failed";
 }
 
-/**
- * The heading over a group of agents: how many still run, else how many finished and failed.
- *
- * @category presentation
- */
 export function agentGroupSummary(states: readonly TaskState[]): {
   readonly title: string;
   readonly detail: string | undefined;
@@ -332,11 +320,6 @@ export function rowMark(status: RunStatus, background: BackgroundWork): TaskStat
   return background.working > 0 ? "background" : runMark(status);
 }
 
-/**
- * Words for a chat's background work, or `undefined` while none is working or waiting.
- *
- * @category presentation
- */
 export function backgroundLabel(background: BackgroundWork): string | undefined {
   if (background.waiting > 0) return `${taskLabel("waiting")} in the background`;
 
@@ -381,17 +364,158 @@ export function mainHead(session: Pick<SessionInfo, "heads">): HeadInfo | undefi
   return session.heads.find((head) => head.name === "main") ?? session.heads[0];
 }
 
-export function sessionMark(session: Pick<SessionInfo, "heads">): TaskState {
-  const head = mainHead(session);
-
-  return head === undefined ? "done" : rowMark(runStatus(head.execution), head.background);
+export function sessionMark(session: Pick<SessionInfo, "heads" | "project" | "parent">): TaskState {
+  return headAttention(session).mark;
 }
 
 /**
- * A session's title: its name, else "New chat" for a top-level chat or {@link SUBAGENT_TITLE}.
+ * What a chat asks of the person, as every surface shows it. `mark` is the chat's state;
+ * `unreadTip`, the commit a person marks read; `settledUnread`, a reply that ended done or failed
+ * and isn't read yet; `alert`, what a notification says, keyed so a changed key is news.
  *
  * @category presentation
  */
+export interface HeadAttention {
+  readonly mark: TaskState;
+  readonly unreadTip: { readonly head: HeadName; readonly commit: CommitId } | null;
+  readonly settledUnread: boolean;
+  readonly alert:
+    | { readonly key: string; readonly state: undefined }
+    | { readonly key: string; readonly state: AlertState; readonly body: string };
+}
+
+const QUIET: HeadAttention = {
+  mark: "done",
+  unreadTip: null,
+  settledUnread: false,
+  alert: { key: "none", state: undefined },
+};
+
+const ASKED = "Needs your answer";
+
+const ASKING = ":asking";
+
+/**
+ * The one rule for whether a chat waits on the person, read from its main head. A run that waits
+ * on its own approval, question or secret waits; so does a run that waits on a subagent while
+ * background work below it waits on the person, since the person answers through this chat. A
+ * project's coordinator isn't done while its agents work or wait on the person. An ask below
+ * alerts here too, keyed as the alert it interrupts plus `:asking`.
+ *
+ * @category presentation
+ */
+export function headAttention(
+  session: Pick<SessionInfo, "heads" | "project" | "parent">,
+): HeadAttention {
+  const head = mainHead(session);
+
+  if (head === undefined) return QUIET;
+  const coordinating = session.parent === null && session.project !== undefined;
+  const own = headAlert(head, coordinating);
+
+  const unreadTip =
+    head.unread && head.tip.kind === "commit" ? { head: head.name, commit: head.tip.id } : null;
+
+  return {
+    mark: attentionMark(head.execution, head.background, coordinating),
+    unreadTip,
+    settledUnread: unreadTip !== null && (own.state === "done" || own.state === "failed"),
+    alert:
+      own.state === "waiting" || head.background.waiting === 0
+        ? own
+        : { key: `${own.key}${ASKING}`, state: "waiting", body: ASKED },
+  };
+}
+
+/** Whether `alert` is news after `previous`, the last key a reader had: a changed key is, but not a return to the alert an ask below interrupted. */
+export function alertNews(previous: string | undefined, alert: HeadAttention["alert"]): boolean {
+  return alert.key !== previous && previous !== `${alert.key}${ASKING}`;
+}
+
+/**
+ * A chat's mark from its own execution and the background work below it: {@link rowMark}, except
+ * that a run waiting on background work that waits on the person waits too, and a coordinator's
+ * working agents keep it working.
+ *
+ * @category presentation
+ */
+export function attentionMark(
+  execution: Execution,
+  background: BackgroundWork,
+  coordinating: boolean,
+): TaskState {
+  if (execution.kind === "waiting" && background.waiting > 0) return "waiting";
+  const mark = rowMark(runStatus(execution), background);
+
+  return coordinating && mark === "background" ? "working" : mark;
+}
+
+function headAlert(head: HeadInfo, coordinating: boolean): HeadAttention["alert"] {
+  const execution = head.execution;
+
+  switch (execution.kind) {
+    case "waiting":
+      return execution.on.kind === "part"
+        ? { key: `waiting:${execution.on.part}`, state: "waiting", body: ASKED }
+        : { key: `working:${execution.run.id}`, state: undefined };
+    case "live":
+    case "retrying":
+      return { key: `working:${execution.run.id}`, state: undefined };
+    case "idle": {
+      const last = execution.lastRun;
+
+      if (last === null) return QUIET.alert;
+
+      if (coordinating && head.background.working + head.background.waiting > 0)
+        return { key: `ended:${last.id}:agents`, state: undefined };
+      const key = `ended:${last.id}`;
+      const body = describeRunEnd(last.end);
+
+      if (body === undefined) return { key, state: undefined };
+
+      return { key, state: last.end.kind === "completed" ? "done" : "failed", body };
+    }
+
+    default: {
+      const _exhaustive: never = execution;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * What to tell the person about a run's end: that it's done, or that it failed and why, on one
+ * line of at most 120 characters. A stopped run says nothing, because someone asked for it.
+ *
+ * @category presentation
+ */
+export function describeRunEnd(end: RunEnd): string | undefined {
+  const status = endedStatus(end);
+
+  if (status.kind === "completed") return taskLabel("done");
+
+  if (status.kind !== "failed") return undefined;
+  const line = status.failure.message.replace(/\s+/g, " ").trim();
+
+  return `${taskLabel("failed")}: ${line.length > 120 ? `${line.slice(0, 119)}…` : line}`;
+}
+
+/**
+ * The one mark for a group of tasks, in {@link rowMark}'s order for background work: waiting on
+ * the person first, then working, then failed.
+ *
+ * @category presentation
+ */
+export function groupMark(states: readonly TaskState[]): TaskState {
+  if (states.includes("waiting")) return "waiting";
+
+  if (states.some((state) => state === "working" || state === "retrying" || state === "background"))
+    return "working";
+
+  return states.includes("failed") ? "failed" : "done";
+}
+
 export function sessionTitle(session: Pick<SessionInfo, "name" | "parent">): string {
   return session.name ?? (session.parent === null ? "New chat" : SUBAGENT_TITLE);
 }
@@ -435,11 +559,6 @@ export interface CompletionTrigger {
   readonly query: string;
 }
 
-/**
- * Finds the completion trigger around the caret, or undefined outside one.
- *
- * @category presentation
- */
 export function completionTrigger(
   value: string,
   cursor = value.length,
@@ -450,12 +569,27 @@ export function completionTrigger(
   while (start > 0 && (value[start - 1] ?? "").trim() !== "") start -= 1;
   const kind = value[start];
 
-  if (start === caret || (kind !== "@" && kind !== "/")) return undefined;
-  let end = caret;
+  if (start === caret) return undefined;
 
-  while (end < value.length && (value[end] ?? "").trim() !== "") end += 1;
+  if (kind === "@" || kind === "/")
+    return {
+      kind,
+      start,
+      end: tokenEnd(value, caret, false),
+      query: value.slice(start + 1, caret),
+    };
+  const opener = value.lastIndexOf("(@", caret - 2);
+  const query = value.slice(opener + 2, caret);
 
-  return { kind, start, end, query: value.slice(start + 1, caret) };
+  if (opener < start || opener + 2 > caret || query.includes(")")) return undefined;
+
+  return { kind: "@", start: opener + 1, end: tokenEnd(value, caret, true), query };
+}
+
+function tokenEnd(value: string, caret: number, parenthesized: boolean): number {
+  const stop = value.slice(caret).search(parenthesized ? /[\s)]/u : /\s/u);
+
+  return stop === -1 ? value.length : caret + stop;
 }
 
 export type ToolVerbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
@@ -518,6 +652,7 @@ const NAMED_TOOLS = new Map<string, CustomTool>([
     { verbs: { running: "Checking console logs", past: "Checked console logs" } },
   ],
   ["browser_evaluate", { verbs: { running: "Executing JS", past: "Executed JS" } }],
+  ["browser_capture", { verbs: { running: "Taking screenshot", past: "Took screenshot" } }],
 ]);
 
 const MCP_LABEL = /^(?<server>[^:\s]+): (?<name>\S+)$/u;
@@ -542,6 +677,26 @@ export function customTool(label: string): CustomTool {
   if (/\s/u.test(label)) return { verbs: { running: label, past: label } };
 
   return { verbs: RAN, name: label };
+}
+
+/**
+ * An MCP call's server and tool title, or null when the tool isn't an MCP tool. The host names
+ * MCP tools `mcp__<server>__<tool>` and labels them `<server>: <title or tool>`.
+ *
+ * @category presentation
+ */
+export function readMcpCall(
+  name: string,
+  label: string,
+): { readonly server: string; readonly title: string } | null {
+  const named = MCP_NAME.exec(name)?.groups;
+
+  if (named?.server === undefined || named.name === undefined) return null;
+  const at = label.indexOf(": ");
+
+  return at > 0
+    ? { server: label.slice(0, at), title: label.slice(at + 2) }
+    : { server: named.server, title: named.name };
 }
 
 function customDetail(custom: CustomTool): string | undefined {
@@ -646,11 +801,6 @@ export function toolTitle(
   return [subject, toolNoun(toolClass)].filter((word) => word !== undefined).join(" ");
 }
 
-/**
- * A path relative to the working directory when it lies inside it.
- *
- * @category presentation
- */
 export function tidyPath(path: string, cwd: string | undefined): string {
   if (cwd !== undefined && path.startsWith(`${cwd}/`)) return path.slice(cwd.length + 1);
 
@@ -743,11 +893,6 @@ export interface ToolDetail {
   readonly title?: string;
 }
 
-/**
- * The compact subject of a call, relative to the working directory.
- *
- * @category presentation
- */
 export function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolDetail | undefined {
   switch (toolClass.kind) {
     case "edit": {

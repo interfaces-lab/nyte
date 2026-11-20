@@ -6,7 +6,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { openHost } from "@nyte-ai/host";
 import { fakeModels, stopHomeProcesses, testModel } from "@nyte-ai/bench";
-import type { Reply, Request } from "@nyte-ai/bench";
+import type { FakeModels, Reply, Request } from "@nyte-ai/bench";
 import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 import { normalizeContext } from "@nyte-ai/schema/model";
 import type {
@@ -303,6 +303,40 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
     },
   });
 
+  const server = await serveAnthropic(fake);
+  const origin = server.origin;
+
+  await writeFile(
+    join(home, ".nyte", "models-store.json"),
+    JSON.stringify({
+      rawCatalogs: { anthropic: { checkedAt: Date.now(), models: [server.model()] } },
+    }),
+  );
+
+  const env = { ...(await homeEnv(root, home)), NYTE_MODELS_URL: `${origin}/catalog` };
+  await seedCredential(home, cwd, `${origin}/catalog`);
+
+  return {
+    cwd,
+    reply: (...queued) => void replies.push(...queued),
+    requests,
+    env,
+    async [Symbol.asyncDispose]() {
+      await server.close();
+      await stopHomeProcesses(home);
+      await rm(root, { recursive: true, force: true });
+    },
+  };
+}
+
+export interface AnthropicServer {
+  readonly origin: string;
+  model(): ReturnType<typeof testModel>;
+  close(): Promise<void>;
+}
+
+/** Serves `fake` as an Anthropic Messages endpoint at `origin`, with a model catalog at `origin/catalog`. */
+export async function serveAnthropic(fake: FakeModels): Promise<AnthropicServer> {
   let origin = "";
 
   const model = () =>
@@ -352,24 +386,13 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
     address !== null && typeof address === "object"
       ? `http://127.0.0.1:${String(address.port)}`
       : "";
-  await writeFile(
-    join(home, ".nyte", "models-store.json"),
-    JSON.stringify({ rawCatalogs: { anthropic: { checkedAt: Date.now(), models: [model()] } } }),
-  );
-
-  const env = { ...(await homeEnv(root, home)), NYTE_MODELS_URL: `${origin}/catalog` };
-  await seedCredential(home, cwd, `${origin}/catalog`);
 
   return {
-    cwd,
-    reply: (...queued) => void replies.push(...queued),
-    requests,
-    env,
-    async [Symbol.asyncDispose]() {
+    origin,
+    model,
+    async close() {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await stopHomeProcesses(home);
-      await rm(root, { recursive: true, force: true });
     },
   };
 }

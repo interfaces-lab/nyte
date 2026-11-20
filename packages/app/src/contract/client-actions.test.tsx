@@ -1,5 +1,7 @@
+import { Value } from "typebox/value";
 import { expect, test } from "vitest";
 import {
+  APP_ACTIONS,
   clientActionAccelerator,
   clientActionAvailable,
   clientActionAriaShortcut,
@@ -52,6 +54,17 @@ test.each([true, false])("displayed bindings resolve to their action, mac=%s", (
         "workspace",
       )?.id,
     ).toBe(action.id);
+  }
+});
+
+test("each entry gives its action the input the action takes", () => {
+  for (const entry of Object.values(clientActions)) {
+    if (!("action" in entry)) continue;
+
+    expect(
+      Value.Check(APP_ACTIONS[entry.action].input, "input" in entry ? entry.input : {}),
+      entry.id,
+    ).toBe(true);
   }
 });
 

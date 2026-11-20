@@ -36,13 +36,14 @@ export const stripStyles = create({
     animationTimeline: "scroll(self inline)",
     animationTimingFunction: "linear",
     animationFillMode: "both",
+    WebkitAppRegion: "no-drag",
   },
   slot: {
     display: "flex",
     flex: "none",
     minWidth: tab.minWidth,
     maxWidth: tab.maxWidth,
-    WebkitAppRegion: "no-drag",
+    WebkitAppRegion: "initial",
   },
   tab: {
     "--_close-opacity": {
@@ -67,11 +68,10 @@ export const stripStyles = create({
     },
   },
   tabClosable: { paddingInlineEnd: space.s1 },
-  tabPreview: { fontStyle: "italic" },
   tabActive: {
     backgroundColor: {
-      default: role.surfaceMaterial,
-      ":hover": { [media.hover]: role.surfaceMaterial },
+      default: role.fillSecondary,
+      ":hover": { [media.hover]: role.fillSecondary },
     },
     color: role.contentPrimary,
   },
@@ -89,8 +89,8 @@ export const stripStyles = create({
     paddingInlineEnd: space.s1_5,
     borderRadius: button.radiusMd,
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     letterSpacing: type.letterBase,
     cursor: "default",
     userSelect: "none",

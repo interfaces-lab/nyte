@@ -60,14 +60,8 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
     if (renderFailure !== undefined) throw renderFailure;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
-}
-
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
 }
 
 function tabs(): string {
@@ -127,16 +121,21 @@ export async function run(): Promise<string> {
   const editor = (): HTMLElement | null =>
     container.querySelector<HTMLElement>("[aria-multiline][aria-label='Message']");
 
+  const send = (): HTMLButtonElement | null =>
+    container.querySelector<HTMLButtonElement>("button[aria-label='Send message']");
+
   await until(() => editor() !== null, "the composer");
-  await painted();
   editor()?.focus();
   document.execCommand("insertText", false, "Keep going.");
-  await painted();
+  await until(
+    () => send()?.disabled === false && send()?.getAttribute("aria-disabled") !== "true",
+    "the draft to arm Send",
+  );
   const typed = tabs();
 
-  container.querySelector<HTMLButtonElement>("button[aria-label='Send message']")?.click();
+  send()?.click();
   await until(() => sends.length > 0, "the send");
-  await painted();
+  await until(() => !tabs().includes("(preview)"), "the sent chat's tab to stay");
   const sent = tabs();
 
   windowTabs.openChat(second.id, "preview");

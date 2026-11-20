@@ -3,11 +3,6 @@ import { dirname, join, relative, sep } from "node:path";
 import { files } from "@nyte-ai/canvas/shell-files";
 import type { BunPlugin } from "bun";
 
-/**
- * Embeds the canvas shell's files in the binary as files rather than as the base64 strings
- * `@nyte-ai/canvas/shell-files` holds, and reads each one when the canvas previewer serves it. The
- * build fails unless the embedded files are exactly the ones that module lists, byte for byte.
- */
 export const canvasShellPlugin = {
   name: "nyte:canvas-shell",
   setup(build) {

@@ -9,14 +9,12 @@ import { parseCommandArgs, readAction } from "./cli/options.ts";
 import type { Output } from "./cli/output.ts";
 import { hostFailure, readHostUrl } from "./host-socket.ts";
 
-/** Without `--host-url`, `list` and `describe` read this build's own table, so they need no running host. Returns the exit code. */
 export async function apiCommand(input: {
   readonly args: readonly string[];
   readonly attach: (url: string) => Promise<Connection>;
   readonly connect: (hostUrl: string | undefined) => Promise<HostSocket>;
   readonly stdin: () => Promise<string>;
   readonly output: Output;
-  /** Columns on stdout, for shortening summaries in a terminal. */
   readonly width: number;
 }): Promise<number> {
   const parsed = parseApiArgs(input.args);
@@ -101,7 +99,6 @@ function parseApiArgs(args: readonly string[]) {
   return { command, operation, input: parsed.positionals[1], json, hostUrl } as const;
 }
 
-/** This build's table, checked before any request so a typo needs no host. `--host-url` skips it: that host may serve a newer table. */
 function knownCall(op: string): void {
   knownOperation(op);
 
@@ -120,7 +117,6 @@ function knownOperation(op: string): void {
     });
 }
 
-/** A terminal stdin is someone typing, not a payload, so the input has to come as the argument. */
 async function readStdinInput(
   op: string,
   input: { readonly stdin: () => Promise<string>; readonly output: Output },
@@ -154,7 +150,6 @@ function readJson(text: string, source: string): Json {
   return value;
 }
 
-/** The answer on stdout: the summary, the facts as rows, then both schemas. Summaries from `--host-url` are remote text. */
 function describeLines(operation: OperationDescription, output: Output): string {
   const facts = [
     { label: "Operation", value: operation.name },

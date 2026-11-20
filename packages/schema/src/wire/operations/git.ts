@@ -3,6 +3,7 @@ import {
   BlameViewSchema,
   ChangeSetSchema,
   DiffOptionsType,
+  GitCommitFilesType,
   GitCommitViewType,
   GitFileSidesSchema,
   GitOutcomeSchema,
@@ -129,7 +130,7 @@ export const GIT_OPERATIONS = {
       ...WORKSPACE,
       input: Type.Object({
         message: Type.String(),
-        files: Type.Union([Type.Literal("staged"), Type.Literal("all"), Type.Array(Type.String())]),
+        files: GitCommitFilesType,
       }),
       options: Type.Optional(GitWriteType),
     }),

@@ -9,10 +9,12 @@ import { CODEMODE_SOURCE_GRAMMAR, parseCodemodeSource } from "@earendil-works/pi
 import { estimateTextTokens } from "@nyte-ai/ai/utils/estimate";
 import { attachFile, dev } from "@nyte-ai/core";
 import type { ToolDefinition, ToolInvocation, ToolNamespace } from "@nyte-ai/core";
-import { isJson, isJsonObject, SdkError, standard } from "@nyte-ai/schema";
+import { isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type { Json, JsonSchema, ToolContent, ToolInfo, ToolOutcome } from "@nyte-ai/schema";
-import { Type } from "typebox";
-import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
+import type { Plugin } from "@nyte-ai/plugin/core";
+import { mayChange } from "./approvals/approvals.ts";
+import { CODEMODE_TOOL, codemodeParameters } from "./codemode/schema.ts";
+import { readsOnly } from "./side-chat.ts";
 import { createToolSearchDocument, DEFAULT_SEARCH_LIMIT, rankTools } from "./tool-search.ts";
 
 const DESCRIPTION = `Run JavaScript that calls other tools. The input is raw JavaScript (not JSON, no code fence), run as an async function body in a QuickJS sandbox: top-level \`await\` and \`return\` work. No Node, file system, network, or timers.
@@ -21,21 +23,17 @@ const DESCRIPTION = `Run JavaScript that calls other tools. The input is raw Jav
 - \`text(value)\`, \`console.log(...)\` and \`return\` add output; \`store(key, value)\` and \`load(key)\` keep JSON values across codemode calls in this session.
 - Inside a script, \`ALL_TOOLS\`, \`await searchTools(query, { limit?, namespace? })\`, \`await describeTool(name)\` and \`await describeNamespace(name)\` find unlisted tools, such as MCP tools, and their declarations. They are script functions, not tools.`;
 
-/** Declared only while some tool is exposed to code, such as an MCP server's: without one, a script has nothing to call that a direct tool call can't. */
-const CODEMODE_TOOL = "codemode";
-
 const LISTING_TOKENS = 3000;
-
-const parameters = standard(
-  Type.Object({ code: Type.String({ description: "Raw JavaScript source." }) }),
-);
 
 /**
  * Returns the codemode plugin with the sandbox runtime a bundled client
  * passes (its worker entry and wasm); the default export uses the installed
  * package's own. The `codemode` tool runs a script in a QuickJS worker whose
  * only capability is calling the session's tools through
- * `invocation.tools.execute`, including those exposed to code only.
+ * `invocation.tools.execute`, including those exposed to code only. In a
+ * session that only reads (see `readsOnly`), which it learns once as it
+ * activates, the tools that change something are left out of its listing and
+ * its scripts, since a call to one is refused.
  *
  * @category plugins
  * @since 0.1.0
@@ -45,21 +43,30 @@ export function codemodePlugin(
 ): Plugin {
   return {
     id: "codemode",
-    activate(api) {
-      api.contribute.tools.add(codemode(api, runtime));
-      api.hook("transform_transcript", (transcript) =>
-        api.contribute.tools.list().some((definition) => definition.exposure === "code")
-          ? transcript
-          : {
-              ...transcript,
-              tools: transcript.tools.filter((info) => info.name !== CODEMODE_TOOL),
-            },
-      );
-      api.contribute.prompt.add((draft, siblings) => {
-        const text = listTools(siblings.tools.list());
+    contribute: { tools: [codemode(runtime)] },
+    async activate(api) {
+      const reading = await readsOnly(api.session, api.host);
+      const offered = (definition: ToolDefinition): boolean => !reading || !mayChange(definition);
 
-        if (text !== null) draft.set("codemode", { id: "codemode", order: 96, text });
-      });
+      return {
+        contribute: {
+          prompt: [
+            (draft, siblings) => {
+              const text = listTools(siblings.tools.list().filter(offered));
+
+              if (text !== null) draft.set("codemode", { id: "codemode", order: 96, text });
+            },
+          ],
+        },
+        hooks: {
+          offer_tools: (tools) =>
+            api.registries.tools
+              .list()
+              .some((definition) => definition.exposure === "code" && offered(definition))
+              ? tools
+              : tools.filter((info) => info.name !== CODEMODE_TOOL),
+        },
+      };
     },
   };
 }
@@ -169,31 +176,30 @@ function toJsonSchema(
 }
 
 function codemode(
-  api: PluginApi,
   runtime: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">,
 ): ToolDefinition<{ code: string }> {
   return {
     name: CODEMODE_TOOL,
     description: DESCRIPTION,
-    parameters,
+    parameters: codemodeParameters,
     exposure: "model-only",
     grammar: { kind: "lark", source: CODEMODE_SOURCE_GRAMMAR },
-    class: () => ({ kind: "custom", label: "Running a script" }),
-    effects: "none",
-    approval: "never",
-    replay: "never",
+    class: () => ({ kind: "custom", label: CODEMODE_TOOL }),
+    changes: "none",
+    asks: "never",
+    rerun: "never",
     async execute(args, invocation) {
       const { code, options } = parseCodemodeSource(args.code);
-      const callable = invocation.tools
-        .list()
-        .filter((info) => info.exposure !== "model-only" && info.exposure !== "hidden");
-      const stored = await api.storage.get("store");
+      const callable = (await invocation.tools.list()).filter(
+        (info) => info.exposure !== "model-only" && info.exposure !== "hidden",
+      );
+      const stored = await invocation.api.storage.get("store");
 
       if (stored !== undefined && !isJsonObject(stored))
         throw new SdkError("internal", "Codemode's stored values are not a JSON object.");
 
       const namespaces = new Map(
-        api.contribute.tools
+        invocation.api.registries.tools
           .list()
           .flatMap((definition) =>
             definition.namespace === undefined ? [] : [[definition.name, definition.namespace]],
@@ -241,7 +247,7 @@ function codemode(
         const next: { [key: string]: Json } = { ...stored, ...Object.fromEntries(writes) };
 
         for (const key of result.storeWrites.delete) delete next[key];
-        await api.storage.set("store", next);
+        await invocation.api.storage.set("store", next);
       }
 
       const content: ToolContent[] = [];

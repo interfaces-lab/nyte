@@ -1,26 +1,36 @@
 import type { GitStatus, HostView, JobView, McpView, WorkspaceId } from "@nyte-ai/sdk";
 import { startupReadsReleased } from "./startup.ts";
 import { watchFamily } from "./watch-store.ts";
+import type { Stream } from "./watch-store.ts";
 
-export const hostWatch = watchFamily((current, _key: "host"): AsyncIterable<HostView> =>
-  current.watch(),
-);
+async function* noGit(): AsyncIterable<GitStatus> {
+  yield { kind: "none" };
+}
+
+export const hostWatch = watchFamily((current, _key: "host"): Stream<HostView> => ({
+  values: current.watch(),
+  ended: "reopen",
+}));
 
 export const jobsWatch = watchFamily(
-  (current, workspace: WorkspaceId): AsyncIterable<readonly JobView[]> =>
-    current.workspace(workspace).jobs.watch(),
+  (current, workspace: WorkspaceId): Stream<readonly JobView[]> => ({
+    values: current.workspace(workspace).jobs.watch(),
+    ended: "reopen",
+  }),
 );
 
-export const mcpWatch = watchFamily((current, workspace: WorkspaceId): AsyncIterable<McpView> =>
-  current.workspace(workspace).mcp.watch(),
-);
+export const mcpWatch = watchFamily((current, workspace: WorkspaceId): Stream<McpView> => ({
+  values: current.workspace(workspace).mcp.watch(),
+  ended: "reopen",
+}));
 
 export const gitStatusWatch = watchFamily(
-  (current, workspace: WorkspaceId): AsyncIterable<GitStatus> =>
-    (async function* () {
-      await startupReadsReleased();
-      const git = await current.workspace(workspace).git();
+  async (current, workspace: WorkspaceId): Promise<Stream<GitStatus>> => {
+    await startupReadsReleased();
+    const git = await current.workspace(workspace).git();
 
-      if (git.kind === "available") yield* git.api.watch();
-    })(),
+    return git.kind === "available"
+      ? { values: git.api.watch(), ended: "reopen" }
+      : { values: noGit(), ended: "finished" };
+  },
 );

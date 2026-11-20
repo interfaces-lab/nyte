@@ -1,6 +1,6 @@
 import type { IconName } from "@nyte-ai/ui/icon";
 import { clientActions } from "../contract/client-actions.ts";
-import { SETTINGS_PAGES, type SettingsSection } from "../settings/pages.ts";
+import { SETTINGS_SECTIONS, type SettingsSection } from "../settings/sections.ts";
 
 type ClientAction = (typeof clientActions)[keyof typeof clientActions];
 
@@ -20,10 +20,10 @@ export const actionIcons = {
   "new-chat": "new-chat",
   "open-folder": "folder-open",
   "open-home": "folder",
-  "general-settings": SETTINGS_PAGES[settingsActionPages["general-settings"]].icon,
-  "appearance-settings": SETTINGS_PAGES[settingsActionPages["appearance-settings"]].icon,
-  "model-settings": SETTINGS_PAGES[settingsActionPages["model-settings"]].icon,
-  "profile-settings": SETTINGS_PAGES[settingsActionPages["profile-settings"]].icon,
+  "general-settings": SETTINGS_SECTIONS[settingsActionPages["general-settings"]].icon,
+  "appearance-settings": SETTINGS_SECTIONS[settingsActionPages["appearance-settings"]].icon,
+  "model-settings": SETTINGS_SECTIONS[settingsActionPages["model-settings"]].icon,
+  "profile-settings": SETTINGS_SECTIONS[settingsActionPages["profile-settings"]].icon,
   "customize-settings": "customize",
   "reload-window": "refresh",
   search: "search",

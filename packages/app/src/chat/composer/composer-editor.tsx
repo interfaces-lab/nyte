@@ -2,7 +2,7 @@ import { props } from "@stylexjs/stylex";
 import type { Editor, EditorEvents } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
-import { useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, Ref } from "react";
 import type { MentionFile } from "../../data/files.ts";
 import {
@@ -34,6 +34,7 @@ import {
 import { clipboardReferenceFromPaste } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
+import { IME_KEY_CODE } from "./composer-keys.ts";
 import { transferredFiles } from "../../references/composer-file-drop.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
 
@@ -70,7 +71,6 @@ interface ComposerEditorProps {
   readonly placeholder: string;
   readonly combobox?: ComposerComboboxState;
   readonly onKeyDown: (event: KeyboardEvent) => void;
-  readonly onFocusChange?: (focused: boolean) => void;
   readonly onFilesSelected?: (
     files: readonly ComposerFile[],
     signal?: AbortSignal,
@@ -163,7 +163,6 @@ export function ComposerEditor({
   placeholder,
   combobox,
   onKeyDown,
-  onFocusChange,
   onFilesSelected,
 }: ComposerEditorProps): ReactElement {
   const catalog = indexFilesByUrl(files);
@@ -172,7 +171,6 @@ export function ComposerEditor({
   const editor = useComposerSurface({
     text: externalDocument.text,
     files: () => catalogRef.current,
-    editable: true,
   });
 
   const caretRef = useRef<HTMLSpanElement>(null);
@@ -180,6 +178,7 @@ export function ComposerEditor({
   const observed = useRef<ComposerDocumentState | undefined>(undefined);
   const lastReferences = useRef<readonly MessageReference[]>([]);
   const onFilesSelectedRef = useRef(onFilesSelected);
+  const keyDown = useEffectEvent(onKeyDown);
 
   const [handle] = useState((): ComposerEditorHandle => ({
     readElement: () => {
@@ -280,9 +279,12 @@ export function ComposerEditor({
                 "data-empty": String(state.doc.firstChild?.childCount === 0),
               }).filter((entry): entry is [string, string] => entry[1] !== undefined),
             ),
+          handleDOMEvents: {
+            keydown: (_view, event) => event.key === "Enter" && event.keyCode === IME_KEY_CODE,
+          },
           handleKeyDown: (view, event) => {
             if (event.isComposing || view.composing) return false;
-            onKeyDown(event);
+            keyDown(event);
 
             return event.defaultPrevented;
           },
@@ -310,7 +312,7 @@ export function ComposerEditor({
           },
         },
       }),
-    [className, combobox, disabled, editor, label, onFilesSelected, onKeyDown, placeholder],
+    [className, combobox, disabled, editor, label, onFilesSelected, placeholder],
   );
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- Tiptap transaction subscription with the current callbacks
@@ -387,6 +389,7 @@ export function ComposerEditor({
         const selection = root.ownerDocument.getSelection();
 
         const visible =
+          root.ownerDocument.hasFocus() &&
           root.ownerDocument.activeElement === root &&
           !editor.view.composing &&
           selection !== null &&
@@ -433,6 +436,9 @@ export function ComposerEditor({
     };
 
     const ownerDocument = root.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView;
+    ownerWindow?.addEventListener("focus", draw);
+    ownerWindow?.addEventListener("blur", draw);
     ownerDocument.addEventListener("selectionchange", draw);
     root.addEventListener("focus", draw);
     root.addEventListener("blur", draw);
@@ -452,6 +458,8 @@ export function ComposerEditor({
 
     return () => {
       cancelAnimationFrame(frame);
+      ownerWindow?.removeEventListener("focus", draw);
+      ownerWindow?.removeEventListener("blur", draw);
       editor.off("transaction", draw);
       observer.disconnect();
       typographyObserver.disconnect();
@@ -467,12 +475,7 @@ export function ComposerEditor({
 
   return (
     <div {...props(composerStyles.editorHost)}>
-      <ComposerSurfaceContent
-        editor={editor}
-        style={editorContentStyle}
-        onFocus={() => onFocusChange?.(true)}
-        onBlur={() => onFocusChange?.(false)}
-      />
+      <ComposerSurfaceContent editor={editor} style={editorContentStyle} />
       <span
         ref={caretRef}
         hidden

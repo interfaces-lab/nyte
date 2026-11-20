@@ -61,18 +61,6 @@ export function serveHostThread(runtime: HostWorkerRuntime): void {
       .catch(() => undefined)
       .then(() => report({ kind: "revoked" }));
 
-  const replaced = (): void => {
-    const closing = opening.then((opened) => opened?.close());
-    opening = closing.then(
-      () => null,
-      () => null,
-    );
-    void closing.then(
-      () => report({ kind: "replaced" }),
-      (cause: unknown) => report({ kind: "failed", message: failureMessage(cause) }),
-    );
-  };
-
   port.on("message", (message) => {
     if (!hostMessages.Check(message)) {
       report({
@@ -84,7 +72,7 @@ export function serveHostThread(runtime: HostWorkerRuntime): void {
     }
 
     if (message.kind !== "stop") {
-      opening = open(message, runtime, revoked, replaced).then(
+      opening = open(message, runtime, revoked, () => report({ kind: "replaced" })).then(
         (opened) => {
           report({ kind: "listening", address: opened.address });
 

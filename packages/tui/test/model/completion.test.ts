@@ -43,13 +43,7 @@ function model(text: string): CompletionModel | null {
 }
 
 describe("tokens", () => {
-  test("a /cd path first, then a / or @ word under the cursor", () => {
-    expect(completionToken(at("/cd ~/sr"), NONE)).toEqual({
-      trigger: "cd",
-      query: "~/sr",
-      from: 4,
-      to: 8,
-    });
+  test("a / or @ word under the cursor", () => {
     expect(completionToken(at("fix @src/a"), NONE)).toEqual({
       trigger: "@",
       query: "src/a",
@@ -90,8 +84,18 @@ describe("tokens", () => {
     expect(model("/zzz")).toMatchObject({ items: [], loading: false, ownsEnter: false });
   });
 
-  test("a /cd path waits for its listing", () => {
-    expect(model("/cd sr")).toMatchObject({ items: [], loading: true, ownsEnter: false });
+  test("argument suggestions leave Enter to send the typed text", () => {
+    const opened = nextCompletion(CLOSED, at("/cd sr"), new Set(["cd"]));
+
+    const answered =
+      opened.kind === "open"
+        ? { ...opened, suggestions: [{ value: "src/", label: "src/" }] }
+        : opened;
+
+    expect(completionModel(answered, at("/cd sr"), SOURCES)).toMatchObject({
+      items: [{ id: "src/" }],
+      ownsEnter: false,
+    });
   });
 });
 

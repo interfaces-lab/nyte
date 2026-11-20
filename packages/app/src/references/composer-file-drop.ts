@@ -34,23 +34,23 @@ export function carriesFiles(event: ComposerFileDropEvent): boolean {
   return transfer !== null && Array.from(transfer.types).includes("Files");
 }
 
-let treeDrag: readonly MentionFile[] = [];
+let workbenchDrag: readonly MentionFile[] = [];
 
-export function setTreeDrag(files: readonly MentionFile[]): void {
-  treeDrag = files;
+export function setWorkbenchDrag(files: readonly MentionFile[]): void {
+  workbenchDrag = files;
 }
 
-export function carriesTreeFiles(event: ComposerFileDropEvent): boolean {
+export function carriesWorkbenchFiles(event: ComposerFileDropEvent): boolean {
   const types = Array.from(event.dataTransfer?.types ?? []);
 
-  return treeDrag.length > 0 && types.includes("text/plain") && !types.includes("Files");
+  return workbenchDrag.length > 0 && types.includes("text/plain") && !types.includes("Files");
 }
 
-export function droppedTreeFiles(event: ComposerFileDropEvent): readonly MentionFile[] {
+export function droppedWorkbenchFiles(event: ComposerFileDropEvent): readonly MentionFile[] {
   const path = event.dataTransfer?.getData("text/plain");
 
-  return carriesTreeFiles(event) && treeDrag.some((file) => file.displayPath === path)
-    ? treeDrag
+  return carriesWorkbenchFiles(event) && workbenchDrag.some((file) => file.displayPath === path)
+    ? workbenchDrag
     : [];
 }
 

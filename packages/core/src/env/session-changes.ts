@@ -12,7 +12,7 @@ import type {
 import type { Kernel } from "../contract/kernel.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import type { SnapshotsApi } from "../contract/workspace.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import type { SessionRecord } from "../contract/records.ts";
 import { liveRunsOn, readSession, threadStart } from "../store/session.ts";
 

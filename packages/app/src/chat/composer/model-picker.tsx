@@ -2,7 +2,9 @@ import { create, props, when } from "@stylexjs/stylex";
 import { useNavigate } from "@tanstack/react-router";
 import { createContext, use, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
+import { availableModes } from "@nyte-ai/schema";
+import type { ModelMode, ModelThinkingLevel } from "@nyte-ai/schema/model";
+import { MODEL_MODES } from "@nyte-ai/schema/model";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import {
@@ -32,37 +34,35 @@ import { useSetListing } from "../../data/catalog.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../../data/catalog.ts";
 import { useAccountLimits } from "../../data/usage.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
-import { showsSettingsSection } from "../../settings/index.ts";
+import { showsSettingsSection } from "../../settings/sections.ts";
 import {
   AGENT_PROVIDERS,
+  MODE_LABELS,
   modelIcon,
   modelTriggerLabel,
   pickerGroups,
+  supportedModes,
   supportedThinkingLevel,
   THINKING_LABELS,
   thinkingLevelsFor,
   usageLine,
 } from "./model-picker-state.ts";
 
-/** The model a chat runs, with that model's effort and Fast. */
 export interface ModelPickerChange {
   readonly option: DesktopModelOption;
   readonly thinkingLevel: ModelThinkingLevel;
-  readonly fast: boolean;
+  readonly modes: readonly ModelMode[];
 }
 
 interface Settings {
   readonly thinking: ModelThinkingLevel;
-  readonly fast: boolean;
+  readonly modes: readonly ModelMode[];
 }
 
-/** Fades a row's text out before its end marks, leaving 21px clear with the row's own gap. */
 const FADE = "linear-gradient(to left, transparent 15px, black 35px)";
 
-/** The submenu starts 2px past a row, reaching over the menu's edge so its shadow falls on it. */
 const SUBMENU_OFFSET = 2;
 
-/** The card starts at the menu's edge: the list's end padding and gutter past a row. */
 const CARD_OFFSET = 14;
 
 const styles = create({
@@ -87,7 +87,6 @@ const styles = create({
     maxHeight: `min(${menu.maxHeight}, var(--available-height))`,
     overflowY: "hidden",
   },
-  /** Rows hold no room for marks they don't show; the fade makes room when they appear. */
   frame: {
     display: "flex",
     flexDirection: "column",
@@ -95,7 +94,6 @@ const styles = create({
     minHeight: 0,
     "--nyte-menu-meta-min-width": "0px",
   },
-  /** The rows' grid: the search glass sits in the icon column, the field in the label column. */
   search: {
     display: "grid",
     flexShrink: 0,
@@ -106,10 +104,7 @@ const styles = create({
     color: role.contentTertiary,
   },
   searchGlass: { display: "inline-flex" },
-  /** A group label starts on the icon column, where the rows below it start. */
   groupLabel: { marginInlineStart: `calc(${menu.itemPaddingInline} - ${space.s1_5})` },
-  /** A gutter beside the rows, as in Cursor's list, that the submenu overlaps. */
-  /** The list spans the popup's padding, so its rules run edge to edge like the search's. */
   list: { marginInline: `calc(${menu.padding} * -1)` },
   scroll: {
     flex: "1 1 auto",
@@ -147,7 +142,6 @@ const styles = create({
     color: role.contentSecondary,
   },
   mark: { display: "inline-flex" },
-  /** The only reset glyph turns clockwise; mirrored, it turns back. */
   counterClockwise: { transform: "scaleX(-1)" },
   showOnHighlight: {
     display: { default: "none", [when.ancestor("[data-highlighted]")]: "inline-flex" },
@@ -186,7 +180,7 @@ interface ModelPickerProps {
   catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
   thinkingLevel: ModelThinkingLevel | undefined;
-  fast: boolean;
+  modes: readonly ModelMode[];
   disabled?: boolean;
   loading?: boolean;
   open?: boolean;
@@ -194,15 +188,11 @@ interface ModelPickerProps {
   onChange: (change: ModelPickerChange) => void;
 }
 
-/**
- * One flat list where every model carries its own effort and Fast. Pressing a row picks the model
- * with them and closes; Edit, or Right, picks it and opens them in a submenu beside the row.
- */
 export function ModelPicker({
   catalog,
   current,
   thinkingLevel,
-  fast,
+  modes,
   disabled = false,
   loading = false,
   open: openProp,
@@ -219,25 +209,35 @@ export function ModelPicker({
   const [editing, setEditing] = useState<string | null>(null);
 
   const level = supportedThinkingLevel(current, thinkingLevel);
-  const fastOn = current?.fastMode.kind === "available" && fast;
-  const label = modelTriggerLabel(current, level, fastOn);
+  const active = current === undefined ? [] : supportedModes(current, modes);
+  const label = modelTriggerLabel(current, level, active);
 
   const groups = catalog === undefined ? [] : pickerGroups(catalog, current, query);
 
   const settingsFor = (option: DesktopModelOption): Settings => {
-    if (option.key === current?.key) return { thinking: level, fast: fastOn };
+    if (option.key === current?.key) return { thinking: level, modes: active };
 
     const stored = saved[option.key];
 
     return {
       thinking: supportedThinkingLevel(option, stored?.thinking),
-      fast: option.fastMode.kind === "available" && stored?.fast === true,
+      modes: supportedModes(
+        option,
+        MODEL_MODES.filter((mode) => stored?.[mode] === true),
+      ),
     };
   };
 
   const choose = (option: DesktopModelOption, next: Settings) => {
-    preferences.modelSettings.set({ ...saved, [option.key]: next });
-    onChange({ option, thinkingLevel: next.thinking, fast: next.fast });
+    preferences.modelSettings.set({
+      ...saved,
+      [option.key]: {
+        thinking: next.thinking,
+        fast: next.modes.includes("fast"),
+        daybreak: next.modes.includes("daybreak"),
+      },
+    });
+    onChange({ option, thinkingLevel: next.thinking, modes: next.modes });
   };
 
   return (
@@ -393,11 +393,6 @@ function EmptyText({
   );
 }
 
-/**
- * One model: its name and settings, a check when the chat runs it, and Edit on hover. Edit opens
- * its effort, Fast and star. The reset mark puts a changed model back to its lowest effort without
- * Fast. Resting on the row shows the model's card.
- */
 function ModelRow({
   option,
   current,
@@ -419,11 +414,11 @@ function ModelRow({
 }): ReactElement {
   const setListing = useSetListing();
   const levels = thinkingLevelsFor(option);
-  const fastAvailable = option.fastMode.kind === "available";
+  const offered = availableModes(option.info);
   const starred = option.listing === "favorite";
-  const defaults: Settings = { thinking: supportedThinkingLevel(option, undefined), fast: false };
-  const moved = settings.thinking !== defaults.thinking || settings.fast !== defaults.fast;
-  const detail = modelTriggerLabel(option, settings.thinking, settings.fast).detail;
+  const defaults: Settings = { thinking: supportedThinkingLevel(option, undefined), modes: [] };
+  const moved = settings.thinking !== defaults.thinking || settings.modes.length !== 0;
+  const detail = modelTriggerLabel(option, settings.thinking, settings.modes).detail;
 
   const marks = (
     <span aria-hidden="true" {...props(styles.marks)}>
@@ -519,18 +514,26 @@ function ModelRow({
             </MenuRadioGroup>
           </MenuGroup>
         )}
-        {levels.length > 1 && fastAvailable && <MenuSeparator />}
-        {fastAvailable && (
+        {levels.length > 1 && offered.length !== 0 && <MenuSeparator />}
+        {offered.map((mode) => (
           <MenuSwitchItem
+            key={mode}
             layout="plain"
             closeOnClick={false}
-            checked={settings.fast}
-            onCheckedChange={(fast) => onChange({ ...settings, fast })}
+            checked={settings.modes.includes(mode)}
+            onCheckedChange={(checked) =>
+              onChange({
+                ...settings,
+                modes: MODEL_MODES.filter((entry) =>
+                  entry === mode ? checked : settings.modes.includes(entry),
+                ),
+              })
+            }
           >
-            Fast
+            {MODE_LABELS[mode]}
           </MenuSwitchItem>
-        )}
-        {(levels.length > 1 || fastAvailable) && <MenuSeparator />}
+        ))}
+        {(levels.length > 1 || offered.length !== 0) && <MenuSeparator />}
         <MenuItem
           layout="plain"
           closeOnClick={false}
@@ -556,7 +559,7 @@ function ModelCard({
   readonly settings: Settings;
 }): ReactElement {
   const limits = useAccountLimits();
-  const usage = usageLine(limits.data, option);
+  const usage = usageLine(limits.data?.accounts, option);
   const levels = thinkingLevelsFor(option);
 
   const reasoning = AGENT_PROVIDERS.has(option.provider)

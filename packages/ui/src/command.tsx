@@ -307,6 +307,7 @@ function CommandInput({
         data-slot="command-input"
         autoComplete="off"
         spellCheck={false}
+        autoFocus
         {...rest}
         {...mergeStyleProps(props(styles.input, xstyle), className, style)}
       />

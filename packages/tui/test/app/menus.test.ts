@@ -84,14 +84,18 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
 
   const probe: Plugin<"core"> = {
     id: "qa-probe",
-    activate(api) {
-      api.contribute.commands.add({
-        name: "qa-probe",
-        title: "QA probe",
-        description: "Show that the project plugin loaded",
-        run: () => "QA plugin answered",
-      });
-    },
+    activate: () => ({
+      contribute: {
+        commands: [
+          {
+            name: "qa-probe",
+            title: "QA probe",
+            description: "Show that the project plugin loaded",
+            run: () => "QA plugin answered",
+          },
+        ],
+      },
+    }),
   };
 
   await using fixture = await openTestHost({
@@ -100,7 +104,7 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
       environment: {
         kind: "local",
         inspect: async () => ({
-          identity: asId("folder"),
+          identity: asId("chat-only"),
           availability: { kind: "available" },
           projectSources: [".nyte/plugins/qa-probe"],
         }),

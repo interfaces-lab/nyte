@@ -15,12 +15,7 @@ import type { BranchModelChoice, BranchModelPicker } from "./transcript/turn-vie
 import { observeActivation } from "../panes/open-workspace.tsx";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
-import {
-  hideFromPanes,
-  usePaneFocused,
-  useSplitPanes,
-  usePaneViewStateStore,
-} from "../panes/pane-context.tsx";
+import { hideFromPanes, usePaneFocused, useSplitPanes } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/layout.ts";
 import { useCatalog } from "../data/catalog.ts";
 import { coordinatedProject } from "../data/projects.ts";
@@ -30,7 +25,6 @@ import { chatStore, keepChat, loadEarlierMessages } from "../data/chat-store.ts"
 import { connection } from "../data/connection.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import type { WatchStore } from "../data/watch-store.ts";
-import type { DesktopModelOption } from "../data/catalog.ts";
 
 import { BackgroundWork, listTerminals } from "./trays/terminals.tsx";
 import { Timeline } from "./transcript/timeline.tsx";
@@ -41,22 +35,22 @@ import { SecretTray } from "./trays/secrets.tsx";
 import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { listAgents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
-import { modelRefFor, selectedModelOption } from "./composer/model-picker-state.ts";
-import { StartupReadsRelease } from "../data/startup.ts";
+import { modelRefFor, sessionModel } from "./composer/model-picker-state.ts";
+import { StartupReadsHold } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";
-import { chatTitle, useChat, useChats, useChatTasks, useChatWorkspace } from "../chats/index.ts";
+import { chatTitle, useChat, useChatTasks, useChatWorkspace } from "../chats/index.ts";
 import { useChatFolder } from "./chat-folder.ts";
 import { ChatScope } from "./chat-scope.tsx";
 import { SideChatWindow } from "./side-chat/side-chat-window.tsx";
-import { chatWindow, showTray, useChatWindow } from "../window/index.ts";
+import { chatWindow, drawnTray, showTray, useChatWindow } from "../window/index.ts";
 import type { TrayView } from "../window/index.ts";
-
-const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
 const CLOSED_TRAY: TrayView = { kind: "closed" };
 
 const NONE_CLEARED: ReadonlySet<string> = new Set();
+
+const NONE_EXPIRED: ChatView["expired"] = [];
 
 const HISTORY_PAGE = 200;
 
@@ -84,7 +78,7 @@ async function applyMessageEdit({
 
   if (choice.model !== undefined) {
     const configured = await session.configure(
-      modelConfiguration(modelRefFor(choice.model, choice.fast), choice.thinkingLevel),
+      modelConfiguration(modelRefFor(choice.model, choice.modes), choice.thinkingLevel),
     );
 
     if (configured.kind !== "configured")
@@ -125,12 +119,8 @@ async function applyMessageEdit({
 async function awaitCurrentView(sessionId: SessionId, store: WatchStore<ChatView>): Promise<void> {
   const { seq } = await connection().session(sessionId).view({ tail: 0 });
 
-  for (;;) {
-    const { value, error } = store.getState();
-
-    if (error !== undefined || (value !== undefined && value.seq >= seq)) return;
-    await store.next();
-  }
+  if (store.getState().error !== undefined) return;
+  await store.until((view) => view.seq >= seq);
 }
 
 type SessionConversationProps =
@@ -242,21 +232,6 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
-function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
-  const tip = useChats((chats) => chats.get(sessionId)?.unreadTip?.commit);
-  const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
-
-  return tip === undefined || !looking ? null : <SeeTip key={tip} sessionId={sessionId} />;
-}
-
-function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
-  useMountEffect(() => {
-    chatWindow.markRead([sessionId]);
-  });
-
-  return null;
-}
-
 function SideConversation({
   paneId,
   sessionId,
@@ -315,7 +290,10 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   });
 
   const deferredTrayView = useDeferredValue(trayView);
-  const shownTrayView = trayView.kind === "detail" ? deferredTrayView : trayView;
+  const [drawnTrayView, setDrawnTrayView] = useState(trayView);
+  const shownTrayView = drawnTray(trayView, deferredTrayView, drawnTrayView);
+
+  if (shownTrayView !== drawnTrayView) setDrawnTrayView(shownTrayView);
 
   const subagentTray: SubagentTrayView =
     shownTrayView.kind === "terminals" ? { kind: "closed" } : shownTrayView;
@@ -345,27 +323,21 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   const status = runStatus(useWatchSelect(store, (state) => state.value?.execution));
   const activation = useWatchSelect(store, (state) => state.value?.activation);
   const messages = useWatchSelect(store, projector.messages);
+  const expired = useWatchSelect(store, (state) => state.value?.expired ?? NONE_EXPIRED);
   const choice = useSessionChoice(sessionId);
-
-  const viewStore = usePaneViewStateStore();
 
   const loadEarlier = () => loadEarlierMessages(sessionId, HISTORY_PAGE);
 
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
 
-  const modelOptions = catalog.data?.models ?? EMPTY_MODEL_OPTIONS;
-
-  const configuredModel = choice?.model;
-  const thinkingLevel = choice?.thinking;
-
-  const selected = selectedModelOption(modelOptions, configuredModel);
+  const model = sessionModel(catalog.data, choice);
 
   const branchModel: BranchModelPicker = {
     catalog: catalog.data,
-    model: selected?.option,
-    thinkingLevel,
-    fast: selected?.fast === true,
+    model: model.option,
+    thinkingLevel: model.thinking,
+    modes: model.modes,
   };
 
   const title = chatTitle(chat.kind === "ready" ? chat.chat : undefined);
@@ -456,8 +428,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
           focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
         >
           <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
-            {ready && <MarkSeen sessionId={sessionId} />}
-            {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
+            {!((ready && chat.kind !== "loading") || failed) && <StartupReadsHold />}
             {presentation === "full" && activation !== undefined && (
               <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
             )}
@@ -484,17 +455,9 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                     backgroundWork={{
                       content: (
                         <>
-                          <ApprovalTray
-                            sessionId={sessionId}
-                            disabled={failed || navigating}
-                            viewport={scroll}
-                          />
+                          <ApprovalTray sessionId={sessionId} disabled={failed || navigating} />
                           <QuestionTray disabled={failed || navigating} viewport={scroll} />
-                          <SecretTray
-                            sessionId={sessionId}
-                            disabled={failed || navigating}
-                            viewport={scroll}
-                          />
+                          <SecretTray sessionId={sessionId} disabled={failed || navigating} />
                           <SubagentTray
                             parentSessionId={sessionId}
                             agents={agents}
@@ -522,24 +485,16 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                           />
                         </>
                       ),
-                      onEscape: () => {
-                        if (trayView.kind === "closed") return false;
-                        setTrayView({ kind: "closed" });
-
-                        return true;
+                      tray: {
+                        open: trayView.kind !== "closed",
+                        close: () => setTrayView({ kind: "closed" }),
                       },
                     }}
                     status={status}
                     pending={messages.queued}
                     unsent={messages.unsent}
+                    expired={expired}
                     fileDropRoot={column}
-                    initialViewState={viewStore.readSession(sessionId).composer}
-                    onViewStateChange={(composer) =>
-                      viewStore.updateSession(sessionId, (current) => ({
-                        ...current,
-                        composer,
-                      }))
-                    }
                     inputRef={attachComposer}
                     steer={
                       subagentTray.kind === "detail"
@@ -562,14 +517,8 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                 status={status}
                 pending={messages.queued}
                 unsent={messages.unsent}
+                expired={expired}
                 fileDropRoot={column}
-                initialViewState={viewStore.readSession(sessionId).composer}
-                onViewStateChange={(composer) =>
-                  viewStore.updateSession(sessionId, (current) => ({
-                    ...current,
-                    composer,
-                  }))
-                }
                 inputRef={attachComposer}
               />
             )}

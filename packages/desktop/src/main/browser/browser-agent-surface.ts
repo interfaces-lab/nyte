@@ -14,6 +14,7 @@ import {
   performWait,
   takeSnapshot,
 } from "./browser-runtime.ts";
+import { pageAddress } from "./browser-surface.ts";
 import type { Surface } from "./browser-surface.ts";
 
 export interface AgentSurfaces {
@@ -23,12 +24,15 @@ export interface AgentSurfaces {
   release(id: string, holder: BrowserHolder): void;
   load(surface: Surface, url: string): void;
   place(surface: Surface): void;
+  guest(surface: Surface, signal?: AbortSignal): Promise<WebContents | undefined>;
   reclaimIdle(): void;
   touch(surface: Surface): void;
   windowShown(surface: Surface): boolean;
 }
 
 const CLOSED = { kind: "failed", failure: { kind: "closed" } } as const;
+
+const EVALUATE_CLOSED = { kind: "threw", message: "Page is closed" } as const;
 
 const SETTLE_LIMIT_MS = 10_000;
 
@@ -69,24 +73,21 @@ export class SurfaceAgent implements BrowserAgent {
 
     const surface = this.#surfaces.retain(
       sessionSurfaceId(input.session),
-      `session:${input.session}`,
+      { kind: "session", session: input.session },
       input.owner,
     );
 
-    return this.#operate(surface, async (contents) => {
+    if (pageAddress(surface) !== target || surface.error !== undefined)
+      this.#surfaces.load(surface, target);
+    this.#surfaces.emit({
+      kind: "browser_agent_opened",
+      owner: input.owner.kind === "project" ? input.owner.path : null,
+      surface: surface.id,
+      url: target,
+    });
+
+    return this.#operate(surface, CLOSED, input.signal, async (contents) => {
       if (contents.isDestroyed()) return CLOSED;
-
-      if (contents.getURL() !== target || surface.error !== undefined) {
-        this.#surfaces.load(surface, target);
-      }
-
-      this.#surfaces.place(surface);
-      this.#surfaces.emit({
-        kind: "browser_agent_opened",
-        owner: input.owner.kind === "project" ? input.owner.path : null,
-        surface: surface.id,
-        url: target,
-      });
 
       await waitForSettle(contents, input.signal);
 
@@ -103,7 +104,7 @@ export class SurfaceAgent implements BrowserAgent {
 
     if (surface === undefined) return CLOSED;
 
-    return this.#operate(surface, async (contents) => {
+    return this.#operate(surface, CLOSED, undefined, async (contents) => {
       if (contents.isDestroyed()) return CLOSED;
 
       return { kind: "ok", state: await takeSnapshot(contents, surface.runtime, input.ref) };
@@ -115,7 +116,7 @@ export class SurfaceAgent implements BrowserAgent {
 
     if (surface === undefined) return CLOSED;
 
-    return this.#operate(surface, (contents) =>
+    return this.#operate(surface, CLOSED, input.signal, (contents) =>
       performClick(
         contents,
         surface.runtime,
@@ -134,7 +135,7 @@ export class SurfaceAgent implements BrowserAgent {
     if (surface === undefined) return CLOSED;
     surface.pressed.splice(0);
 
-    return this.#operate(surface, (contents) =>
+    return this.#operate(surface, CLOSED, input.signal, (contents) =>
       performType(
         contents,
         surface.runtime,
@@ -154,7 +155,7 @@ export class SurfaceAgent implements BrowserAgent {
     if (surface === undefined) return CLOSED;
     surface.pressed.splice(0);
 
-    return this.#operate(surface, (contents) =>
+    return this.#operate(surface, CLOSED, input.signal, (contents) =>
       performPress(
         contents,
         surface.runtime,
@@ -171,7 +172,7 @@ export class SurfaceAgent implements BrowserAgent {
 
     if (surface === undefined) return CLOSED;
 
-    return this.#operate(surface, (contents) =>
+    return this.#operate(surface, CLOSED, input.signal, (contents) =>
       performScroll(
         contents,
         surface.runtime,
@@ -187,7 +188,7 @@ export class SurfaceAgent implements BrowserAgent {
 
     if (surface === undefined) return CLOSED;
 
-    return this.#operate(surface, (contents) =>
+    return this.#operate(surface, CLOSED, input.signal, (contents) =>
       performWait(contents, surface.runtime, input, input.signal),
     );
   }
@@ -214,7 +215,7 @@ export class SurfaceAgent implements BrowserAgent {
     if (surface === undefined)
       return { kind: "threw", message: "No page is open for this session" };
 
-    return this.#operate(surface, (contents) =>
+    return this.#operate(surface, EVALUATE_CLOSED, undefined, (contents) =>
       performEvaluate(contents, surface.runtime, input.expression, input.ref),
     );
   }
@@ -226,11 +227,14 @@ export class SurfaceAgent implements BrowserAgent {
 
     if (surface === undefined) return undefined;
 
-    return this.#operate(surface, performCapture);
+    return this.#operate(surface, undefined, undefined, (contents) => performCapture(contents));
   }
 
   release(input: Parameters<BrowserAgent["release"]>[0]): void {
-    this.#surfaces.release(sessionSurfaceId(input.session), `session:${input.session}`);
+    this.#surfaces.release(sessionSurfaceId(input.session), {
+      kind: "session",
+      session: input.session,
+    });
   }
 
   sessionSurfaceId(sessionId: SessionId): string {
@@ -241,27 +245,34 @@ export class SurfaceAgent implements BrowserAgent {
     return this.#surfaces.surface(sessionSurfaceId(sessionId));
   }
 
-  async #operate<T>(surface: Surface, run: (contents: WebContents) => Promise<T>): Promise<T> {
-    const contents = surface.view.webContents;
+  async #operate<T>(
+    surface: Surface,
+    closed: T,
+    signal: AbortSignal | undefined,
+    run: (contents: WebContents) => Promise<T>,
+  ): Promise<T> {
     surface.operations += 1;
     this.#surfaces.touch(surface);
+    this.#surfaces.place(surface);
 
     try {
-      if (surface.operations === 1 && !contents.isDestroyed()) {
-        contents.setBackgroundThrottling(false);
-      }
+      const contents = await this.#surfaces.guest(surface, signal);
 
+      if (contents === undefined || contents.isDestroyed()) return closed;
+      contents.setBackgroundThrottling(false);
       this.#surfaces.reclaimIdle();
 
       return await run(contents);
     } finally {
       surface.operations -= 1;
       this.#surfaces.touch(surface);
+      const contents = surface.guest;
 
-      if (surface.operations === 0 && !surface.destroyed && !contents.isDestroyed()) {
+      if (surface.operations === 0 && contents !== undefined && !contents.isDestroyed()) {
         contents.setBackgroundThrottling(true);
       }
 
+      this.#surfaces.place(surface);
       this.#surfaces.reclaimIdle();
     }
   }

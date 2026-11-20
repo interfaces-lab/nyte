@@ -3,6 +3,7 @@ import type { Configuration, SessionView, Thinking } from "@nyte-ai/sdk";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createRunner } from "../../src/effects/runner.ts";
 import type { Runner } from "../../src/effects/runner.ts";
+import type { SendEnd } from "../../src/effects/ports.ts";
 import type { Msg } from "../../src/model/msg.ts";
 import { followedSession } from "../../src/model/state.ts";
 import type { State, Submission } from "../../src/model/state.ts";
@@ -209,6 +210,7 @@ test("a plugin reject answers send-refused with the snapshot and sends nothing",
   expect(app.dispatched.at(-1)).toEqual({
     kind: "send-refused",
     submission: "sub-1",
+    session: asId("s1"),
     reason: "Not now.",
     snapshot: SUBMISSION.snapshot,
   });
@@ -246,6 +248,64 @@ test("an accepted send reaches the session with its delivery and answers sent", 
     kind: "sent",
     submission: "sub-1",
     message: asId("sent-1"),
+  });
+});
+
+test.each<[string, SendEnd | null, readonly ("sent" | "send-refused")[]]>([
+  ["the host has it", null, ["sent"]],
+  ["the link closed while the journal keeps it", { kind: "unsent" }, ["sent"]],
+  ["its unsent row was removed", { kind: "removed" }, ["sent"]],
+  ["the host refused it", { kind: "refused", reason: "not here" }, ["sent", "send-refused"]],
+])(
+  "a send answers sent once the journal holds it; when %s, only a refusal comes back",
+  async (_name, end, kinds) => {
+    const app = harness(buildState(followed(PENDING)));
+    const session = app.ports.host.addSession("s1");
+    session.sendEnd = end;
+    app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
+    await app.runner.settled();
+    app.runner.run({ kind: "send", submission: SUBMISSION, delivery: "queue" });
+    await app.runner.settled();
+    await until(() => (app.dispatched.some((msg) => msg.kind === kinds.at(-1)) ? true : undefined));
+
+    expect(
+      app.dispatched.flatMap((msg) =>
+        msg.kind === "sent" || msg.kind === "send-refused" ? [msg.kind] : [],
+      ),
+    ).toEqual([...kinds]);
+
+    if (end?.kind === "refused")
+      expect(app.dispatched.at(-1)).toEqual({
+        kind: "send-refused",
+        submission: "sub-1",
+        session: asId("s1"),
+        reason: "Message not sent: not here. It is back in the composer.",
+        snapshot: SUBMISSION.snapshot,
+      });
+  },
+);
+
+test("a send the journal replayed and the host refused comes back to its chat at boot", async () => {
+  const app = harness(buildState(null));
+  app.ports.host.refuseReplays([
+    { session: asId("s2"), content: "Typed offline.", reason: "unknown session" },
+  ]);
+  app.runner.boot({
+    start: "launch",
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "new" },
+    model: null,
+    effort: null,
+  });
+  await app.runner.settled();
+
+  expect(await app.received("send-refused")).toEqual({
+    kind: "send-refused",
+    submission: null,
+    session: asId("s2"),
+    reason: "Message not sent: unknown session. It is back in the composer.",
+    snapshot: { text: "Typed offline.", parts: new Map() },
   });
 });
 
@@ -362,7 +422,7 @@ test("with nothing selected, the shown selection follows the view's effective co
   expect(selection).toEqual({
     kind: "selection",
     session: asId("s1"),
-    selection: { model: CONFIGURATION.model, effort: "minimal", fast: false },
+    selection: { model: CONFIGURATION.model, effort: "minimal", modes: [] },
   });
 });
 
@@ -373,7 +433,7 @@ test("a watch that throws is logged once, even when it ends before any view", as
   await app.runner.settled();
   session.end("link lost");
   await until(() => (app.ports.log.entries.length > 0 ? true : undefined));
-  await Bun.sleep(10);
+  await app.runner.dispose();
   expect(app.ports.log.entries).toMatchObject([
     { origin: "watch", error: { message: "link lost" } },
   ]);
@@ -391,7 +451,7 @@ test("following another session stops the previous watch; its late views are dro
   second.push(LANDED);
   const view = await app.received("view");
   expect(view).toMatchObject({ session: asId("s2") });
-  await Bun.sleep(10);
+  await app.runner.dispose();
   expect(app.dispatched.filter((msg) => msg.kind === "view")).toHaveLength(1);
 });
 
@@ -403,7 +463,7 @@ test("configure goes through the configurator: the session port receives the pat
   app.runner.run({
     kind: "configure",
     session: asId("s1"),
-    selection: { effort: "high", fast: true },
+    selection: { effort: "high", modes: ["fast"] },
   });
   await app.runner.settled();
 
@@ -415,7 +475,7 @@ test("configure goes through the configurator: the session port receives the pat
   expect(selection).toEqual({
     kind: "selection",
     session: asId("s1"),
-    selection: { model: { provider: "test", id: "model-fast" }, effort: "high", fast: true },
+    selection: { model: { provider: "test", id: "model-fast" }, effort: "high", modes: ["fast"] },
   });
 });
 
@@ -477,7 +537,7 @@ test("the first send from a blank chat starts it with that message, then follows
     kind: "blank",
     id: asId<"session">("b1"),
     folder: { kind: "folder", id: asId<"workspace">("workspace") },
-    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+    selection: { model: CONFIGURATION.model, effort: "low", modes: [] },
   } as const;
 
   const first: Submission = {
@@ -523,7 +583,7 @@ test("a first message on a signed-out provider's model goes back with the fix, a
     kind: "blank",
     id: asId<"session">("b-signed-out"),
     folder: { kind: "folder", id: asId<"workspace">("workspace") },
-    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+    selection: { model: CONFIGURATION.model, effort: "low", modes: [] },
   } as const;
 
   const first: Submission = {
@@ -564,7 +624,7 @@ test("a first message sent while boot settles the launch folder registers that f
     kind: "blank",
     id: asId<"session">("b-launch"),
     folder: { kind: "launch-folder" },
-    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+    selection: { model: CONFIGURATION.model, effort: "low", modes: [] },
   } as const;
 
   const first: Submission = {
@@ -687,7 +747,7 @@ test("before the host opens, local effects run at once and host effects wait, th
   app.runner.run({ kind: "follow", target: "new", announce: false });
   app.runner.run({ kind: "copy", text: "now" });
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
-  await Bun.sleep(5);
+  await until(() => (app.ports.terminal.copies.length > 0 ? true : undefined));
 
   expect(app.ports.terminal.copies).toEqual(["now"]);
   expect(app.dispatched).toEqual([]);

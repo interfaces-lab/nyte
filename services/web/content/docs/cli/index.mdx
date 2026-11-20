@@ -1,0 +1,410 @@
+---
+title: Terminal client
+description: Chat with an agent in your terminal, resume chats, sign in to providers, and manage MCP servers with the nyte command.
+---
+
+`nyte` is the terminal client. Run it in a folder and the agent works in that folder. To install
+it, see [Installation](/docs#terminal).
+
+```sh
+cd my-project
+nyte login
+nyte
+```
+
+`nyte` is a client of your machine's one host, the same host the desktop app uses, so a chat you
+start in one shows up in the other. The host keeps chats in `~/.nyte/nyte.db`. To get one answer
+without the interface, for a script or a pipe, use [print mode](/docs/cli/print-mode).
+
+## Start and resume chats [#start-and-resume]
+
+| Command                       | What it opens                                           |
+| ----------------------------- | ------------------------------------------------------- |
+| `nyte`                        | A new chat in the current folder                        |
+| `nyte --resume`, `nyte -c`    | The chat with the most recent activity, from any folder |
+| `nyte --resume <session-id>`  | That chat                                               |
+| `nyte --session <session-id>` | That chat, the same as `--resume <session-id>`          |
+| `nyte --minimal`              | Compact mode instead of full screen. Experimental       |
+
+When you quit, `nyte` prints the command that reopens the chat:
+
+```txt
+To resume previous session
+nyte --session=<session-id>
+```
+
+A message you typed but didn't send is printed as well, after `Not sent:`.
+
+## Flags [#flags]
+
+These flags work with `nyte` and with [print mode](/docs/cli/print-mode).
+
+| Flag                     | What it does                                                                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--model <id>`           | Use this model. Give `provider/id`, or an `id` alone to use the first signed-in provider that offers it                                        |
+| `--provider <id>`        | The provider for `--model`                                                                                                                     |
+| `--effort <level>`       | Thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`                                                                    |
+| `--trust`, `--no-trust`  | Save whether this folder's project files load. See [trust](#trust)                                                                             |
+| `--no-context-files`     | Start new chats without `AGENTS.md` or `CLAUDE.md`. Can't be combined with `--resume` or `--session`                                           |
+| `--host-url <url>`       | Attach to the host at this URL instead of the one [`host.json`](#nyte-host) names. It never starts a host. The token goes in `NYTE_HOST_TOKEN` |
+| `--resume`, `-c`         | Continue the latest chat, or the one you name                                                                                                  |
+| `--session <session-id>` | Continue this chat. Can't be combined with `--resume`                                                                                          |
+| `--minimal`              | Compact mode. Needs a terminal on stdin and stdout, and can't be combined with `-p`, `--json` or `--quiet`                                     |
+| `--version`, `-v`        | Print the installed version                                                                                                                    |
+| `--help`, `-h`           | Print help. `nyte <command> --help` prints help for one command                                                                                |
+
+Each flag may appear once. Setting `NYTE_MODEL` has the same effect as `--model` when you don't pass
+it.
+
+## In a chat [#in-a-chat]
+
+Type a message and press Enter. Shift+Enter or Ctrl+J adds a new line.
+
+A message you send while the agent is working steers it: the agent reads it at its next step.
+Ctrl+Enter sends it the other way, queued until the current run ends. The **Follow-up** setting
+swaps the two.
+
+Start a line with `!` to run a shell command in the folder. When it exits, its command and output
+are added to your draft so you can send them to the agent. Start with `!!` to run it without adding
+anything.
+
+### Keys [#keys]
+
+Ctrl+K lists every command and the shortcuts that work right now. The common ones:
+
+| Key       | What it does                                |
+| --------- | ------------------------------------------- |
+| Esc       | Stop the agent, cancel, or go back          |
+| Ctrl+C    | Clear the draft, or quit when it's empty    |
+| Shift+Tab | Cycle the thinking level                    |
+| Ctrl+P    | Next model. Ctrl+Shift+P goes back          |
+| Ctrl+O    | Expand or collapse tool output and thinking |
+| Ctrl+G    | Edit the draft in your editor               |
+| Ctrl+V    | Paste text or an image from the clipboard   |
+| Ctrl+Q    | Edit or remove queued messages              |
+| Ctrl+S    | Run a skill                                 |
+| Up, Down  | Previous or next message you sent           |
+
+### Slash commands [#slash-commands]
+
+Type `/` to see them all, with skills and plugin commands mixed in.
+
+| Command                                   | What it does                                     |
+| ----------------------------------------- | ------------------------------------------------ |
+| `/new`                                    | Start a new chat                                 |
+| `/resume` (also `/sessions`, `/continue`) | Pick a chat to resume                            |
+| `/tree`                                   | Move to another branch of this chat              |
+| `/edit`                                   | Edit a message you sent                          |
+| `/compact`                                | Summarize the chat to free up context            |
+| `/cd`                                     | Change this chat's folder with your shell's `cd` |
+| `/usage`                                  | Show token usage and cost                        |
+| `/tasks`                                  | Inspect subagents and background commands        |
+| `/login`, `/logout`                       | Sign in to or out of a model provider            |
+| `/accounts`                               | Choose a saved account                           |
+| `/settings`                               | Change settings                                  |
+| `/trust`                                  | Choose whether this folder's project files load  |
+| `/mcp`                                    | Show MCP servers and their connections           |
+| `/skills`, `/plugins`                     | Browse skills, or list loaded plugins            |
+| `/reload`                                 | Reload plugins and skills                        |
+| `/pr`                                     | Show this branch's pull request and its checks   |
+| `/update`                                 | Update `nyte`, or switch to stable or nightly    |
+| `/help`                                   | Browse commands                                  |
+| `/quit`                                   | Quit                                             |
+
+## Trust [#trust]
+
+A folder's project files can run code: its skills, prompts, plugins and MCP servers. The first time
+you open a folder that has them, `nyte` asks whether to trust it. Until you do, they don't load.
+`AGENTS.md` and `CLAUDE.md` load either way.
+
+The answer is saved for the folder and every folder below it. Change it with `/trust`, or with
+`--trust` and `--no-trust` when you start `nyte`.
+
+## Settings [#settings]
+
+`/settings` changes them and writes `~/.nyte/settings.json`. A project can override some of them in
+`.nyte/settings.json` in its folder.
+
+| Key                  | Values                       | Default                   |
+| -------------------- | ---------------------------- | ------------------------- |
+| `theme`              | `auto`, `dark`, `light`      | `auto`                    |
+| `followUp`           | `steer`, `queue`             | `steer`                   |
+| `copyOnSelect`       | `true`, `false`              | `true`, except on Windows |
+| `scrollAcceleration` | `true`, `false`              | `false`                   |
+| `autoUpdate`         | `true`, `false`              | `false`                   |
+| `externalEditor`     | A command, such as `code -w` | None                      |
+
+`autoUpdate` and `externalEditor` are read only from `~/.nyte/settings.json`, so a project can't
+change which binary runs or launch an editor. If a file has an invalid value, `nyte` names it and
+ignores that file.
+
+## Sign in to a provider [#login]
+
+`nyte login` signs in to a model provider. Without a provider it shows a list. Add
+`--method oauth` or `--method api_key` to skip the method choice:
+
+```sh
+nyte login
+nyte login openai --method api_key
+```
+
+Interactive sign-in needs a terminal on stdin and stderr. For scripts, pipe an API key to
+`nyte login <provider> --key -`. Prompts and the human-readable receipt go to stderr. When stdout
+is redirected or the command isn't interactive, stdout contains the provider id.
+
+| Command                    | What it does                                                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `nyte login [<provider>]`  | Sign in and save the credential                                                                                      |
+| `nyte logout [<provider>]` | Remove a saved credential. Without a terminal, name the provider                                                     |
+| `nyte status [--json]`     | List credentials visible to the running host, saved or from its environment, and their state. Never prints the value |
+
+`nyte status` does not start a host. If none is running, start `nyte host` in another terminal,
+then run `nyte status` again.
+
+Provider ids are `openai-codex`, `openai`, `anthropic`, `opencode`, `opencode-go`,
+`github-copilot`, `vercel-ai-gateway` and `openrouter`.
+
+A provider can also use an API key from the environment, such as `OPENAI_API_KEY`. A saved
+credential takes precedence over it, and `nyte logout` leaves it alone. See
+[provider keys](/docs/environment-variables#provider-keys).
+
+## Update [#update]
+
+| Command                         | What it does                                                           |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| `nyte update`                   | Install the newest release on your channel                             |
+| `nyte update stable`, `nightly` | Switch channels; install that channel's newest release when it's newer |
+| `nyte update <version>`         | Install that version, such as `0.2.0`, even an older one, after asking |
+| `nyte update --check`           | Say whether an update is available, without installing it              |
+| `nyte update --models`          | Refresh the model list from every provider, without updating `nyte`    |
+
+`nyte update` downloads the release, verifies its checksum and replaces the binary. Restart `nyte`
+to use the new version. It exits with 1 when the update fails or can't run, for example when no
+release is built for your platform. [Installation](/docs#updates) explains the channels.
+
+## Share with your Nyte account [#account]
+
+`nyte account` links this machine to your Nyte account, so your phone and the web app can reach its
+chats, as in [Remote access](/docs/remote-access). This is separate from `nyte login`, which signs
+in to a model provider.
+
+The first time, `nyte account` opens an approval page in your browser and prints a code to enter
+there. Approve only a request you started. Once linked, the machine's host shares it for as long as
+the host runs. The command exits once sharing is on.
+
+| Command               | What it does                                              |
+| --------------------- | --------------------------------------------------------- |
+| `nyte account`        | Link this machine, turn sharing on, then exit             |
+| `nyte account status` | Print the link: name, account, address, relay and devices |
+| `nyte account unlink` | Remove this machine from the account                      |
+
+## MCP servers [#mcp]
+
+`nyte mcp` adds MCP servers for the agent to use, and signs in to them. A server is either a URL
+(streamable HTTP) or a command `nyte` runs over stdio:
+
+```sh
+nyte mcp add docs --url https://example.com/mcp
+nyte mcp add files -- npx -y @modelcontextprotocol/server-filesystem .
+nyte mcp list
+```
+
+| Command                                | What it does                                                               |
+| -------------------------------------- | -------------------------------------------------------------------------- |
+| `nyte mcp add <name> --url <url>`      | Add an HTTP server                                                         |
+| `nyte mcp add <name> -- <command> ...` | Add a server that runs as a command                                        |
+| `nyte mcp remove <name>`               | Remove a server. Its sign-in stays                                         |
+| `nyte mcp list [--json]`               | Print the current folder's MCP connections and their states                |
+| `nyte mcp login [<name>]`              | Sign in to an HTTP server with OAuth. Without a name, pick one from a list |
+| `nyte mcp logout <name>`               | Delete a server's stored sign-in                                           |
+
+`add` and `remove` change `~/.nyte/mcp.json`. With `--local` (`-l`) they change `.nyte/mcp.json` in
+the current folder instead, which loads only in a [trusted](#trust) folder.
+
+`nyte mcp list` needs an already-running host and does not start one. If none is running, start
+`nyte host` in another terminal. It waits up to 15 seconds for servers to connect and exits with 1
+when a listed entry is invalid or an enabled server isn't connected.
+
+If the host hasn't opened the current folder, `list` shows only user-scope servers. Open `nyte`
+in that folder and [trust it](#trust) before checking its project servers.
+
+Options for `add`:
+
+| Option                           | Applies to | What it does                                                      |
+| -------------------------------- | ---------- | ----------------------------------------------------------------- |
+| `--env KEY=VALUE`                | Command    | Set a variable for the server's process. Repeat for more          |
+| `--cwd <dir>`                    | Command    | The folder the command runs in                                    |
+| `--header KEY=VALUE`             | URL        | Send a header with each request. Repeat for more                  |
+| `--bearer-token-env-var <NAME>`  | URL        | Send `Authorization: Bearer` with the token in that variable      |
+| `--oauth-client-id <id>`         | URL        | Use this OAuth client instead of registering one                  |
+| `--oauth-client-secret <secret>` | URL        | The OAuth client's secret                                         |
+| `--oauth-client-name <name>`     | URL        | The client name to register                                       |
+| `--oauth-callback-port <n>`      | URL        | The local port for the OAuth callback                             |
+| `--exposure <mode>`              | Both       | `direct`, `deferred`, `codemode`, `codemode-deferred` or `hidden` |
+| `--description <text>`           | Both       | A description of the server                                       |
+| `--force`                        | Both       | Replace an existing entry with this name in the selected file     |
+
+`add` refuses an existing name unless you pass `--force` to replace it.
+
+`${VAR}` in `--env`, `--header` and the OAuth secret is read from the host's environment when it
+connects. Export the variable before starting that host; restart a host that's already running.
+Variables saved in **Settings > Environment variables** don't supply these substitutions.
+`--bearer-token-env-var` writes `${NAME}` to the file rather than the token's value.
+
+Over SSH, `nyte mcp login` can't receive the browser's redirect. Paste the URL the browser ends on
+when it asks.
+
+## Serve your chats: `nyte host` [#nyte-host]
+
+Every chat runs on your machine's one host. `nyte` attaches to the host `~/.nyte/host.json` names.
+With none running, it starts `nyte host --log` in the background and waits up to 20 seconds for it.
+That host keeps running after `nyte` exits, so quitting leaves its runs and background commands
+going.
+
+`nyte host` serves that host in the foreground:
+
+```sh
+nyte host
+```
+
+It serves on `127.0.0.1`, and off Windows on the local socket `~/.nyte/host.sock`. It prints the URL
+on stdout and writes the URL, a token, its process id and the socket path to `~/.nyte/host.json`, readable
+only by you. It keeps its port and token across restarts, so attached clients resume.
+
+To attach to a host that `host.json` doesn't name, pass its URL and put its token in
+`NYTE_HOST_TOKEN`:
+
+```sh
+NYTE_HOST_TOKEN=<token> nyte --host-url http://127.0.0.1:<port>
+```
+
+`nyte` removes `NYTE_HOST_TOKEN` from its environment once it reads it, so commands the agent runs
+don't inherit it.
+
+| Behavior      | Detail                                                                                                                            |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| One at a time | `nyte host` holds `~/.nyte/host.lock`. A second one on the same home exits 1 and names the running one's pid and URL              |
+| Output        | The URL on stdout. Where it listens, and a line when it stops, on stderr                                                          |
+| `--log`       | Appends the listening line, with its time, and the error it stops on, to `~/.nyte/logs/host.log` instead of stdout                |
+| `--json`      | Prints one line: `{"type":"listening","url":...,"socket":...,"endpoint":...,"pid":...}`, where `endpoint` is the `host.json` path |
+| Stopping      | Ctrl+C, `SIGTERM` or `SIGHUP` stops it with exit code 130, 143 or 129 and removes `host.json`                                     |
+
+A running host doesn't see variables you export afterwards, such as an API key. Save keys with
+[`nyte login`](#login).
+
+## List the host's operations: `nyte api` [#nyte-api]
+
+Clients and the SDK talk to a host through one table of operations. `nyte api` prints it:
+
+```sh
+nyte api list
+nyte api describe head.send
+```
+
+`describe` prints the operation's access rules and its input and output JSON Schemas. `--json`
+prints the same as JSON. Without `--host-url`, `list` and `describe` read the operations this `nyte`
+build serves and start nothing. With `--host-url` and `NYTE_HOST_TOKEN`, they ask that host, so the
+answer matches the host's version.
+
+`nyte api call <operation> [json]` calls one operation and prints its output as JSON. In a
+terminal, pass the JSON argument explicitly, including `'{}'` for empty input. Without an argument,
+it reads redirected stdin; empty redirected input becomes `{}`. Usage and missing-input errors
+exit with 2; other call failures exit with 1.
+
+`nyte events` subscribes to the host's events and prints each one as a JSON line until Ctrl+C. Pass
+`--scope` once per scope: `host` (the default), `session/<id>` or `client/<id>`.
+
+```sh
+nyte api call sessions.list '{}'
+nyte events --scope host --scope session/<session-id>
+```
+
+`call` and `events` reach the running host over its local socket when it has one. They don't start
+a host, so they fail when none runs.
+
+## Run an app's actions: `nyte action` [#nyte-action]
+
+Every app connected to the host declares the actions it runs by name. `nyte action list` prints
+them, and `nyte action run` asks an app to run one:
+
+```sh
+nyte action list
+nyte action run chat.new
+nyte action run setting.theme value=dark
+nyte action run setting.theme
+```
+
+- Each `KEY=VALUE` is one field of the action's input. The value is read as JSON, and as text when
+  it isn't JSON: `value=13` is a number and `value=dark` is text.
+- What the action answers goes to stdout as JSON. An action that answers nothing prints nothing
+  there.
+- Without `--client`, the one app that offers the action runs it. When several offer it, such as
+  two open windows, nothing runs: the command lists them and exits with 2. Pass `--client <ID>`
+  with an id from `nyte action list`.
+- `nyte action` needs a running host and never starts one.
+
+The Nyte app declares these:
+
+| Action                   | Input                                     | What it does                                        |
+| ------------------------ | ----------------------------------------- | --------------------------------------------------- |
+| `chat.new`               |                                           | Starts a new chat                                   |
+| `tab.new`                |                                           | Opens a new tab                                     |
+| `tab.close`              |                                           | Closes the active tab, or Settings when it is open  |
+| `tab.reopen`             |                                           | Reopens the tab closed last                         |
+| `folder.open`            |                                           | Shows the folder picker                             |
+| `home.open`              |                                           | Switches to Home, the chats outside any folder      |
+| `settings.open`          | `page`: a Settings page, or left out      | Opens Settings, on that page when given             |
+| `customize.open`         |                                           | Opens Customize                                     |
+| `search.toggle`          |                                           | Shows or hides search                               |
+| `sidebar.toggle`         |                                           | Shows or hides the sidebar                          |
+| `workbench.toggle`       |                                           | Shows or hides the workbench                        |
+| `terminal.toggle`        |                                           | Shows the terminal, or hides it when it is in front |
+| `terminal.new`           |                                           | Opens a new terminal                                |
+| `browser.new`            |                                           | Opens a new browser tab                             |
+| `pane.split`             | `direction`: `right` or `down`            | Splits the focused pane                             |
+| `pane.focus.next`        |                                           | Moves focus to the next pane                        |
+| `markdown.source.toggle` |                                           | Switches a Markdown file between source and preview |
+| `window.reload`          |                                           | Reloads the window                                  |
+| `app.open`               | `app`: `nyte`, `code`, `studio` or `last` | Switches to that app, or back to the one used last  |
+
+An action that has nothing to act on fails with `unavailable`: `tab.close` in a window without
+tabs, for example.
+
+Each of these reads one of the app's preferences with no input, and sets it with `value`. Both
+answer `{ "value": … }` with the value now. A value the preference doesn't take fails with
+`invalid` and changes nothing.
+
+| Group      | Actions                                                                                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| General    | `setting.startup`, `setting.running.message`                                                                                                                                          |
+| Appearance | `setting.theme`, `setting.themes`, `setting.tint.hue`, `setting.tint.intensity`, `setting.pointer.cursors`, `setting.transparency.reduce`, `setting.tool.calls`, `setting.chat.width` |
+| Fonts      | `setting.font.ui`, `setting.font.ui.size`, `setting.font.code`, `setting.font.code.size`, `setting.font.smoothing`, `setting.code.wrap`                                               |
+| Terminal   | `setting.terminal.scrollback`, `setting.terminal.cursor.style`, `setting.terminal.cursor.blink`                                                                                       |
+| Editor     | `setting.editor.line.numbers`, `setting.editor.wrap`, `setting.editor.blame`, `setting.editor.autosave`, `setting.editor.format`, `setting.editor.outline`, `setting.editor.panel`    |
+| Changes    | `setting.changes.layout`, `setting.changes.whitespace`, `setting.changes.wrap`                                                                                                        |
+
+`nyte action list --json` prints each action's input as a JSON Schema, with the values a setting
+takes.
+
+### Who an app obeys [#remote-control]
+
+An app runs a request made for its own user: `nyte action` on the same machine, and plugins on
+your own host. It refuses a request from any other paired device with `denied`.
+
+To let your other devices drive the app, turn on **Remote control** in **Settings > Server**. No
+action turns that switch on, and none changes the app's link, developer or trust settings.
+
+## Files [#files]
+
+| Path                    | What it holds                                            |
+| ----------------------- | -------------------------------------------------------- |
+| `~/.nyte/nyte.db`       | Chats and saved credentials, shared with the desktop app |
+| `~/.nyte/settings.json` | Your settings                                            |
+| `.nyte/settings.json`   | A project's settings, in its folder                      |
+| `~/.nyte/mcp.json`      | MCP servers for every folder                             |
+| `.nyte/mcp.json`        | MCP servers for one folder                               |
+| `~/.nyte/host.json`     | The URL and token of the running host                    |
+| `~/.nyte/logs/host.log` | The log of a host that `nyte` started                    |
+
+[Environment variables](/docs/environment-variables#variables-nyte-reads) lists the variables that
+move these files or change how `nyte` runs.

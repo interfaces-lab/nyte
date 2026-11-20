@@ -19,7 +19,8 @@
     "./client": "./src/client.ts",
     "./server": "./src/server.ts",
     "./store": "./src/store.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./usage": "./src/util/usage.ts"
   },
   "publishConfig": {
     "exports": {
@@ -42,6 +43,10 @@
       "./testing": {
         "types": "./dist/src/testing.d.ts",
         "import": "./dist/src/testing.js"
+      },
+      "./usage": {
+        "types": "./dist/src/util/usage.d.ts",
+        "import": "./dist/src/util/usage.js"
       }
     },
     "access": "public",
@@ -49,18 +54,18 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../../node_modules/@typescript/native/bin/tsc --noEmit",
     "test": "vitest --run",
     "build:package": "bun ../../scripts/sdk-packages.mjs build core"
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "typebox": "^1.4.6",
+    "typebox": "^1.4.7",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@cfworker/json-schema": "^4.1.4",
+    "@cfworker/json-schema": "^4.1.6",
     "@types/node": "^26.6.6",
     "typescript": "catalog:",
     "vitest": "^5.1.0"

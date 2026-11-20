@@ -139,7 +139,6 @@ describe("codec", () => {
       trusted: true,
       projectSources: [],
       addedBy: asId<"principal">("local"),
-      sessions: 0,
       writers: [],
       isolation: null,
     };

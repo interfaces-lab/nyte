@@ -6,6 +6,7 @@ import {
   idSchema,
   isJson,
   JsonType,
+  SdkError,
   ModelRefType,
   ToolOutcomeType,
   withJson,
@@ -13,10 +14,8 @@ import {
 import type {
   Awaitable,
   CallId,
-  ChangeSet,
   Decision,
   DurableEvent,
-  FileChange,
   HeadName,
   Infer,
   Json,
@@ -24,9 +23,7 @@ import type {
   Placement,
   RefUpdate,
   RunId,
-  Seq,
   SessionId,
-  SnapshotId,
   ToolCall,
   ToolClass,
   ToolOutcome,
@@ -38,24 +35,26 @@ import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel, PluginRuntime, StepEnd } from "../contract/kernel.ts";
 import { definePart, tool } from "../contract/parts.ts";
 import type { ActionContext, ActionOutput, PartState } from "../contract/parts.ts";
-import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
+import { decodePartRecord } from "../contract/records.ts";
 import type { CallRecord, PartRecord } from "../contract/records.ts";
 import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.ts";
 import type { ExecutionEnv } from "../contract/workspace.ts";
-import { anotherChatLive, ownedChanges, readAttributedPaths } from "../env/session-changes.ts";
+import { readAttributedPaths } from "../env/session-changes.ts";
+import { callPhase } from "../engine/call-phase.ts";
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { startJob } from "../engine/jobs.ts";
 import { publishPatch } from "../engine/runs.ts";
-import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "../engine/surface.ts";
+import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "./capabilities.ts";
+import { baseline, nextBase, NO_CHANGES, toolChanges } from "./tool-snapshots.ts";
+import type { ToolBaseline, ToolChanges } from "./tool-snapshots.ts";
 import { loadedTools } from "./transcript.ts";
-import { toolSource } from "../extend/registry.ts";
-import { commit } from "../fold/commit.ts";
+import { stepPluginApi } from "../extend/plugin-api.ts";
+import { offeredTools, toolSource } from "../extend/registry.ts";
 import { changesEvents } from "../fold/changes.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import { settling } from "../store/parts.ts";
 import { partRef, runRef } from "../store/refs.ts";
 import {
-  attempt,
   load,
   put,
   readCall,
@@ -63,7 +62,6 @@ import {
   readRefExpectation,
   readTip,
   requireSession,
-  STALE,
 } from "../store/session.ts";
 import { CLIP_CHARS, clipText } from "../util/clip.ts";
 import { dev } from "../util/dev-log.ts";
@@ -92,6 +90,7 @@ export type ToolIntent = Static<typeof ToolIntentType>;
 
 export interface OwedCall {
   readonly record: CallRecord;
+
   readonly parked: boolean;
 }
 
@@ -100,25 +99,16 @@ const toolCallers = compile(withJson(ToolCallerType));
 const toolIntents = compile(withJson(ToolIntentType));
 
 type Plan = { readonly args: Json; readonly class: ToolClass } & (
-  | { readonly kind: "execute"; readonly definition: ToolDefinition; readonly input: unknown }
+  | {
+      readonly kind: "execute";
+      readonly definition: ToolDefinition;
+      readonly owner: string;
+      readonly input: unknown;
+    }
   | { readonly kind: "settle"; readonly outcome: ToolOutcome }
 );
 
-interface Settled {
-  readonly outcome: ToolOutcome;
-  readonly files: readonly FileChange[] | null;
-  readonly thread: readonly FileChange[] | null;
-
-  readonly snapshot: SnapshotId | null;
-  readonly path: string | null;
-  readonly unattributed: boolean;
-}
-
-type ToolBaseline = {
-  readonly snapshot: SnapshotId;
-  readonly seq: Seq;
-  readonly contended: boolean;
-};
+export type Settled = { readonly outcome: ToolOutcome } & ToolChanges;
 
 interface Where {
   readonly session: SessionId;
@@ -140,6 +130,8 @@ interface LiveCall {
 }
 
 const HOOK = "hook:before_tool:";
+
+const RUN_PREFIX = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}:/u;
 
 const STEP: Placement = { kind: "transcript", role: "step" };
 
@@ -203,35 +195,43 @@ export async function owedCalls(
   session: SessionId,
   run: RunId,
 ): Promise<readonly OwedCall[]> {
-  const records = (await readCalls(store, session)).filter(
-    (record) => record.run === run && record.kind !== "action",
+  const records = (
+    await readCalls(store, session, (id) => {
+      const call = id.startsWith(HOOK) ? id.slice(HOOK.length) : id;
+
+      return !RUN_PREFIX.test(call) || call.startsWith(`${run}:`);
+    })
+  )
+    .filter((record) => record.run === run && record.kind !== "action")
+    .map((record) => ({ record, phase: callPhase(record) }));
+
+  const ids = new Set(records.map((entry) => stripHookPrefix(entry.record)));
+
+  const parked = new Set(
+    records.flatMap((entry) => {
+      const id = stripHookPrefix(entry.record);
+
+      return entry.phase.kind === "parked" ? [id, ...enclosingCalls(id)] : [];
+    }),
   );
 
-  const ids = new Set(records.map(stripHookPrefix));
-  const parked = new Set<string>();
+  const owed = records.filter(
+    (entry) =>
+      entry.phase.kind !== "settled" && !enclosingCalls(entry.record.id).some((id) => ids.has(id)),
+  );
 
-  for (const record of records)
-    if (record.waiting !== null && record.result === null)
-      for (const id of [stripHookPrefix(record), ...enclosingCalls(stripHookPrefix(record))])
-        parked.add(id);
-
-  const owes = (record: CallRecord): boolean =>
-    record.result === null && !enclosingCalls(record.id).some((id) => ids.has(id));
-
-  const opened = records.filter((record) => record.kind === "tool" && owes(record));
-
-  const unopened = records
-    .flatMap((record) =>
-      record.kind === "intent" && owes(record) && toolIntents.Check(record.intent)
-        ? [{ record, position: record.intent.position }]
+  const intended = owed
+    .flatMap((entry) =>
+      entry.phase.kind === "intended" && toolIntents.Check(entry.record.intent)
+        ? [{ record: entry.record, position: entry.record.intent.position }]
         : [],
     )
     .toSorted((left, right) => left.position - right.position);
 
-  return [...opened, ...unopened.map((entry) => entry.record)].map((record) => ({
-    record,
-    parked: parked.has(record.id),
-  }));
+  return [
+    ...owed.flatMap((entry) => (entry.record.kind === "tool" ? [entry.record] : [])),
+    ...intended.map((entry) => entry.record),
+  ].map((record) => ({ record, parked: parked.has(record.id) }));
 }
 
 export async function readToolInput(
@@ -239,7 +239,7 @@ export async function readToolInput(
   session: SessionId,
   record: CallRecord,
 ): Promise<ToolInput | null> {
-  if (record.kind === "intent") {
+  if (callPhase(record).kind === "intended") {
     if (!toolIntents.Check(record.intent)) return null;
     const { position: _position, ...input } = record.intent;
 
@@ -323,7 +323,7 @@ async function perform(
   let before: ToolBaseline | null = null;
 
   const snapshotted =
-    planned.kind === "execute" && where.covered !== true && planned.definition.effects !== "none";
+    planned.kind === "execute" && where.covered !== true && planned.definition.changes !== "none";
 
   const step = await runStep<ToolOutcome>(kernel, {
     session,
@@ -331,7 +331,7 @@ async function perform(
     run,
     call,
     kind: "tool",
-    replay: planned.kind === "execute" ? planned.definition.replay : "safe",
+    replay: planned.kind === "execute" ? planned.definition.rerun : "safe",
     intent,
     opening: { updates: () => partOpening(kernel.store, where, planned), fenced: STOPPED },
     part: asId<"part">(call),
@@ -346,6 +346,8 @@ async function perform(
           }
         : async () => planned.outcome,
     async settle(ended) {
+      if ((await kernel.store.refs.get(runRef(session, run))) === null)
+        return { result: STOPPED, updates: [] };
       concluded ??= conclude(kernel, where, ended, before, planned.class);
       const settled = await concluded;
 
@@ -373,9 +375,9 @@ async function plan(
   const custom: ToolClass = { kind: "custom", label: name };
   const found = toolSource(where.runtime).get(name);
   const hidden = await hiddenOwners(kernel, session, run);
-  const definition = found === undefined || hidden.has(found.owner) ? undefined : found.definition;
+  const shown = found === undefined || hidden.has(found.owner) ? undefined : found;
 
-  if (definition === undefined) {
+  if (shown === undefined) {
     const missing = found === undefined ? await missingCapabilities(kernel, session, run) : [];
 
     return {
@@ -387,6 +389,8 @@ async function plan(
       class: custom,
     };
   }
+
+  const definition = shown.definition;
 
   if (where.argumentsError !== undefined)
     return {
@@ -413,8 +417,12 @@ async function plan(
   if (gated.kind === "parked") return PARKED;
   const gate = gated.kind === "done" ? gated.value : CONTINUE;
 
-  if (where.signal.aborted && (await readCall(kernel.store, session, call))?.record.kind !== "tool")
-    return { kind: "settle", outcome: STOPPED, args: where.args, class: proposed.class };
+  if (where.signal.aborted) {
+    const found = await readCall(kernel.store, session, call);
+
+    if (found === null || callPhase(found.record).kind === "intended")
+      return { kind: "settle", outcome: STOPPED, args: where.args, class: proposed.class };
+  }
 
   if (gate.action === "reject")
     return {
@@ -453,7 +461,14 @@ async function plan(
       class: custom,
     };
 
-  return { kind: "execute", definition, input: checked.value, args, class: known };
+  return {
+    kind: "execute",
+    definition,
+    owner: shown.owner,
+    input: checked.value,
+    args,
+    class: known,
+  };
 }
 
 async function partOpening(
@@ -523,7 +538,9 @@ async function execute(
 
   try {
     if (snapshotted)
-      before = await durable.memo("nyte:snapshot", () => baseline(kernel, session, run));
+      before = await durable.memo("nyte:snapshot", () =>
+        baseline(kernel, session, run, planned.class),
+      );
 
     const [env, found, hidden] = await Promise.all([
       kernel.environments.attach(session),
@@ -533,6 +550,7 @@ async function execute(
 
     const invocation = createInvocation(kernel, {
       hidden,
+      owner: planned.owner,
       session,
       head: where.head,
       run,
@@ -609,40 +627,9 @@ async function conclude(
     ),
   );
 
-  const snapshots =
-    before !== null && ended.kind === "done" ? await kernel.environments.snapshots(session) : null;
-
-  if (snapshots === null || before === null)
-    return { outcome, files: null, thread: null, snapshot: null, path: null, unattributed: false };
-  const to = await snapshots.after(run);
-  const [changed, path] = await Promise.all([
-    snapshots.diff(before.snapshot, to).then(fileChanges),
-    editedPath(kernel, session, toolClass),
-  ]);
-
-  const unattributed =
-    path === null &&
-    changed.length > 0 &&
-    (before.contended || (await anotherChatLive(kernel, session)));
-
-  const files = unattributed
-    ? []
-    : changed.filter((file) => path === null || file.path === path || file.from === path);
-
-  const thread =
-    files.length === 0 && !unattributed
-      ? null
-      : fileChanges(
-          await ownedChanges(
-            kernel.store,
-            snapshots,
-            session,
-            to,
-            files.map((file) => file.path),
-          ),
-        );
-
-  return { outcome, files, thread, snapshot: to, path, unattributed };
+  return before === null || ended.kind !== "done"
+    ? { outcome, ...NO_CHANGES }
+    : { outcome, ...(await toolChanges(kernel, session, before, toolClass)) };
 }
 
 function clipOutcome(outcome: ToolOutcome): ToolOutcome {
@@ -673,38 +660,10 @@ function clipOutcome(outcome: ToolOutcome): ToolOutcome {
   };
 }
 
-async function editedPath(
+export async function settlement(
   kernel: Kernel,
-  session: SessionId,
-  toolClass: ToolClass,
-): Promise<string | null> {
-  if (toolClass.kind !== "edit") return null;
-
-  if (!/^(?:[\\/]|[A-Za-z]:)/.test(toolClass.path)) return toolClass.path.replace(/^\.\//, "");
-  const root = (await kernel.environments.attach(session)).cwd.replace(/[\\/]+$/, "");
-
-  return toolClass.path.startsWith(`${root}/`) || toolClass.path.startsWith(`${root}\\`)
-    ? toolClass.path.slice(root.length + 1).replaceAll("\\", "/")
-    : null;
-}
-
-function fileChanges(set: ChangeSet): readonly FileChange[] {
-  return set.files.map((file): FileChange => {
-    const change: FileChange = {
-      path: file.path,
-      status: file.status,
-      added: file.stat.kind === "text" ? file.stat.added : 0,
-      removed: file.stat.kind === "text" ? file.stat.removed : 0,
-    };
-
-    return file.from === undefined ? change : { ...change, from: file.from };
-  });
-}
-
-async function settlement(
-  kernel: Kernel,
-  where: Where,
-  planned: Plan,
+  where: Pick<Where, "session" | "head" | "run" | "call" | "name">,
+  planned: Pick<Plan, "args" | "class">,
   settled: Settled,
   before: ToolBaseline | null,
 ): Promise<readonly RefUpdate[]> {
@@ -801,62 +760,6 @@ async function settlement(
   return [...landed.updates, ...based];
 }
 
-async function baseline(
-  kernel: Kernel,
-  session: SessionId,
-  run: RunId,
-): Promise<ToolBaseline | null> {
-  const snapshots = await kernel.environments.snapshots(session);
-
-  if (snapshots === null) return null;
-  const seq = await kernel.store.refs.tail(session);
-  const [before, contended] = await Promise.all([
-    snapshots.after(run),
-    anotherChatLive(kernel, session),
-  ]);
-
-  await attempt(`Recording run ${run}'s snapshot`, async () => {
-    const found = await load(
-      kernel.store,
-      await kernel.store.refs.get(runRef(session, run)),
-      decodeRunRecord,
-    );
-
-    if (found === null || found.record.snapshot !== null) return undefined;
-
-    const outcome = await commit(kernel, [
-      {
-        name: found.ref.name,
-        target: await put(kernel.store, "run", { ...found.record, snapshot: before }),
-        expect: found.ref.revision,
-      },
-    ]);
-
-    return outcome.kind === "set" ? undefined : STALE;
-  });
-
-  return { snapshot: before, seq, contended };
-}
-
-async function nextBase(
-  store: StoreConnection,
-  session: SessionId,
-  run: RunId,
-  to: SnapshotId,
-): Promise<readonly RefUpdate[]> {
-  const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
-
-  if (found === null || found.record.lastSnapshot === to) return [];
-
-  return [
-    {
-      name: found.ref.name,
-      target: await put(store, "run", { ...found.record, lastSnapshot: to }),
-      expect: found.ref.revision,
-    },
-  ];
-}
-
 function classifyToolCall(
   definition: ToolDefinition,
   args: unknown,
@@ -893,6 +796,7 @@ export function createInvocation(
     readonly env: ExecutionEnv;
     readonly durable: Durable;
     readonly runtime: PluginRuntime;
+    readonly owner: string;
     readonly covered: boolean;
     readonly hidden?: ReadonlySet<string>;
   },
@@ -929,7 +833,18 @@ export function createInvocation(
     head,
     signal,
     session: kernel.handles.session(context, session),
-    sdk,
+    host: sdk,
+    get api() {
+      const own = input.runtime.api(input.owner);
+
+      if (own === undefined)
+        throw new SdkError(
+          "unavailable",
+          `Plugin ${input.owner} is no longer active in session ${session}.`,
+        );
+
+      return stepPluginApi(kernel, own, context, session);
+    },
     workspace: sdk.workspace(input.workspace),
     env: input.env,
     progress(update) {
@@ -940,7 +855,10 @@ export function createInvocation(
       });
     },
     foreground: {
-      start: (job) => startJob(kernel, context.origin, input.workspace, { ...job, session }, true),
+      start: (job) =>
+        signal.aborted
+          ? Promise.reject(new SdkError("unavailable", `Call ${call} was stopped.`))
+          : startJob(kernel, context.origin, input.workspace, { ...job, session }, true),
       release: () => kernel.jobs.release(session, call),
       released: input.released ?? new AbortController().signal,
     },
@@ -965,7 +883,13 @@ export function createInvocation(
 
         return outcome.kind === "parked" ? parkStep(durable) : outcome;
       },
-      list: () => source.list().filter((info) => input.hidden?.has(info.owner) !== true),
+      list: () =>
+        offeredTools(
+          input.runtime,
+          source.list().filter((info) => input.hidden?.has(info.owner) !== true),
+          { session, head, run, principal: input.context.principal },
+          signal,
+        ),
       loaded: () => loadedTools(kernel, source, { session, head, run }),
     },
     wait: (target) => durable.wait(target),

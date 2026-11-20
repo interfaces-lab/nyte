@@ -10,7 +10,6 @@ export interface Indentation {
   readonly size: (typeof INDENT_SIZES)[number];
 }
 
-/** What a person picked for one open file. Undefined goes back to detection. */
 export interface FileEditingChoices {
   readonly indentation: Indentation | undefined;
   readonly language: SupportedLanguages | undefined;
@@ -18,7 +17,6 @@ export interface FileEditingChoices {
 
 export type LineEndings = "LF" | "CRLF" | "CR" | "Mixed" | "None";
 
-/** Where the primary caret is, and how much the selections cover in UTF-16 units. */
 export interface FilePosition {
   readonly line: number;
   readonly column: number;
@@ -27,13 +25,11 @@ export interface FilePosition {
   readonly selections: number;
 }
 
-/** The indentation the editor applies, and whether a person, the saved text or the default chose it. */
 export interface ResolvedIndentation {
   readonly indentation: Indentation;
   readonly source: "override" | "detected" | "default";
 }
 
-/** The language the editor applies, and whether a person or the filename chose it. */
 export interface ResolvedLanguage {
   readonly language: SupportedLanguages;
   readonly source: "override" | "detected";
@@ -118,11 +114,6 @@ export function formatPosition(position: FilePosition): string {
   return position.selected > 0 ? `${at} (${selected})` : at;
 }
 
-/**
- * Tabs when lines indent with tabs and none with two spaces. Otherwise the most common step
- * between neighbouring space-indented lines, when it is 2, 4 or 8 and wins outright. A single
- * leading space, as in a doc comment's ` * `, is not a style.
- */
 function detectIndentation(contents: string): Indentation | undefined {
   const indents = contents
     .replace(/^\uFEFF/u, "")

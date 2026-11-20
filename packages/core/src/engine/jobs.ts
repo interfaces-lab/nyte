@@ -7,26 +7,27 @@ import type {
   JobId,
   JobView,
   OutputFrame,
+  RefUpdate,
   RequestOptions,
   SessionId,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Job, JobEntry, JobOutput, Jobs, JobTable } from "../contract/workspace.ts";
 import { decodeJobRecord } from "../contract/records.ts";
-import type { JobRecord } from "../contract/records.ts";
-import { commit } from "../fold/commit.ts";
+import type { JobRecord, OsProcess } from "../contract/records.ts";
+import { commit } from "../watch/commit.ts";
 import { JOBS, jobRef } from "../store/refs.ts";
-import { load, MAIN, put, readSession } from "../store/session.ts";
+import { reportId, reserveReport } from "../store/reports.ts";
+import { attempt, load, MAIN, put, readSession, STALE } from "../store/session.ts";
 import { clipText } from "../util/clip.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import { closable } from "../util/iterable.ts";
 import { followedTrace, traceparent } from "../util/trace.ts";
-import { send } from "./admission.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";
-import { readJob, waitFor } from "./waits.ts";
+import { deliverReport } from "./reports.ts";
+import { LOST, readJob, waitFor } from "./waits.ts";
 
 const TAIL_BYTES = 4096;
 
@@ -40,7 +41,7 @@ const ENDED_KEPT = 32;
 
 const ENDED_JOB_MS = 60 * 60_000;
 
-const LOST: JobEnd = { kind: "lost" };
+const TERMINATED: JobEnd = { kind: "exited", code: null, reason: "terminated" };
 
 export function createJobTable(kernel: Kernel): JobTable {
   const entries = new Map<JobId, JobEntry>();
@@ -239,7 +240,7 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
       async check() {
         const entry = kernel.jobs.get(id);
 
-        if (entry === undefined) return { value: { kind: "lost" } };
+        if (entry === undefined) return { value: LOST };
         const state = entry.view.state;
 
         return state.kind === "running" ? null : { value: state };
@@ -330,10 +331,18 @@ async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
 
   if (entry === undefined || entry.view.state.kind !== "running") return;
 
+  const owed = (): string | null => {
+    const current = kernel.jobs.get(id);
+
+    return current === undefined || current.view.foreground || current.stopping
+      ? null
+      : report(entry.view, end, entry.output.text());
+  };
+
   const recorded =
     entry.owner === null
       ? true
-      : await recordJobEnd(kernel, id, end).catch((error: unknown) => {
+      : await recordJobEnd(kernel, id, end, owed).catch((error: unknown) => {
           dev("jobs", "end not stored", { job: id, error: String(error) });
 
           return false;
@@ -346,21 +355,13 @@ async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
     tail: entry.output.tail(),
   }));
 
-  const ended = kernel.jobs.get(id);
-  const silent = ended !== undefined && (ended.view.foreground || ended.stopping);
   entry.output.end(end.kind === "exited" ? end.code : null);
   const consumed = await kernel.waits.jobEnded(id, end);
   const owner = entry.owner;
 
-  if (consumed || owner === null || !recorded || silent) return;
+  if (consumed || owner === null || !recorded) return;
 
-  await send(kernel, {
-    session: owner.session,
-    head: owner.head,
-    context: CORE_CONTEXT,
-    content: report(entry.view, end, entry.output.text()),
-    options: { source: { kind: "job", job: id }, delivery: "attach" },
-  }).catch(() => undefined);
+  await deliverReport(kernel, owner.session, reportId({ kind: "job", job: id }));
 }
 
 export async function startJob(
@@ -469,9 +470,14 @@ async function spawn(
       env: trace === null ? undefined : { TRACEPARENT: traceparent(trace) },
     })
     .catch(async (cause: unknown) => {
-      if (owner !== null) await recordJobEnd(kernel, id, LOST).catch(() => false);
+      if (owner !== null) await recordJobEnd(kernel, id, LOST, () => null).catch(() => false);
 
       throw cause;
+    });
+
+  if (owner !== null && process.os !== undefined)
+    await recordJobProcess(kernel, id, process.os).catch((error: unknown) => {
+      fault("jobs", "process not recorded", { job: id, error: String(error) });
     });
 
   const output = createOutput(
@@ -510,22 +516,47 @@ async function spawn(
   void pump(kernel, id, process, output);
 }
 
-async function recordJobEnd(kernel: Kernel, id: JobId, end: JobEnd): Promise<boolean> {
-  for (;;) {
+function recordJobEnd(
+  kernel: Kernel,
+  id: JobId,
+  end: JobEnd,
+  owed: () => string | null,
+): Promise<boolean> {
+  return attempt(`Ending job ${id}`, async () => {
     const found = await readJob(kernel.store, id);
 
     if (found === null || found.record.end !== null) return false;
+    const reservation = await reserveJobReport(kernel, found.record, owed());
 
     const outcome = await commit(kernel, [
       {
         name: jobRef(id),
-        target: await put(kernel.store, "job", { ...found.record, end }),
+        target: await put(kernel.store, "job", { ...found.record, end, endedAt: Date.now() }),
+        expect: found.ref.revision,
+      },
+      ...reservation,
+    ]);
+
+    return outcome.kind === "set" ? true : STALE;
+  });
+}
+
+function recordJobProcess(kernel: Kernel, id: JobId, os: OsProcess): Promise<void> {
+  return attempt(`Recording job ${id}'s process`, async () => {
+    const found = await readJob(kernel.store, id);
+
+    if (found === null || found.record.end !== null) return undefined;
+
+    const outcome = await commit(kernel, [
+      {
+        name: jobRef(id),
+        target: await put(kernel.store, "job", { ...found.record, os }),
         expect: found.ref.revision,
       },
     ]);
 
-    if (outcome.kind === "set") return true;
-  }
+    return outcome.kind === "set" ? undefined : STALE;
+  });
 }
 
 export async function reapJobs(kernel: Kernel): Promise<void> {
@@ -551,34 +582,64 @@ export async function reapJobs(kernel: Kernel): Promise<void> {
 
     if (holder.kind !== "dead" && holder.kind !== "absent") continue;
 
+    if (
+      holder.kind === "dead" &&
+      holder.why === "lapsed" &&
+      (await commit(kernel, [{ name: holder.name, target: null, expect: holder.expect }])).kind !==
+        "set"
+    )
+      continue;
+
+    const ended =
+      record.os === undefined
+        ? "unknown"
+        : ((await presence.member.machine?.end(record.os)) ?? "unknown");
+
+    const end = ended === "ended" ? TERMINATED : LOST;
+
     const reaped = await commit(kernel, [
       {
         name: ref.name,
-        target: await put(kernel.store, "job", { ...record, end: LOST, endedAt: Date.now() }),
+        target: await put(kernel.store, "job", { ...record, end, endedAt: Date.now() }),
         expect: ref.revision,
       },
-      ...(holder.kind === "dead"
-        ? [{ name: holder.name, target: null, expect: holder.expect }]
-        : []),
+      ...(await reserveJobReport(kernel, record, abandonedReport(record, ended))),
     ]);
 
     if (reaped.kind !== "set") continue;
-    dev("jobs", "abandoned", { job: record.id, instance: record.instance });
+    dev("jobs", "abandoned", { job: record.id, instance: record.instance, process: ended });
 
-    if (await kernel.waits.jobEnded(record.id, LOST)) continue;
+    if (await kernel.waits.jobEnded(record.id, end)) continue;
 
-    await send(kernel, {
-      session: record.session,
-      head: record.head,
-      context: CORE_CONTEXT,
-      content: abandonedReport(record),
-      options: { source: { kind: "job", job: record.id }, delivery: "attach" },
-    }).catch(() => undefined);
+    await deliverReport(kernel, record.session, reportId({ kind: "job", job: record.id }));
   }
 }
 
-function abandonedReport(record: JobRecord): string {
+async function reserveJobReport(
+  kernel: Kernel,
+  record: JobRecord,
+  content: string | null,
+): Promise<readonly RefUpdate[]> {
+  if (content === null || (await readSession(kernel.store, record.session)) === null) return [];
+
+  return [
+    await reserveReport(kernel.store, record.session, {
+      head: record.head,
+      content,
+      source: { kind: "job", job: record.id },
+      ended: { kind: "job", job: record.id },
+    }),
+  ];
+}
+
+function abandonedReport(record: JobRecord, ended: "ended" | "gone" | "unknown"): string {
   const named = record.command === "" ? record.title : `${record.title} (${record.command})`;
+
+  if (ended === "ended")
+    return `Job ${named} was stopped: the Nyte that ran it exited, so the next one ended the command. Its output and exit status are unknown.`;
+
+  if (ended === "gone")
+    return `Job ${named} was lost with the Nyte that ran it, and it is no longer running. Its output and exit status are unknown.`;
 
   return `Job ${named} was abandoned: the Nyte that ran it exited, so its output and exit status are unknown, and the command may still be running.`;
 }
@@ -634,7 +695,7 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
     }
   } catch {}
 
-  const end = await process.settled().catch((): JobEnd => ({ kind: "lost" }));
+  const end = await process.settled().catch(() => LOST);
 
   await endJob(kernel, id, end).catch((error: unknown) => {
     dev("jobs", "end not recorded", { job: id, end: end.kind, error });

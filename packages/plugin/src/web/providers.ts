@@ -4,23 +4,9 @@ import { Value } from "typebox/value";
 import type { SearchProvider, SearchResult } from "@nyte-ai/plugin/core";
 import { readCapped } from "./body.ts";
 import type { Fetch } from "./body.ts";
+import { PROVIDERS } from "./schema.ts";
+import type { ShippedProvider } from "./schema.ts";
 
-export const PROVIDERS = [
-  { id: "exa", name: "Exa" },
-  { id: "tavily", name: "Tavily" },
-  { id: "firecrawl", name: "Firecrawl" },
-  { id: "parallel", name: "Parallel" },
-] as const;
-
-export type ShippedProvider = (typeof PROVIDERS)[number]["id"];
-
-/**
- * Returns what one adapter call needs: the query, the provider's key or
- * undefined for its keyless route, the fetch to send with, and a signal.
- *
- * @category plugins
- * @since 0.1.0
- */
 export interface SearchInput {
   readonly query: string;
   readonly key: string | undefined;
@@ -248,12 +234,12 @@ async function answered(response: Response, provider: ShippedProvider): Promise<
 
   if (response.status === 401)
     throw new Error(
-      `${name} refused the search (HTTP 401). Set a key with /websearch-key ${provider} <key>.`,
+      `${name} refused the search (HTTP 401). Set a key in Settings > Web search, or with /websearch-key ${provider} <key>.`,
     );
 
   if (response.status === 429)
     throw new Error(
-      `${name} is rate limiting searches (HTTP 429). Try again later, or set a key with /websearch-key ${provider} <key>.`,
+      `${name} is rate limiting searches (HTTP 429). Try again later, or set a key in Settings > Web search, or with /websearch-key ${provider} <key>.`,
     );
 
   if (!response.ok)

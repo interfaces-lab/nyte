@@ -137,8 +137,10 @@ const EXPECTED = [
   "nested: Leaf waiting stoppable",
 ].join("\n");
 
-function painted(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
 }
 
 export async function run(): Promise<string> {
@@ -155,7 +157,7 @@ export async function run(): Promise<string> {
   );
 
   for (let frame = 0; frame < 200 && container.textContent !== EXPECTED; frame += 1)
-    await painted();
+    await nextFrame();
   const shown = container.textContent;
   flushSync(() => root.unmount());
   container.remove();

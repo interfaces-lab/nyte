@@ -7,6 +7,11 @@ const Report = Type.Object({
   opening: Type.Number(),
   gapShown: Type.Boolean(),
   gapClosed: Type.Number(),
+  paging: Type.Object({
+    pages: Type.Number(),
+    firstPrompt: Type.Boolean(),
+    idleFetches: Type.Number(),
+  }),
   switches: Type.Array(Type.String()),
   switched: Type.Array(Type.String()),
   slowest: Type.Number(),
@@ -22,11 +27,13 @@ test(
       `window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {} } };`,
     );
 
+    expect(output.startsWith("{"), output).toBe(true);
     const report = Value.Parse(Report, JSON.parse(output));
     console.info(`session switching: ${JSON.stringify(report)}`);
 
     expect(report.opening).toBeLessThan(2 * report.roundTrip);
     expect(report.gapShown).toBe(false);
     expect(report.switched).toEqual([]);
+    expect(report.paging).toEqual({ pages: 5, firstPrompt: true, idleFetches: 0 });
   },
 );

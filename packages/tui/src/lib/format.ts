@@ -111,6 +111,8 @@ export function excerptLabel(source: ExcerptSource, text: string): string {
       return `Element ${source.selector}`;
     case "chat":
       return `Side chat ${source.title}`;
+    case "design":
+      return `Design ${source.frame ?? source.path.split("/").at(-1) ?? source.path}`;
     default: {
       const _exhaustive: never = source;
 

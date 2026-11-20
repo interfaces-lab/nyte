@@ -22,10 +22,11 @@ import type {
   FileScope,
   GitApi,
   GitHubApi,
+  LanguageService,
   PageHolder,
   SnapshotsApi,
 } from "../contract/workspace.ts";
-import { applyBatch } from "../engine/batches.ts";
+import { applyBatch } from "./batches.ts";
 import { workspaceRef } from "../store/refs.ts";
 import { listSessionRecords, load, requireSession } from "../store/session.ts";
 import { wrapBrowser } from "./browser.ts";
@@ -48,6 +49,7 @@ interface Attachment {
   browser(): BrowserApi | undefined;
   git(): GitApi | undefined;
   github(): GitHubApi | undefined;
+  language(): LanguageService | undefined;
   snapshots(): SnapshotsApi | null;
 }
 
@@ -81,6 +83,11 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
 
   const provider = (kind: string): EnvironmentProvider | undefined =>
     providers().find((candidate) => candidate.kind === kind);
+
+  const dropEmptySlot = (session: SessionId, slot: Slot): void => {
+    if (slot.wraps.length === 0 && slot.attaching === null && sessions.get(session) === slot)
+      sessions.delete(session);
+  };
 
   const ensureSessionSlot = (session: SessionId): Slot => {
     const known = sessions.get(session);
@@ -175,12 +182,13 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     } catch (error) {
       const failure = classifyCapabilityFailure(error);
 
-      return { files: failure, git: failure, github: failure, browser: failure };
+      return { files: failure, git: failure, github: failure, browser: failure, language: failure };
     }
 
     const git = found.git();
     const github = found.github();
     const browser = found.browser();
+    const language = found.language();
 
     return {
       files:
@@ -202,6 +210,13 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
               reason: `The ${found.provider.kind} provider serves no browser.`,
             }
           : { kind: "available", api: wrapBrowser(kernel, browser, holder) },
+      language:
+        language === undefined
+          ? {
+              kind: "unsupported",
+              reason: `The ${found.provider.kind} provider serves no language intelligence.`,
+            }
+          : { kind: "available", api: language },
     };
   };
 
@@ -221,6 +236,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
         if (index < 0) return;
         slot.wraps.splice(index, 1);
         slot.version += 1;
+        dropEmptySlot(session, slot);
       };
     },
     async snapshots(session) {
@@ -234,8 +250,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       if (slot === undefined) return;
       const attached = slot.attaching;
       slot.attaching = null;
-
-      if (slot.wraps.length === 0 && sessions.get(session) === slot) sessions.delete(session);
+      dropEmptySlot(session, slot);
       await (await attached?.catch(() => null))?.close();
     },
     attachWorkspace: async (workspace) => (await attachingWorkspace(workspace)).env,
@@ -423,6 +438,7 @@ function attachment(
   let github: GitHubApi | undefined;
   let snapshots: SnapshotsApi | null | undefined;
   let own: BrowserApi | undefined;
+  let language: LanguageService | undefined;
 
   return {
     provider,
@@ -430,6 +446,7 @@ function attachment(
     async close() {
       if (closing) return;
       closing = true;
+      await language?.shutdown();
       await closeIdle();
     },
     browser() {
@@ -449,6 +466,12 @@ function attachment(
       github ??= provider.github?.(env);
 
       return github;
+    },
+    language() {
+      if (closing) return undefined;
+      language ??= provider.language?.(env);
+
+      return language;
     },
     snapshots() {
       snapshots ??= provider.snapshots?.(env) ?? null;

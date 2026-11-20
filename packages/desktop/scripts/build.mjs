@@ -133,6 +133,7 @@ if (shouldPackage) {
   stages.push({
     title: `Package ${builderArgs.join(" ")}`,
     tail: true,
+    attempts: 3,
     run: () =>
       pnpm("exec", "electron-builder", "--config", "electron-builder.config.ts", ...builderArgs),
   });
@@ -154,9 +155,7 @@ for (const [index, stage] of stages.entries()) {
   if (githubActions) process.stdout.write(`::group::${step} ${stage.title}\n`);
   else heading(step, stage.title);
   const stageStarted = performance.now();
-  panel =
-    stage.tail === true ? (live ? livePanel() : turboStream ? lineLog() : undefined) : undefined;
-  const { code, output } = await stage.run();
+  const { code, output } = await runStage(stage);
   const elapsed = formatDuration(performance.now() - stageStarted);
 
   if (githubActions) process.stdout.write("::endgroup::\n");
@@ -181,6 +180,22 @@ if (shouldPackage) {
   ]);
 
   process.stdout.write(table(rows, { align: ["left", "right"] }));
+}
+
+async function runStage(stage, attempt = 1) {
+  panel =
+    stage.tail === true ? (live ? livePanel() : turboStream ? lineLog() : undefined) : undefined;
+  const result = await stage.run();
+  const attempts = stage.attempts ?? 1;
+
+  if (result.code === 0 || attempt === attempts) return result;
+
+  if (result.output !== undefined) process.stdout.write(result.output);
+  process.stdout.write(
+    `${dim(`${stage.title} failed (attempt ${attempt} of ${attempts}). Trying again.`)}\n`,
+  );
+
+  return runStage(stage, attempt + 1);
 }
 
 function hostDesktopFlags() {

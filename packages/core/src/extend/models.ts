@@ -29,9 +29,10 @@ import type {
   Kernel,
   PluginRuntime,
 } from "../contract/kernel.ts";
-import type { ModelContextPolicy, SettingDefinition } from "../contract/plugin.ts";
+import { resolveSetting } from "../contract/plugin.ts";
+import type { ModelContextPolicy, ResolvedSetting, SettingDefinition } from "../contract/plugin.ts";
 import type { Refusal } from "../engine/contributions.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import {
   MODEL_PREFERENCE,
   modelListingRef,
@@ -188,12 +189,6 @@ async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalo
   ]);
   const providers = models.getProviders().map((provider): ProviderRow => {
     const catalog = models.getModels(provider.id);
-    const fast = new Map<string, ModelRef>();
-
-    for (const model of catalog)
-      if (model.variant?.mode === "fast" && !fast.has(model.variant.base))
-        fast.set(model.variant.base, { provider: model.provider, id: model.id });
-
     const base = catalog.filter((model) => model.variant === undefined);
 
     const listings = Object.fromEntries(
@@ -214,7 +209,7 @@ async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalo
       models: base.map((model) =>
         projectModel(
           model,
-          fast.get(model.id) ?? null,
+          catalog,
           policies.get(formatModelKey(model)),
           provider.capabilities,
           remembered.get(formatModelKey(model)),
@@ -243,13 +238,9 @@ export function modelInfo(models: Models, ref: ModelRef, runtime: PluginRuntime)
     .list()
     .findLast((entry) => formatModelKey(entry.model) === formatModelKey(ref));
 
-  const fast = catalog.find(
-    (entry) => entry.variant?.mode === "fast" && entry.variant.base === model.id,
-  );
-
   return projectModel(
     model,
-    fast === undefined ? null : { provider: fast.provider, id: fast.id },
+    catalog,
     policy,
     models.getProvider(model.provider)?.capabilities,
     undefined,
@@ -420,7 +411,7 @@ const NYTE_LOOP: ModelCapabilities = { steer: true };
 
 function projectModel(
   model: Model<Api>,
-  fast: ModelRef | null,
+  catalog: readonly Model<Api>[],
   policy: ModelContextPolicy | undefined,
   capabilities: ModelCapabilities | undefined,
   remembered: Thinking | undefined,
@@ -431,7 +422,11 @@ function projectModel(
     reasoning: model.reasoning,
     thinking: acceptedThinkingLevels(model),
     defaultThinking: defaultThinkingLevel(model, remembered),
-    fast,
+    variants: catalog.flatMap((entry) =>
+      entry.variant?.base === model.id
+        ? [{ modes: [...entry.variant.modes], ref: { provider: entry.provider, id: entry.id } }]
+        : [],
+    ),
     contextWindow: policy?.contextWindow ?? model.contextWindow,
     compactAt: policy?.compactAt ?? Math.floor(model.contextWindow * 0.8),
     maxOutput: model.maxTokens,
@@ -742,8 +737,8 @@ export async function rememberChoice(
   bumpGeneration(kernel);
 }
 
-function sessionScoped(settings: readonly SettingDefinition[]): readonly SettingDefinition[] {
-  return settings.filter((definition) => definition.scope === "session");
+function sessionScoped(settings: readonly SettingDefinition[]): readonly ResolvedSetting[] {
+  return settings.map(resolveSetting).filter((definition) => definition.scope === "chat");
 }
 
 function invalid(issues: readonly ValidationIssue[]): Refusal {

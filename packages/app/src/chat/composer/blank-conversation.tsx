@@ -8,13 +8,14 @@ import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { ComposerFrame } from "./composer-frame.tsx";
-import { attachComposerFiles } from "./composer-files.ts";
+import { NO_INTAKE, nextIntake, takeFiles } from "./composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
-import { composerSendPlan } from "./composer-send.ts";
+import { composerSendPlan } from "./composer-plan.ts";
+import { omittedMessage } from "./composer-draft.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
@@ -30,9 +31,10 @@ import { useCatalog } from "../../data/catalog.ts";
 import { useHostState } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { useProjects } from "../../data/projects.ts";
+import { useHomeWorkspace } from "../../data/workspaces.ts";
+import { preferences } from "../../preferences/index.ts";
 import { useWorkspaceCatalog } from "../../data/plugins.ts";
-import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
-import { StartupReadsRelease } from "../../data/startup.ts";
+import { draftModel, modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 import { useChatFolder } from "../chat-folder.ts";
 import { ChatScope } from "../chat-scope.tsx";
 
@@ -83,7 +85,9 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   const focused = usePaneFocused(paneId);
   const workspace = useChatFolder();
   const catalog = useCatalog();
-  const mentions = useMentionFiles(workspace, workspace !== undefined);
+  const home = useHomeWorkspace();
+  const scansFiles = workspace !== undefined && workspace.id !== home;
+  const mentions = useMentionFiles(workspace, scansFiles);
   const workspaceCatalog = useWorkspaceCatalog(workspace?.id);
   const actions = usePaneActions();
   const viewStore = usePaneViewStateStore();
@@ -97,8 +101,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   const held = status.kind === "waiting" || status.kind === "starting";
   const [pickerOpen, setPickerOpen] = useState(false);
   const attachments = viewState.composer.attachments;
-  const [attachmentReads, setAttachmentReads] = useState(0);
-  const [attachmentError, setAttachmentError] = useState<string>();
+  const [intake, setIntake] = useState(NO_INTAKE);
   const editorRef = useRef<ComposerEditorHandle | null>(null);
 
   const attachInput = (handle: ComposerEditorHandle | null) => {
@@ -110,7 +113,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
 
   const selected = selectedModelOption(
     catalog.data?.models ?? [],
-    choice?.model ?? project?.models.coordinator ?? catalog.data?.defaults?.model,
+    draftModel(choice, project, catalog.data?.defaults),
   );
 
   const current = selected?.option;
@@ -120,7 +123,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
     delivery: Delivery,
     document: ComposerDocumentState,
   ): void | Promise<void> => {
-    if (attachmentReads !== 0) return;
+    if (intake.reads !== 0) return;
 
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
@@ -139,32 +142,21 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
     return startDraft(viewStore, actions, draft.id, waiting, plan);
   };
 
-  const addFiles = async (
+  const addFiles = (
     files: readonly ComposerFile[],
     signal?: AbortSignal,
-  ): Promise<string | undefined> => {
-    setAttachmentReads((count) => count + 1);
-
-    return attachComposerFiles({ files, editor: editorRef.current })
-      .then((result) => {
-        signal?.throwIfAborted();
-
-        if (result.attachments.length > 0) {
-          updateViewState((state) => ({
-            ...state,
-            composer: {
-              ...state.composer,
-              attachments: [...state.composer.attachments, ...result.attachments],
-            },
-          }));
-        }
-
-        setAttachmentError(result.error);
-
-        return result.error;
-      })
-      .finally(() => setAttachmentReads((count) => count - 1));
-  };
+  ): Promise<string | undefined> =>
+    takeFiles({
+      files,
+      editor: editorRef.current,
+      signal,
+      step: (event) => setIntake((current) => nextIntake(current, event)),
+      attach: (taken) =>
+        updateViewState((state) => ({
+          ...state,
+          composer: { ...state.composer, attachments: [...state.composer.attachments, ...taken] },
+        })),
+    });
 
   const bindFileDrop = (element: HTMLDivElement | null): (() => void) | undefined =>
     element === null
@@ -177,7 +169,6 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
 
   return (
     <div {...props(sessionScreenStyles.screen)}>
-      <StartupReadsRelease />
       {split && <PaneHeader paneId={paneId} title="New chat" />}
       <div
         ref={bindFileDrop}
@@ -189,7 +180,13 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
         }}
       >
         <div {...props(sessionScreenStyles.blankColumn)}>
-          <WorkspaceContext active={focused} />
+          <WorkspaceContext
+            active={focused}
+            onChoose={(folder) => {
+              updateViewState((state) => ({ ...state, folder }));
+              preferences.draftFolder.set(folder);
+            }}
+          />
           {project !== undefined && (
             <div {...props(sessionScreenStyles.blankHint)}>
               {`${project.name}: tell the coordinator what to work on.`}
@@ -222,13 +219,16 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
                 : composerSource(workspaceCatalog.data, workspaceCatalog.isError)
             }
             mentionFiles={
-              workspace === undefined
-                ? { status: "ready", data: [] }
-                : composerSource(mentions.data, mentions.isError)
+              scansFiles
+                ? composerSource(mentions.data, mentions.isError)
+                : { status: "ready", data: [] }
             }
             attachments={attachments}
-            attachmentBusy={attachmentReads !== 0}
-            attachmentError={attachmentError}
+            attachmentBusy={intake.reads !== 0}
+            attachmentError={
+              intake.error ??
+              (viewState.omitted === 0 ? undefined : omittedMessage(viewState.omitted))
+            }
             onFilesSelected={addFiles}
             onAttachmentRemove={(id) => {
               updateViewState((state) => ({
@@ -240,28 +240,22 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
                   ),
                 },
               }));
-              setAttachmentError(undefined);
+              setIntake((current) => nextIntake(current, { kind: "cleared" }));
             }}
             inputRef={attachInput}
-            onFocusChange={(focused) =>
-              updateViewState((state) => ({
-                ...state,
-                composer: { ...state.composer, focused },
-              }))
-            }
             model={
               <ModelPicker
                 catalog={catalog.data}
                 current={current}
                 thinkingLevel={choice?.thinking}
-                fast={selected?.fast === true}
+                modes={selected?.modes ?? []}
                 open={pickerOpen}
                 onOpenChange={setPickerOpen}
                 onChange={(change) =>
                   updateViewState((state) => ({
                     ...state,
                     choice: {
-                      model: modelRefFor(change.option, change.fast),
+                      model: modelRefFor(change.option, change.modes),
                       thinking: change.thinkingLevel,
                     },
                   }))

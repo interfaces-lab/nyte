@@ -78,17 +78,16 @@ async function openTerminal(
       if (frame.kind === "bytes") text += decoder.decode(frame.data, { stream: true });
   })();
 
-  const until = async (found: () => boolean, what: string): Promise<void> => {
-    const deadline = Date.now() + WAIT_MS;
-
-    while (!found()) {
-      if (Date.now() > deadline)
-        throw new Error(
-          `Timed out waiting for ${what}; output ends ${JSON.stringify(text.slice(-400))}`,
-        );
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-  };
+  const until = (found: () => boolean, what: string): Promise<void> =>
+    vi.waitFor(
+      () => {
+        if (!found())
+          throw new Error(
+            `Timed out waiting for ${what}; output ends ${JSON.stringify(text.slice(-400))}`,
+          );
+      },
+      { timeout: WAIT_MS, interval: 20 },
+    );
 
   const prompts = (): number => text.split(PROMPT).length - 1;
 

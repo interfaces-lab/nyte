@@ -17,7 +17,7 @@ export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
 
 export type ThinkingLevelMap = Partial<Record<ModelThinkingLevel, string | null>>;
 
-export const MODEL_MODES = ["fast"] as const;
+export const MODEL_MODES = ["fast", "daybreak"] as const;
 
 export type ModelMode = (typeof MODEL_MODES)[number];
 
@@ -247,7 +247,7 @@ export interface Model<TApi extends Api> {
   baseUrl: string;
   reasoning: boolean;
   modes?: ModelMode[];
-  variant?: { mode: ModelMode; base: string };
+  variant?: { modes: ModelMode[]; base: string };
   thinkingLevelMap?: ThinkingLevelMap;
   promptCache?: ModelPromptCache;
   input: ("text" | "image")[];
@@ -480,7 +480,9 @@ export const ModelSchema = typed<Model<Api>>()(
     baseUrl: Type.String(),
     reasoning: Type.Boolean(),
     modes: Type.Optional(Type.Array(Type.Enum(MODEL_MODES))),
-    variant: Type.Optional(object({ mode: Type.Enum(MODEL_MODES), base: Type.String() })),
+    variant: Type.Optional(
+      object({ modes: Type.Array(Type.Enum(MODEL_MODES)), base: Type.String() }),
+    ),
     thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
     promptCache: Type.Optional(ModelPromptCacheSchema),
     input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),

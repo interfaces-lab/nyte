@@ -38,7 +38,11 @@ import {
   type ResponsesInput,
   type ResponsesTool,
 } from "./openai-responses-convert.ts";
-import { processResponsesStream, withPriorityTier } from "./openai-responses-stream.ts";
+import {
+  DAYBREAK_ACCESS_PROGRAM,
+  processResponsesStream,
+  withPriorityTier,
+} from "./openai-responses-stream.ts";
 import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
 import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 
@@ -378,6 +382,8 @@ function buildParams(
   if (options?.serviceTier !== undefined) {
     params.service_tier = options.serviceTier;
   }
+
+  if (options?.daybreak === true) params.access_programs = { cyber: DAYBREAK_ACCESS_PROGRAM };
 
   if (toolPlacement.immediate.length > 0) {
     params.tools = convertResponsesTools(toolPlacement.immediate, {

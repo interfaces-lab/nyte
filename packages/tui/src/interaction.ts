@@ -8,17 +8,8 @@ import { CliError } from "./cli/errors.ts";
 import { formatRows, formatStatus, paint, printable } from "./cli/format.ts";
 import type { Mode } from "./cli/mode.ts";
 
-/**
- * Column 1, then erase to the end of the screen: what readline writes before a visible prompt, so
- * the hidden one also replaces a progress line such as `Starting a Nyte host…`.
- */
 const CLEAR_LINE = "\x1b[1G\x1b[0J";
 
-/**
- * Asks `message` on the terminal through readline, which owns raw mode and editing; a `secret`
- * answer suppresses all of readline's echo, redraws after backspace, paste and cursor moves
- * included. Ctrl+C, Esc and Ctrl+D cancel through `onInterrupt`.
- */
 async function ask(
   message: string,
   signal: AbortSignal,
@@ -76,15 +67,10 @@ async function ask(
   }
 }
 
-/** One line on stderr. Never `console.error`, which Bun paints red on a terminal. */
 function say(text: string): void {
   process.stderr.write(`${text}\n`);
 }
 
-/**
- * Prompts and sign-in links on stderr. `browser` opens sign-in links on this machine; it is off
- * without an interactive terminal, over SSH and with `--no-open`.
- */
 export function cliLoginDriver(
   mode: Mode,
   signal: AbortSignal,
@@ -171,7 +157,6 @@ export function cliLoginDriver(
   };
 }
 
-/** Enter picks the first choice, so it alone is marked `(default)`; a provider's own marker is dropped. */
 function choiceText(option: Choice, first: boolean): string {
   const label = printable(option.label).replace(/ \(default\)$/u, "");
 

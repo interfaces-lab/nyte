@@ -1,13 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { JobView, PartId, SessionId, ToolClass } from "@nyte-ai/sdk";
-import {
-  condensedCommand,
-  formatDuration,
-  toolOutput,
-  toolStatus,
-  toolVerbs,
-} from "@nyte-ai/plugin/client/presentation";
+import { condensedCommand, formatDuration, toolVerbs } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
@@ -32,6 +26,8 @@ import { terminalText } from "./terminal-text.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 import { useTranscriptScope } from "../transcript/transcript.tsx";
 import { useWholeToolState } from "./whole-tool-state.ts";
+import { toolFacts } from "./tool-facts.ts";
+import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
 
 type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
 
@@ -294,7 +290,8 @@ function CommandCode({
 }
 
 function CopyCommand({ command }: { readonly command: string }): ReactElement {
-  const [copied, setCopied] = useState(false);
+  const confirmation = useCopyConfirmation();
+  const copied = confirmation.copied;
 
   return (
     <Tooltip>
@@ -306,12 +303,7 @@ function CopyCommand({ command }: { readonly command: string }): ReactElement {
             iconOnly
             icon={copied ? "checkmark" : "copy"}
             aria-label="Copy command"
-            onClick={() => {
-              navigator.clipboard
-                .writeText(command)
-                .then(() => setCopied(true))
-                .catch(() => undefined);
-            }}
+            onClick={() => confirmation.copy(command)}
           />
         }
       />
@@ -465,10 +457,11 @@ export function ShellCallView({
   readonly cwd: string | undefined;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const status = toolStatus(message);
-  const running = status.tense === "running";
   const [open, setOpen] = useState(false);
   const state = useWholeToolState(message, open);
+  const facts = toolFacts(message, state, toolVerbs(toolClass), "shell");
+  const status = facts.status;
+  const running = facts.running;
   const sessionId = useTranscriptScope()?.sessionId;
   const task = useTask(sessionId, { kind: "job", call: state.call });
   const job = task?.kind === "job" ? task.job : undefined;
@@ -478,16 +471,8 @@ export function ShellCallView({
 
   const opens = sessionId !== undefined && job !== undefined && job !== null;
 
-  const raw = running
-    ? state.phase === "running"
-      ? (state.progress?.text ?? "")
-      : ""
-    : toolOutput(state);
-
-  const durationMs =
-    message.status.kind === "settled" ? message.status.endedAt - message.at : undefined;
-
-  const output = terminalText(raw).trim();
+  const durationMs = facts.durationMs;
+  const output = terminalText(facts.output).trim();
   const tokens = shellTokens(toolClass.command);
   const description = toolClass.description?.trim() ?? "";
 
@@ -496,8 +481,7 @@ export function ShellCallView({
       ? condensedCommand(toolClass.command, cwd)
       : `${description.charAt(0).toUpperCase()}${description.slice(1)}`;
 
-  const verb =
-    status.tense === "none" || description !== "" ? undefined : toolVerbs(toolClass)[status.tense];
+  const verb = description === "" ? facts.verb : undefined;
 
   const heading = verb === undefined ? label : `${verb} ${label}`;
   const follow = running ? output : undefined;

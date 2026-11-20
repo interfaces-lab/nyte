@@ -11,10 +11,10 @@ import type {
   WaitTarget,
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { assert, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { holdLease } from "../src/engine/lease.ts";
 import { createKernel } from "../src/compose.ts";
-import { runAction, runStep } from "../src/engine/durable.ts";
+import { HOST_CLOSING, runAction, runStep } from "../src/engine/durable.ts";
 import { endRun } from "../src/engine/runs.ts";
 import { earliestWake, loadWaits } from "../src/engine/waits.ts";
 import { readCalls } from "../src/store/session.ts";
@@ -82,6 +82,7 @@ function step(
     readonly part?: PartId;
     readonly replay?: "safe" | "never";
     readonly settled?: string[];
+    readonly signal?: AbortSignal;
     body(durable: Durable): Promise<Json>;
   },
 ): Promise<StepOutcome<Json>> {
@@ -94,7 +95,7 @@ function step(
     replay: input.replay ?? "safe",
     intent: { test: true },
     part: input.part ?? null,
-    signal: new AbortController().signal,
+    signal: input.signal ?? new AbortController().signal,
     body: (durable) => input.body(durable),
     async settle(ended) {
       input.settled?.push(ended.kind);
@@ -138,6 +139,12 @@ async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
   return run.id;
 }
 
+const STOPPED = { kind: "stopped" } as const;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("durable steps", () => {
   it("records a memo and clock readings once and replays them on a re-run", async () => {
     const { kernel, host } = await setup();
@@ -163,7 +170,7 @@ describe("durable steps", () => {
     await expect(step(kernel, { session: session.id, call, body })).rejects.toThrow(
       "The host died.",
     );
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 5 });
 
     expect(await step(kernel, { session: session.id, call, body })).toEqual({
       kind: "done",
@@ -338,6 +345,47 @@ describe("durable steps", () => {
 
     expect(log.findIndex((entry) => entry === "run:stopping")).toBeGreaterThan(
       log.findIndex((entry) => entry === "run:waiting"),
+    );
+  });
+
+  it.each([
+    { aborts: "a Stop", reason: undefined, stopAsked: false, outcome: "done", waits: [STOPPED] },
+    {
+      aborts: "the host closing",
+      reason: HOST_CLOSING,
+      stopAsked: false,
+      outcome: "parked",
+      waits: [],
+    },
+    {
+      aborts: "the host closing after a Stop was asked",
+      reason: HOST_CLOSING,
+      stopAsked: true,
+      outcome: "done",
+      waits: [STOPPED],
+    },
+  ])("a wait first reached after $aborts ends $outcome", async (row) => {
+    const { kernel, host } = await setup();
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const run = await liveRun(kernel, session.id);
+    const call: CallId = asId("c1");
+    const aborted = new AbortController();
+
+    if (row.stopAsked) await session.run(run).stop();
+    aborted.abort(row.reason);
+
+    const ended = await step(kernel, {
+      session: session.id,
+      call,
+      run,
+      signal: aborted.signal,
+      body: waiting({ kind: "timer", until: Date.now() + 60_000 }),
+    });
+
+    expect(ended.kind).toBe(row.outcome);
+    expect((await readCall(kernel, session.id, call)).waits).toEqual(row.waits);
+    expect((await readCall(kernel, session.id, call)).waiting !== null).toBe(
+      row.outcome === "parked",
     );
   });
 

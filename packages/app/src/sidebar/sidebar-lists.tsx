@@ -14,7 +14,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { ProjectId, ProjectInfo } from "@nyte-ai/schema";
 import type { ChatDirectory } from "../chats/index.ts";
 import { TaskMark } from "../components/task-mark.tsx";
-import { usePaneActions, usePaneLayout, usePaneViewStateStore } from "../panes/pane-context.tsx";
+import { usePaneLayout, usePaneViewStateStore } from "../panes/pane-context.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -51,7 +51,6 @@ export interface ListContext {
   readonly openWorkspace: WorkspaceId | null;
   readonly unavailable: ReadonlySet<WorkspaceId>;
   readonly chats: ChatDirectory;
-  /** The window's unread answer, which leaves out chats the user is looking at. */
   readonly unread: ReadonlySet<SessionId>;
   readonly reveal: ListReveal;
   readonly onClearFilters: () => void;
@@ -92,6 +91,17 @@ export function useDrafts(): OpenDrafts {
     drafts,
     activeDraftId: page === undefined && blank ? blankId : undefined,
   };
+}
+
+function withoutDrafted<T>(
+  rows: readonly T[],
+  drafts: readonly ChatDraft[],
+  id: (row: T) => string,
+): readonly T[] {
+  if (drafts.length === 0) return rows;
+  const drafted = new Set(drafts.map((draft) => draft.id));
+
+  return rows.filter((row) => !drafted.has(id(row)));
 }
 
 function groupsWithin(
@@ -238,14 +248,11 @@ export function ChatsList({
 }): ReactElement | null {
   const { view, reveal } = context;
   const { drafts: openDrafts, activeDraftId } = useDrafts();
-  const panes = usePaneActions();
   const [openShelves, setOpenShelves] = useState<ReadonlySet<SessionShelf>>(() => new Set());
   const drafts = context.showDrafts ? openDrafts : [];
 
   if (listed === undefined && drafts.length === 0) return null;
-  const rows = listed ?? [];
-
-  const newChat = <AddRow label="New Chat" onClick={() => panes.newChat()} />;
+  const rows = withoutDrafted(listed ?? [], drafts, (row) => row.session.id);
 
   const lead = (
     <>
@@ -327,7 +334,6 @@ export function ChatsList({
         {shelfPanel("working", "Working", <TaskMark state="working" />, false)}
         {shelfPanel("done", "Done", <Icon name="inbox-checked" size="sm" />, true)}
         {shelfPanel("archived", "Archived", <Icon name="archive" size="sm" />, true)}
-        {newChat}
       </div>
     );
   }
@@ -356,7 +362,6 @@ export function ChatsList({
           }
         />
       )}
-      {newChat}
     </div>
   );
 }
@@ -382,7 +387,15 @@ export function FolderList({
   if (sessions === undefined && drafts.length === 0) return null;
 
   const groups =
-    sessions === undefined ? [] : folderView(sessions, view, now, context.chats, context.unread);
+    sessions === undefined
+      ? []
+      : folderView(
+          withoutDrafted(sessions, drafts, (session) => session.id),
+          view,
+          now,
+          context.chats,
+          context.unread,
+        );
 
   const listed = groups.flatMap((group) => group.sessions);
   const selected = listed.findIndex((session) => session.id === context.activeSessionId);
@@ -450,13 +463,11 @@ export function PinnedSection({
   );
 }
 
-/** One row per project. A row opens the project's page; its settings open from the gear. */
 export function ProjectsSection({
   projects,
   selected,
 }: {
   readonly projects: readonly ProjectInfo[];
-  /** The project whose page or coordinator chat is in front. */
   readonly selected: ProjectId | undefined;
 }): ReactElement {
   return (
@@ -489,6 +500,7 @@ export function ProjectsSection({
           <Row.Actions placement="overlay">
             <Button
               size="sm"
+              variant="plain"
               iconOnly
               icon="settings"
               aria-label={`${project.name} Settings`}
@@ -528,7 +540,6 @@ export function WorkspaceRow({
   readonly onMarkAllRead?: () => void;
   readonly onArchiveAll: (() => void) | undefined;
   readonly onRemove: () => void;
-  /** The open chat, kept under the header while the workspace is folded. */
   readonly retained?: ReactNode;
   readonly children: ReactNode;
 }): ReactElement {

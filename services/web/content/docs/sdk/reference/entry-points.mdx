@@ -1,0 +1,305 @@
+---
+title: Entry points
+description: Options for sdk.open, host.listen, sdk.connect and connect, and the helpers the SDK exports beside them.
+---
+
+`sdk.open` runs a host in your Node process, and `host.listen` serves it to other processes. From
+another process, a script reaches it over HTTP with `sdk.connect`, and a client that draws it
+connects with [`connect`](#connect): HTTP, the host WebSocket and its live stores over one
+connection.
+[Choose an entry point](/docs/sdk/guides/choose-an-entry-point) helps you pick.
+
+| Import                | Has                                                                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `@nyte-ai/sdk`        | `sdk.open`, `sdk.connect`, `createSendJournal`, `SdkError` and the SDK's types                                                   |
+| `@nyte-ai/sdk/client` | [`connect`](#connect), its stores and chats, `createSendJournal`, the helpers that read them and the SDK's types, never the host |
+
+In a browser or React Native bundle, `@nyte-ai/sdk` resolves to a build without the host, and its
+`sdk.open` rejects with `SdkError("unavailable")`.
+
+## sdk.open [#sdk-open]
+
+```ts
+sdk.open(options?: OpenHostOptions): Promise<Host>
+```
+
+Starts a host in this Node process and returns it. A `Host` is a
+[`Connection`](/docs/sdk/reference/connection) with all three authorities and
+[a few more members](/docs/sdk/reference/connection#host). Every option is optional, so
+`sdk.open()` works.
+
+| Option             | Default                                                                   | What it sets                                                                    |
+| ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `store`            | SQLite at the path in `NYTE_DB`, else `<home>/.nyte/nyte.db`              | Where sessions live. The host closes a store it opened, not yours               |
+| `workspace`        | `{ kind: "local", path: process.cwd() }`                                  | The default workspace, used when `sessions.start` names none                    |
+| `models`           | Nyte's model catalog over logins encrypted in the store                   | The models and provider logins                                                  |
+| `plugins`          | `[]`                                                                      | Your core plugins                                                               |
+| `home`             | `os.homedir()`                                                            | Where `.nyte` lives, with settings, plugins, keys and the store                 |
+| `secrets`          | The key in `<home>/.nyte/secret.key`                                      | `{ key() }`, the key that encrypts saved logins                                 |
+| `execution`        | `{ kind: "run", coverage: { kind: "all" } }`                              | Who runs the sessions. See [execution](#execution)                              |
+| `mcp`              | A hub over `<home>/.nyte/mcp.json` and trusted projects' `.nyte/mcp.json` | The MCP servers chats use                                                       |
+| `github`           | The machine's `gh` login                                                  | What `connection.github` serves                                                 |
+| `images`           | The host's own image resizer                                              | Shrinks attached images to fit model limits                                     |
+| `shell`            | `$SHELL`, else `/bin/sh`                                                  | `() => string \| null`, the login shell terminal jobs start                     |
+| `label`            | `"nyte"`                                                                  | The name this process goes by among processes that share the store              |
+| `onRevoked`        | None                                                                      | Called when another process sharing the store has taken this one's place        |
+| `onStoreMigration` | None                                                                      | Called before the default store migrates existing data, which blocks the thread |
+| `pluginImport`     | Node's import with a resolve hook                                         | How plugin files are imported. A Bun host passes its own                        |
+
+The host always loads the first-party plugins and the plugin files in `<home>/.nyte/plugins`. Your
+`plugins` come after the first-party ones. One with a first-party plugin's `id` replaces it. One
+that provides the `local` environment replaces the default local provider, and then `github` has no
+default.
+
+### execution [#execution]
+
+`execution` decides who runs the sessions this host accepts messages for:
+
+| Value                                    | Who runs them                                                                                                         |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `{ kind: "run", coverage }`              | This process. `coverage` is `{ kind: "all" }`, `{ kind: "workspace", workspace }` or `{ kind: "sessions", sessions }` |
+| `{ kind: "admit-only" }`                 | Another process. This one stores messages and runs nothing                                                            |
+| `{ kind: "dispatch", dispatch(target) }` | Your queue or workflow engine                                                                                         |
+
+With `dispatch`, the host calls your function with `{ session, head }` each time a head has work.
+Hand the target to a worker, which calls `host.execution.advance(target)` and acts on the report:
+
+```ts
+const report = await host.execution.advance(target);
+```
+
+| Report                         | Next step                                                             |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `continue`                     | Call `advance` again                                                  |
+| `waiting` with `until`         | Call again at `until`, or wait for the next dispatch when it's `null` |
+| `retry` or `busy` with `until` | Call again at `until`                                                 |
+| `idle`                         | Nothing left to do                                                    |
+| `fenced`                       | Another process runs this head now. Stop                              |
+
+[Stores and execution](/docs/host/stores-and-execution#execution) covers the modes in use.
+
+### close [#close]
+
+`host.close()` closes the host's listeners, then the host, stops watching plugin files, and closes
+the store if the host opened it. `await using host = await sdk.open()` calls it for you.
+
+## host.listen [#host-listen]
+
+```ts
+host.listen(options: ListenOptions): Promise<Listener>
+```
+
+Serves the host to other processes. Clients reach it with `sdk.connect` or
+[`connect`](#connect), or through the [HTTP API](/docs/sdk/reference/connection#http-api).
+[Serve a host](/docs/host/serve) walks through auth, pairing and origins.
+
+| Option         | What it does                                                                                                                                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `transport`    | `{ kind: "http", hostname?, port? }` binds a TCP port, by default on `127.0.0.1` and a free port. `{ kind: "socket", path }` binds a Unix socket at `path` with owner-only permissions. `{ kind: "fetch" }` binds nothing; call `listener.fetch(request)` from your own server |
+| `auth`         | `{ kind: "token", token, authority? }` or `{ kind: "custom", authorize(request) }`                                                                                                                                                                                             |
+| `origins`      | Browser origins allowed to call it, such as `https://app.example.com` or `https://*.example.com`                                                                                                                                                                               |
+| `execution`    | `{ kind: "run", coverage }` (default: all sessions) or `{ kind: "admit-only" }`                                                                                                                                                                                                |
+| `maxBodyBytes` | The largest request body. Default 8 MiB                                                                                                                                                                                                                                        |
+| `identity`     | `{ id, sign(nonce) }`, the signed answer that lets `connect({ expect })` check it's this host. `sdk.open` supplies one                                                                                                                                                         |
+| `describe`     | `() => { name, platform, version }`, served at `GET /.nyte/describe`. `sdk.open` supplies one                                                                                                                                                                                  |
+| `before`       | `(request) => Response \| undefined`. Runs first; return a response to answer the request yourself                                                                                                                                                                             |
+
+A `token` must be at least 16 characters. It grants participant and owner authority unless you pass
+`authority`. Grant `maintenance` only to a token your own processes use, never one you hand to
+someone else.
+
+`custom` auth maps each request to `{ principal, authority }`, or to `{ deny: "unauthorized" }` or
+`{ deny: "forbidden" }`.
+
+`https://*.example.com` allows every subdomain of `example.com`, but not `example.com` itself.
+
+The `http` and `socket` transports also serve the
+[host WebSocket](/docs/sdk/reference/connection#websocket) at `/.nyte/ws`, which [`connect`](#connect) opens.
+`fetch` serves HTTP only. Operations marked `local`, such as `host.execution.pause`, answer only on
+the `socket` transport.
+
+The `Listener` it returns has:
+
+| Member                | What it does                                                                   |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `address`             | The URL it listens on, the socket's path, or `null` with the `fetch` transport |
+| `fetch(request)`      | Answers one HTTP request                                                       |
+| `disconnectClients()` | Drops every open request, stream and WebSocket. Clients reconnect              |
+| `close()`             | Disconnects clients and stops listening                                        |
+
+## sdk.connect [#sdk-connect]
+
+```ts
+sdk.connect(options: ConnectOptions): Promise<Connection>
+```
+
+From `@nyte-ai/sdk`. Connects to a host over HTTP and resolves once the host has sent its first
+view, so a wrong URL or token fails here rather than on the first call. It is for scripts: it opens
+no socket, so it has no live stores or chats; a client that draws a host uses [`connect`](#connect).
+
+| Option        | What it does                                                                                  |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `url`         | The listener's address                                                                        |
+| `credentials` | How to sign in. See below                                                                     |
+| `expect`      | `{ hostId, publicKey }`, saved from an earlier connection. See below                          |
+| `journal`     | Where unsent messages wait. Default: in memory. See [createSendJournal](#create-send-journal) |
+| `fetch`       | `(url, init?) => Promise<Response>`, used instead of the global `fetch`                       |
+
+`credentials` is one of:
+
+- `{ kind: "token", token }` for a listener token, or a device token from pairing.
+- `{ kind: "pairing", code }` for a code from `principals.pair`. After connecting,
+  `connection.credential` holds the device token to save.
+- `{ kind: "custom", headers() }` to compute request headers yourself, for a listener with
+  `custom` auth.
+
+`connect` asks the host to sign a random challenge every time. Without `expect`, it asks beside
+the first view and returns the key the host proved as `connection.publicKey`, or leaves it
+`undefined` when the host answers no challenge or its answer fails. With `expect`, it asks before it sends any
+credential, and throws `SdkError("stale")` when the answer names another host, carries another key,
+doesn't verify, or is missing; then it checks the id again on the first view. When only the key
+differs, the error says the host's identity key changed and to pair again.
+
+## createSendJournal [#create-send-journal]
+
+```ts
+createSendJournal(storage?: JournalStorage): RequestJournal
+```
+
+Without `storage`, an in-memory journal, the one `sdk.connect` uses when you pass none: messages in
+it survive a dropped connection but not a restart. With `storage`, they survive a restart too. Each message is
+one key, so every write and removal stands alone, and several clients, of one host or of several,
+can share one storage:
+
+```ts
+interface JournalStorage {
+  read(): Awaitable<Iterable<readonly [key: string, text: string]>>;
+  write(key: string, text: string): Awaitable<void>;
+  remove(key: string): Awaitable<void>;
+}
+```
+
+`load` reads every key, removes the ones whose text isn't an entry, and returns the rest oldest
+first. A journal is a `RequestJournal`, which you can also write yourself:
+
+```ts
+interface RequestJournal {
+  load(): Promise<readonly JournalEntry[]>;
+  put(entry: JournalEntry): Promise<void>;
+  remove(id: ReceiptId): Promise<void>;
+}
+```
+
+`connect` calls `load` once and resends the entries written for the host that answered. `send` calls
+`put` before the request. It calls `remove` once a view of the head shows the message, or when the
+send fails with an error it doesn't retry. A `JournalEntry` is plain JSON, so any key-value store
+works. An entry older than a day is resent only if the host already has its receipt; otherwise it
+stays journaled and shown as `unsent`, listed in a chat's `expired`, until `chat.resend(id)` sends it
+again or `chat.remove(id)` removes it.
+
+## connect [#connect]
+
+```ts
+connect(options: ClientConnectOptions): Promise<ClientConnection>
+```
+
+From `@nyte-ai/sdk/client`. Connects to a host the way Nyte's own clients do and resolves as
+[`sdk.connect`](#sdk-connect) does, once the host has answered and proved itself. The connection has
+everything a `Connection` has, plus the host's rows over the
+[host WebSocket](/docs/sdk/reference/connection#websocket), kept current. The socket dials on the
+first use of a store, a chat, `call`, `offer`, `text` or `health`, so a connection that only makes
+requests opens none. `close()` closes the requests and the socket.
+
+| Option        | What it sets                                                                                                                                                |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`         | The listener's address                                                                                                                                      |
+| `credentials` | As for `sdk.connect`. A pairing code is traded for a device token, in `connection.credential`, before `connect` resolves                                    |
+| `expect`      | As for `sdk.connect`                                                                                                                                        |
+| `client`      | `{ kind, name, version }`, what other clients see for this one. `kind` is `app`, `tui`, `cli`, `agent` or `other`                                           |
+| `journal`     | Required. Where a message waits until the host has it. Give it [storage](#create-send-journal) that outlives the process, or it's lost on quit              |
+| `transport`   | `{ fetch?, socket? }`. The global `fetch` and a socket that sends the credentials as headers, which Node and Bun accept. In a browser pass `ticketSocket()` |
+
+`ticketSocket({ fetch? })` trades the credentials for a one-use ticket at `POST /.nyte/ws/ticket`,
+then opens the socket with `?ticket=`.
+
+`mediaLink(address, path, { credentials, fetch? })` trades the credentials for a URL a `<video>`
+element can stream the video at the absolute `path` from, with `Range` and no credentials. It needs
+owner authority, and the URL stops answering after 15 minutes unused. See
+[streaming a file](/docs/host/serve#media).
+
+Beside a `Connection`'s members, a `ClientConnection` has:
+
+| Member                          | What it does                                                                                                                                                                                                                                                                        |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chat(session, options?)`       | The [chat](#chat) of one head, `options.head` or `main`, holding its newest `options.tail` messages, 200 by default                                                                                                                                                                 |
+| `sessions.open(window?)`        | A store of the `sessions` table. `window` is what `sessions.read` takes: `{ parents?, pinned?, query?, limit? }`                                                                                                                                                                    |
+| `head(session, head, { tail })` | A store of one head's last `tail` messages and the rows they need                                                                                                                                                                                                                   |
+| `part(session, part)`           | A store of one part by id, wherever it sits in the session, kept current from the session's changes                                                                                                                                                                                 |
+| `clients.open()`                | A store of the connected clients, a `Map` of `ClientRow` by client id. Close it when done                                                                                                                                                                                           |
+| `text(listener)`                | Opens the text channel and calls `listener` with each `TextUpdate`. Returns the unsubscribe                                                                                                                                                                                         |
+| `call(name, input)`             | Calls any query, command or receipt operation over the socket                                                                                                                                                                                                                       |
+| `offer(action, handler)`        | Declares `{ name, summary, input }` in this client's hello and answers each request with `handler(input, requester)`. Offer right after `connect` resolves and the first hello carries it; later, the socket reconnects to declare it. A hello holds 64 KB. Returns the disposer    |
+| `health`                        | A store of the socket: `connecting`, `open`, `retrying` with the next attempt's time, or `blocked` with reason `auth` or `version`. A socket that stops answering leaves `open` within 15 s while a call waits, and within 40 s while idle                                          |
+| `refused`                       | A store of the messages the journal resent, on `connect` or `chat.resend`, that the host refused, oldest first: `{ id, session, head, content, error }` each. One stays listed until `refused.take(id)`, so give its `content` back to the chat's input first                       |
+| `retry()`                       | Dials again now, with the backoff reset, when the socket is `retrying` or `blocked`. When it is `open`, sends the host one small call, keeps the socket if anything comes back, and dials again if nothing does within 2 s. Call it on foreground, focus or the network coming back |
+
+Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()` and `close()`.
+The head, part and session stores also have `freshness()`: `fresh` with the `seq` their rows are current
+through, or `stale` while the socket is down or a read failed. A stale store keeps its rows and
+resumes from its seq once the socket is back.
+
+- A head, part or session store's `snapshot()` is `null` before the first read.
+- A part store's snapshot is `{ part }`: the part's row, with its `placement`, or `null` when the
+  session has no such part. It reads the part again after the socket is back, instead of resuming
+  from its seq.
+- A head store's snapshot holds the head's `order`, `leadingPrompt`, `activation`, `catalog`, and
+  `rows`, a `Map` per table keyed by row id.
+- A session store's snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
+
+### Chat [#chat]
+
+```ts
+connection.chat(session: SessionId, options?: { head?: HeadName; tail?: number }): Chat
+```
+
+A `Chat` is what a chat screen draws and acts through. It holds nothing until its first listener
+subscribes: then it reads the head and follows its changes and its streamed text. When the last
+listener leaves, it closes them and goes back to its first snapshot, so it needs no `close()`. Each
+call returns its own chat. Its snapshot is a `ChatSnapshot`:
+
+| Field       | What it holds                                                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `view`      | The head's `HeadView` with the journal's unsent messages, the older messages `earlier` loaded, and the text parts are streaming laid in, or `null` before the first read             |
+| `seq`       | The seq `view` is current through. It stays at the last fresh seq while the chat is stale                                                                                            |
+| `freshness` | The head's freshness. A read that failed before any view arrived is `stale` with its `error`                                                                                         |
+| `expired`   | The unsent messages older than a day, which the journal no longer sends on its own. Each still shows as `unsent`                                                                     |
+| `stopping`  | `host` while the host's row says the run is stopping. `asked` from `stop()` until the host answers with its row or ends the run, the stop fails, or `health` changes. `no` otherwise |
+
+`snapshot()` returns the same object until something drawn changes, and a listener is called only
+for a new one. Text streaming for a part the view doesn't hold, such as another chat's, calls no
+listener. `stopping: "asked"` only says this client sent a stop; the host decides, and its row
+takes over.
+
+| Method                     | What it does                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `send(content, options?)`  | Puts the message in the journal and resolves with `{ id, delivered }` once it is there, before the host has it. Rejects if the journal never got it. `delivered` resolves `sent` with the `receipt`, `unsent` while the journal keeps it for the next connection to that host or, after a day, for `resend`, or `removed` after `remove`. It rejects only when the host refused the message |
+| `stop()`                   | Asks the host to stop the run the view shows. Sends nothing while the view shows no run or already shows it stopping. Rejects only while it is the latest stop                                                                                                                                                                                                                              |
+| `earlier(count)`           | Loads up to `count` older messages into `view`, and resolves with how many came: `0` once the chat's first message is shown. A call while one is loading waits for it                                                                                                                                                                                                                       |
+| `remove(message)`          | Withdraws a message that hasn't landed. An unsent one, expired or not, is never sent                                                                                                                                                                                                                                                                                                        |
+| `resend(message)`          | Sends an expired message again, as if just sent                                                                                                                                                                                                                                                                                                                                             |
+| `act(part, action, input)` | Acts on a part of the session: an approval's decision, a question's `answer` or `skip`, or any action the part's kind declares                                                                                                                                                                                                                                                              |
+
+These helpers read a head store on their own:
+
+| Helper                          | What it does                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| `headView(snapshot)`            | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot      |
+| `streamText(texts, update)`     | Keeps the latest streamed text and tool progress of each part in a `StreamedText` map |
+| `withStreamedText(view, texts)` | Lays the streamed text over a `HeadView`                                              |
+
+[Render a session](/docs/sdk/guides/render-a-session) shows a chat in use.
+
+## SdkError [#sdk-error]
+
+The one error the SDK throws. [Errors](/docs/sdk/reference/errors) lists its codes and what to do
+about each.

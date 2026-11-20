@@ -1,0 +1,139 @@
+---
+title: Table
+description: "A framed table with Excel-style column resizing, built on TanStack Table"
+---
+
+```ts title="Import"
+import {
+  columnResizingFeature,
+  columnSizingFeature,
+  createColumnHelper,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableResizer,
+  TableRow,
+  tableFeatures,
+  useTable,
+} from "@nyte-ai/ui/table";
+```
+
+Lays out rows of text or values. Each column starts at its content's width, wraps no narrower
+than a readable floor, and the frame scrolls sideways when the columns don't fit.
+
+## Usage
+
+- The parts style plain markup. TanStack Table owns the state, so the subpath re-exports the
+  TanStack names a resizable table needs.
+- Leave `width` off `Table` until `columnSizing` holds a value. Then pass `table.getTotalSize()`
+  to `Table` and `header.getSize()` to each `TableHead`.
+- Register `columnSizingFeature` before `columnResizingFeature`, and keep `features` and
+  `columns` stable between renders.
+
+## Anatomy
+
+```tsx
+<Table>
+  <TableHeader>
+    <TableRow>
+      <TableHead>
+        <TableResizer header={header} />
+      </TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    <TableRow>
+      <TableCell />
+    </TableRow>
+  </TableBody>
+</Table>
+```
+
+## Examples
+
+### Resizable columns
+
+```tsx
+const features = tableFeatures({ columnSizingFeature, columnResizingFeature });
+
+const helper = createColumnHelper<typeof features, Person>();
+
+const columns = helper.columns([
+  helper.accessor("name", { header: "Name" }),
+  helper.accessor("role", { header: "Role" }),
+]);
+
+function People({ people }: { readonly people: readonly Person[] }) {
+  const table = useTable({ features, columns, data: people, columnResizeMode: "onChange" });
+  const fixed = Object.keys(table.state.columnSizing).length > 0;
+
+  return (
+    <Table width={fixed ? table.getTotalSize() : undefined}>
+      <TableHeader>
+        {table.getHeaderGroups().map((group) => (
+          <TableRow key={group.id}>
+            {group.headers.map((header) => (
+              <TableHead key={header.id} width={header.getSize()}>
+                <table.FlexRender header={header} />
+                <TableResizer header={header} />
+              </TableHead>
+            ))}
+          </TableRow>
+        ))}
+      </TableHeader>
+      <TableBody>
+        {table.getRowModel().rows.map((row) => (
+          <TableRow key={row.id}>
+            {row.getAllCells().map((cell) => (
+              <TableCell key={cell.id}>
+                <table.FlexRender cell={cell} />
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+```
+
+Dragging a header's edge resizes its column. Double-clicking the edge fits the column to its
+content on one line. Either one first fixes every column at its current width.
+
+## Props
+
+`Table` passes native `<table>` attributes through except `className` and `style`.
+
+| Prop    | Type     | Default | Description                                                         |
+| ------- | -------- | ------- | ------------------------------------------------------------------- |
+| `width` | `number` |         | Fixes the layout to this many pixels. Without it, content sizes it. |
+
+`TableHead` passes native `<th>` attributes through except `className`, `style` and `align`.
+
+| Prop    | Type                           | Default   | Description                                |
+| ------- | ------------------------------ | --------- | ------------------------------------------ |
+| `align` | `"start" \| "center" \| "end"` | `"start"` |                                            |
+| `width` | `number`                       |           | The column's width while `Table` is fixed. |
+
+`TableCell` passes native `<td>` attributes through except `className`, `style` and `align`.
+
+| Prop    | Type                           | Default   | Description |
+| ------- | ------------------------------ | --------- | ----------- |
+| `align` | `"start" \| "center" \| "end"` | `"start"` |             |
+
+`TableResizer` takes one prop.
+
+| Prop     | Type              | Default  | Description                                                 |
+| -------- | ----------------- | -------- | ----------------------------------------------------------- |
+| `header` | `ResizableHeader` | Required | A header from a table with both sizing features registered. |
+
+`TableHeader`, `TableBody` and `TableRow` render `<thead>`, `<tbody>` and `<tr>` and pass their
+attributes through.
+
+## Accessibility
+
+- The markup is a native table, so screen readers announce rows, columns and headers.
+- The resize edge is a pointer and touch control and is hidden from assistive technology. A
+  keyboard reaches the overflow by scrolling the frame.

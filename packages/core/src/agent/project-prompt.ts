@@ -1,11 +1,11 @@
 import type { Kernel } from "../contract/kernel.ts";
-import type { PromptSection } from "../contract/plugin.ts";
 import { decodeProjectRecord } from "../contract/records.ts";
 import type { ProjectRecord, SessionRecord } from "../contract/records.ts";
 import type { Resources } from "../contract/workspace.ts";
 import { readText, SHARED_DOCS } from "../extend/resources.ts";
 import { projectRef } from "../store/refs.ts";
 import { load } from "../store/session.ts";
+import type { FixedSection } from "./prompt-sections.ts";
 
 const ORDER = 5;
 
@@ -13,7 +13,7 @@ export async function projectSections(
   kernel: Kernel,
   record: SessionRecord,
   resources: Resources,
-): Promise<readonly PromptSection[]> {
+): Promise<readonly FixedSection[]> {
   if (record.project === undefined) return [];
 
   const found = await load(

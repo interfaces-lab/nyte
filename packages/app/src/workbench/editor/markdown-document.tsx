@@ -27,6 +27,7 @@ import { codeBlockStyles, proseStyles } from "../../chat/markdown/prose.stylex.t
 import { documentsApi } from "../../data/documents.ts";
 import { loadDeferred } from "../../lib/deferred.tsx";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
+import { droppedWorkbenchFiles } from "../../references/composer-file-drop.ts";
 import { fileFromUrl } from "../../references/message-references.ts";
 import { conversation } from "../../theme/schema.stylex.ts";
 import { workbenchReferenceOpener } from "../commands.ts";
@@ -38,11 +39,12 @@ import {
   MarkdownLink,
   markdownExtensions,
 } from "./markdown-schema.ts";
+import { FILE_TAB_DRAG } from "./editor-drop.ts";
 import { markdownOrigin, serializeMarkdown } from "./markdown-serialize.ts";
 import { markdownStyles } from "./markdown.stylex.ts";
 
 interface MarkdownBuffer {
-  readonly getSnapshot: () => { readonly contents: string };
+  readonly text: () => string;
   readonly subscribe: (listener: () => void) => () => void;
   readonly edit: (contents: string) => void;
 }
@@ -105,10 +107,7 @@ const styles = create({
 export function MarkdownDocument(input: MarkdownDocumentProps): ReactElement {
   const [session] = useState(() => createMarkdownSession(input));
 
-  const contents = useSyncExternalStore(
-    input.buffer.subscribe,
-    () => input.buffer.getSnapshot().contents,
-  );
+  const contents = useSyncExternalStore(input.buffer.subscribe, () => input.buffer.text());
 
   const frontmatter = readFrontmatter(contents);
 
@@ -134,8 +133,8 @@ export function MarkdownDocument(input: MarkdownDocumentProps): ReactElement {
 }
 
 function createMarkdownSession(input: MarkdownDocumentProps) {
-  const parsed = parseMarkdown(input.buffer.getSnapshot().contents);
-  let written = input.buffer.getSnapshot().contents;
+  const parsed = parseMarkdown(input.buffer.text());
+  let written = input.buffer.text();
   const base = new URL("file:///");
   base.pathname = input.path;
 
@@ -149,6 +148,9 @@ function createMarkdownSession(input: MarkdownDocumentProps) {
         "aria-multiline": "true",
         class: props(proseStyles.root, styles.editor).className ?? "",
       },
+      handleDrop: (_view, event) =>
+        event.dataTransfer?.types.includes(FILE_TAB_DRAG) === true ||
+        droppedWorkbenchFiles(event).length > 0,
     },
     onUpdate: ({ editor: current }) => {
       written = serializeMarkdown(current.state.doc, origin);
@@ -159,7 +161,7 @@ function createMarkdownSession(input: MarkdownDocumentProps) {
   let origin = markdownOrigin(editor.state.doc, parsed.layout);
 
   const reload = (): void => {
-    const contents = input.buffer.getSnapshot().contents;
+    const contents = input.buffer.text();
 
     if (contents === written) return;
     written = contents;

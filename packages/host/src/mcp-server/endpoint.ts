@@ -34,7 +34,7 @@ import {
   namesOperation,
 } from "@nyte-ai/protocol";
 import type { CallName } from "@nyte-ai/protocol";
-import { findScope } from "../local/files.ts";
+import { findScope } from "../local/files/files.ts";
 import { bindConnection } from "../serve/binding.ts";
 import type { CallBinding } from "../serve/binding.ts";
 import type { McpGrant, McpGrants } from "./grants.ts";
@@ -267,26 +267,35 @@ async function run(
   if (!PARTICIPANT.has(row.authority))
     throw new SdkError("denied", `${tool.operation} needs ${row.authority} authority.`);
 
-  const target = isJsonObject(value) ? value.session : undefined;
   const path = isJsonObject(value) ? value.path : undefined;
 
   if (typeof path === "string")
     await confine(bound.connection, isJsonObject(value) ? value.workspace : undefined, path);
 
-  if (tool.access === "write" && typeof target === "string") {
-    const owner = (await bound.connection.session(asId<"session">(target)).info()).mcp?.grant;
+  if (tool.access === "write")
+    await Promise.all(
+      [...new Set(namedSessions(value, ""))].map(async (target) => {
+        const owner = (await bound.connection.session(asId<"session">(target)).info()).mcp?.grant;
 
-    if (owner !== grant.id)
-      throw new SdkError(
-        "denied",
-        `Session ${target} wasn't started through this MCP grant, so it may not steer or stop it.`,
-      );
-  }
+        if (owner !== grant.id)
+          throw new SdkError(
+            "denied",
+            `Session ${target} wasn't started through this MCP grant, so it may not steer, stop or name it.`,
+          );
+      }),
+    );
 
   return callOperation(bound.binding, tool.operation, value, signal);
 }
 
-/** A workspace without a local folder has no root to check against, so its paths are denied. */
+function namedSessions(value: Json, key: string): string[] {
+  if (typeof value === "string") return key === "session" || key === "parent" ? [value] : [];
+
+  if (typeof value !== "object" || value === null) return [];
+
+  return Object.entries(value).flatMap((entry) => namedSessions(entry[1], entry[0]));
+}
+
 async function confine(
   connection: Connection,
   workspace: Json | undefined,

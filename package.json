@@ -12,12 +12,14 @@
     "package:tui": "turbo package --filter=@nyte-ai/tui",
     "clean": "turbo clean",
     "dev:tui": "pnpm --filter @nyte-ai/tui dev",
+    "dev:web": "pnpm --filter @nyte-ai/web dev",
     "dev:live": "pnpm --filter @nyte-ai/tui dev:live",
     "dev:desktop": "pnpm --filter @nyte-ai/desktop dev",
+    "dev:ios": "pnpm --filter @nyte-ai/ios dev",
     "format": "oxfmt --check",
     "format:fix": "oxfmt .",
-    "lint": "oxlint . && node scripts/check-agents.mjs && node scripts/check-layers.mjs && node scripts/check-cycles.mjs",
-    "lint:fix": "oxlint --fix .",
+    "lint": "oxlint --type-check . && node scripts/check-agents.mjs && node scripts/check-layers.mjs && node scripts/check-cycles.mjs",
+    "lint:fix": "oxlint --type-check --fix .",
     "knip": "pnpm dlx knip@6.41.0",
     "cycles": "node scripts/check-cycles.mjs",
     "layers": "node scripts/check-layers.mjs",
@@ -42,14 +44,14 @@
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/service": "workspace:*",
-    "@oxlint/plugins": "^1.89.0",
-    "@shadcn/lint": "^0.2.3",
-    "@types/node": "^26.6.5",
+    "@oxlint/plugins": "^1.94.0",
+    "@shadcn/lint": "^0.2.5",
+    "@types/node": "^26.6.6",
     "@typescript/native": "catalog:",
-    "oxfmt": "^0.76.0",
-    "oxlint": "~1.89.0",
-    "oxlint-tsgolint": "^7.0.2005",
-    "turbo": "^2.11.10",
+    "oxfmt": "^0.79.0",
+    "oxlint": "~1.94.0",
+    "tsrs": "^0.25.0-ts7.1.0-beta",
+    "turbo": "^2.11.11",
     "typescript": "catalog:"
   },
   "release": {
@@ -69,7 +71,7 @@
       "@nyte-ai/example-vercel"
     ]
   },
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "pnpm@12.21.0",
   "intent": {
     "skills": [
       "@tanstack/*"

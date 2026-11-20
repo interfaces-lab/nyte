@@ -8,10 +8,6 @@ import {
   withJson,
 } from "@nyte-ai/schema";
 
-/**
- * Validators for the host's live events. The compiled binary's build replaces this module with the
- * same checks generated ahead of time, which have only `Check`.
- */
 function checkOnly<V extends { readonly Check: unknown }>(validator: V): Pick<V, "Check"> {
   return validator;
 }

@@ -1,13 +1,21 @@
+import { showsText } from "@nyte-ai/plugin/client/presentation";
+import type { Message } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "vitest";
 import {
   chunkLength,
   drainPace,
   extendPace,
   flushPace,
+  flushReveal,
   framePace,
+  presentReveal,
+  receiveReveal,
+  revealTimers,
   settledPace,
+  tickReveal,
 } from "./paced-text.ts";
-import type { Pace } from "./paced-text.ts";
+import type { Pace, Reveal } from "./paced-text.ts";
 
 const FRAME = 17;
 
@@ -127,4 +135,325 @@ describe("chunkLength", () => {
   ])("$name", (row) => {
     expect(chunkLength(row.text, row.budget)).toBe(row.expected);
   });
+});
+
+function text(id: string, markdown: string, live: boolean): Message {
+  return {
+    id: asId<"message">(id),
+    turn: asId<"turn">("turn"),
+    at: 1,
+    kind: "part",
+    part: asId<"part">(id),
+    partKind: "text",
+    role: "answer",
+    state: { markdown, signature: null },
+    version: 1,
+    status: live
+      ? { kind: "live", run: asId<"run">("run") }
+      : { kind: "settled", commit: asId<"commit">(id), endedAt: 1 },
+  };
+}
+
+const LONG = "lorem ipsum ".repeat(30);
+
+describe("receiveReveal", () => {
+  test.each<{
+    readonly name: string;
+    readonly steps: readonly { readonly messages: readonly Message[]; readonly showing: boolean }[];
+    readonly expected: {
+      readonly shown: readonly (readonly [string, number, string])[];
+      readonly frame: boolean;
+      readonly deadline: boolean;
+      readonly same: boolean;
+    };
+  }>([
+    {
+      name: "the first view shows the whole text",
+      steps: [{ messages: [text("a", LONG, true)], showing: true }],
+      expected: { shown: [["a", 360, "live"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "a new live text while showing reveals from nothing",
+      steps: [
+        { messages: [], showing: true },
+        { messages: [text("a", LONG, true)], showing: true },
+      ],
+      expected: { shown: [["a", 0, "live"]], frame: true, deadline: false, same: false },
+    },
+    {
+      name: "the same message still live extends what was shown",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, true)], showing: true },
+      ],
+      expected: { shown: [["a", 6, "live"]], frame: true, deadline: false, same: false },
+    },
+    {
+      name: "the same message ended drains and still reads as live",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, false)], showing: true },
+      ],
+      expected: { shown: [["a", 6, "live"]], frame: true, deadline: true, same: false },
+    },
+    {
+      name: "a message ending within one frame's budget settles at once",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", "lorem ipsum", false)], showing: true },
+      ],
+      expected: { shown: [["a", 11, "settled"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "a hidden transcript shows the whole text",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, true)], showing: false },
+      ],
+      expected: { shown: [["a", 360, "live"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "a new live text while hidden opens whole",
+      steps: [
+        { messages: [], showing: true },
+        { messages: [text("a", LONG, true)], showing: false },
+      ],
+      expected: { shown: [["a", 360, "live"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "a newer live text waits, empty, while the older one drains its tail",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, true), text("b", LONG, true)], showing: true },
+      ],
+      expected: {
+        shown: [
+          ["a", 6, "live"],
+          ["b", 0, "live"],
+        ],
+        frame: true,
+        deadline: true,
+        same: false,
+      },
+    },
+    {
+      name: "a newer live text after the older one has all shown takes over from nothing",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", "lorem ", false), text("b", LONG, true)], showing: true },
+      ],
+      expected: {
+        shown: [
+          ["a", 6, "settled"],
+          ["b", 0, "live"],
+        ],
+        frame: true,
+        deadline: false,
+        same: false,
+      },
+    },
+    {
+      name: "a newer live text while hidden shows both whole",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, false), text("b", LONG, true)], showing: false },
+      ],
+      expected: {
+        shown: [
+          ["a", 360, "settled"],
+          ["b", 360, "live"],
+        ],
+        frame: false,
+        deadline: false,
+        same: true,
+      },
+    },
+    {
+      name: "text that no longer extends what was shown appears at once",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, true)], showing: true },
+        { messages: [text("a", "Goodbye", true)], showing: true },
+      ],
+      expected: { shown: [["a", 7, "live"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "no live text leaves the view as it is",
+      steps: [
+        { messages: [], showing: true },
+        { messages: [text("a", LONG, false)], showing: true },
+      ],
+      expected: { shown: [["a", 360, "settled"]], frame: false, deadline: false, same: true },
+    },
+  ])("$name", (row) => {
+    const reveal = row.steps.reduce<Reveal | undefined>(
+      (current, step, index) =>
+        receiveReveal(current, step.messages, {
+          showing: step.showing,
+          opening: index === 0 || !step.showing,
+          now: 0,
+        }),
+      undefined,
+    );
+
+    const view = { messages: row.steps.at(-1)?.messages ?? [] };
+    const shown = presentReveal(view, reveal);
+
+    expect({
+      shown: shown.messages
+        .filter(showsText)
+        .map((message) => [message.id, message.state.markdown.length, message.status.kind]),
+      ...revealTimers(reveal),
+      same: shown === view,
+    }).toEqual(row.expected);
+  });
+});
+
+test("a reply that starts while the one before it drains waits three frames for that tail, then paces from nothing", () => {
+  const before = text("a", LONG, false);
+  const after = text("b", LONG, true);
+
+  const opened = receiveReveal(undefined, [text("a", "lorem ", true)], {
+    showing: true,
+    opening: true,
+    now: 0,
+  });
+
+  let reveal = receiveReveal(opened, [before, after], { showing: true, opening: false, now: 0 });
+  const frames: string[] = [];
+
+  for (let frame = 1; reveal !== undefined && frame <= 16; frame += 1) {
+    reveal = tickReveal(reveal, { showing: true, now: frame * FRAME });
+    const shown = presentReveal({ messages: [before, after] }, reveal).messages.filter(showsText);
+    frames.push(shown.map((message) => message.state.markdown.length).join("/"));
+  }
+
+  expect(frames).toEqual([
+    "120/0",
+    "240/0",
+    "360/0",
+    "360/42",
+    "360/78",
+    "360/114",
+    "360/144",
+    "360/168",
+    "360/192",
+    "360/216",
+    "360/240",
+    "360/264",
+    "360/288",
+    "360/312",
+    "360/336",
+    "360/360",
+  ]);
+});
+
+test.each([
+  { name: "while showing, the waiting reply then paces from nothing", showing: true, after: 0 },
+  { name: "while hidden, the waiting reply shows whole", showing: false, after: 360 },
+])("the drain's deadline shows the older tail at once; $name", (row) => {
+  const before = text("a", LONG, false);
+  const after = text("b", LONG, true);
+
+  const opened = receiveReveal(undefined, [text("a", "lorem ", true)], {
+    showing: true,
+    opening: true,
+    now: 0,
+  });
+
+  const waiting = receiveReveal(opened, [before, after], { showing: true, opening: false, now: 0 });
+
+  if (waiting === undefined) throw new Error("Expected the older reply to drain");
+  const flushed = flushReveal(waiting, { showing: row.showing, now: 250 });
+
+  expect(
+    presentReveal({ messages: [before, after] }, flushed)
+      .messages.filter(showsText)
+      .map((message) => message.state.markdown.length),
+  ).toEqual([360, row.after]);
+});
+
+test("a third reply that arrives while the first drains waits its turn behind the second, and each paces from nothing", () => {
+  const first = text("a", LONG, false);
+  const second = text("b", LONG, false);
+  const third = text("c", LONG, true);
+  const moment = { showing: true, opening: false };
+
+  const opened = receiveReveal(undefined, [text("a", "lorem ", true)], {
+    ...moment,
+    opening: true,
+    now: 0,
+  });
+
+  const draining = receiveReveal(opened, [first, text("b", "lorem ", true)], { ...moment, now: 0 });
+  let reveal = receiveReveal(draining, [first, second, third], { ...moment, now: 0 });
+  const frames: string[] = [];
+
+  for (let frame = 1; reveal !== undefined && frame <= 19; frame += 1) {
+    reveal = tickReveal(reveal, { showing: true, now: frame * FRAME });
+    const shown = presentReveal({ messages: [first, second, third] }, reveal).messages;
+    frames.push(
+      shown.map((message) => (showsText(message) ? message.state.markdown.length : 0)).join("/"),
+    );
+  }
+
+  expect(frames).toEqual([
+    "120/0/0",
+    "240/0/0",
+    "360/0/0",
+    "360/120/0",
+    "360/240/0",
+    "360/360/0",
+    "360/360/42",
+    "360/360/78",
+    "360/360/114",
+    "360/360/144",
+    "360/360/168",
+    "360/360/192",
+    "360/360/216",
+    "360/360/240",
+    "360/360/264",
+    "360/360/288",
+    "360/360/312",
+    "360/360/336",
+    "360/360/360",
+  ]);
+});
+
+test("each drain's deadline shows that reply's tail at once, and the next still paces from nothing", () => {
+  const messages = [text("a", LONG, false), text("b", LONG, false), text("c", LONG, true)];
+  const moment = { showing: true, opening: false, now: 0 };
+
+  const opened = receiveReveal(undefined, [text("a", "lorem ", true)], {
+    ...moment,
+    opening: true,
+  });
+
+  const draining = receiveReveal(
+    opened,
+    [messages[0], text("b", "lorem ", true)].filter(showsText),
+    moment,
+  );
+
+  const queued = receiveReveal(draining, messages, moment);
+
+  if (queued === undefined) throw new Error("Expected the first reply to drain");
+  const once = flushReveal(queued, { showing: true, now: 250 });
+
+  if (once === undefined) throw new Error("Expected the second reply to drain");
+  const twice = flushReveal(once, { showing: true, now: 500 });
+
+  expect(
+    [queued, once, twice].map((reveal) =>
+      presentReveal({ messages }, reveal)
+        .messages.filter(showsText)
+        .map((message) => message.state.markdown.length)
+        .join("/"),
+    ),
+  ).toEqual(["6/0/0", "360/0/0", "360/360/0"]);
+  expect([queued, once, twice].map((reveal) => revealTimers(reveal).deadline)).toEqual([
+    true,
+    true,
+    false,
+  ]);
 });

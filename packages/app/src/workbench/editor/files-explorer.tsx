@@ -3,6 +3,7 @@ import { FileTree, useFileTree } from "@nyte-ai/ui/trees/react";
 import type {
   ContextMenuItem,
   ContextMenuOpenContext,
+  FileTreeDropResult,
   FileTreeRenameEvent,
   FileTree as FileTreeModel,
 } from "@nyte-ai/ui/trees";
@@ -13,7 +14,6 @@ import type { ReactElement } from "react";
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { selectionWithin } from "@nyte-ai/ui/selection";
@@ -32,7 +32,7 @@ import type { SelectedWorkspace } from "../../contract/bridge.ts";
 import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
 import { fuzzyScore } from "../../lib/fuzzy-match.ts";
 import { addFileToChat } from "../../references/add-to-chat.ts";
-import { setTreeDrag } from "../../references/composer-file-drop.ts";
+import { setWorkbenchDrag } from "../../references/composer-file-drop.ts";
 import type { WorkbenchViewKey } from "../model.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
@@ -54,7 +54,6 @@ import type { WorktreeFile } from "./worktree-files.ts";
 
 type Scope = "all" | "changed";
 
-/** A row the tree is naming: a new file or folder that doesn't exist on disk yet, under its placeholder. */
 type Naming =
   | {
       readonly kind: "file" | "folder";
@@ -161,11 +160,11 @@ export function FilesExplorer({
           dragged.has(file.displayPath),
         );
 
-        setTreeDrag(entries);
+        setWorkbenchDrag(entries);
 
         return entries.length > 0;
       },
-      canDrop: () => false,
+      onDropComplete: (event) => void drop(event),
     },
     composition: {
       contextMenu:
@@ -229,6 +228,45 @@ export function FilesExplorer({
 
     if (source !== undefined && target !== undefined)
       fileActions.moved(viewKey, [{ from: source, to: target }]);
+    refresh();
+  };
+
+  const drop = async (event: FileTreeDropResult): Promise<void> => {
+    const folder = event.target.kind === "directory" ? (event.target.directoryPath ?? "") : "";
+
+    const moves = event.draggedPaths
+      .map((path) => ({ path, to: `${folder}${path.slice(bare(path).lastIndexOf("/") + 1)}` }))
+      .filter((move) => move.to !== move.path);
+
+    if (moves.length === 0) return;
+
+    const failure = await applyChange(latest.current.workspace?.id, (batch) =>
+      moves.reduce((next, move) => next.move({ path: bare(move.path), to: bare(move.to) }), batch),
+    ).catch(errorMessage);
+
+    if (failure !== undefined) {
+      for (const move of moves) model.move(move.to, move.path);
+      const names = moves.map((move) => bare(move.path));
+
+      toast.add({
+        type: "error",
+        title: `Couldn't move ${names.length === 1 ? names.join("") : `${String(names.length)} items`}`,
+        description: failure,
+      });
+      refresh();
+
+      return;
+    }
+
+    fileActions.moved(
+      viewKey,
+      moves.flatMap((move) => {
+        const from = absolute(bare(move.path));
+        const to = absolute(bare(move.to));
+
+        return from === undefined || to === undefined ? [] : [{ from, to }];
+      }),
+    );
     refresh();
   };
 
@@ -538,51 +576,36 @@ export function FilesExplorer({
       <div {...props(styles.header)}>
         <ExplorerFolderMenu viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
         {browsed.kind === "ready" && (
-          <ToggleGroup
-            aria-label="Show"
-            value={[scope]}
-            onValueChange={(value) => {
-              const next = value[0];
-
-              if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
-            }}
-          >
-            <Toggle value="all" size="2xs">
-              All
-            </Toggle>
-            <Toggle value="changed" size="2xs">
-              Changed {changes.length}
-            </Toggle>
-          </ToggleGroup>
-        )}
-        {browsed.kind === "ready" && (
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  iconOnly
-                  icon="more-horizontal"
-                  aria-label="Explorer Options"
-                  xstyle={styles.options}
-                />
-              }
+          <div {...props(styles.actions)}>
+            <Button
+              iconOnly
+              size="sm"
+              icon="file-add"
+              aria-label="New File"
+              onClick={() => startNaming("file", "")}
             />
-            <MenuContent align="end">
-              <MenuItem layout="plain" onClick={() => startNaming("file", "")}>
-                New File…
-              </MenuItem>
-              <MenuItem layout="plain" onClick={() => startNaming("folder", "")}>
-                New Folder…
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem layout="plain" onClick={refresh}>
-                Refresh Explorer
-              </MenuItem>
-              <MenuItem layout="plain" onClick={collapseFolders}>
-                Collapse Folders
-              </MenuItem>
-            </MenuContent>
-          </Menu>
+            <Button
+              iconOnly
+              size="sm"
+              icon="folder-add"
+              aria-label="New Folder"
+              onClick={() => startNaming("folder", "")}
+            />
+            <Button
+              iconOnly
+              size="sm"
+              icon="refresh"
+              aria-label="Refresh Explorer"
+              onClick={refresh}
+            />
+            <Button
+              iconOnly
+              size="sm"
+              icon="collapse"
+              aria-label="Collapse Folders"
+              onClick={collapseFolders}
+            />
+          </div>
         )}
       </div>
       {browsed.kind !== "ready" && (
@@ -590,7 +613,7 @@ export function FilesExplorer({
       )}
       {browsed.kind === "ready" && (
         <div {...props(styles.filter)}>
-          <InputGroup>
+          <InputGroup xstyle={styles.filterField}>
             <Icon name="search" size="sm" />
             <Input
               aria-label="Filter files"
@@ -610,6 +633,23 @@ export function FilesExplorer({
               }}
             />
           </InputGroup>
+          <ToggleGroup
+            aria-label="Show"
+            xstyle={styles.scope}
+            value={[scope]}
+            onValueChange={(value) => {
+              const next = value[0];
+
+              if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
+            }}
+          >
+            <Toggle value="all" size="sm" xstyle={styles.scopeOption}>
+              All
+            </Toggle>
+            <Toggle value="changed" size="sm" xstyle={styles.scopeOption}>
+              Changed <span {...props(styles.count)}>{changes.length}</span>
+            </Toggle>
+          </ToggleGroup>
         </div>
       )}
       {browsed.kind === "ready" && files.error !== null && (
@@ -629,7 +669,7 @@ export function FilesExplorer({
       )}
       <FileTree
         model={model}
-        onDragEnd={() => setTreeDrag([])}
+        onDragEnd={() => setWorkbenchDrag([])}
         onClick={(event) => {
           if (!(event.metaKey || event.ctrlKey || event.shiftKey))
             openFromTree(event.nativeEvent, true);
@@ -738,7 +778,6 @@ function expandAncestors(model: FileTreeModel, path: string): void {
   }
 }
 
-/** A tree path without the slash that marks a folder: how the files API names it. */
 function bare(path: string): string {
   return path.replace(/\/$/u, "");
 }
@@ -747,16 +786,26 @@ const styles = create({
   explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   header: {
     display: "flex",
-    flexWrap: "wrap",
     alignItems: "center",
     gap: space.s2,
-    rowGap: space.s1,
     flexShrink: 0,
     paddingBlock: space.s1_5,
     paddingInline: space.s2_5,
   },
-  options: { marginInlineStart: "auto" },
-  filter: { flexShrink: 0, paddingInline: space.s2, paddingBlockEnd: space.s1_5 },
+  actions: { display: "flex", gap: space.px, marginInlineStart: "auto" },
+  filter: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: space.s1_5,
+    flexShrink: 0,
+    paddingInline: space.s2,
+    paddingBlockEnd: space.s1_5,
+  },
+  filterField: { flexGrow: 999, flexBasis: "8rem", minWidth: 0 },
+  scope: { flexGrow: 1 },
+  scopeOption: { flexGrow: 1 },
+  count: { fontVariantNumeric: "tabular-nums" },
   empty: {
     padding: space.s5,
     color: role.contentSecondary,
@@ -770,6 +819,7 @@ const styles = create({
     flex: 1,
     width: "100%",
     minHeight: 0,
+    paddingBlockStart: space.s1,
     "--trees-border-radius-override": radius.indicator,
     "--trees-item-margin-x-override": "0px",
     "--trees-item-padding-x-override": "5px",

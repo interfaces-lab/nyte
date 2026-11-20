@@ -33,6 +33,17 @@ export const hairline = create({
       [media.forcedColors]: { default: FORCED_LEFT, ":dir(rtl)": FORCED_RIGHT },
     },
   },
+  inlineStartAfter: {
+    boxShadow: ELEVATION,
+    "::after": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      borderInlineStartWidth: 1,
+      borderColor: { default: role.strokeQuaternary, [media.forcedColors]: "CanvasText" },
+      pointerEvents: "none",
+    },
+  },
   tableCell: {
     "--_hairline-dir": { default: "1", ":dir(rtl)": "-1" },
     "--_hairline-block-end": { default: "1px", ":is(tbody > tr:last-child > *)": "0px" },

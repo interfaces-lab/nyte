@@ -2,8 +2,8 @@ import type { SessionView } from "@nyte-ai/schema";
 import { lastUserText } from "@nyte-ai/bench";
 import type { Reply, Request } from "@nyte-ai/bench";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import { connect } from "../src/connect.ts";
-import { createSendJournal } from "../src/journal.ts";
+import { connect } from "../src/connection/connect.ts";
+import { createSendJournal } from "../src/send/journal.ts";
 import { BASE, TOKEN_SECRET, readOperation, served } from "./served.ts";
 
 interface Gate {

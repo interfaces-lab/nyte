@@ -1,0 +1,68 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index d52a5260a7b9924b2865053ea1e8c6484225277b..f5883cb13e58627821ed508f32ed0f1b776aa4e6 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -2454,6 +2454,8 @@ function skipIgnoredNodesBefore(view) {
+         node = node.parentNode;
+         if (node == view.dom) break;
+         offset = 0;
++      } else if (isElt(prev) && !prev.firstChild) {
++        break;
+       } else {
+         node = prev;
+         offset = nodeSize(node);
+@@ -2492,6 +2494,8 @@ function skipIgnoredNodesAfter(view) {
+         node = node.parentNode;
+         if (node == view.dom) break;
+         offset = len = 0;
++      } else if (isElt(next) && !next.firstChild) {
++        break;
+       } else {
+         node = next;
+         offset = 0;
+diff --git a/dist/index.js b/dist/index.js
+index dc0d117b85e1da3eae915b4d8ff8e5e604683861..6a2b69d7bfd1c19d7e33c461d4b1cd54224732b9 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2567,6 +2567,9 @@ function skipIgnoredNodesBefore(view) {
+                     break;
+                 offset = 0;
+             }
++            else if (isElt(prev) && !prev.firstChild) {
++                break;
++            }
+             else {
+                 node = prev;
+                 offset = nodeSize(node);
+@@ -2616,6 +2619,9 @@ function skipIgnoredNodesAfter(view) {
+                     break;
+                 offset = len = 0;
+             }
++            else if (isElt(next) && !next.firstChild) {
++                break;
++            }
+             else {
+                 node = next;
+                 offset = 0;
+diff --git a/src/capturekeys.ts b/src/capturekeys.ts
+index d48e0e4e64dbbd1aebd457a4e7568eb850d38e9b..2b1a29a6dd4d2243e44eb90cfdbe20417e246ed9 100644
+--- a/src/capturekeys.ts
++++ b/src/capturekeys.ts
+@@ -102,6 +102,8 @@ function skipIgnoredNodesBefore(view: EditorView) {
+         node = node.parentNode!
+         if (node == view.dom) break
+         offset = 0
++      } else if (isElt(prev) && !prev.firstChild) {
++        break
+       } else {
+         node = prev
+         offset = nodeSize(node)
+@@ -143,6 +145,8 @@ function skipIgnoredNodesAfter(view: EditorView) {
+         node = node.parentNode!
+         if (node == view.dom) break
+         offset = len = 0
++      } else if (isElt(next) && !next.firstChild) {
++        break
+       } else {
+         node = next
+         offset = 0

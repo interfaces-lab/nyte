@@ -3,8 +3,8 @@ import { asId, asSeq, SdkError, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer, Json, PartId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import { createPartDefinitions } from "../src/engine/part-definitions.ts";
-import { viewHead } from "../src/fold/view.ts";
+import { createPartDefinitions } from "../src/extend/part-definitions.ts";
+import { viewHead } from "../src/watch/view.ts";
 import {
   LOCAL,
   branchSummary,

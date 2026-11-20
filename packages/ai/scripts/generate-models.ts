@@ -8,6 +8,7 @@ import type { Api, Model } from "../src/types.ts";
 import {
   applyAnthropicAllowedFallbackModelMetadata,
   applyAnthropicMessagesCompatMetadata,
+  applyDaybreakModeMetadata,
   applyModelsDevModeMetadata,
   applyOpenAICompletionsCompatMetadata,
   applyOpenAICompletionsTranscriptMetadata,
@@ -125,6 +126,7 @@ async function loadModelsDevData(): Promise<{
 function applyMetadata(models: readonly Model<Api>[], metadata: ModelsDevMetadata): void {
   for (const model of models) {
     applyModelsDevModeMetadata(model, metadata);
+    applyDaybreakModeMetadata(model);
     applyOpenAICompletionsCompatMetadata(model);
     applyAnthropicMessagesCompatMetadata(model);
     applyModelsDevReasoningOptionMetadata(model, metadata);

@@ -1,17 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asId, readHunks } from "@nyte-ai/schema";
-import type { Hunk, PatchEntry, RunId } from "@nyte-ai/schema";
-import type { ExecutionEnv } from "@nyte-ai/core";
+import type { Hunk, PatchEntry } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import { localExec, localFiles, localSnapshots } from "../src/index.ts";
-import { findExecutable } from "../src/local/command.ts";
+import { localSnapshots } from "../src/index.ts";
+import { findExecutable } from "../src/local/process/command.ts";
 
 const hasGit = (await findExecutable("git")) !== null;
 
-const run: RunId = asId("run-1");
+const WORKSPACE = { kind: "workspace" } as const;
 
 const folders: string[] = [];
 
@@ -41,16 +40,6 @@ function sh(cwd: string, ...args: string[]): string {
   });
 }
 
-function localEnv(cwd: string): ExecutionEnv {
-  return {
-    identity: asId("test"),
-    cwd,
-    files: localFiles(cwd),
-    exec: localExec(cwd),
-    close: async () => undefined,
-  };
-}
-
 describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
   it("writes trees through a temporary index under hidden refs, never touching the real index", async () => {
     const root = await folder();
@@ -66,12 +55,11 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     sh(root, "commit", "-q", "-m", "first");
     const committed = sh(root, "rev-parse", "HEAD^{tree}").trim();
     sh(root, "update-ref", `refs/nyte/snapshots/${committed}`, committed);
-    const snapshots = localSnapshots(localEnv(root), { store });
-    const before = await snapshots.before(run);
+    const snapshots = localSnapshots(root, { store });
+    const before = await snapshots.capture(WORKSPACE);
 
     expect(before).toMatch(/^git:[0-9a-f]{40}$/);
-    expect(await snapshots.before(run)).toBe(before);
-    expect(await snapshots.after(run)).toBe(before);
+    expect(await snapshots.capture(WORKSPACE)).toBe(before);
 
     await writeFile(join(root, "a.txt"), "one\nTWO\n");
     await rm(join(root, "gone.txt"));
@@ -81,10 +69,9 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     await mkdir(join(root, "dist"));
     await writeFile(join(root, "dist", "out.js"), "ignored");
     const statusBefore = sh(root, "status", "--porcelain");
-    const after = await snapshots.after(run);
+    const after = await snapshots.capture(WORKSPACE);
 
     expect(after).not.toBe(before);
-    expect(await snapshots.before(run)).toBe(before);
     expect(sh(root, "status", "--porcelain")).toBe(statusBefore);
     await vi.waitFor(
       () =>
@@ -150,11 +137,11 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     await mkdir(join(root, "pkg"));
     await writeFile(join(root, "outside.txt"), "o\n");
     await writeFile(join(root, "pkg", "inside.txt"), "i\n");
-    const snapshots = localSnapshots(localEnv(join(root, "pkg")), { store: await folder() });
-    const before = await snapshots.before(run);
+    const snapshots = localSnapshots(join(root, "pkg"), { store: await folder() });
+    const before = await snapshots.capture(WORKSPACE);
     await writeFile(join(root, "pkg", "inside.txt"), "changed\n");
     await writeFile(join(root, "outside.txt"), "changed\n");
-    const after = await snapshots.after(run);
+    const after = await snapshots.capture(WORKSPACE);
 
     expect((await snapshots.diff(before, after)).files).toEqual([
       { path: "inside.txt", status: "modified", stat: { kind: "text", added: 1, removed: 1 } },
@@ -167,11 +154,11 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     const lines = (letter: string): string => `${letter.repeat(999)}\n`.repeat(1_200);
     await writeFile(join(root, "big.txt"), lines("a"));
     await writeFile(join(root, "small.txt"), "one\n");
-    const snapshots = localSnapshots(localEnv(root), { store: await folder() });
-    const before = await snapshots.before(run);
+    const snapshots = localSnapshots(root, { store: await folder() });
+    const before = await snapshots.capture(WORKSPACE);
     await writeFile(join(root, "big.txt"), lines("b"));
     await writeFile(join(root, "small.txt"), "two\n");
-    const after = await snapshots.after(run);
+    const after = await snapshots.capture(WORKSPACE);
     const patches = await snapshots.patches(before, after, ["big.txt", "small.txt"]);
 
     expect(patches.map((entry) => [entry.path, entry.kind])).toEqual([
@@ -183,7 +170,7 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
 });
 
 describe("localSnapshots outside a repository", () => {
-  it("walks the tree into a content-addressed store and compares manifests", async () => {
+  it("journals what changed between two workspace captures of a small folder", async () => {
     const root = await folder();
     const store = await folder();
     await writeFile(join(root, ".gitignore"), "cache/\n");
@@ -192,12 +179,12 @@ describe("localSnapshots outside a repository", () => {
     await writeFile(join(root, "same.txt"), "kept body\n");
     await writeFile(join(root, "pic.bin"), new Uint8Array([0, 1, 2]));
     await writeFile(join(root, "big.txt"), "b".repeat(1024 * 1024 + 1));
-    const snapshots = localSnapshots(localEnv(root), { store, git: join(root, "no-git") });
-    const before = await snapshots.before(run);
+    const snapshots = localSnapshots(root, { store, git: join(root, "no-git") });
+    const before = await snapshots.capture(WORKSPACE);
 
-    expect(before).toMatch(/^tree:[0-9a-f]{64}$/);
-    expect(await snapshots.after(run)).toBe(before);
-    expect((await readdir(join(store, "trees"))).length).toBe(1);
+    expect(before).toMatch(/^journal:/);
+    expect(await snapshots.capture(WORKSPACE)).toBe(before);
+    expect(await readdir(store)).toEqual(["objects"]);
     expect((await readdir(join(store, "objects"))).length).toBe(5);
 
     await writeFile(join(root, "a.txt"), "one\n2\nthree\n");
@@ -209,7 +196,7 @@ describe("localSnapshots outside a repository", () => {
     await writeFile(join(root, "new.txt"), "new\n");
     await mkdir(join(root, "cache"));
     await writeFile(join(root, "cache", "x"), "ignored");
-    const after = await snapshots.after(run);
+    const after = await snapshots.capture(WORKSPACE);
 
     expect((await snapshots.diff(before, after)).files).toEqual([
       { path: "a.txt", status: "modified", stat: { kind: "text", added: 1, removed: 1 } },
@@ -264,24 +251,16 @@ describe("localSnapshots outside a repository", () => {
     expect(textHunks(patches[3])).toMatchObject([
       { oldStart: 0, oldLines: 0, newStart: 1, newLines: 1 },
     ]);
-    expect((await snapshots.diff(asId(""), before)).files.map((file) => file.path)).toEqual([
-      ".gitignore",
-      "a.txt",
-      "big.txt",
-      "gone.txt",
-      "pic.bin",
-      "same.txt",
-    ]);
   });
 
   it("digests a manifest patch per whitespace mode, so one digest never names two patches", async () => {
     const root = await folder();
     const store = await folder();
     await writeFile(join(root, "a.txt"), "a b\nc\n");
-    const snapshots = localSnapshots(localEnv(root), { store, git: join(root, "no-git") });
-    const before = await snapshots.before(run);
+    const snapshots = localSnapshots(root, { store, git: join(root, "no-git") });
+    const before = await snapshots.capture(WORKSPACE);
     await writeFile(join(root, "a.txt"), "a  b\nd\n");
-    const after = await snapshots.after(run);
+    const after = await snapshots.capture(WORKSPACE);
     const [exact] = await snapshots.patches(before, after, ["a.txt"]);
     const [loose] = await snapshots.patches(before, after, ["a.txt"], { ignoreWhitespace: true });
 
@@ -290,51 +269,46 @@ describe("localSnapshots outside a repository", () => {
     expect(loose?.digest).not.toBe(exact?.digest);
   });
 
-  it("records a walk stopped at its limit as incomplete, so a path it missed is failed, never deleted or added", async () => {
+  it("past its discovery limit, finds nothing on its own but still journals the paths it is named", async () => {
     const root = await folder();
     const store = await folder();
-    const git = join(root, "no-git");
     await writeFile(join(root, "a.txt"), "one\n");
     await writeFile(join(root, "b.txt"), "b\n");
     await writeFile(join(root, "c.txt"), "c\n");
-    const full = localSnapshots(localEnv(root), { store, git });
-    const capped = localSnapshots(localEnv(root), { store, git, limit: 2 });
-    const before = await full.after(run);
+    const snapshots = localSnapshots(root, { store, git: join(root, "no-git"), limit: 2 });
+    const quiet = await snapshots.capture(WORKSPACE);
+    await writeFile(join(root, "b.txt"), "unseen\n");
+
+    expect((await snapshots.diff(quiet, await snapshots.capture(WORKSPACE))).files).toEqual([]);
+
+    const before = await snapshots.capture({ kind: "paths", paths: ["a.txt", "./made.txt"] });
     await writeFile(join(root, "a.txt"), "two\n");
-    const after = await capped.after(run);
+    await writeFile(join(root, "made.txt"), "made\n");
+    const after = await snapshots.capture({ kind: "paths", paths: ["a.txt", "made.txt"] });
 
-    const stored: unknown = JSON.parse(
-      await readFile(join(store, "trees", `${after.slice("tree:".length)}.json`), "utf8"),
-    );
-
-    expect(stored).toMatchObject({ incomplete: true, files: { "a.txt": expect.any(String) } });
-    expect((await full.diff(before, after)).files).toEqual([
+    expect((await snapshots.diff(before, after)).files).toEqual([
       { path: "a.txt", status: "modified", stat: { kind: "text", added: 1, removed: 1 } },
-      { path: "c.txt", status: "modified", stat: { kind: "unknown" } },
+      { path: "made.txt", status: "added", stat: { kind: "text", added: 1, removed: 0 } },
     ]);
-    expect(await full.patches(before, after, ["a.txt", "c.txt"])).toMatchObject([
-      { path: "a.txt", kind: "text" },
-      { path: "c.txt", status: "modified", kind: "failed", reason: "incomplete" },
+    expect((await snapshots.diff(after, before)).files).toEqual([
+      { path: "a.txt", status: "modified", stat: { kind: "text", added: 1, removed: 1 } },
+      { path: "made.txt", status: "deleted", stat: { kind: "text", added: 0, removed: 1 } },
     ]);
-    expect((await full.diff(after, before)).files).toContainEqual({
-      path: "c.txt",
-      status: "modified",
-      stat: { kind: "unknown" },
-    });
+    expect(await snapshots.capture({ kind: "paths", paths: ["../outside.txt"] })).toBe(after);
   });
 
   it("refuses to compare snapshots of two kinds", async () => {
     const root = await folder();
 
-    const snapshots = localSnapshots(localEnv(root), {
+    const snapshots = localSnapshots(root, {
       store: await folder(),
       git: join(root, "no-git"),
     });
 
-    const walked = await snapshots.after(run);
+    const journaled = await snapshots.capture(WORKSPACE);
 
     await expect(
-      snapshots.diff(asId("git:4b825dc642cb6eb9a060e54bf8d69288fbee4904"), walked),
+      snapshots.diff(journaled, asId("git:4b825dc642cb6eb9a060e54bf8d69288fbee4904")),
     ).rejects.toMatchObject({
       code: "invalid",
     });

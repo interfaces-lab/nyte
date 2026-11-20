@@ -1,13 +1,3 @@
-/**
- * Behavior references, not a vendored suite: https://github.com/openai/codex/tree/121f91fd5d9dc66017866ce9bdc49f1e182721df/codex-rs
- * core/tests/suite/compact_remote.rs: remote_compact_v2_reuses_compaction_trigger_for_followups,
- * remote_compact_v2_accepts_additional_output_items_before_compaction,
- * remote_compact_v2_retries_failures_with_stream_retry_budget.
- * core/src/compact_remote_v2.rs: retained_history_truncation_keeps_newest_messages_first.
- * core/src/compact_remote_v2_image_budget_tests.rs: image_only_boundary_is_atomic_and_does_not_backfill_older_messages.
- * app-server/tests/suite/v2/compaction.rs: thread_compact_start_triggers_compaction_and_returns_empty_response
- * checks terminal usage and the next request. App-server transport/notifications belong to Nyte's callers.
- */
 import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -15,9 +5,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setTimeout } from "node:timers/promises";
 import { zstdDecompressSync } from "node:zlib";
-import { describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Context, JsonValue, Model } from "../src/types.ts";
@@ -465,8 +454,7 @@ describe("Codex V2 compaction", () => {
   ])("preserves terminal usage after %s without retrying", async (_name, items) => {
     await using server = await serve(async (response) => {
       response.setHeader("x-request-id", "req_failure");
-      response.write(sse(...items));
-      await setTimeout(10);
+      await new Promise<void>((resolve) => response.write(sse(...items), () => resolve()));
       response.end(sse(completed()));
     });
     await assert.rejects(
@@ -595,8 +583,12 @@ describe("Codex V2 compaction", () => {
     await using server = await serve(async (response, index) => {
       if (index === 0) {
         if (phase === "body") {
-          response.write(sse(itemDone({ ...checkpoint, encrypted_content: "discarded-attempt" })));
-          await setTimeout(20);
+          await new Promise<void>((resolve) =>
+            response.write(
+              sse(itemDone({ ...checkpoint, encrypted_content: "discarded-attempt" })),
+              () => resolve(),
+            ),
+          );
         }
         response.destroy();
         return;
@@ -755,22 +747,26 @@ describe("Codex V2 compaction", () => {
   });
 
   test("cancels retry backoff without losing the failed attempt's usage", async () => {
-    const started = Promise.withResolvers<void>();
-    await using server = await serve((response) => {
-      response.setHeader("retry-after-ms", "5000");
-      response.end(
-        sse({
-          type: "response.failed",
-          response: { usage: terminalUsage, error: { code: "server_error" } },
-        }),
-      );
-      started.resolve();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
     });
+    let requests = 0;
     const controller = new AbortController();
-    const result = compactOpenAICodexContext(server.model, context, {
+    const result = compactOpenAICodexContext(model("https://codex.test"), context, {
       apiKey,
       maxRetries: 2,
       signal: controller.signal,
+      fetch: async () => {
+        requests++;
+        return new Response(
+          sse({
+            type: "response.failed",
+            response: { usage: terminalUsage, error: { code: "server_error" } },
+          }),
+          { headers: { "content-type": "text/event-stream", "retry-after-ms": "5000" } },
+        );
+      },
     });
     const rejected = assert.rejects(result, (error) => {
       assert.ok(error instanceof OpenAICodexCompactionError);
@@ -779,11 +775,11 @@ describe("Codex V2 compaction", () => {
       assert.ok(!error.message.includes("private cancellation reason"));
       return true;
     });
-    await started.promise;
-    await setTimeout(50);
+    await vi.advanceTimersByTimeAsync(4_999);
+    assert.equal(vi.getTimerCount(), 1);
     controller.abort(new Error("private cancellation reason"));
     await rejected;
-    assert.equal(server.requests.length, 1);
+    assert.equal(requests, 1);
   });
 
   test("missing usage stays unknown, and Codex may omit status and item ID", async () => {
@@ -854,23 +850,28 @@ describe("Codex V2 compaction", () => {
   });
 
   test("heartbeats reset the idle timeout and CRLF frames work across chunk boundaries", async () => {
-    await using server = await serve(async (response) => {
-      response.flushHeaders();
-      for (let i = 0; i < 10; i++) {
-        response.write(": heartbeat\r\n\r\n");
-        await setTimeout(30);
-      }
-      const wire = sse(itemDone(), completed()).replaceAll("\n", "\r\n");
-      const split = wire.split("\r")[0].length + 1;
-      response.write(wire.slice(0, split));
-      await setTimeout(10);
-      response.end(wire.slice(split));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
     });
-    const result = await compactOpenAICodexContext(server.model, context, {
+    const body = new TransformStream<Uint8Array, Uint8Array>();
+    const writer = body.writable.getWriter();
+    const encoder = new TextEncoder();
+    const result = compactOpenAICodexContext(model("https://codex.test"), context, {
       apiKey,
       timeoutMs: 150,
+      fetch: async () =>
+        new Response(body.readable, { headers: { "content-type": "text/event-stream" } }),
     });
-    assert.deepEqual(result.data, [retainedUser("old conversation"), checkpoint]);
+    for (let i = 0; i < 10; i++) {
+      await writer.write(encoder.encode(": heartbeat\r\n\r\n"));
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    const wire = sse(itemDone(), completed()).replaceAll("\n", "\r\n");
+    const split = wire.split("\r")[0].length + 1;
+    await writer.write(encoder.encode(wire.slice(0, split)));
+    await writer.write(encoder.encode(wire.slice(split)));
+    assert.deepEqual((await result).data, [retainedUser("old conversation"), checkpoint]);
   });
 
   test.each([false, true])(

@@ -1,7 +1,7 @@
 import { asId, asSeq, standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { pollStore } from "../src/fold/watch.ts";
+import { pollStore } from "../src/watch/watch.ts";
 import { definePart } from "../src/index.ts";
 import { decodePartRecord, envelope, memoryStore, partRef } from "../src/store.ts";
 import type { StoreConnection, ToolDefinition } from "../src/index.ts";
@@ -15,7 +15,7 @@ describe("parked tool calls", () => {
       description: "Wait for a timer.",
       parameters: standard(Type.Object({ until: Type.Number() })),
       class: () => ({ kind: "custom", label: "Waiting" }),
-      replay: "safe",
+      rerun: "safe",
       execute: async (args, invocation) => ({
         content: [
           {
@@ -75,7 +75,7 @@ describe("parked tool calls", () => {
       description: "Wait for a timer.",
       parameters: standard(Type.Object({})),
       class: () => ({ kind: "custom", label: "Waiting" }),
-      replay: "safe",
+      rerun: "safe",
       execute: async (_args, invocation) => {
         const woke = await invocation.wait({ kind: "timer", until: Date.now() + 60_000 });
         seen.push(woke.kind);
@@ -128,7 +128,7 @@ describe("parked tool calls", () => {
       description: "Wait for the answer to a question.",
       parameters: standard(Type.Object({ part: Type.String() })),
       class: () => ({ kind: "custom", label: "Asking" }),
-      replay: "safe",
+      rerun: "safe",
       execute: async (args, invocation) => {
         const woke = await invocation.wait({ kind: "part", part: asId(args.part) });
 
@@ -222,7 +222,7 @@ describe("parked tool calls", () => {
       description: "Wait for a timer.",
       parameters: standard(Type.Object({})),
       class: () => ({ kind: "custom", label: "Waiting" }),
-      replay: "safe",
+      rerun: "safe",
       execute: async (_args, invocation) => {
         const woke = await invocation.wait({ kind: "timer", until: Date.now() + 60_000 });
         seen.push(`${woke.kind} ${invocation.signal.aborted ? "aborted" : "live"}`);

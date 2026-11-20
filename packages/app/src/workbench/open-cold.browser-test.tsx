@@ -6,9 +6,11 @@ import type { ReactElement } from "react";
 import { Deferred, publishDeferred, readDeferred } from "../lib/deferred.tsx";
 import deferredUrls from "../lib/deferred-urls.ts";
 import { createAppRouter } from "../shell/routes.tsx";
-import { runWindowCommand } from "../commands/window-commands.ts";
+import { runAction } from "../commands/window-commands.ts";
+import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { ChangesPanel } from "./changes/changes-panel.tsx";
+import { DesignTab } from "./design-tab.tsx";
 import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
 import { useWorkbenchSnapshot, workbench } from "./store.ts";
 import { EditorPanel } from "./editor/editor-panel.tsx";
@@ -67,11 +69,13 @@ export async function run(): Promise<string> {
     publishDeferred("workbench", {
       EditorPanel,
       ChangesPanel,
+      DesignTab,
       TerminalPanel,
       addTerminalToChat,
       clearTerminal,
       copyTerminal,
       focusTerminal,
+      parsePatchFiles,
     });
   Object.assign(deferredUrls, { workbench: window.workbenchModuleUrl });
 
@@ -86,7 +90,7 @@ export async function run(): Promise<string> {
     flushSync(() => root.render(<TerminalSlots />));
     const router = createAppRouter({ history: createMemoryHistory({ initialEntries: ["/"] }) });
 
-    check(runWindowCommand(router, "new-terminal"), "New Terminal did not run");
+    check(runAction(router, "terminal.new", {}), "New Terminal did not run");
     check(terminals() === 1, "The terminal's tab waited for its panel's chunk");
 
     const shown = (): boolean => container.querySelector("[data-terminal]") !== null;

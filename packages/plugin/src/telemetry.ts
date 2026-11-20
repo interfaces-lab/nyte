@@ -5,17 +5,13 @@ import { SimpleSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { dev } from "@nyte-ai/core";
 import type { SettingDefinition } from "@nyte-ai/core";
-import { standard } from "@nyte-ai/schema";
-import { Type } from "typebox";
 import type { Plugin } from "@nyte-ai/plugin/core";
 
-const endpoint: SettingDefinition<string> = {
+const endpoint = {
   id: "telemetry.endpoint",
-  label: "OTLP traces endpoint",
-  schema: standard(Type.String()),
-  default: "",
-  scope: "host",
-};
+  title: "OTLP traces endpoint",
+  type: "text",
+} satisfies SettingDefinition;
 
 interface Held {
   readonly provider: TracerProvider;
@@ -75,29 +71,8 @@ export default {
   activate(api) {
     let current: ReturnType<typeof hold> | null = null;
 
-    api.hook("after_request", (event, { session, run }) => {
-      const end = Date.now();
-
-      current?.tracer
-        .startSpan(`${event.step} ${event.model.provider}/${event.model.id}`, {
-          startTime: end - event.durationMs,
-          attributes: {
-            "gen_ai.provider.name": event.model.provider,
-            "gen_ai.request.model": event.model.id,
-            "gen_ai.usage.input_tokens": event.usage.input,
-            "gen_ai.usage.output_tokens": event.usage.output,
-            "nyte.step": event.step,
-            "nyte.thinking": event.thinking,
-            "nyte.session": session ?? "",
-            "nyte.run": run ?? "",
-            "nyte.cost": event.usage.cost.total,
-          },
-        })
-        .end(end);
-    });
-
     void (async () => {
-      for await (const url of api.contribute.settings.watch(endpoint.id)) {
+      for await (const url of api.registries.settings.watch(endpoint.id)) {
         current?.release();
         current = typeof url === "string" && url !== "" ? hold(url) : null;
         dev("telemetry", "endpoint", {
@@ -110,5 +85,30 @@ export default {
       current?.release();
       current = null;
     })();
+
+    return {
+      hooks: {
+        after_request(event, { session, run }) {
+          const end = Date.now();
+
+          current?.tracer
+            .startSpan(`${event.step} ${event.model.provider}/${event.model.id}`, {
+              startTime: end - event.durationMs,
+              attributes: {
+                "gen_ai.provider.name": event.model.provider,
+                "gen_ai.request.model": event.model.id,
+                "gen_ai.usage.input_tokens": event.usage.input,
+                "gen_ai.usage.output_tokens": event.usage.output,
+                "nyte.step": event.step,
+                "nyte.thinking": event.thinking,
+                "nyte.session": session ?? "",
+                "nyte.run": run ?? "",
+                "nyte.cost": event.usage.cost.total,
+              },
+            })
+            .end(end);
+        },
+      },
+    };
   },
 } satisfies Plugin;

@@ -90,7 +90,7 @@ const observers: Observers = {
 };
 
 const transformers: Transformers = {
-  transform_transcript: (run, value, context) => run(value, context),
+  offer_tools: (run, value, context) => run(value, context),
   before_compaction: (run, value, context) => run(value, context),
   before_request: (run, value, context) => run(value, context),
   after_tool: (run, value, context) => run(value, context),
@@ -270,6 +270,14 @@ export function namesCoreHook(name: string): name is HookName<"core"> {
   );
 }
 
+export function reportUnknownHook(api: PluginApi<"core">, name: string): void {
+  api.report({
+    severity: "error",
+    path: ["hooks", name],
+    message: `There is no core hook named ${name}, so this handler never runs.`,
+  });
+}
+
 function stepContext(session: SessionId, step: HookStep): ConnectionContext {
   const { run, head, call } = step;
   let acquisitions = 0;
@@ -337,7 +345,7 @@ function emptyHandlers(): Handlers {
     session_activated: [],
     before_send: [],
     run_started: [],
-    transform_transcript: [],
+    offer_tools: [],
     before_compaction: [],
     before_request: [],
     before_tool: [],

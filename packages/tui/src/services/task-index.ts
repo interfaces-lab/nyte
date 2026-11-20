@@ -87,6 +87,7 @@ export class TaskIndex {
       entry.stop = follow(
         this.options.views(info.id),
         (view) => {
+          if (view === entry.view) return;
           entry.view = view;
           this.options.onChange();
         },

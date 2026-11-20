@@ -22,7 +22,7 @@ await mkdir(feed);
 function run(command, args) {
   const result = spawnSync(command, args, {
     cwd: desktop,
-    env: { ...process.env, NYTE_UPDATE_TEST: "1" },
+    env: { ...process.env, NYTE_DESKTOP_BUILD: "Nyte Update Test" },
     stdio: "inherit",
   });
 

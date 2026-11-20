@@ -32,7 +32,6 @@ function folder(
     trusted: true,
     projectSources: [],
     addedBy: asId<"principal">("tester"),
-    sessions: 0,
     writers: [],
     isolation: null,
     ...change,
@@ -45,7 +44,7 @@ const workspaces = [
   folder("desktop", "/u/dev/nyte/packages/desktop"),
   folder("stale-nyte", "/u/dev/nyte", gone),
   folder("tmp", "/private/tmp/nyte-cwd-Oohl", gone),
-  folder("docs", "/u/dev/nyte/packages/docs"),
+  folder("docs", "/u/dev/nyte/services/web"),
   folder("legacy-nyte", "/u/dev/nyte"),
   folder("demo-tui", "/u/dev/nyte/packages/demo/tui"),
   folder("lazy", "/u/dev/lazy"),
@@ -87,7 +86,7 @@ async function until<T>(read: () => T | null | undefined | false, what: string):
     if (value !== null && value !== undefined && value !== false) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
 }
 
@@ -111,7 +110,7 @@ async function checkMenu(): Promise<string> {
     root.render(
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-          <WorkspaceContext active />
+          <WorkspaceContext active onChoose={() => undefined} />
         </TooltipProvider>
       </QueryClientProvider>,
     ),
@@ -121,12 +120,15 @@ async function checkMenu(): Promise<string> {
     await until(() => queryClient.getQueryData(keys.workspaces), "the workspace list");
     window.dispatchEvent(new KeyboardEvent("keydown", { key: ".", ctrlKey: true, bubbles: true }));
 
-    const menu = await until(
-      () =>
-        document.querySelector("[role='menu']")?.textContent?.includes("docs") === true &&
-        document.querySelector("[role='menu']"),
-      "the workspace menu with its folders",
-    );
+    const menu = await until(() => {
+      const found = document.querySelector("[role='menu']");
+
+      return (
+        found?.textContent?.includes("docs") === true &&
+        found.getBoundingClientRect().bottom <= window.innerHeight &&
+        found
+      );
+    }, "the workspace menu with its folders, placed in the window");
 
     expectRule(
       rows(menu).join("|") === "Home|nyte|tuipackages|tuidemo|lazy|docs",
@@ -308,18 +310,15 @@ async function checkBranches(): Promise<string> {
   queryClient.setQueryData(keys.host, {
     workspace: { id: asId<"workspace">("nyte"), path: "/u/dev/nyte", name: "nyte" },
   });
-  const { connection, live } = scriptedConnection({ workspaces, sessions, git });
+  const { connection } = scriptedConnection({ workspaces, sessions, git });
 
-  installConnection(
-    {
-      ...connection,
-      workspace: (id) => ({
-        ...connection.workspace(id),
-        files: async () => ({ kind: "available", api: files }),
-      }),
-    },
-    live,
-  );
+  installConnection({
+    ...connection,
+    workspace: (id) => ({
+      ...connection.workspace(id),
+      files: async () => ({ kind: "available", api: files }),
+    }),
+  });
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;left:0;bottom:0;padding:16px";
   document.body.append(container);
@@ -330,7 +329,7 @@ async function checkBranches(): Promise<string> {
       root.render(
         <QueryClientProvider client={queryClient}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <WorkspaceContext active />
+            <WorkspaceContext active onChoose={() => undefined} />
             {commits && <History />}
             <FileList />
           </TooltipProvider>

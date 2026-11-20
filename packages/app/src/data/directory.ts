@@ -1,60 +1,58 @@
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import type { HostConnection, SessionsWindow } from "@nyte-ai/sdk/client";
-import { liveFamily, liveValues } from "./watch-store.ts";
+import type { ClientConnection, SessionsSnapshot, SessionsWindow } from "@nyte-ai/sdk/client";
+import { watchFamily } from "./watch-store.ts";
+import type { LiveView, Shown } from "./watch-store.ts";
 
-export const sessionList = liveFamily(
-  (live, parents: "roots" | "all"): AsyncIterable<readonly SessionInfo[]> =>
-    directoryRows(live, { parents: { kind: parents } }),
+export const sessionList = watchFamily(
+  (connection, list: "roots" | "all" | "pinned"): LiveView<readonly SessionInfo[]> =>
+    directoryRows(
+      connection,
+      list === "pinned"
+        ? { parents: { kind: "roots" }, pinned: true, limit: Number.MAX_SAFE_INTEGER }
+        : { parents: { kind: list } },
+    ),
 );
 
-export const childList = liveFamily(
-  (live, parent: SessionId): AsyncIterable<readonly SessionInfo[]> =>
-    directoryRows(live, { parents: { kind: "children", session: parent } }),
+export const childList = watchFamily(
+  (connection, parent: SessionId): LiveView<readonly SessionInfo[]> =>
+    directoryRows(connection, { parents: { kind: "children", session: parent } }),
+);
+
+export const sessionSearch = watchFamily(
+  (connection, query: string): LiveView<readonly SessionInfo[]> =>
+    directoryRows(connection, { parents: { kind: "roots" }, query }),
 );
 
 function directoryRows(
-  live: HostConnection,
+  connection: ClientConnection,
   window: SessionsWindow,
-): AsyncIterable<readonly SessionInfo[]> {
-  return liveValues((changed) => {
-    const store = live.directory(window);
-    const stop = store.subscribe(changed);
-    let shown: {
-      readonly ids: readonly SessionId[];
-      readonly rows: readonly SessionInfo[];
-    } | null = null;
-    let held: ReadonlyMap<string, SessionInfo> | null = null;
+): LiveView<readonly SessionInfo[]> {
+  const store = connection.sessions.open(window);
+  let drawn: SessionsSnapshot | null = null;
 
-    return {
-      read() {
-        const snapshot = store.snapshot();
+  return {
+    subscribe: (listener) => store.subscribe(listener),
+    show(previous) {
+      const snapshot = store.snapshot();
 
-        if (snapshot === null) return null;
+      if (snapshot === drawn && previous !== undefined) return { kind: "shown", value: previous };
+      drawn = snapshot;
 
-        if (shown?.ids === snapshot.ids && held === snapshot.rows) return shown.rows;
-        held = snapshot.rows;
+      return showSessions(snapshot);
+    },
+    close: () => store.close(),
+  };
+}
 
-        const rows = snapshot.ids.flatMap((id) => {
-          const info = snapshot.rows.get(id);
+export function showSessions(snapshot: SessionsSnapshot | null): Shown<readonly SessionInfo[]> {
+  if (snapshot === null) return { kind: "waiting" };
 
-          return info === undefined ? [] : [info];
-        });
+  return {
+    kind: "shown",
+    value: snapshot.ids.flatMap((id) => {
+      const info = snapshot.rows.get(id);
 
-        const kept =
-          shown !== null &&
-          shown.rows.length === rows.length &&
-          shown.rows.every((row, index) => row === rows[index])
-            ? shown.rows
-            : rows;
-
-        shown = { ids: snapshot.ids, rows: kept };
-
-        return kept;
-      },
-      close() {
-        stop();
-        store.close();
-      },
-    };
-  });
+      return info === undefined ? [] : [info];
+    }),
+  };
 }

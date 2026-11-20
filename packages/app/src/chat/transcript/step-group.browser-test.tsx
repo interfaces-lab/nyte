@@ -29,6 +29,12 @@ async function settle() {
   for (let index = 0; index < 4; index += 1) await frame();
 }
 
+async function within(done: () => boolean, ms: number) {
+  const deadline = performance.now() + ms;
+
+  while (!done() && performance.now() < deadline) await frame();
+}
+
 function thought(id: string, text: string, at: number, live = false): StepMessage {
   return {
     id: asId<"message">(id),
@@ -223,7 +229,7 @@ function timeline(changes: readonly Change[], from: number): string {
 
 async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMessage[]) => void) {
   render([read("quick-a", 0, true)]);
-  await wait(300);
+  await within(() => header(outer) === "Exploring quick-a.ts", 2_000);
   check(header(outer) === "Exploring quick-a.ts", "A live group counts the read in flight");
   const labels = recordLabels(outer, () => header(outer));
   const a = read("quick-a", 0);
@@ -244,7 +250,7 @@ async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMe
     await frame();
   }
 
-  await wait(450);
+  await within(() => header(outer) === "Editing lease.ts, explored 2 files, ran 1 command", 2_000);
   labels.stop();
   const seen = timeline(labels.changes, started);
 
@@ -270,7 +276,7 @@ async function thinkingSteps(
   const labels = recordLabels(outer, () => header(outer));
   const settled = performance.now();
   render([thought("plan-a", "Weighing the lease", 0)], false);
-  await wait(300);
+  await within(() => header(outer) === "Thought", 2_000);
   labels.stop();
   const seen = timeline(labels.changes, settled);
 
@@ -666,7 +672,7 @@ export async function run() {
       flushSync(() =>
         root.render(
           <QueryClientProvider client={queryClient}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <TranscriptProvider paneId={PRIMARY} sessionId={asId<"session">("step-group-test")}>
                 {node}
               </TranscriptProvider>
@@ -700,6 +706,96 @@ export async function run() {
     transcript(compact("later", thought("live-4", "Live thought", 0, true)));
     await settle();
     check(expandedState() === "false", "A later live group starts from its density default");
+
+    const mixed = [
+      thought("lease", "**Checking the lease**\n\nThe lease length lives in heads.ts.", 1),
+      read("lease-read", 2),
+    ];
+
+    const detailed = (key: string, running: boolean) => (
+      <StepGroupView
+        key={key}
+        messages={mixed}
+        cwd={undefined}
+        added={0}
+        removed={0}
+        running={running}
+        density="detailed"
+      />
+    );
+
+    transcript(detailed("seen", true));
+    await settle();
+    transcript(detailed("seen", false));
+    await settle();
+    const seenLive = outer.innerText;
+    transcript(detailed("remounted", false));
+    await settle();
+    check(
+      outer.innerText === seenLive,
+      `Rule 24: a thought shown live paints the same after a remount (${JSON.stringify([seenLive, outer.innerText])})`,
+    );
+
+    const twoPanes = (key: string) =>
+      flushSync(() =>
+        root.render(
+          <QueryClientProvider client={queryClient}>
+            <PaneControllerProvider panes={panes}>
+              {[PRIMARY, asId<"pane">("beside")].map((paneId) => (
+                <TranscriptProvider
+                  key={paneId}
+                  paneId={paneId}
+                  sessionId={asId<"session">("step-group-test")}
+                >
+                  {compact(key, thought("shared", "Shared thought", 0))}
+                </TranscriptProvider>
+              ))}
+            </PaneControllerProvider>
+          </QueryClientProvider>,
+        ),
+      );
+
+    const states = () =>
+      Array.from(outer.querySelectorAll("button"), (button) =>
+        button.getAttribute("aria-expanded"),
+      );
+
+    twoPanes("shared");
+    await settle();
+    outer.querySelectorAll("button")[0]?.click();
+    await settle();
+    check(
+      states().join() === "true,true",
+      `Panes on one chat agree once one opens (${states().join()})`,
+    );
+    outer.querySelectorAll("button")[1]?.click();
+    await settle();
+    check(states().join() === "false,false", `Either pane closes both (${states().join()})`);
+    outer.querySelectorAll("button")[0]?.click();
+    await settle();
+    transcript(
+      Array.from({ length: 70 }, (_, index) => (
+        <StepGroupView
+          key={index}
+          messages={[
+            thought(`seen-${String(index)}`, "A thought shown live", index, true),
+            read(`seen-read-${String(index)}`, index),
+          ]}
+          cwd={undefined}
+          added={0}
+          removed={0}
+          running
+          density="detailed"
+        />
+      )),
+    );
+    await settle();
+    twoPanes("shared");
+    await settle();
+    check(
+      states().join() === "true,true",
+      `A group the reader opened stays open after 70 thoughts show live (${states().join()})`,
+    );
 
     return "passed";
   } finally {

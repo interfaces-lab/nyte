@@ -6,7 +6,7 @@ import { failure, formatSize, green, red, table } from "./terminal.mjs";
 const KIB = 1_024;
 
 const budgets = {
-  main: 680 * KIB,
+  main: 480 * KIB,
   preload: 8 * KIB,
   renderer: 3_490 * KIB,
   css: 290 * KIB,
@@ -24,7 +24,6 @@ for await (const path of glob("src/**/*.{ts,tsx}", { cwd: desktopRoot })) {
   }
 }
 
-/** Picks the files worth parsing. Bundled strings, such as the docs, can quote an import, so only the parsed module requests decide. */
 const workspaceImport = /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']@nyte-ai\//u;
 
 for await (const path of glob("out/main/**/*.js", { cwd: desktopRoot })) {

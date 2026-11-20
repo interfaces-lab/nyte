@@ -29,18 +29,18 @@ function applyWidth(width: number): void {
   document.documentElement.style.setProperty(WIDTH_VARIABLE, `${String(width)}px`);
 }
 
-const storedWidth = persisted(
+export const sidePanelWidth = persisted(
   "nyte.desktop.workbench-rail-width.v1",
   Type.Number({ minimum: WIDTH_MIN, maximum: WIDTH_MAX }),
   WIDTH_DEFAULT,
 );
 
-applyWidth(storedWidth.get());
+applyWidth(sidePanelWidth.get());
 
 function setWidth(next: number): void {
-  if (next === storedWidth.get()) return;
+  if (next === sidePanelWidth.get()) return;
   applyWidth(next);
-  storedWidth.set(next);
+  sidePanelWidth.set(next);
 }
 
 const styles = create({
@@ -56,7 +56,6 @@ const styles = create({
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: role.strokeQuaternary,
-    backgroundColor: role.bgBase,
   },
   sash: {
     insetInlineEnd: "auto",
@@ -98,7 +97,7 @@ export function SidePanel({
   readonly side?: "start" | "end";
   readonly children: ReactNode;
 }): ReactElement {
-  const current = useSyncExternalStore(storedWidth.subscribe, storedWidth.get);
+  const current = useSyncExternalStore(sidePanelWidth.subscribe, sidePanelWidth.get);
   const seatRef = useRef<HTMLDivElement>(null);
   const [max, setMax] = useState(WIDTH_MAX);
   const [resizing, setResizing] = useState(false);

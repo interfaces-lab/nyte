@@ -8,7 +8,6 @@ export interface DevRow {
   readonly data: string;
 }
 
-/** A failure after which a run can be stuck or work lost; `data` is its fields as JSON. */
 export interface Fault {
   readonly at: number;
   readonly area: string;

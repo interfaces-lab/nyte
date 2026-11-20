@@ -6,7 +6,7 @@ import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { requestBody } from "../src/agent/transcript.ts";
 import { createPluginRuntime } from "../src/extend/plugin-runtime.ts";
 import { toolSource } from "../src/extend/registry.ts";
-import { publishSet } from "../src/fold/watch.ts";
+import { publishSet } from "../src/watch/watch.ts";
 import { compaction, isPart } from "../src/index.ts";
 import { decodePartRecord, envelope, memoryStore, partRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
@@ -39,7 +39,7 @@ describe("turn findings (CORE-DIET D3)", () => {
       description: "Reload the session's plugins without waiting.",
       parameters: nothing,
       class: () => ({ kind: "custom", label: "Reloading" }),
-      replay: "safe",
+      rerun: "safe",
       async execute() {
         reload();
 
@@ -50,17 +50,21 @@ describe("turn findings (CORE-DIET D3)", () => {
     const slow: Plugin<"core"> = {
       id: "slow",
       contribute: { tools: [reloading] },
-      async activate(api) {
+      async activate() {
         activations += 1;
         const activation = activations;
 
         if (activation === 2) await gate.promise;
 
-        api.hook("before_request", (request) => {
-          seen.push(`before_request:${activation}`);
+        return {
+          hooks: {
+            before_request(request) {
+              seen.push(`before_request:${activation}`);
 
-          return request;
-        });
+              return request;
+            },
+          },
+        };
       },
     };
 
@@ -71,13 +75,12 @@ describe("turn findings (CORE-DIET D3)", () => {
 
     await using host = await open(fake, { plugins: [slow] });
     const id = asId<"session">("chat");
-
-    reload = () => {
-      void host.kernel.plugins.reload(id);
-      setTimeout(() => gate.resolve(), 20);
-    };
-
+    const logged = events(host.kernel, id);
+    reload = () => void host.kernel.plugins.reload(id);
     const { receipt: first } = await host.sessions.start({ id, content: "Go." });
+
+    await until(() => (logged.some((event) => label(event) === "part:settled") ? true : undefined));
+    gate.resolve();
     expect((await first.settled()).kind).toBe("completed");
     expect(seen).toEqual(["before_request:1", "before_request:2"]);
 
@@ -95,7 +98,7 @@ describe("turn findings (CORE-DIET D3)", () => {
       description: "A tool only the given runtime lists.",
       parameters: nothing,
       class: () => ({ kind: "custom", label: "Marking" }),
-      replay: "safe",
+      rerun: "safe",
       execute: async () => ({ content: [{ kind: "text", text: "marked" }] }),
     };
 
@@ -104,7 +107,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     await host.kernel.plugins.runtime(session.id).ready;
     const given = createPluginRuntime(host.kernel, session.id, null);
     await given.ready;
-    await given.load([{ id: "marker", contribute: { tools: [marker] } }]);
+    await given.load([{ id: "marker", contribute: { tools: [marker] } }], null);
 
     const { transcript } = await requestBody(host.kernel, fake.models, given, {
       session: session.id,

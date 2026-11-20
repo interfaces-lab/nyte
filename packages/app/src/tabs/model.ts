@@ -1,6 +1,8 @@
 import type { ProjectId, SessionId } from "@nyte-ai/sdk";
 import { createLayout, reduceLayout } from "../panes/layout.ts";
-import type { Layout } from "../panes/layout.ts";
+import type { Layout, LayoutAction, PaneId } from "../panes/layout.ts";
+import { commandFocus, focusRequest, planPane, waitsForChat } from "../panes/pane-commands.ts";
+import type { PaneCommand, PaneFocus } from "../panes/pane-commands.ts";
 import { paneRules } from "../panes/pane-kinds.ts";
 import type { PaneContent } from "../panes/pane-kinds.ts";
 import {
@@ -8,10 +10,12 @@ import {
   chatContent,
   chatPanes,
   findSessionTab,
+  paneForSession,
   sameSelection,
   showChat,
 } from "../panes/pane-layout.ts";
 import type { PaneSelection } from "../panes/pane-layout.ts";
+import type { ChatDraft } from "../panes/session-view-state.ts";
 
 export type CustomizePage = {
   readonly kind: "customize";
@@ -42,11 +46,19 @@ export interface ClosedTab {
   readonly index: number;
 }
 
+export interface HiddenPane {
+  readonly sessionId: SessionId;
+  readonly tabId: string;
+  readonly pane: PaneId;
+  readonly focused: PaneId;
+}
+
 export interface WindowState {
   readonly tabs: readonly Tab[];
   readonly activeTabId: string;
   readonly recent: readonly string[];
   readonly closed: readonly ClosedTab[];
+  readonly hidden: readonly HiddenPane[];
 }
 
 export type OpenIntent = "preview" | "permanent" | "background" | "next-to-parent";
@@ -57,7 +69,18 @@ export type WindowAction =
       readonly place: Place;
       readonly target: OpenIntent | "here";
     }
-  | { readonly kind: "layout"; readonly tabId: string; readonly layout: Layout<PaneContent> }
+  | {
+      readonly kind: "pane";
+      readonly tabId: string;
+      readonly command: PaneCommand;
+      readonly focus?: PaneFocus;
+    }
+  | {
+      readonly kind: "arrange";
+      readonly tabId: string;
+      readonly actions: readonly LayoutAction<PaneContent>[];
+    }
+  | { readonly kind: "open-beside"; readonly sessionId: SessionId }
   | { readonly kind: "page-section"; readonly section: string }
   | { readonly kind: "leave-page" }
   | { readonly kind: "new-tab" }
@@ -71,7 +94,11 @@ export type WindowAction =
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 }
   | { readonly kind: "reorder"; readonly tabIds: readonly string[]; readonly tabId: string }
   | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> }
+  | { readonly kind: "hide-chat"; readonly sessionId: SessionId }
+  | { readonly kind: "unhide-chat"; readonly sessionId: SessionId }
   | { readonly kind: "close-chats"; readonly sessionIds: ReadonlySet<SessionId> };
+
+export type BlankDrafts = (tabId: string, pane: PaneId) => ChatDraft;
 
 const BLANK: PaneSelection = { kind: "blank" };
 
@@ -109,8 +136,18 @@ export function findChatTab(state: WindowState): Tab | undefined {
   return state.tabs.find((tab) => tab.id === id);
 }
 
+export function paneTabId(state: WindowState): string {
+  return findChatTab(state)?.id ?? state.activeTabId;
+}
+
 export function tabLayout(tab: Tab): Layout<PaneContent> {
   return tab.view.kind === "page" ? PAGE_LAYOUT : tab.view.layout;
+}
+
+export function shownLayout(state: WindowState, tabId: string): Layout<PaneContent> {
+  const tab = state.tabs.find((candidate) => candidate.id === tabId);
+
+  return tab === undefined ? PAGE_LAYOUT : tabLayout(tab);
 }
 
 export function tabPlaces(tab: Tab): readonly Place[] {
@@ -138,6 +175,7 @@ export function initialWindow(id: string, createId: () => string): WindowState {
     activeTabId: id,
     recent: [],
     closed: [],
+    hidden: [],
   };
 }
 
@@ -182,7 +220,7 @@ function afterActive(state: WindowState): number {
 }
 
 function showsOneChat(layout: Layout<PaneContent>): boolean {
-  return layout.root.kind === "pane" && layout.root.tabs.length === 1;
+  return layout.root.kind === "pane";
 }
 
 function showsOnlyBlank(tab: Tab): boolean {
@@ -392,19 +430,63 @@ function removeTabs(
   return { ...remaining, tabs: [fresh], activeTabId: fresh.id };
 }
 
-function changeLayout(state: WindowState, tabId: string, layout: Layout<PaneContent>): WindowState {
+function changeLayout(
+  state: WindowState,
+  tabId: string,
+  layout: Layout<PaneContent>,
+  createId: () => string,
+  blank: BlankDrafts,
+): WindowState {
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
 
   if (tab === undefined || tab.view.kind === "page") return state;
 
-  if (
+  const view: View =
     tab.view.kind === "preview" &&
     showsOneChat(layout) &&
     sameSelection(activeSelection(layout), activeSelection(tab.view.layout))
-  )
-    return withTab(state, { ...tab, view: { kind: "preview", layout } });
+      ? { kind: "preview", layout }
+      : { kind: "panes", layout };
 
-  return withTab(state, { ...tab, view: { kind: "panes", layout } });
+  const before = new Set(shownChats(tab.view.layout));
+  const arrived = new Set(shownChats(layout).filter((id) => !before.has(id)));
+
+  return closeChats(withTab(state, { ...tab, view }), arrived, createId, blank, tab.id);
+}
+
+function arrangeTab(
+  state: WindowState,
+  tabId: string,
+  actions: (layout: Layout<PaneContent>) => readonly LayoutAction<PaneContent>[],
+  createId: () => string,
+  blank: BlankDrafts,
+): WindowState {
+  const tab = state.tabs.find((candidate) => candidate.id === tabId);
+
+  if (tab === undefined) return state;
+  const rules = { ...paneRules, newId: createId };
+
+  const layout = actions(tabLayout(tab)).reduce(
+    (current, action) => reduceLayout(current, action, rules),
+    tabLayout(tab),
+  );
+
+  return layout === tabLayout(tab) ? state : changeLayout(state, tabId, layout, createId, blank);
+}
+
+type PaneAction = Extract<WindowAction, { readonly kind: "pane" }>;
+
+function openBeside(state: WindowState, sessionId: SessionId): PaneAction {
+  const tabId = paneTabId(state);
+  const pane = shownLayout(state, tabId).focus[0];
+
+  return { kind: "pane", tabId, command: { kind: "drop", sessionId, pane, placement: "right" } };
+}
+
+function shownChats(layout: Layout<PaneContent>): readonly SessionId[] {
+  return chatPanes(layout).flatMap((pane) =>
+    pane.selection.kind === "session" ? [pane.selection.sessionId] : [],
+  );
 }
 
 function forgetClosed(state: WindowState, gone: ReadonlySet<SessionId>): WindowState {
@@ -419,28 +501,41 @@ function closeChats(
   state: WindowState,
   sessionIds: ReadonlySet<SessionId>,
   createId: () => string,
+  blank: BlankDrafts,
+  kept?: string,
 ): WindowState {
-  const goneChats = (layout: Layout<PaneContent>) =>
+  const closing = state.tabs.filter((tab) => tab.id !== kept);
+
+  const goneChats = (tabId: string, layout: Layout<PaneContent>) =>
     chatPanes(layout).filter(
-      (chat) => chat.selection.kind === "session" && sessionIds.has(chat.selection.sessionId),
+      (chat) =>
+        (chat.selection.kind === "session" && sessionIds.has(chat.selection.sessionId)) ||
+        state.hidden.some(
+          (entry) =>
+            entry.tabId === tabId &&
+            entry.pane === chat.pane &&
+            sessionIds.has(entry.sessionId) &&
+            waitsForChat(chat, blank(tabId, chat.pane)),
+        ),
     );
 
   const emptied = new Set(
-    state.tabs
+    closing
       .filter((tab) => {
         if (tab.view.kind === "page") return false;
-        const gone = goneChats(tab.view.layout).length;
+        const gone = goneChats(tab.id, tab.view.layout).length;
 
         return gone > 0 && gone === chatPanes(tab.view.layout).length;
       })
       .map((tab) => tab.id),
   );
 
-  const collapsed = state.tabs.flatMap((tab): Tab[] => {
+  const collapsed = closing.flatMap((tab): Tab[] => {
     if (tab.view.kind === "page" || emptied.has(tab.id)) return [];
-    const gone = goneChats(tab.view.layout);
+    const gone = goneChats(tab.id, tab.view.layout);
 
     if (gone.length === 0) return [];
+
     const layout = gone.reduce(
       (current, chat) => reduceLayout(current, { kind: "close", tab: chat.tab }, paneRules),
       tab.view.layout,
@@ -449,12 +544,132 @@ function closeChats(
     return [{ ...tab, view: { kind: "panes", layout } }];
   });
 
-  return removeTabs(
+  const remaining = removeTabs(
     collapsed.reduce((current, tab) => withTab(current, tab), state),
     emptied,
     state.closed,
     createId,
   );
+
+  const unhidden = remaining.hidden.filter((entry) => !sessionIds.has(entry.sessionId));
+
+  return unhidden.length === remaining.hidden.length
+    ? remaining
+    : { ...remaining, hidden: unhidden };
+}
+
+export function withChatsInOneTab(state: WindowState, createId: () => string): WindowState {
+  const order = new Set([state.activeTabId, ...state.recent, ...state.tabs.map((tab) => tab.id)]);
+
+  return [...order].reduce((current, tabId) => {
+    const tab = current.tabs.find((candidate) => candidate.id === tabId);
+
+    return tab === undefined
+      ? current
+      : closeChats(current, new Set(shownChats(tabLayout(tab))), createId, readsNoBlank, tabId);
+  }, state);
+}
+
+function readsNoBlank(): never {
+  throw new Error("A saved window hides no pane.");
+}
+
+function hideChat(
+  state: WindowState,
+  sessionId: SessionId,
+  createId: () => string,
+  blank: BlankDrafts,
+): WindowState {
+  const hiding = state.tabs.flatMap((tab): HiddenPane[] => {
+    const layout = tabLayout(tab);
+    const pane = paneForSession(layout, sessionId);
+
+    return tab.view.kind === "page" || pane === undefined
+      ? []
+      : [{ sessionId, tabId: tab.id, pane, focused: layout.focus[0] }];
+  });
+
+  if (hiding.length === 0) return state;
+
+  const hidden = hiding.reduce(
+    (current, entry) =>
+      reduce(
+        current,
+        { kind: "pane", tabId: entry.tabId, command: { kind: "hide", sessionId } },
+        createId,
+        blank,
+      ),
+    state,
+  );
+
+  return { ...hidden, hidden: [...hidden.hidden, ...hiding] };
+}
+
+function unhideChat(
+  state: WindowState,
+  sessionId: SessionId,
+  createId: () => string,
+  blank: BlankDrafts,
+): WindowState {
+  const hiding = state.hidden.filter((entry) => entry.sessionId === sessionId);
+
+  if (hiding.length === 0) return state;
+  const place: Place = { kind: "session", sessionId };
+
+  return hiding.toReversed().reduce<WindowState>(
+    (current, entry) =>
+      current.tabs.some((tab) => showing(tab, place))
+        ? current
+        : reduce(
+            current,
+            {
+              kind: "pane",
+              tabId: entry.tabId,
+              command: { kind: "unhide", sessionId, pane: entry.pane, focused: entry.focused },
+            },
+            createId,
+            blank,
+          ),
+    { ...state, hidden: state.hidden.filter((entry) => entry.sessionId !== sessionId) },
+  );
+}
+
+function reopenTab(state: WindowState, createId: () => string): WindowState {
+  const last = state.closed[0];
+
+  if (last === undefined) return state;
+  const rest: WindowState = { ...state, closed: state.closed.slice(1) };
+
+  if (last.tab.view.kind === "page") {
+    const page = last.tab.view.page;
+
+    return rest.tabs.some((tab) => showing(tab, page))
+      ? open(rest, page, "permanent", createId)
+      : restoreTab(rest, last.tab, last.index);
+  }
+
+  const layout = last.tab.view.layout;
+
+  const taken = chatPanes(layout).filter((pane) =>
+    rest.tabs.some((tab) => showing(tab, pane.selection)),
+  );
+
+  if (taken.length === 0) return restoreTab(rest, last.tab, last.index);
+  const focused = tabPlaces(last.tab).find((place) => place.kind === "session");
+
+  if (taken.length === shownChats(layout).length && focused !== undefined)
+    return open(rest, focused, "permanent", createId);
+
+  const left = taken.reduce(
+    (current, pane) => reduceLayout(current, { kind: "close", tab: pane.tab }, paneRules),
+    layout,
+  );
+
+  return restoreTab(rest, { ...last.tab, view: { kind: "panes", layout: left } }, last.index);
+}
+
+function restoreTab(state: WindowState, tab: Tab, index: number): WindowState {
+  return activate(insertTab(state, tab, Math.min(index, state.tabs.length)), tab.id);
 }
 
 function leavePage(state: WindowState, createId: () => string): WindowState {
@@ -467,12 +682,46 @@ export function reduce(
   state: WindowState,
   action: WindowAction,
   createId: () => string,
+  blank: BlankDrafts,
+): WindowState {
+  return withLiveHidden(step(state, action, createId, blank));
+}
+
+function withLiveHidden(state: WindowState): WindowState {
+  const hidden = state.hidden.filter((entry) =>
+    state.tabs.some(
+      (tab) =>
+        tab.id === entry.tabId &&
+        chatPanes(tabLayout(tab)).some(
+          (chat) => chat.pane === entry.pane && chat.selection.kind === "blank",
+        ),
+    ),
+  );
+
+  return hidden.length === state.hidden.length ? state : { ...state, hidden };
+}
+
+function step(
+  state: WindowState,
+  action: WindowAction,
+  createId: () => string,
+  blank: BlankDrafts,
 ): WindowState {
   switch (action.kind) {
     case "open":
       return open(state, action.place, action.target, createId);
-    case "layout":
-      return changeLayout(state, action.tabId, action.layout);
+    case "pane":
+      return arrangeTab(
+        state,
+        action.tabId,
+        (layout) => planPane(layout, action.command, (pane) => blank(action.tabId, pane)).actions,
+        createId,
+        blank,
+      );
+    case "arrange":
+      return arrangeTab(state, action.tabId, () => action.actions, createId, blank);
+    case "open-beside":
+      return reduce(state, openBeside(state, action.sessionId), createId, blank);
     case "page-section": {
       const tab = activeTab(state);
 
@@ -508,19 +757,8 @@ export function reduce(
       return closeTabs(state, new Set(state.tabs.slice(index + 1).map((tab) => tab.id)), createId);
     }
 
-    case "reopen-tab": {
-      const [last, ...rest] = state.closed;
-
-      if (last === undefined) return state;
-
-      return activate(
-        {
-          ...insertTab(state, last.tab, Math.min(last.index, state.tabs.length)),
-          closed: rest,
-        },
-        last.tab.id,
-      );
-    }
+    case "reopen-tab":
+      return reopenTab(state, createId);
 
     case "activate-tab":
       return state.tabs.some((tab) => tab.id === action.tabId)
@@ -547,8 +785,12 @@ export function reduce(
 
     case "forget-closed":
       return forgetClosed(state, action.gone);
+    case "hide-chat":
+      return hideChat(state, action.sessionId, createId, blank);
+    case "unhide-chat":
+      return unhideChat(state, action.sessionId, createId, blank);
     case "close-chats":
-      return closeChats(state, action.sessionIds, createId);
+      return closeChats(state, action.sessionIds, createId, blank);
 
     default: {
       const _exhaustive: never = action;
@@ -556,4 +798,59 @@ export function reduce(
       return _exhaustive;
     }
   }
+}
+
+export function focusRequests(
+  before: WindowState,
+  after: WindowState,
+  action: WindowAction,
+): ReadonlyMap<string, PaneId> {
+  if (action.kind === "hide-chat") return new Map();
+  const acting = actingTab(before, action);
+
+  const changed = after.tabs.flatMap((tab): [string, PaneId][] => {
+    const previous = before.tabs.find((candidate) => candidate.id === tab.id);
+
+    return previous === undefined || tab.id === acting || tabLayout(previous) === tabLayout(tab)
+      ? []
+      : [[tab.id, tabLayout(tab).focus[0]]];
+  });
+
+  const own = ownRequest(before, after, action);
+
+  return new Map(own === undefined ? changed : [...changed, own]);
+}
+
+function actingTab(state: WindowState, action: WindowAction): string | undefined {
+  if (action.kind === "arrange") return action.tabId;
+
+  return commandIn(state, action)?.tabId;
+}
+
+function commandIn(state: WindowState, action: WindowAction): PaneAction | undefined {
+  if (action.kind === "pane") return action;
+
+  return action.kind === "open-beside" ? openBeside(state, action.sessionId) : undefined;
+}
+
+function ownRequest(
+  before: WindowState,
+  after: WindowState,
+  action: WindowAction,
+): [string, PaneId] | undefined {
+  const pane = commandIn(before, action);
+
+  if (pane === undefined) return undefined;
+  const previous = before.tabs.find((tab) => tab.id === pane.tabId);
+  const next = after.tabs.find((tab) => tab.id === pane.tabId);
+
+  if (previous === undefined || next === undefined) return undefined;
+
+  const requested = focusRequest(
+    tabLayout(previous),
+    tabLayout(next),
+    pane.focus ?? commandFocus(pane.command),
+  );
+
+  return requested === undefined ? undefined : [pane.tabId, requested];
 }

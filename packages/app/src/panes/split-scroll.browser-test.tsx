@@ -18,7 +18,7 @@ import { asId } from "@nyte-ai/schema";
 import "../theme/tokens.stylex.ts";
 import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, endedTurn, sessionRow, sessionView } from "../../test/view-fixtures.ts";
-import { tabPanes } from "../../test/panes.ts";
+import { runPane, selectSession, tabPanes } from "../../test/panes.ts";
 import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { createAppRouter } from "../shell/routes.tsx";
@@ -118,9 +118,9 @@ const catalog = {
 
 const host = { workspace: undefined } satisfies HostState;
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -129,7 +129,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
 }
 
@@ -164,7 +164,7 @@ async function journey(name: string, split: SplitDirection | null, second: Sessi
   queryClient.setQueryData(keys.mentionFiles(undefined), []);
 
   const panes = tabPanes();
-  panes.selectSession(FIRST);
+  selectSession(panes, FIRST);
   const container = document.createElement("div");
   container.style.cssText = `display:flex;width:${String(LAYOUT.width)}px;height:${String(LAYOUT.height)}px`;
   document.body.append(container);
@@ -176,9 +176,9 @@ async function journey(name: string, split: SplitDirection | null, second: Sessi
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
-                <LayoutView store={panes.store} renderTab={renderPaneContent} />
+                <LayoutView store={panes.layout} renderTab={renderPaneContent} />
               </SessionDndProvider>
             </PaneControllerProvider>
           </TooltipProvider>
@@ -194,11 +194,11 @@ async function journey(name: string, split: SplitDirection | null, second: Sessi
       "the first transcript",
     );
 
-    for (let frame = 0; frame < 10; frame += 1) await painted();
+    for (let frame = 0; frame < 10; frame += 1) await nextFrame();
 
     if (split !== null) {
-      panes.split(split);
-      panes.selectSession(second);
+      runPane(panes, { kind: "split", direction: split });
+      selectSession(panes, second);
     }
 
     await until(
@@ -208,7 +208,7 @@ async function journey(name: string, split: SplitDirection | null, second: Sessi
       "every transcript",
     );
 
-    for (let frame = 0; frame < 20; frame += 1) await painted();
+    for (let frame = 0; frame < 20; frame += 1) await nextFrame();
     window.rendererCapture(name);
     await new Promise((resolve) =>
       document.addEventListener("renderer-captured", resolve, { once: true }),

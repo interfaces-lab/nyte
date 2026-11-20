@@ -2,15 +2,15 @@ import { isJsonObject, standard } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Kernel } from "../contract/kernel.ts";
-import type { Plugin, SecretEntry, SettingDefinition } from "../contract/plugin.ts";
+import type { Plugin, SecretEntry, ResolvedSetting } from "../contract/plugin.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
 import { kvRef } from "../store/refs.ts";
 import { openText } from "../store/secrets.ts";
 import { readKv } from "../store/session.ts";
 
-export const VARIABLES: SettingDefinition<Readonly<Record<string, SecretEntry>>> = {
+const VARIABLES: ResolvedSetting<Readonly<Record<string, SecretEntry>>> = {
   id: "variables.entries",
-  label: "Environment variables",
+  title: "Environment variables",
   schema: standard(
     Type.Record(
       Type.String({ pattern: "^(?:[^/]+/)?[A-Za-z_][A-Za-z0-9_]*$" }),

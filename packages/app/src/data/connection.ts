@@ -1,58 +1,48 @@
 import { API_REVISION } from "@nyte-ai/schema";
-import { sdk, SdkError } from "@nyte-ai/sdk";
-import type { ConnectOptions, Connection, CredentialSource } from "@nyte-ai/sdk";
-import { mediaLink, openHost, ticketSocket } from "@nyte-ai/sdk/client";
-import type { HostConnection, OpenSocket } from "@nyte-ai/sdk/client";
+import { SdkError } from "@nyte-ai/sdk";
+import { connect, mediaLink, ticketSocket } from "@nyte-ai/sdk/client";
+import type {
+  ClientConnection,
+  ClientConnectOptions,
+  Health,
+  Live,
+  OpenSocket,
+} from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "../contract/connection.ts";
+import type { StoreSource } from "./derived-store.ts";
+import { queryClient, readsHost } from "./query-client.ts";
+import { localJournal } from "./send-journal.ts";
 
-let installed: Connection | undefined;
+type Fetch = NonNullable<NonNullable<ClientConnectOptions["transport"]>["fetch"]>;
 
-let installedLive: HostConnection | undefined;
+let installed: ClientConnection | undefined;
 
 let installedMedia: ((path: string) => Promise<string>) | undefined;
 
-const first = Promise.withResolvers<Connection>();
+const first = Promise.withResolvers<ClientConnection>();
 
-const firstLive = Promise.withResolvers<HostConnection>();
-
-let ready = first.promise;
-
-let liveReady = firstLive.promise;
+const installs = new Set<(replaced: boolean, sameHost: boolean) => void>();
 
 export async function connectHost(
   endpoint: HostEndpoint,
-  options: {
-    readonly journal?: ConnectOptions["journal"];
-    readonly fetch?: ConnectOptions["fetch"];
-    readonly socket?: OpenSocket;
-    readonly remember?: (credential: CredentialSource) => void;
-  } = {},
-): Promise<Connection> {
-  const connection = await sdk.connect({
+  options: { readonly fetch?: Fetch; readonly socket?: OpenSocket } = {},
+): Promise<ClientConnection> {
+  const connection = await connect({
     url: endpoint.url,
     credentials: endpoint.credentials,
-    ...(endpoint.expect === undefined ? {} : { expect: endpoint.expect }),
-    ...(options.journal === undefined ? {} : { journal: options.journal }),
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-  });
-
-  if (connection.credential !== endpoint.credentials) options.remember?.(connection.credential);
-  const credential = connection.credential;
-
-  if (credential.kind === "pairing")
-    throw new SdkError("unauthenticated", "The host did not trade the pairing code for a token.");
-
-  const live = openHost(endpoint.url, {
-    credentials: credential,
+    expect: endpoint.expect,
     client: { kind: "app", name: "Nyte", version: `api-${String(API_REVISION)}` },
-    socket: options.socket ?? ticketSocket({ fetch: options.fetch }),
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    journal: localJournal(),
+    transport: {
+      fetch: options.fetch,
+      socket: options.socket ?? ticketSocket({ fetch: options.fetch }),
+    },
   });
 
-  installConnection(connection, live);
+  installConnection(connection);
   installedMedia = async (path) => {
     const link = await mediaLink(endpoint.url, path, {
-      credentials: credential,
+      credentials: connection.credential,
       fetch: options.fetch,
     });
 
@@ -73,54 +63,81 @@ export async function mediaUrl(path: string): Promise<string> {
   return installedMedia(path);
 }
 
-export function installConnection(connection: Connection, live: HostConnection): void {
-  const replaced = installed !== undefined;
-  const released = installedLive;
+export function installConnection(connection: ClientConnection): void {
+  const replaced = installed;
   installed = connection;
-  installedLive = live;
   first.resolve(connection);
-  firstLive.resolve(live);
-  ready = Promise.resolve(connection);
-  liveReady = Promise.resolve(live);
+  const sameHost = replaced?.hostId === connection.hostId;
 
-  if (replaced) for (const stores of registries) stores.clear();
+  if (replaced !== undefined && !sameHost) void queryClient.resetQueries({ predicate: readsHost });
 
-  released?.release();
+  for (const listener of installs) listener(replaced !== undefined, sameHost);
 
-  for (const listener of liveListeners) listener();
+  if (replaced !== connection) void replaced?.close();
 }
 
-export function connected(): Promise<Connection> {
-  return ready;
+export function connected(): Promise<ClientConnection> {
+  return installed === undefined ? first.promise : Promise.resolve(installed);
 }
 
-export function liveConnected(): Promise<HostConnection> {
-  return liveReady;
+export function onInstall(listener: (replaced: boolean, sameHost: boolean) => void): () => void {
+  installs.add(listener);
+
+  return () => installs.delete(listener);
 }
 
-export function currentLive(): HostConnection | undefined {
-  return installedLive;
+export function installedLive<S, L>(
+  open: (current: ClientConnection) => Live<S> & L,
+  close: (live: L) => void = () => undefined,
+): StoreSource<S | undefined> {
+  let opened: { readonly connection: ClientConnection; readonly live: Live<S> & L } | undefined;
+  let listening = 0;
+
+  const current = (): (Live<S> & L) | undefined => {
+    if (installed === undefined) return undefined;
+
+    if (opened?.connection !== installed) {
+      if (opened !== undefined) close(opened.live);
+      opened = { connection: installed, live: open(installed) };
+    }
+
+    return opened.live;
+  };
+
+  return {
+    subscribe(listener) {
+      listening += 1;
+      let leave = current()?.subscribe(listener);
+
+      const stop = onInstall(() => {
+        leave?.();
+        leave = current()?.subscribe(listener);
+        listener();
+      });
+
+      return () => {
+        stop();
+        leave?.();
+        listening -= 1;
+
+        if (listening > 0 || opened === undefined) return;
+        close(opened.live);
+        opened = undefined;
+      };
+    },
+    read: () => current()?.snapshot(),
+  };
 }
 
-const liveListeners = new Set<() => void>();
-
-export function subscribeLive(listener: () => void): () => void {
-  liveListeners.add(listener);
-
-  return () => liveListeners.delete(listener);
-}
-
-export function currentConnection(): Connection | undefined {
+export function currentConnection(): ClientConnection | undefined {
   return installed;
 }
 
-export function connection(): Connection {
+export function connection(): ClientConnection {
   if (installed === undefined) throw new Error("No Nyte connection is installed");
 
   return installed;
 }
-
-export const registries = new Set<{ clear(): void }>();
 
 export function hostChanged(cause: unknown): boolean {
   return cause instanceof SdkError && cause.code === "stale";
@@ -172,3 +189,34 @@ export function connectionProblem(cause: unknown): ConnectionProblem {
     }
   }
 }
+
+export function linkReopened(previous: Health | undefined, next: Health | undefined): boolean {
+  return next?.kind === "open" && (previous?.kind !== "open" || previous.since !== next.since);
+}
+
+const health = installedLive((current) => current.health);
+
+let lastHealth = health.read();
+
+const reopenListeners = new Set<() => void>();
+
+export function onLinkReopened(listener: () => void): () => void {
+  reopenListeners.add(listener);
+
+  return () => reopenListeners.delete(listener);
+}
+
+health.subscribe(() => {
+  const next = health.read();
+
+  if (linkReopened(lastHealth, next)) {
+    void queryClient.refetchQueries({
+      type: "active",
+      predicate: (query) => readsHost(query) && query.state.status === "error",
+    });
+
+    for (const listener of reopenListeners) listener();
+  }
+
+  lastHealth = next;
+});

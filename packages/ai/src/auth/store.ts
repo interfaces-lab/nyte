@@ -314,10 +314,6 @@ export class FileCredentialStore implements CredentialStore {
     return stored;
   }
 
-  /**
-   * Persists a credential `fn` produced even when the caller stopped waiting: a refresh rotates
-   * the token the stored one replaces, so dropping it would leave a spent credential on disk.
-   */
   modify(
     providerId: string,
     fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,

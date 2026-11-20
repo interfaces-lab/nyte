@@ -1,23 +1,44 @@
 import { TextAttributes } from "@opentui/core";
+import type { ModelMode } from "@nyte-ai/schema/model";
 import type { Thinking } from "@nyte-ai/sdk";
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
-import { modelId } from "../../lib/catalog.ts";
+import { availableModes, modelId } from "../../lib/catalog.ts";
 import { GLYPHS, keycap } from "../../lib/constants.ts";
 import { padDisplay } from "../../lib/width.ts";
-import type { ModelDialog, ModelRow } from "../../model/dialogs/model-picker.ts";
+import type { ModelDialog, ModelField, ModelRow } from "../../model/dialogs/model-picker.ts";
 import {
   activeField,
   currentRowId,
   modelFields,
+  nextField,
   rowDraft,
   visibleModels,
 } from "../../model/dialogs/model-picker.ts";
 import { cut, hint, joinHints, Note, Panel, QueryLine, useBodyWidth, useRowCap } from "./panel.tsx";
 
 const MAX_BODY_ROWS = 18;
+
+const MODE_LABELS = {
+  fast: "Fast mode",
+  daybreak: "Daybreak",
+} as const satisfies Record<ModelMode, string>;
+
+const FIELD_NAMES = {
+  effort: "reasoning effort",
+  fast: "fast mode",
+  daybreak: "Daybreak",
+} as const satisfies Record<ModelField, string>;
+
+function switchWidth(mode: ModelMode): number {
+  return MODE_LABELS[mode].length + 10;
+}
+
+function switchMinWidth(mode: ModelMode): number {
+  return mode === "fast" ? 62 : 62 + switchWidth(mode);
+}
 
 function effortLabel(level: Thinking): string {
   return level === "xhigh" ? "XHigh" : level[0].toUpperCase() + level.slice(1);
@@ -38,6 +59,7 @@ function Row(props: {
   readonly selected: boolean;
   readonly current: boolean;
   readonly width: number;
+  readonly reserved: number;
 }): JSX.Element {
   const app = useApp();
   const theme = app.kit.theme;
@@ -47,7 +69,10 @@ function Row(props: {
   const wide = () => props.width >= 62;
 
   const label = () => {
-    const labelWidth = Math.max(1, wide() ? Math.min(34, props.width - 45) : props.width - 16);
+    const labelWidth = Math.max(
+      1,
+      wide() ? Math.min(34, props.width - 45 - props.reserved) : props.width - 16,
+    );
 
     return padDisplay(cut(props.row.info.name || props.row.ref.id, labelWidth), labelWidth);
   };
@@ -65,8 +90,14 @@ function Row(props: {
       : effortLabel(level);
   };
 
-  const fast = () =>
-    props.row.info.fast === null ? "" : `Fast mode ${draft().fast ? "On" : "Off"}`;
+  const switches = () =>
+    availableModes(props.row.info)
+      .filter((mode) => props.width >= switchMinWidth(mode))
+      .map((mode) => {
+        const text = `${MODE_LABELS[mode]} ${draft().modes.includes(mode) ? "On" : "Off"}`;
+
+        return { mode, text, pad: " ".repeat(MODE_LABELS[mode].length + 4 - text.length) };
+      });
 
   return (
     <text
@@ -96,11 +127,13 @@ function Row(props: {
       <span style={{ fg: field() === "effort" ? theme().accent : theme().dim }}>
         {`  ${field() === "effort" ? arrows(effort()) : `  ${effort()}  `}`}
       </span>
-      <Show when={wide() && fast() !== ""}>
-        <span style={{ fg: field() === "fast" ? theme().accent : theme().dim }}>
-          {`  ${field() === "fast" ? arrows(fast()) : `  ${fast()}`}`}
-        </span>
-      </Show>
+      <For each={switches()}>
+        {(item) => (
+          <span style={{ fg: field() === item.mode ? theme().accent : theme().dim }}>
+            {`  ${field() === item.mode ? arrows(item.text) : `  ${item.text}  `}${item.pad}`}
+          </span>
+        )}
+      </For>
     </text>
   );
 }
@@ -116,8 +149,12 @@ function Details(props: {
   const draft = createMemo(() => rowDraft(props.dialog, props.row));
   const level = () => effortLabel(draft().effort);
 
-  const fast = () =>
-    props.row.info.fast === null ? "" : ` · Fast mode ${draft().fast ? "On" : "Off"}`;
+  const fast = () => draft().modes.includes("fast");
+
+  const switches = () =>
+    availableModes(props.row.info)
+      .map((mode) => ` · ${MODE_LABELS[mode]} ${draft().modes.includes(mode) ? "On" : "Off"}`)
+      .join("");
 
   const meterWidth = () => Math.min(34, props.width);
   const column = () => Math.max(1, Math.min(17, Math.floor(props.width / 3)));
@@ -131,30 +168,32 @@ function Details(props: {
   const position = () => {
     const { cost } = props.row.info;
 
-    return ceiling() === 0 || draft().fast
+    return ceiling() === 0 || fast()
       ? -1
       : Math.round(((meterWidth() - 1) * (cost.input + cost.output)) / ceiling());
   };
 
   const rates = () =>
-    draft().fast
+    fast()
       ? ["Unavailable", "Unavailable", "Unavailable"]
       : [props.row.info.cost.input, props.row.info.cost.cacheRead, props.row.info.cost.output].map(
           (rate) => price(Number(rate.toPrecision(10))),
         );
 
   const caption = () =>
-    draft().fast
+    fast()
       ? "Fast-mode pricing unavailable"
       : `${String(props.row.info.contextWindow / 1000)}k context · USD per million tokens`;
 
   return (
     <Show
       when={props.rows >= 6}
-      fallback={<Note text={cut(`${level()}${fast()} · ${props.row.ref.provider}`, props.width)} />}
+      fallback={
+        <Note text={cut(`${level()}${switches()} · ${props.row.ref.provider}`, props.width)} />
+      }
     >
       <box flexDirection="column" flexShrink={0} height={6}>
-        <Note text={cut(`${modelId(props.row.ref)} · ${level()}${fast()}`, props.width)} />
+        <Note text={cut(`${modelId(props.row.ref)} · ${level()}${switches()}`, props.width)} />
         <text height={1} wrapMode="none" selectable={false}>
           <For each={Array.from({ length: meterWidth() }, (_, index) => index)}>
             {(index) => (
@@ -204,6 +243,15 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
   const shown = createMemo(() => rows().slice(start(), start() + visibleCount()));
   const selected = () => rows()[props.dialog.highlighted];
 
+  const reserved = createMemo(() => {
+    const listed = props.dialog.models.kind === "ready" ? props.dialog.models.list.rows : [];
+    const offered = new Set(listed.flatMap((row) => availableModes(row.info)));
+
+    return [...offered]
+      .filter((mode) => mode !== "fast" && width() >= switchMinWidth(mode))
+      .reduce((sum, mode) => sum + switchWidth(mode), 0);
+  });
+
   const current = createMemo(() =>
     props.dialog.models.kind === "ready"
       ? currentRowId(props.dialog.models.list.rows, props.dialog.current)
@@ -231,6 +279,7 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
     const row = selected();
     const fields = row === undefined ? 0 : modelFields(row).length;
     const active = row === undefined ? null : activeField(props.dialog, row);
+    const next = row === undefined ? null : nextField(props.dialog, row);
     const move = `${keycap("model.previous", "symbol")}${keycap("model.next", "symbol")}`;
     const change = `${keycap("model.decrease", "symbol")}${keycap("model.increase", "symbol")}`;
 
@@ -245,12 +294,8 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
 
     return joinHints([
       `${move} select`,
-      ...(fields > 1
-        ? [hint("model.field.cycle", active === "effort" ? "fast mode" : "reasoning effort")]
-        : []),
-      ...(active === null
-        ? []
-        : [`${change} ${active === "effort" ? "reasoning effort" : "fast mode"}`]),
+      ...(fields > 1 && next !== null ? [hint("model.field.cycle", FIELD_NAMES[next])] : []),
+      ...(active === null ? [] : [`${change} ${FIELD_NAMES[active]}`]),
       hint("picker.accept", "confirm"),
       hint("picker.close", "cancel"),
     ]);
@@ -293,6 +338,7 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
                 selected={start() + index() === props.dialog.highlighted}
                 current={modelId(row.ref) === current()}
                 width={width()}
+                reserved={reserved()}
               />
             )}
           </For>

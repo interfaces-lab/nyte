@@ -115,7 +115,7 @@ export function EditorEmptyState({
             </div>
           )
         ) : (
-          <div {...props(styles.columns)}>
+          <div {...props(styles.sections)}>
             <section aria-labelledby={`${id}-start`} {...props(styles.section)}>
               <h2 id={`${id}-start`} {...props(styles.heading)}>
                 Start
@@ -214,7 +214,6 @@ const styles = create({
     position: "absolute",
     inset: 0,
     overflowY: "auto",
-    containerType: "inline-size",
   },
   content: {
     display: "flex",
@@ -225,15 +224,7 @@ const styles = create({
     paddingInline: space.s6,
     paddingBlock: "min(14vh, 96px) 24px",
   },
-  columns: {
-    display: "grid",
-    alignItems: "start",
-    gap: space.s6,
-    gridTemplateColumns: {
-      default: "minmax(0, 1fr)",
-      "@container (min-width: 720px)": "minmax(0, 240px) minmax(0, 1fr)",
-    },
-  },
+  sections: { display: "flex", flexDirection: "column", gap: space.s6 },
   section: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
   heading: {
     margin: 0,

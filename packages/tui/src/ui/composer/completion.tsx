@@ -22,7 +22,6 @@ const DETAIL_MIN_WIDTH = 43;
 const EMPTY: Readonly<Record<CompletionModel["token"]["trigger"], string>> = {
   "/": "no matching commands",
   "@": "no matching files or folders",
-  cd: "no matching directories",
   argument: "no suggestions",
 };
 
@@ -81,7 +80,7 @@ export function CompletionMenu(props: { readonly model: CompletionModel }): JSX.
         when={props.model.items.length > 0}
         fallback={
           <text fg={theme().dim}>
-            {props.model.loading ? "loading directories…" : EMPTY[props.model.token.trigger]}
+            {props.model.loading ? "loading suggestions…" : EMPTY[props.model.token.trigger]}
           </text>
         }
       >

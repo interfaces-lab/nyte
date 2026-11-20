@@ -94,7 +94,6 @@ export async function connectAccountEnvironment(input: {
       repair: input.repair,
       options: {
         signal: AbortSignal.any([input.signal, AbortSignal.timeout(READINESS.windowMs)]),
-        relay: true,
       },
     });
 

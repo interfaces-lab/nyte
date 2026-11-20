@@ -114,7 +114,7 @@ export function scriptedReply(text: string): Reply {
     }
 
     default:
-      return text.startsWith("Child ")
+      return text.startsWith("Subagent ")
         ? { content: [{ type: "text", text: "An agent reported back." }] }
         : { content: [{ type: "text", text: `Echo: ${text}` }] };
   }
@@ -180,6 +180,86 @@ function surveyReply(request: Request): Reply | undefined {
   };
 }
 
+const WARM_PROMPT = "/warm";
+
+export const WARM_REPLY = "The accent is warm now, by day and by night.";
+
+function warmReply(request: Request): Reply | undefined {
+  if (lastUserText(request) !== WARM_PROMPT) return undefined;
+  const title = titleReply(request);
+
+  if (title !== null) return { content: [{ type: "text", text: title }] };
+
+  if (request.context.messages.at(-1)?.role === "toolResult")
+    return { content: [{ type: "text", text: WARM_REPLY }] };
+
+  return {
+    content: [
+      {
+        type: "toolCall",
+        id: "warm-edit",
+        name: "edit",
+        arguments: {
+          path: "design/tokens.css",
+          edits: [
+            { oldText: "--accent: #3f58a8;", newText: "--accent: #b4532a;" },
+            { oldText: "--accent: #c1d0f6;", newText: "--accent: #ffcf9a;" },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+const BROWSE_PROMPT = "/browse ";
+
+function browseReply(request: Request): Reply | undefined {
+  const first = request.context.messages.find((message) => message.role === "user");
+
+  if (first?.role !== "user") return undefined;
+  const opening = contentText(first.content, "");
+
+  if (!opening.startsWith(BROWSE_PROMPT)) return undefined;
+  const title = titleReply(request);
+
+  if (title !== null) return { content: [{ type: "text", text: title }] };
+
+  const results = request.context.messages.flatMap((message) =>
+    message.role === "toolResult" ? [message] : [],
+  );
+
+  const steps: readonly Block[] = [
+    {
+      type: "toolCall",
+      id: "browse-open",
+      name: "browser_open",
+      arguments: { url: opening.slice(BROWSE_PROMPT.length).trim() },
+    },
+    {
+      type: "toolCall",
+      id: "browse-viewport",
+      name: "browser_evaluate",
+      arguments: { expression: "`${String(innerWidth)}x${String(innerHeight)}`" },
+    },
+    { type: "toolCall", id: "browse-capture", name: "browser_capture", arguments: {} },
+  ];
+
+  const next = steps[results.length];
+
+  if (next !== undefined) return { content: [next] };
+  const viewport = results[1]?.content.flatMap((part) => (part.type === "text" ? [part.text] : []));
+  const captured = results[2] !== undefined && !results[2].isError;
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Viewport ${viewport?.join("") ?? "unknown"}. ${captured ? "Capture returned an image." : `Capture failed: ${lastToolText(request)}`}`,
+      },
+    ],
+  };
+}
+
 function ciChat(request: Request): boolean {
   const first = request.context.messages.find((message) => message.role === "user");
 
@@ -237,7 +317,7 @@ export function e2eAnswers(input: E2eAnswerOptions): (request: Request) => Reply
   });
 
   return (request) => {
-    const rendering = renderReply(request);
+    const rendering = renderReply(request) ?? browseReply(request) ?? warmReply(request);
 
     if (rendering !== undefined) return rendering;
     const scripted = ci(request);

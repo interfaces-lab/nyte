@@ -1,10 +1,10 @@
 import type { Connection } from "@nyte-ai/sdk";
+import type { Health, Live } from "@nyte-ai/sdk/client";
 import { keys } from "./query-client.ts";
 import { nyte } from "../contract/nyte.ts";
 import { hostWatch } from "./watches.ts";
 import { sessionList } from "./directory.ts";
 import { connectHost, currentConnection } from "./connection.ts";
-import { readHost } from "./host.ts";
 import { workspacesQuery } from "./workspaces.ts";
 import { readModelCatalog } from "./catalog.ts";
 import { queryClient } from "./query-client.ts";
@@ -20,13 +20,13 @@ export function connectLocalHost(): Promise<Connection> {
     .endpoint()
     .then((endpoint) =>
       connectHost(endpoint, {
-        remember: nyte.host.remember,
         fetch: nyte.host.fetch,
         socket: nyte.host.socket,
       }),
     )
     .then((opened) => {
       performance.mark("nyte:sdk-connected");
+      markSocketOpen(opened.health);
 
       return opened;
     })
@@ -38,21 +38,30 @@ export function connectLocalHost(): Promise<Connection> {
   return connecting;
 }
 
+function markSocketOpen(health: Live<Health>): void {
+  const check = (): void => {
+    if (health.snapshot().kind !== "open") return;
+    leave();
+    performance.mark("nyte:socket-connected");
+  };
+
+  const leave = health.subscribe(check);
+  check();
+}
+
 export async function loadLocalResources(): Promise<void> {
   const host = hostWatch("host");
   const directory = sessionList("roots");
 
-  const [state, workspaces, catalog] = await Promise.all([
-    readHost(),
+  const [workspaces, catalog] = await Promise.all([
     workspacesQuery.queryFn(),
     readModelCatalog(),
-    host.value === undefined ? host.next() : undefined,
+    host.value === undefined ? host.until(() => true) : undefined,
     directory.value === undefined
-      ? directory.next().then(() => performance.mark("nyte:directory-ready"))
+      ? directory.until(() => true).then(() => performance.mark("nyte:directory-ready"))
       : undefined,
   ]);
 
   queryClient.setQueryData(keys.workspaces, workspaces);
   queryClient.setQueryData(keys.modelCatalog(catalog.generation), catalog);
-  queryClient.setQueryData(keys.host, state);
 }

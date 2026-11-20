@@ -1,9 +1,10 @@
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useEffect, useRef, useState } from "react";
-import type { ReactElement } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import type { ReactElement, RefObject } from "react";
 import { worktreeFiles } from "./worktree-files.ts";
+import { useChatChanges } from "./chat-changes.ts";
 import type { SelectedWorkspace } from "../../contract/bridge.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
@@ -17,6 +18,7 @@ import {
 } from "@nyte-ai/ui/menu";
 import { revealLabel } from "../../components/context-menu.ts";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
@@ -26,12 +28,11 @@ import {
   clientActionKeys,
   clientActions,
 } from "../../contract/client-actions.ts";
-import { nyte } from "../../contract/nyte.ts";
+import { nyte, windowApp } from "../../contract/nyte.ts";
 import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
 import { useVcsSnapshot } from "../../data/vcs.ts";
 import { useDocument } from "../../data/documents.ts";
 import { useMentionFiles } from "../../data/files.ts";
-import { workbench } from "../../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { EDITOR_SLOT, WORKBENCH_KINDS } from "../model.ts";
 import type { EditorGroupId, WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
@@ -43,13 +44,13 @@ import { fileActions, useFileTabs } from "./file-store.ts";
 import { opensAsMarkdown } from "./markdown-parse.ts";
 import { WorkspaceSearch } from "../workspace-search.tsx";
 import { useTreeStatusTheme } from "./tree-theme.ts";
-import { workbenchStyles } from "../workbench.stylex.ts";
 import { FilePalette } from "./file-palette.tsx";
 import { FilesExplorer } from "./files-explorer.tsx";
 import { findSymbols } from "./outline.ts";
+import { characterAtColumn, lineAt, TAB_COLUMNS } from "./indentation.ts";
 import { EditorGroupView } from "./editor-groups.tsx";
 import { EditorTabs } from "./editor-tabs.tsx";
-import { SidePanel } from "../side-panel.tsx";
+import { SidePanel, sidePanelWidth } from "../side-panel.tsx";
 import { workspaceFile } from "../paths.ts";
 import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
 
@@ -61,7 +62,6 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
   },
-  toolbar: { gap: space.s2, height: "auto", minHeight: workbench.headerHeight },
   dirty: {
     flexShrink: 0,
     color: role.contentSecondary,
@@ -87,6 +87,8 @@ const styles = create({
     maxWidth: "min(420px, var(--available-width))",
   },
 });
+
+const EDITOR_MIN_WIDTH = 700;
 
 const FILE_TOGGLES = [
   ["Line Numbers", preferences.fileLineNumbers],
@@ -145,12 +147,26 @@ export function EditorPanel({
   const browsed = useWorkbenchWorkspace();
   const workspace = browsed.kind === "ready" ? browsed.workspace : undefined;
   const files = useMentionFiles(workspace, shown && workspace !== undefined);
+
   const vcs = useVcsSnapshot(workspace?.id, shown);
-  const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : [];
+
+  const chatFiles = useChatChanges(vcs.data?.kind === "none" ? workspace?.id : undefined, (edits) =>
+    edits?.map((edit) => ({
+      path:
+        workspace === undefined
+          ? edit.path
+          : (workspaceFile(edit.path, [workspace.path])?.relative ?? edit.path),
+      kind: edit.status,
+    })),
+  );
+
+  const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : (chatFiles ?? []);
 
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
-  const sidePanel = useSetting(preferences.editorSidePanel);
+  const code = windowApp() === "code";
+  const chosenSide = useSetting(preferences.editorSidePanel);
+  const sidePanel = code ? "start" : chosenSide;
 
   const [sidebarSelection, setSidebarSelection] = useState<{
     readonly revision: number;
@@ -172,6 +188,11 @@ export function EditorPanel({
   const activeFile = tabs.active;
   const pendingFile = tabs.pendingClose;
   const panelRef = useRef<HTMLElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const cramped = useCramped(bodyRef);
+  const [choice, setChoice] = useState({ shown: false, revision: tabs.revealRevision });
+  const insisted = choice.shown || choice.revision !== tabs.revealRevision;
+  const explorerShown = sidebarVisible && (code || !cramped || insisted);
   const closeOrigin = useRef<WorkbenchTabId | undefined>(undefined);
   const activeDocument = useDocument(activeFile?.path).data;
 
@@ -209,8 +230,48 @@ export function EditorPanel({
   };
 
   const showSidebar = (): void => {
+    if (cramped) setChoice({ shown: true, revision: tabs.revealRevision });
+
     if (!sidebarVisible) onToggleSidebar();
   };
+
+  const toggleSidebar = (): void => {
+    if (!explorerShown) {
+      showSidebar();
+
+      return;
+    }
+
+    setChoice({ shown: false, revision: tabs.revealRevision });
+    onToggleSidebar();
+  };
+
+  const stepHistory = useEffectEvent((event: KeyboardEvent): void => {
+    const target = event.target;
+
+    if (!shown || event.defaultPrevented || event.isComposing) return;
+
+    if (
+      target !== document.body &&
+      !(target instanceof Node && panelRef.current?.contains(target) === true)
+    )
+      return;
+    const step = historyKey(event, nyte.platform === "darwin");
+
+    if (step === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (step === "forward") fileActions.forward(viewKey);
+    else fileActions.back(viewKey);
+  });
+
+  useMountEffect(() => {
+    const listener = (event: KeyboardEvent): void => stepHistory(event);
+    window.addEventListener("keydown", listener, true);
+
+    return () => window.removeEventListener("keydown", listener, true);
+  });
 
   const revealed = useRef(0);
   // oxlint-disable-next-line nyte-code/no-direct-effect -- consumes an explicit Explorer reveal request from the file store
@@ -303,41 +364,215 @@ export function EditorPanel({
     setDiscardError(undefined);
   };
 
+  const navigation = (
+    <>
+      <Button
+        size="sm"
+        iconOnly
+        icon="arrow-left"
+        aria-label="Go back"
+        disabled={!tabs.canGoBack}
+        onClick={() => fileActions.back(viewKey)}
+      />
+      <Button
+        size="sm"
+        iconOnly
+        icon="arrow-right"
+        aria-label="Go forward"
+        disabled={!tabs.canGoForward}
+        onClick={() => fileActions.forward(viewKey)}
+      />
+    </>
+  );
+
+  const path = (
+    <FileBreadcrumbs
+      path={activeFile?.displayPath}
+      external={activeFile?.external === true}
+      files={files.data}
+      onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+    />
+  );
+
+  const view = (
+    <>
+      {activeFile?.dirty && (
+        <span aria-label="Unsaved changes" {...props(styles.dirty)}>
+          ●
+        </span>
+      )}
+      {activeFile !== undefined &&
+        activeDocument?.kind === "text" &&
+        opensAsMarkdown(activeFile.path) && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <ToggleGroup
+                  aria-label="Markdown View"
+                  aria-keyshortcuts={clientActionAriaShortcut(clientActions.markdownSource, mac)}
+                  value={[activeFile.showSource ? "source" : "document"]}
+                  onValueChange={(value) => {
+                    const next = value[0];
+
+                    if (next === "document" || next === "source")
+                      fileActions.setShowSource(viewKey, activeFile.path, next === "source");
+                  }}
+                >
+                  <Toggle value="document" size="2xs">
+                    Document
+                  </Toggle>
+                  <Toggle value="source" size="2xs">
+                    Source
+                  </Toggle>
+                </ToggleGroup>
+              }
+            />
+            <TooltipContent shortcut={clientActionKeys(clientActions.markdownSource, mac)}>
+              {activeFile.showSource ? "View Document" : "View Source"}
+            </TooltipContent>
+          </Tooltip>
+        )}
+    </>
+  );
+
+  const actions = (
+    <>
+      <Menu>
+        <MenuTrigger
+          render={
+            <Button
+              size="sm"
+              iconOnly
+              ref={menuRef}
+              icon="more-horizontal"
+              aria-label="File options"
+            />
+          }
+        />
+        <MenuContent align="end" xstyle={styles.menu}>
+          <MenuItem
+            layout="plain"
+            meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
+            disabled={!unsaved}
+            onClick={() => {
+              if (activeFile !== undefined) void editors.current.get(activeFile.id)?.save();
+            }}
+          >
+            Save File
+          </MenuItem>
+          {formats && (
+            <MenuItem
+              layout="plain"
+              onClick={() => {
+                if (activeFile !== undefined) void editors.current.get(activeFile.id)?.format();
+              }}
+            >
+              Format Document
+            </MenuItem>
+          )}
+          <MenuSeparator inset />
+          <MenuItem
+            layout="plain"
+            disabled={activeFile === undefined}
+            onClick={() => {
+              if (activeFile !== undefined) copyPath(activeFile.path);
+            }}
+          >
+            Copy Path
+          </MenuItem>
+          <MenuItem
+            layout="plain"
+            disabled={activeFile === undefined || activeFile.external}
+            onClick={() => {
+              if (activeFile !== undefined) copyPath(activeFile.displayPath);
+            }}
+          >
+            Copy Relative Path
+          </MenuItem>
+          {revealPath !== undefined && (
+            <MenuItem
+              layout="plain"
+              disabled={activeFile === undefined}
+              onClick={() => {
+                if (activeFile !== undefined) void revealPath({ path: activeFile.path });
+              }}
+            >
+              {revealLabel(nyte.platform)}
+            </MenuItem>
+          )}
+          <MenuSeparator inset />
+          {FILE_TOGGLES.map(([label, setting]) => (
+            <FilePreferenceItem key={label} label={label} setting={setting} />
+          ))}
+          {!code && (
+            <MenuItem
+              layout="plain"
+              onClick={() =>
+                preferences.editorSidePanel.set(sidePanel === "start" ? "end" : "start")
+              }
+            >
+              {sidePanel === "start" ? "Move Side Panel Right" : "Move Side Panel Left"}
+            </MenuItem>
+          )}
+          <MenuSeparator inset />
+          <MenuItem
+            layout="plain"
+            variant={unsaved ? "danger" : "default"}
+            disabled={!unsaved}
+            onClick={() => {
+              setDiscardError(undefined);
+              setDiscardPath(activeFile?.path);
+            }}
+          >
+            Discard Changes…
+          </MenuItem>
+        </MenuContent>
+      </Menu>
+      <Toggle
+        size="sm"
+        iconOnly
+        icon="search"
+        aria-label="Search Files"
+        pressed={explorerShown && sidebar === "search"}
+        onPressedChange={(pressed) =>
+          pressed
+            ? showSearch()
+            : setSidebarSelection({ revision: tabs.revealRevision, tab: "explorer" })
+        }
+      />
+      {!code && (
+        <Toggle
+          size="sm"
+          iconOnly
+          indicator="glyph"
+          aria-label={`${WORKBENCH_KINDS.editor.label} Sidebar`}
+          pressed={explorerShown}
+          onPressedChange={toggleSidebar}
+        >
+          <PanelToggleIcon
+            side={sidePanel === "start" ? "left" : "right"}
+            visible={explorerShown}
+          />
+        </Toggle>
+      )}
+    </>
+  );
+
   return (
     <section
       ref={panelRef}
       data-editor-panel
       aria-label={WORKBENCH_KINDS.editor.label}
       {...props(styles.panel, treeStatusTheme)}
+      onMouseUp={(event) => {
+        if (!shown || (event.button !== 3 && event.button !== 4)) return;
+        event.preventDefault();
+
+        if (event.button === 3) fileActions.back(viewKey);
+        else fileActions.forward(viewKey);
+      }}
       onKeyDownCapture={(event) => {
         if (!shown || event.defaultPrevented || event.nativeEvent.isComposing) return;
-
-        if (
-          nyte.platform === "darwin" &&
-          event.ctrlKey &&
-          !event.metaKey &&
-          !event.altKey &&
-          event.code === "Minus"
-        ) {
-          if (
-            event.nativeEvent
-              .composedPath()
-              .some(
-                (target) =>
-                  target instanceof Element &&
-                  target.matches(
-                    'input, textarea, [role="dialog"], [role="alertdialog"], [role="menu"]',
-                  ),
-              )
-          )
-            return;
-          event.preventDefault();
-
-          if (event.shiftKey) fileActions.forward(viewKey);
-          else fileActions.back(viewKey);
-
-          return;
-        }
 
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
@@ -380,7 +615,7 @@ export function EditorPanel({
         setPalette(query);
       }}
     >
-      <div {...props(styles.body)}>
+      <div ref={bodyRef} {...props(styles.body)}>
         <div {...props(styles.editorArea)}>
           <div {...props(styles.groupTabs, hairline.blockEnd)}>
             {tabs.groups.map((group, index) => (
@@ -393,176 +628,12 @@ export function EditorPanel({
                 many={tabs.groups.length > 1}
                 onClose={closeFile}
                 onCloseGroup={closeGroup}
+                leading={index === 0 && navigation}
+                path={index === tabs.groups.length - 1 && path}
+                view={index === tabs.groups.length - 1 && view}
+                actions={index === tabs.groups.length - 1 && actions}
               />
             ))}
-          </div>
-          <div {...props(workbenchStyles.toolbar, hairline.blockEnd, styles.toolbar)}>
-            <Button
-              iconOnly
-              icon="arrow-left"
-              aria-label="Go back"
-              disabled={!tabs.canGoBack}
-              onClick={() => fileActions.back(viewKey)}
-            />
-            <Button
-              iconOnly
-              icon="arrow-right"
-              aria-label="Go forward"
-              disabled={!tabs.canGoForward}
-              onClick={() => fileActions.forward(viewKey)}
-            />
-            <FileBreadcrumbs
-              path={activeFile?.displayPath}
-              external={activeFile?.external === true}
-              files={files.data}
-              onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
-            />
-            {activeFile?.dirty && (
-              <span aria-label="Unsaved changes" {...props(styles.dirty)}>
-                ●
-              </span>
-            )}
-            {activeFile !== undefined &&
-              activeDocument?.kind === "text" &&
-              opensAsMarkdown(activeFile.path) && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <ToggleGroup
-                        aria-label="Markdown View"
-                        aria-keyshortcuts={clientActionAriaShortcut(
-                          clientActions.markdownSource,
-                          mac,
-                        )}
-                        value={[activeFile.showSource ? "source" : "document"]}
-                        onValueChange={(value) => {
-                          const next = value[0];
-
-                          if (next === "document" || next === "source")
-                            fileActions.setShowSource(viewKey, activeFile.path, next === "source");
-                        }}
-                      >
-                        <Toggle value="document" size="2xs">
-                          Document
-                        </Toggle>
-                        <Toggle value="source" size="2xs">
-                          Source
-                        </Toggle>
-                      </ToggleGroup>
-                    }
-                  />
-                  <TooltipContent shortcut={clientActionKeys(clientActions.markdownSource, mac)}>
-                    {activeFile.showSource ? "View Document" : "View Source"}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            <Menu>
-              <MenuTrigger
-                render={
-                  <Button iconOnly ref={menuRef} icon="more-horizontal" aria-label="File options" />
-                }
-              />
-              <MenuContent align="end" xstyle={styles.menu}>
-                <MenuItem
-                  layout="plain"
-                  meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
-                  disabled={!unsaved}
-                  onClick={() => {
-                    if (activeFile !== undefined) void editors.current.get(activeFile.id)?.save();
-                  }}
-                >
-                  Save File
-                </MenuItem>
-                {formats && (
-                  <MenuItem
-                    layout="plain"
-                    onClick={() => {
-                      if (activeFile !== undefined)
-                        void editors.current.get(activeFile.id)?.format();
-                    }}
-                  >
-                    Format Document
-                  </MenuItem>
-                )}
-                <MenuSeparator inset />
-                <MenuItem
-                  layout="plain"
-                  disabled={activeFile === undefined}
-                  onClick={() => {
-                    if (activeFile !== undefined) copyPath(activeFile.path);
-                  }}
-                >
-                  Copy Path
-                </MenuItem>
-                <MenuItem
-                  layout="plain"
-                  disabled={activeFile === undefined || activeFile.external}
-                  onClick={() => {
-                    if (activeFile !== undefined) copyPath(activeFile.displayPath);
-                  }}
-                >
-                  Copy Relative Path
-                </MenuItem>
-                {revealPath !== undefined && (
-                  <MenuItem
-                    layout="plain"
-                    disabled={activeFile === undefined}
-                    onClick={() => {
-                      if (activeFile !== undefined) void revealPath({ path: activeFile.path });
-                    }}
-                  >
-                    {revealLabel(nyte.platform)}
-                  </MenuItem>
-                )}
-                <MenuSeparator inset />
-                {FILE_TOGGLES.map(([label, setting]) => (
-                  <FilePreferenceItem key={label} label={label} setting={setting} />
-                ))}
-                <MenuItem
-                  layout="plain"
-                  onClick={() =>
-                    preferences.editorSidePanel.set(sidePanel === "start" ? "end" : "start")
-                  }
-                >
-                  {sidePanel === "start" ? "Move Side Panel Right" : "Move Side Panel Left"}
-                </MenuItem>
-                <MenuSeparator inset />
-                <MenuItem
-                  layout="plain"
-                  variant={unsaved ? "danger" : "default"}
-                  disabled={!unsaved}
-                  onClick={() => {
-                    setDiscardError(undefined);
-                    setDiscardPath(activeFile?.path);
-                  }}
-                >
-                  Discard Changes…
-                </MenuItem>
-              </MenuContent>
-            </Menu>
-            <Toggle
-              iconOnly
-              icon="search"
-              aria-label="Search Files"
-              pressed={sidebarVisible && sidebar === "search"}
-              onPressedChange={(pressed) =>
-                pressed
-                  ? showSearch()
-                  : setSidebarSelection({ revision: tabs.revealRevision, tab: "explorer" })
-              }
-            />
-            <Toggle
-              iconOnly
-              indicator="glyph"
-              aria-label={`${WORKBENCH_KINDS.editor.label} Sidebar`}
-              pressed={sidebarVisible}
-              onPressedChange={onToggleSidebar}
-            >
-              <PanelToggleIcon
-                side={sidePanel === "start" ? "left" : "right"}
-                visible={sidebarVisible}
-              />
-            </Toggle>
           </div>
           {copyError !== undefined && (
             <div role="alert" {...props(styles.empty)}>
@@ -583,7 +654,7 @@ export function EditorPanel({
                   <EditorEmptyState
                     files={files.data}
                     changes={changes}
-                    explorerVisible={sidebarVisible && sidebar === "explorer"}
+                    explorerVisible={explorerShown && sidebar === "explorer"}
                     onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
                     onShowExplorer={() => {
                       setSidebarSelection({ revision: tabs.revealRevision, tab: "explorer" });
@@ -609,6 +680,7 @@ export function EditorPanel({
                       viewKey={viewKey}
                       file={file}
                       active={shown && file.id === group.active?.id}
+                      visible={file.id === group.active?.id}
                       autoSave={
                         autoSave &&
                         workspaceActive &&
@@ -624,7 +696,7 @@ export function EditorPanel({
             ))}
           </div>
         </div>
-        {sidebarVisible && (
+        {explorerShown && (
           <SidePanel side={sidePanel}>
             <aside
               aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
@@ -677,17 +749,29 @@ export function EditorPanel({
         active={
           activeFile === undefined || activeContents === undefined
             ? undefined
-            : { path: activeFile.path, lines: activeContents.split("\n").length, symbols }
+            : { path: activeFile.path, contents: activeContents, symbols }
         }
         onQueryChange={setPalette}
         onClose={() => setPalette(undefined)}
         onOpenFile={(file) => fileActions.open(viewKey, file)}
         onGoTo={(line, column) => {
-          if (activeFile !== undefined)
-            fileActions.open(viewKey, {
-              path: activeFile.path,
-              target: { kind: "position", line, column },
-            });
+          if (activeFile === undefined) return;
+
+          const text = fileActions
+            .documents(viewKey)
+            .find((document) => document.path === activeFile.path)?.contents;
+
+          fileActions.open(viewKey, {
+            path: activeFile.path,
+            target: {
+              kind: "position",
+              line,
+              column:
+                column === undefined || text === undefined
+                  ? column
+                  : characterAtColumn(lineAt(text, line - 1), column - 1, TAB_COLUMNS) + 1,
+            },
+          });
         }}
       />
       <ConfirmDialog
@@ -726,4 +810,59 @@ export function EditorPanel({
       />
     </section>
   );
+}
+
+function useCramped(body: RefObject<HTMLElement | null>): boolean {
+  const [cramped, setCramped] = useState(false);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the editor body before paint and observes its width and the side panel's
+  useLayoutEffect(() => {
+    const node = body.current;
+
+    if (node === null) return;
+
+    const measure = (): void => {
+      if (node.clientWidth > 0)
+        setCramped(node.clientWidth - sidePanelWidth.get() < EDITOR_MIN_WIDTH);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    const leave = sidePanelWidth.subscribe(measure);
+
+    return () => {
+      observer.disconnect();
+      leave();
+    };
+  }, [body]);
+
+  return cramped;
+}
+
+function historyKey(
+  event: {
+    readonly code: string;
+    readonly metaKey: boolean;
+    readonly ctrlKey: boolean;
+    readonly altKey: boolean;
+    readonly shiftKey: boolean;
+  },
+  mac: boolean,
+): "back" | "forward" | undefined {
+  if (event.shiftKey) return undefined;
+
+  if (mac) {
+    if (!event.metaKey || event.ctrlKey || event.altKey) return undefined;
+
+    if (event.code === "BracketLeft") return "back";
+
+    return event.code === "BracketRight" ? "forward" : undefined;
+  }
+
+  if (!event.ctrlKey || !event.altKey || event.metaKey) return undefined;
+
+  if (event.code === "ArrowLeft") return "back";
+
+  return event.code === "ArrowRight" ? "forward" : undefined;
 }

@@ -6,11 +6,11 @@ import { expect, test } from "vitest";
 
 const desktop = fileURLToPath(new URL("../", import.meta.url));
 
-function packaging(local: string) {
+function packaging(build: string) {
   return spawnSync(process.execPath, ["--input-type=module"], {
     cwd: desktop,
     encoding: "utf8",
-    env: { ...process.env, NYTE_UPDATE_TEST: local },
+    env: { ...process.env, NYTE_DESKTOP_BUILD: build },
     input: `import config from './electron-builder.config.ts';
       console.log(JSON.stringify(config));`,
   });
@@ -38,12 +38,12 @@ function installerName(stdout: string): string {
   return names.productName;
 }
 
-test("production updates signed from GitHub releases, and local packages keep a separate identity updating from localhost", () => {
+test("production updates signed from GitHub releases, and the update test build keeps a separate identity", () => {
   const names = new Set<string>();
 
   for (const row of [
     {
-      local: "",
+      build: "",
       expected: {
         appId: "ai.nyte.desktop",
         publish: { provider: "github", owner: "interfaces-lab", repo: "nyte" },
@@ -51,7 +51,7 @@ test("production updates signed from GitHub releases, and local packages keep a 
       },
     },
     {
-      local: "1",
+      build: "Nyte Update Test",
       expected: {
         appId: "ai.nyte.desktop.update-test",
         publish: { provider: "generic", url: "http://localhost:8917" },
@@ -59,10 +59,12 @@ test("production updates signed from GitHub releases, and local packages keep a 
       },
     },
   ]) {
-    const result = packaging(row.local);
+    const result = packaging(row.build);
     expect(result.status, result.stderr).toBe(0);
     names.add(installerName(result.stdout));
-    expect(JSON.parse(result.stdout), `NYTE_UPDATE_TEST=${row.local}`).toMatchObject(row.expected);
+    expect(JSON.parse(result.stdout), `NYTE_DESKTOP_BUILD=${row.build}`).toMatchObject(
+      row.expected,
+    );
   }
 
   expect(names.size).toBe(2);

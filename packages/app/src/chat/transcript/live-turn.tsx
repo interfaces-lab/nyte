@@ -1,21 +1,16 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../../theme/schema.stylex.ts";
-import { chatStore } from "../../data/chat-store.ts";
-import { useWatchSelect } from "../../data/watch-store.ts";
+import { useAwaitLabel } from "../../data/sessions.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { usePlanningTime } from "./planning-time.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
 import {
   PLANNING_LABEL,
   planningLabel,
-  showsThinking,
   SLOW_PLANNING_MS,
 } from "@nyte-ai/plugin/client/presentation";
-import type { Message } from "@nyte-ai/sdk";
-import { reasoningHeading } from "./reasoning-heading.ts";
-import { useTranscriptScope } from "./transcript.tsx";
-import type { LiveRowState } from "./transcript-rows.ts";
+import type { LiveRowFacts } from "./transcript-rows.ts";
 
 export const liveTurnStyles = create({
   root: {
@@ -28,45 +23,20 @@ export const liveTurnStyles = create({
   waiting: { visibility: "hidden" },
 });
 
-export function LiveTurn({
-  state,
-  thinking,
-}: {
-  state: LiveRowState;
-  thinking: boolean;
-}): ReactElement | null {
-  if (state === "idle") return null;
+export function LiveTurn({ live }: { live: LiveRowFacts }): ReactElement | null {
+  if (live.state === "idle") return null;
 
-  return <PlanningLine grouped={state === "grouped"} thinking={thinking} />;
+  return <PlanningLine live={live} />;
 }
 
-function PlanningLine({
-  grouped,
-  thinking,
-}: {
-  grouped: boolean;
-  thinking: boolean;
-}): ReactElement {
-  const sessionId = useTranscriptScope()?.sessionId;
-  const store = sessionId === undefined ? undefined : chatStore(sessionId);
-
-  const planning = useWatchSelect(
-    store,
-    (state) => state.value?.execution.kind === "live" && state.value.activity.kind === "idle",
-  );
-
-  const newest = useWatchSelect(store, (state) => state.value?.messages.at(-1)?.id);
-  const planningMs = usePlanningTime(planning, newest);
-
-  const thought = useWatchSelect(store, (state) =>
-    thinking || grouped || state.value?.activity.kind !== "thinking"
-      ? undefined
-      : thoughtLabel(state.value.messages),
-  );
+function PlanningLine({ live }: { live: LiveRowFacts }): ReactElement {
+  const planningMs = usePlanningTime(live.planning, live.newest);
+  const waiting = useAwaitLabel(live.awaiting);
 
   const label =
-    thought ??
-    (planning && (!grouped || planningMs >= SLOW_PLANNING_MS)
+    live.thought ??
+    waiting ??
+    (live.planning && (live.state !== "grouped" || planningMs >= SLOW_PLANNING_MS)
       ? planningLabel(planningMs)
       : undefined);
 
@@ -83,14 +53,5 @@ function PlanningLine({
         </span>
       </div>
     </div>
-  );
-}
-
-function thoughtLabel(messages: readonly Message[]): string {
-  const thought = messages.findLast(showsThinking);
-
-  return (
-    (thought === undefined ? undefined : reasoningHeading(thought.state.markdown).title) ??
-    "Thinking"
   );
 }

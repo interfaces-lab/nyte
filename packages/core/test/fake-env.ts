@@ -10,7 +10,6 @@ import type {
   OutputFrame,
   PageId,
   PatchEntry,
-  RunId,
   ScanFrame,
   SnapshotId,
   WorkspaceTarget,
@@ -29,6 +28,7 @@ import type {
   GitHubApi,
   Host,
   Job,
+  OsProcess,
   Page,
   Plugin,
 } from "../src/index.ts";
@@ -69,6 +69,7 @@ export interface FakeProvider extends EnvironmentProvider {
   failure: string | null;
   script: (process: Process) => void;
   failPatches: ((paths: readonly string[]) => string | null) | null;
+  holdPatches: Promise<void> | null;
   readonly opened: PageId[];
   readonly closed: PageId[];
 }
@@ -131,11 +132,11 @@ export function fakeProvider(
     readonly git?: boolean;
     readonly browser?: boolean;
     readonly confined?: boolean;
+    readonly boot?: string;
   },
 ): FakeProvider {
   const snapshots = new Map<SnapshotId, ReadonlyMap<string, string>>();
   const ids = new Map<string, SnapshotId>();
-  const befores = new Map<RunId, SnapshotId>();
   let reading = 0;
 
   const take = (root: string): SnapshotId => {
@@ -187,6 +188,7 @@ export function fakeProvider(
     patchReads: [],
     peakReads: 0,
     failPatches: null,
+    holdPatches: null,
     opened: [],
     closed: [],
     attaches: 0,
@@ -213,19 +215,10 @@ export function fakeProvider(
       if (provider.failure !== null) throw new Error(provider.failure);
       provider.attaches += 1;
 
-      return env(provider, readTargetPath(target), options?.confined === true);
+      return env(provider, readTargetPath(target), options?.confined === true, options?.boot);
     },
     snapshots: (attached) => ({
-      async before(run) {
-        const known = befores.get(run);
-
-        if (known !== undefined) return known;
-        const taken = take(attached.cwd);
-        befores.set(run, taken);
-
-        return taken;
-      },
-      after: async () => take(attached.cwd),
+      capture: async () => take(attached.cwd),
       async diff(from, to): Promise<ChangeSet> {
         return {
           revision: to,
@@ -240,7 +233,8 @@ export function fakeProvider(
         provider.patchReads.push(paths);
         reading += 1;
         provider.peakReads = Math.max(provider.peakReads, reading);
-        await new Promise((resolve) => setTimeout(resolve, 1));
+
+        if (provider.holdPatches !== null) await provider.holdPatches;
         reading -= 1;
         const failure = provider.failPatches?.(paths) ?? null;
 
@@ -361,13 +355,25 @@ export async function collect<T>(source: AsyncIterable<T>): Promise<readonly T[]
   return values;
 }
 
-function env(provider: FakeProvider, root: string, confined: boolean): ExecutionEnv {
+function env(
+  provider: FakeProvider,
+  root: string,
+  confined: boolean,
+  boot: string | undefined,
+): ExecutionEnv {
   return {
     identity: asId<"environment-identity">(`id:${root}`),
     cwd: root,
     files: filesAt(provider.disk, root, confined),
     async exec(command, options) {
-      const process = startProcess(command, options?.pty ?? null, options?.signal);
+      const pid = 4_000 + provider.processes.length;
+
+      const process = startProcess(
+        command,
+        options?.pty ?? null,
+        options?.signal,
+        boot === undefined ? undefined : { boot, pid, group: pid, started: `fake:${pid}` },
+      );
       provider.processes.push(process);
       provider.script(process);
 
@@ -614,6 +620,7 @@ function startProcess(
   command: string | readonly string[],
   pty: Process["pty"],
   signal: AbortSignal | undefined,
+  os: OsProcess | undefined,
 ): Process {
   const frames: OutputFrame[] = [];
   const wakes = new Set<() => void>();
@@ -647,6 +654,7 @@ function startProcess(
     job: {
       id: asId("process"),
       key: null,
+      ...(os === undefined ? {} : { os }),
       async write(bytes) {
         process.stdin.push(new TextDecoder().decode(bytes));
       },

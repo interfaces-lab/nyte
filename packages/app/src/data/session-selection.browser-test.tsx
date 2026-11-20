@@ -51,9 +51,9 @@ function UnlistedTitle(): ReactElement {
   return <span data-title="unlisted">{name === undefined ? "Loading" : (name ?? "Missing")}</span>;
 }
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -62,7 +62,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -89,14 +89,14 @@ export async function run(): Promise<string> {
     await until(() => title("shown") === "Shown", "the listed title");
     await until(() => title("unlisted") === "Read from host", "the unlisted title");
 
-    for (let index = 0; index < 5; index += 1) await painted();
+    for (let index = 0; index < 5; index += 1) await nextFrame();
     resetRenders(ShownTitle);
     resetRenders(ShownRow);
     resetRenders(UnlistedTitle);
 
     for (let index = 0; index < SNAPSHOTS; index += 1) {
       sessions.push(directory("Shown", `Other ${String(index)}`));
-      await painted();
+      await nextFrame();
     }
 
     const unrelated = {
@@ -108,7 +108,7 @@ export async function run(): Promise<string> {
     resetRenders(ShownTitle);
     sessions.push(directory("Renamed", `Other ${String(SNAPSHOTS)}`));
     await until(() => title("shown") === "Renamed", "the renamed title");
-    await painted();
+    await nextFrame();
 
     return JSON.stringify({
       snapshots: SNAPSHOTS,

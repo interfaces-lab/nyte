@@ -1,24 +1,12 @@
-import type { TailnetStatus } from "@nyte-ai/schema";
-import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
+import type { ExcerptSource, TailnetStatus } from "@nyte-ai/schema";
+import type { Json, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import type { OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
-import type { AlertState } from "./desktop-settings.ts";
-import { clientActions } from "./client-actions.ts";
+import type { AppAction } from "./client-actions.ts";
+import type { DesktopApp } from "./desktop-app.ts";
+import type { AppSwitch, ArrivalSubject } from "./desktop-window.ts";
 
 type Disposer = () => void;
-
-export interface HostSettings {
-  readonly cacheWarming: "off" | "streaming" | "idle";
-  readonly autoCompaction: boolean;
-  readonly compactionKeepRecentTokens: number;
-  readonly compactionReserveTokens: number;
-  readonly workspaceTrust: "ask" | "always" | "never";
-  readonly browserAccess: "ask" | "full" | "read" | "off";
-}
-
-export type HostSettingKey = keyof HostSettings;
-
-export type HostSettingsPatch = Partial<HostSettings>;
 
 export interface UsageWindow {
   readonly sinceDay: string | null;
@@ -117,25 +105,6 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export type ClientSurface = "desktop" | "web";
 
-export type AppMenuAction =
-  | typeof clientActions.newChat.id
-  | typeof clientActions.newTab.id
-  | typeof clientActions.closeTab.id
-  | typeof clientActions.reopenTab.id
-  | typeof clientActions.openFolder.id
-  | typeof clientActions.newTerminal.id
-  | typeof clientActions.newBrowser.id
-  | typeof clientActions.settings.id
-  | typeof clientActions.search.id
-  | typeof clientActions.sidebar.id
-  | typeof clientActions.workbench.id
-  | typeof clientActions.terminal.id
-  | typeof clientActions.splitRight.id
-  | typeof clientActions.splitDown.id
-  | typeof clientActions.markdownSource.id
-  | typeof clientActions.focusPane.id
-  | typeof clientActions.reloadWindow.id;
-
 export interface AppInfo {
   readonly name: string;
   readonly version: string;
@@ -146,10 +115,10 @@ export interface AppInfo {
 }
 
 export type AppMenuCommand =
-  | { readonly kind: "action"; readonly action: AppMenuAction }
+  | { readonly kind: "action"; readonly action: AppAction; readonly input: Json }
   | { readonly kind: "about"; readonly info: AppInfo }
-  /** A file Finder opened with Nyte, inside this window's workspace. */
-  | { readonly kind: "open-file"; readonly path: string };
+  | { readonly kind: "open-file"; readonly path: string }
+  | { readonly kind: "arrive"; readonly subject: ArrivalSubject | undefined };
 
 export type ServerState =
   | { readonly kind: "none" }
@@ -268,19 +237,11 @@ export interface SelectedWorkspace {
 
 export interface HostState {
   readonly workspace: SelectedWorkspace | undefined;
-  readonly binding?: { readonly hostId: string; readonly principal: string };
 }
 
 export interface LocalFontCatalog {
   readonly sans: readonly string[];
   readonly monospace: readonly string[];
-}
-
-export interface TrustConsent {
-  readonly hostId: string;
-  readonly id: string;
-  readonly path: string;
-  readonly identity: string;
 }
 
 export type RegisterWorkspaceOutcome =
@@ -293,7 +254,6 @@ export type RegisterWorkspaceOutcome =
 
 export type OpenWorkspaceOutcome =
   | { kind: "opened"; workspace: SelectedWorkspace; needsTrust: boolean }
-  | { kind: "needs_trust"; path: string; consent?: TrustConsent }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
 
@@ -310,6 +270,7 @@ export interface BrowserSurfaceState {
   readonly agentHolders: number;
   readonly fullscreen: boolean;
   readonly deniedPermissions: readonly string[];
+  readonly design: BrowserDesign;
 }
 
 export interface BrowserPageError {
@@ -385,28 +346,41 @@ export type ContextMenuTemplateItem =
       readonly enabled?: boolean;
     };
 
-export interface BrowserBounds {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-export interface BrowserBoundsMessage {
-  readonly surface: string;
-  readonly bounds: BrowserBounds;
-  readonly visible: boolean;
-  readonly focus: boolean;
-}
-
 export interface BrowserFocusMessage {
   readonly surface: string;
   readonly focused: boolean;
 }
 
-export type UpdateChannel = "stable" | "nightly";
+/** The channel a page's preload tells its embedding window on that a person pressed inside the page. */
+export const BROWSER_PAGE_PRESS_CHANNEL = "nyte:browser-page-press";
 
-export type StoreOpening = "migrating" | "ready";
+export interface BrowserShownMessage {
+  readonly surface: string;
+  readonly visible: boolean;
+}
+
+/** A wheel an entered page handed back to the board: where and how far, in the page's CSS px at zoom 1. */
+export interface BrowserWheel {
+  readonly x: number;
+  readonly y: number;
+  readonly deltaX: number;
+  readonly deltaY: number;
+  /** A Ctrl-wheel or pinch zooms the board; a ⌘-wheel without Ctrl pans it. */
+  readonly zoom: boolean;
+}
+
+/** A page this window's renderer hosts in a `<webview>`. Main decides the list; the renderer mounts it. */
+export interface BrowserGuest {
+  readonly surface: string;
+  /** The session partition the element attaches with. */
+  readonly partition: string;
+  /** Changes when main needs a fresh guest for the same surface, so the element remounts. */
+  readonly generation: number;
+  /** Whether the guest keeps painting while no slot shows it, because an agent drives it or a capture is due. */
+  readonly painting: boolean;
+}
+
+export type UpdateChannel = "stable" | "nightly";
 
 export type UpdateState =
   | { readonly kind: "idle" }
@@ -415,7 +389,6 @@ export type UpdateState =
   | { readonly kind: "installing"; readonly version: string }
   | { readonly kind: "failed"; readonly version: string; readonly message: string };
 
-/** This machine's host against the app's build. `stale` runs another build until it restarts. */
 export type HostProcess =
   | { readonly kind: "current"; readonly version: string; readonly startedAt: number | null }
   | { readonly kind: "stale"; readonly version: string; readonly startedAt: number | null }
@@ -436,20 +409,18 @@ export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
   | { kind: "update_channel_changed"; channel: UpdateChannel }
   | { kind: "host_process_changed"; state: HostProcess }
-  | { kind: "settings_changed"; settings: HostSettings }
-  | { kind: "workspace_opened"; workspace: SelectedWorkspace }
-  | { kind: "workspace_trust_required"; path: string }
-  | { kind: "workspace_closed" }
   | { kind: "server_changed" }
   | { kind: "open_session"; session: SessionId }
-  | { kind: "chat_alert"; session: SessionId; state: AlertState; title: string; body: string }
   | { kind: "remote_access_changed" }
-  | { kind: "status"; message: string }
+  | { kind: "browser_guests"; guests: readonly BrowserGuest[] }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
   | { kind: "browser_download"; surface: string; download: BrowserDownload }
   | { kind: "browser_open_tab"; surface: string; url: string; background: boolean }
   | { kind: "browser_key"; surface: string; key: BrowserKey }
+  | { kind: "browser_design_pick"; surface: string; pick: BrowserDesignPick }
   | { kind: "browser_login_requested"; surface: string; host: string; realm: string }
+  | { kind: "browser_board_leave"; surface: string }
+  | { kind: "browser_board_wheel"; surface: string; wheel: BrowserWheel }
   | {
       kind: "browser_history_changed";
       owner: string | null;
@@ -462,11 +433,47 @@ export type HostEvent =
       url: string;
     };
 
-export interface BrowserElementPick {
-  readonly url: string;
-  readonly selector: string;
-  readonly html: string;
+export interface BrowserDesignViews {
+  readonly xray: boolean;
+  readonly rulers: boolean;
+  readonly grid: boolean;
+  readonly contrast: boolean;
+}
+
+export interface BrowserDesign {
+  readonly on: boolean;
+  readonly views: BrowserDesignViews;
+}
+
+export const BROWSER_DESIGN_VIEW_KEYS = {
+  KeyX: "xray",
+  KeyR: "rulers",
+  KeyG: "grid",
+  KeyC: "contrast",
+} as const satisfies Record<string, keyof BrowserDesignViews>;
+
+export const NO_DESIGN: BrowserDesign = {
+  on: false,
+  views: { xray: false, rulers: false, grid: false, contrast: false },
+};
+
+export type BrowserDesignChange =
+  | { readonly kind: "on" }
+  | { readonly kind: "off" }
+  | { readonly kind: "view"; readonly view: keyof BrowserDesignViews; readonly shown: boolean };
+
+export interface BrowserDesignPick {
+  readonly source: Extract<ExcerptSource, { kind: "browser" }>;
+  readonly text: string;
   readonly image: string | undefined;
+}
+
+export interface BrowserCapture {
+  readonly src: string;
+  readonly generation: number;
+  readonly url: string;
+  readonly width: number;
+  readonly height: number;
 }
 
 export interface BrowserBridge {
@@ -474,6 +481,7 @@ export interface BrowserBridge {
     surface: string;
     url: string;
     owner?: { kind: "home" } | { kind: "project"; path: string };
+    holder: "tab" | "board";
   }): Promise<BrowserSurfaceState>;
   navigate(input: { surface: string; action: BrowserNavigationAction }): Promise<void>;
   menu(input: {
@@ -485,8 +493,8 @@ export interface BrowserBridge {
   }): Promise<BrowserMenuAction | undefined>;
   perform(input: { surface: string; action: BrowserAction; owner: string | null }): Promise<void>;
   close(input: { surface: string }): Promise<void>;
-  captureFrame(input: { surface: string }): Promise<string | undefined>;
-  pickElement(input: { surface: string }): Promise<BrowserElementPick | undefined>;
+  captureFrame(input: { surface: string }): Promise<BrowserCapture | undefined>;
+  design(input: { surface: string; change: BrowserDesignChange }): Promise<void>;
   find(input: {
     surface: string;
     text: string;
@@ -499,8 +507,12 @@ export interface BrowserBridge {
   }): Promise<void>;
   history(input: { owner: string | null }): Promise<readonly BrowserHistoryEntry[]>;
   forgetHistory(input: { owner: string | null; url: string }): Promise<void>;
-  setBounds(message: BrowserBoundsMessage): void;
   setFocus(message: BrowserFocusMessage): void;
+  guests(): Promise<readonly BrowserGuest[]>;
+  attach(input: { surface: string; webContentsId: number; generation: number }): Promise<void>;
+  setShown(message: BrowserShownMessage): void;
+  /** Whether a page is entered on the Design board, where it hands Esc and zoom gestures back to the board. */
+  setEntered(input: { surface: string; entered: boolean }): Promise<void>;
 }
 
 export const TERMINAL_NOTICE_LIMITS = { title: 256, body: 1024 } as const;
@@ -515,32 +527,21 @@ export interface AttentionBridge {
   notify(notice: TerminalNotice): void;
 }
 
-export interface HostSettingsBridge {
-  get(): Promise<HostSettings>;
-  set(patch: HostSettingsPatch): Promise<HostSettings>;
-}
-
 export interface HostBridge {
-  readonly settings?: HostSettingsBridge;
   onMenuCommand(listener: (command: AppMenuCommand) => void): Disposer;
   setThemePreference(preference: ThemePreference): void;
-  state(): Promise<HostState>;
-  readonly restore?: (input: { readonly session: string }) => Promise<HostState>;
+  readonly restore?: (input: {
+    readonly session: string;
+  }) => Promise<SelectedWorkspace | undefined>;
   endpoint(): Promise<HostEndpoint>;
   readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
   readonly socket?: OpenSocket;
-  readonly remember?: (credential: CredentialSource) => void;
   fonts(): Promise<LocalFontCatalog>;
   openWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
-  /** Adds the folder to the host's workspaces without selecting it for this window. */
   registerWorkspace(input: { path: string }): Promise<RegisterWorkspaceOutcome>;
   readonly pickWorkspace?: () => Promise<OpenWorkspaceOutcome>;
   readonly pickFolder?: () => Promise<string | undefined>;
-  readonly trustWorkspace?: (input: {
-    path: string;
-    consent?: TrustConsent;
-  }) => Promise<OpenWorkspaceOutcome>;
-  closeWorkspace(): Promise<void>;
+  readonly trustWorkspace?: (input: { path: string }) => Promise<OpenWorkspaceOutcome>;
   readonly usage?: (input: UsageWindow) => Promise<UsageSnapshot>;
   readonly updates?: {
     state(): Promise<UpdateState>;
@@ -550,8 +551,6 @@ export interface HostBridge {
   };
   readonly hostProcess?: {
     state(): Promise<HostProcess>;
-    restart(): Promise<void>;
-    /** Asks first, naming the running work, then restarts or stops the host. */
     confirm(input: { readonly action: "restart" | "stop" }): Promise<void>;
     start(): Promise<void>;
   };
@@ -585,16 +584,25 @@ export interface HostBridge {
   }) => Promise<number | undefined>;
   readonly browser?: BrowserBridge;
   readonly attention?: AttentionBridge;
-  /** Whether this window holds unsaved editor edits, so closing or leaving it asks first. */
+  readonly setWorkspacePath?: (path: string | null) => void;
   readonly setUnsavedEdits?: (held: boolean) => void;
+  /** Focuses the app's window on this workspace, or opens one beside this window, and lands it on the subject. */
+  readonly switchApp?: (input: {
+    readonly to: AppSwitch;
+    readonly workspace: SelectedWorkspace | null;
+    readonly subject: ArrivalSubject | null;
+  }) => Promise<void>;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 
 export interface NyteBridge {
+  /** Which of Nyte's apps this window is; a client without window kinds is Nyte. */
+  readonly app?: DesktopApp;
+  /** The apps this build offers, in switcher order; a client without window kinds has none to switch between. */
+  readonly apps?: readonly DesktopApp[];
   readonly clientSurface: ClientSurface;
   readonly platform: NodeJS.Platform;
   readonly machineName: string | undefined;
   readonly canvasShell?: string;
-  readonly relay?: true;
   readonly host: HostBridge;
 }

@@ -4,7 +4,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { useCatalog } from "../../data/catalog.ts";
 import { useConfigureSession, useSessionChoice } from "../../data/sessions.ts";
 import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
-import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
+import { modelRefFor, sessionModel } from "./model-picker-state.ts";
 
 export function SessionModelChip({
   sessionId,
@@ -18,14 +18,11 @@ export function SessionModelChip({
   const catalog = useCatalog(sessionId);
   const choice = useSessionChoice(sessionId);
   const configure = useConfigureSession(sessionId);
-  const options = catalog.data?.models ?? [];
-  const selected = selectedModelOption(options, choice?.model);
-  const current = selected?.option;
-  const thinkingLevel = choice?.thinking;
+  const model = sessionModel(catalog.data, choice);
 
   const handleChange = (change: ModelPickerChange) =>
     configure.mutate({
-      model: modelRefFor(change.option, change.fast),
+      model: modelRefFor(change.option, change.modes),
       thinking: change.thinkingLevel,
     });
 
@@ -33,9 +30,9 @@ export function SessionModelChip({
     <>
       <ModelPicker
         catalog={catalog.data}
-        current={current}
-        thinkingLevel={thinkingLevel}
-        fast={selected?.fast === true}
+        current={model.option}
+        thinkingLevel={model.thinking}
+        modes={model.modes}
         loading={catalog.isPending}
         disabled={catalog.isError}
         open={open}

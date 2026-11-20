@@ -32,12 +32,15 @@ beforeAll(async () => {
   await symlink(join(desktop, "resources"), join(root, "resources"), "junction");
   const rendererAtAppPath = join(root, "out");
   await symlink(join(desktop, "out"), rendererAtAppPath, "junction");
-  execFileSync("pnpm", ["exec", "electron-vite", "build"], {
-    cwd: desktop,
-    timeout: 180_000,
-    stdio: "pipe",
-    shell: process.platform === "win32",
-  });
+  execFileSync(
+    process.execPath,
+    [join(desktop, "node_modules/electron-vite/bin/electron-vite.js"), "build"],
+    {
+      cwd: desktop,
+      timeout: 180_000,
+      stdio: "pipe",
+    },
+  );
   const entry = join(root, "main.cjs");
   await writeFile(
     entry,
@@ -141,50 +144,58 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
     })),
   );
 
-  for (const display of displays) {
-    await application.evaluate(({ BrowserWindow }, target) => {
-      const window = BrowserWindow.getAllWindows()[0];
+  for (const layout of ["split", "maximized"] as const) {
+    if (layout === "maximized") {
+      await setZoom(1);
+      await page.getByRole("button", { name: "Expand workbench", exact: true }).click();
+    }
 
-      if (!window) throw new Error("Missing Nyte window");
-      window.setPosition(target.x, target.y);
-      window.setSize(Math.min(1200, target.width), 800);
-    }, display);
+    for (const display of displays) {
+      await application.evaluate(({ BrowserWindow }, target) => {
+        const window = BrowserWindow.getAllWindows()[0];
 
-    for (const zoom of [0.5, 0.67, 0.8, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]) {
-      await setZoom(zoom);
-      await expect
-        .poll(async () => {
-          const measured = await geometry();
+        if (!window) throw new Error("Missing Nyte window");
+        window.setPosition(target.x, target.y);
+        window.setSize(Math.min(1200, target.width), 800);
+      }, display);
 
-          return measured.workbench === null
-            ? Infinity
-            : Math.abs(measured.track.left - measured.workbench.left);
-        })
-        .toBeLessThanOrEqual(1);
-      const measured = await geometry();
-      assert.ok(Math.abs(measured.toggle.centerY - measured.header.centerY) < 0.1);
+      for (const zoom of [0.5, 0.67, 0.8, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]) {
+        await setZoom(zoom);
+        await expect
+          .poll(async () => {
+            const measured = await geometry();
 
-      if (process.platform === "darwin") {
-        const native = await application.evaluate(({ BrowserWindow }) => {
-          const window = BrowserWindow.getAllWindows()[0];
+            return measured.workbench === null
+              ? Infinity
+              : Math.abs(measured.track.left - measured.workbench.left);
+          })
+          .toBeLessThanOrEqual(1);
+        const measured = await geometry();
+        assert.ok(Math.abs(measured.toggle.centerY - measured.header.centerY) < 0.1);
 
-          if (!window) throw new Error("Missing Nyte window");
+        if (process.platform === "darwin") {
+          const native = await application.evaluate(({ BrowserWindow }) => {
+            const window = BrowserWindow.getAllWindows()[0];
 
-          return window.getWindowButtonPosition();
-        });
+            if (!window) throw new Error("Missing Nyte window");
 
-        assert.ok(native);
-        assert.ok(measured.toggle.left * zoom >= 71.9);
-        assert.ok(
-          Math.abs(
-            measured.header.centerY * zoom - (native.y + macOSWindowButtonHeight(release()) / 2),
-          ) <= WINDOW_BUTTON_CENTRE_TOLERANCE,
-        );
+            return window.getWindowButtonPosition();
+          });
+
+          assert.ok(native);
+          assert.ok(measured.toggle.left * zoom >= 71.9);
+          assert.ok(
+            Math.abs(
+              measured.header.centerY * zoom - (native.y + macOSWindowButtonHeight(release()) / 2),
+            ) <= WINDOW_BUTTON_CENTRE_TOLERANCE,
+          );
+        }
       }
     }
   }
 
   await setZoom(1);
+  await page.getByRole("button", { name: "Restore split view", exact: true }).click();
 }, 90_000);
 
 test("chrome stages survive a refresh", async () => {

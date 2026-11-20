@@ -1,6 +1,7 @@
-import type { Failure, Message, TurnId, TurnInfo } from "@nyte-ai/sdk";
+import type { Failure, Message, SessionInfo, TurnId, TurnInfo } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import {
+  headAttention,
   runMark,
   runStatus,
   showsAnswer,
@@ -31,7 +32,6 @@ export type Row =
 
 export interface TranscriptModel {
   readonly rows: readonly Row[];
-  /** The keys of the mounted rows, `rows.slice(window.start, window.end)`, in order. */
   readonly visible: readonly RowKey[];
   readonly window: MountWindow;
   readonly following: boolean;
@@ -77,8 +77,10 @@ export function deriveTranscript(
   view: HeadView | null,
   shells: readonly ShellJob[],
   local: TranscriptLocal,
+  info: SessionInfo | null,
 ): TranscriptModel {
-  const timed = view === null ? [] : turnRows(withWholeTools(view, local));
+  const asked = info !== null && headAttention(info).mark === "waiting";
+  const timed = view === null ? [] : turnRows(withWholeTools(view, local), asked);
 
   const jobs = shells.toSorted(
     (left, right) => left.startedAt - right.startedAt || left.id.localeCompare(right.id),
@@ -133,7 +135,7 @@ function withWholeTools(view: HeadView, local: TranscriptLocal): HeadView {
   };
 }
 
-function turnRows(view: HeadView): readonly Row[] {
+function turnRows(view: HeadView, asked: boolean): readonly Row[] {
   const indexes = new Map(view.turns.map((info, index) => [info.id, index]));
   const first = Math.min(firstReachedTurn(view.messages, indexes), view.turns.length - 1);
   const count = view.turns.length - Math.max(0, first);
@@ -179,7 +181,7 @@ function turnRows(view: HeadView): readonly Row[] {
       turn: {
         info,
         blocks: built,
-        status: turnStatus(info, built, view),
+        status: turnStatus(info, built, view, asked),
         clipped: view.leadingPrompt?.turn === info.id,
       },
     });
@@ -220,6 +222,7 @@ export function turnStatus(
   info: TurnInfo,
   blocks: readonly Message[],
   view: HeadView,
+  asked: boolean,
 ): TurnStatus | null {
   const live = view.turns.at(-1)?.id === info.id;
   const { execution } = view;
@@ -244,7 +247,7 @@ export function turnStatus(
     }
 
     case "waiting":
-      return info.state.on.kind === "part"
+      return info.state.on.kind === "part" || (live && asked)
         ? { kind: "waiting", question: true }
         : { kind: "working", activity: taskLabel(runMark(runStatus(execution))), startedAt };
     case "working": {

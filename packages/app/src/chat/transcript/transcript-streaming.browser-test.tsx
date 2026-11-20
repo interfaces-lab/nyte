@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { selectSession, tabPanes } from "../../../test/panes.ts";
 import "./transcript-render-counter.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -163,9 +163,9 @@ const catalog = {
 
 const host = { workspace: undefined } satisfies HostState;
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -174,7 +174,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -193,14 +193,14 @@ export async function run(): Promise<string> {
 
   const root = createRoot(container);
   const panes = tabPanes();
-  panes.selectSession(ID);
+  selectSession(panes, ID);
 
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -217,7 +217,7 @@ export async function run(): Promise<string> {
       "the last turn",
     );
 
-    for (let index = 0; index < 10; index += 1) await painted();
+    for (let index = 0; index < 10; index += 1) await nextFrame();
     resetRenders(TurnItemView);
     resetRenders(SessionConversation);
     resetRenders(Timeline);
@@ -227,7 +227,7 @@ export async function run(): Promise<string> {
       liveText += ` delta ${String(index)}`;
       const pushed = performance.now();
       stream.push(view(liveText));
-      await painted();
+      await nextFrame();
       rendering += lastCommit() - pushed;
     }
 

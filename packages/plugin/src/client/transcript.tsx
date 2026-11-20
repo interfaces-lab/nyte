@@ -6,14 +6,6 @@ import { defineRenderer } from "@nyte-ai/plugin/client";
 
 const unreadable = (): ReactNode => null;
 
-/**
- * Renderers for React clients, the desktop and the web: the five built-in
- * part kinds. The tool's Stop action calls `act`. A state its schema rejects
- * draws nothing, for the client to show raw.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const transcriptRenderers: readonly Renderer[] = [
   defineRenderer(
     text,

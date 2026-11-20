@@ -35,7 +35,7 @@ export const echo = {
   description: "Echo the text.\nIt says it back.",
   parameters: standard(Type.Object({ text: Type.String() })),
   class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async (args) => ({ content: [{ kind: "text", text: args.text }] }),
 } satisfies ToolDefinition<{ text: string }>;
 
@@ -57,7 +57,7 @@ export const opaque: Schema<unknown> = {
 
 export const volume: SettingDefinition<number> = {
   id: "volume",
-  label: "Volume",
+  title: "Volume",
   schema: standard(Type.Integer({ minimum: 0 })),
   default: 3,
   scope: "host",
@@ -65,11 +65,11 @@ export const volume: SettingDefinition<number> = {
 
 export const theme: SettingDefinition<string> = {
   id: "theme",
-  label: "Theme",
+  title: "Theme",
   schema: standard(Type.Union([Type.Literal("light"), Type.Literal("dark")])),
   choices: [
-    { value: "light", label: "Light" },
-    { value: "dark", label: "Dark", badge: "new" },
+    { value: "light", title: "Light" },
+    { value: "dark", title: "Dark", note: "new" },
   ],
   default: "light",
   scope: "host",

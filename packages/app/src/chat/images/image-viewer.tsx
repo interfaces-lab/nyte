@@ -4,7 +4,7 @@ import { Morph } from "@nyte-ai/ui/morph";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Loader } from "@nyte-ai/ui/loader";
-import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
+import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
@@ -13,7 +13,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
-import { loadDeferred, readDeferred } from "../../lib/deferred.tsx";
+import { loadDeferred, useDeferred } from "../../lib/deferred.tsx";
 import { imageViewerStyles } from "./image-viewer.stylex.ts";
 import type { Mark } from "./markup.ts";
 
@@ -32,7 +32,8 @@ const styles = create({
     cursor: "zoom-in",
     verticalAlign: "middle",
   },
-  loading: { display: "flex", alignItems: "center", gap: space.s2, padding: space.s2 },
+  loading: { display: "flex", alignItems: "center", gap: space.s2, paddingInline: space.s2 },
+  status: { flex: 1, display: "flex", alignItems: "center", gap: space.s2 },
 });
 
 export function ImageViewer(input: {
@@ -42,15 +43,17 @@ export function ImageViewer(input: {
 }): ReactElement {
   const id = useId();
   const actions = useRef<{ close: () => void; unmount: () => void } | null>(null);
-  const closeControl = useRef<HTMLButtonElement | null>(null);
   const shortcuts = useRef<((event: KeyboardEvent<HTMLDivElement>) => void) | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const sequence = useRef(0);
   const current = useRef<AbortController | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const [runtime, setRuntime] = useState(() => readDeferred("images"));
+  const images = useDeferred("images");
+  const runtime = images === "failed" ? undefined : images;
   const [error, setError] = useState(false);
+  const [marking, setMarking] = useState(false);
   const [draft, setDraft] = useState<Mark | undefined>(undefined);
+  const [away, setAway] = useState(false);
   const destination = useRef<HTMLElement | undefined>(undefined);
 
   const [visit, setVisit] = useState<
@@ -71,6 +74,7 @@ export function ImageViewer(input: {
   return (
     <Morph.Root
       open={open}
+      modal="trap-focus"
       actionsRef={actions}
       triggerId={id}
       onOpenChange={(next, details) => {
@@ -98,16 +102,14 @@ export function ImageViewer(input: {
         });
         destination.current = undefined;
         setImage(null);
+        setMarking(false);
         setDraft(undefined);
+        setAway(false);
         setError(false);
         setOpen(true);
-        void loadDeferred("images")
-          .then((loaded) => {
-            if (current.current === controller && !controller.signal.aborted) setRuntime(loaded);
-          })
-          .catch(() => {
-            if (current.current === controller && !controller.signal.aborted) setError(true);
-          });
+        void loadDeferred("images").catch(() => {
+          if (current.current === controller && !controller.signal.aborted) setError(true);
+        });
       }}
       onOpenChangeComplete={(next) => {
         if (next || current.current?.signal.aborted !== true) return;
@@ -131,11 +133,14 @@ export function ImageViewer(input: {
         <TooltipContent>{input.name}</TooltipContent>
       </Tooltip>
       <Morph.Portal>
-        <Morph.Backdrop />
+        <Morph.Backdrop xstyle={away && imageViewerStyles.away} />
         {visit !== undefined && (
           <Morph.Popup
-            xstyle={imageViewerStyles.popup}
-            initialFocus={closeControl}
+            xstyle={[
+              imageViewerStyles.popup,
+              !marking && imageViewerStyles.preview,
+              away && imageViewerStyles.away,
+            ]}
             onKeyDown={(event) => shortcuts.current?.(event)}
             finalFocus={() => destination.current ?? true}
           >
@@ -148,27 +153,28 @@ export function ImageViewer(input: {
                 hairline.ringAfter,
               )}
             />
-            <div data-image-frame="" {...props(imageViewerStyles.frame)}>
+            <div
+              data-image-frame=""
+              {...props(
+                imageViewerStyles.frame,
+                !marking && [imageViewerStyles.previewFrame, hairline.ringAfter],
+              )}
+            >
               <img
                 src={input.src}
                 alt={input.name}
                 draggable={false}
-                {...props(imageViewerStyles.image)}
+                {...props(
+                  imageViewerStyles.image,
+                  marking && runtime !== undefined && image !== null && imageViewerStyles.drawn,
+                )}
                 onLoad={(event) => setImage(event.currentTarget)}
                 onError={() => setError(true)}
               />
-              <div {...props(imageViewerStyles.close)}>
-                <Morph.Close
-                  ref={closeControl}
-                  render={<Button size="lg" iconOnly aria-label="Close image preview" icon="x" />}
-                />
-              </div>
               {runtime === undefined || image === null ? (
-                <>
-                  <div {...props(imageViewerStyles.header, styles.loading)}>
-                    <Morph.Title xstyle={text.base}>{input.name}</Morph.Title>
-                  </div>
-                  <div role="status" {...props(imageViewerStyles.footer, text.sm, styles.loading)}>
+                <div {...props(imageViewerStyles.footer, text.sm, styles.loading)}>
+                  <Morph.Title xstyle={srOnly}>{input.name}</Morph.Title>
+                  <span role="status" {...props(styles.status)}>
                     {error ? (
                       "The image viewer could not be opened. Close it and try again."
                     ) : (
@@ -177,8 +183,11 @@ export function ImageViewer(input: {
                         Loading image viewer…
                       </>
                     )}
-                  </div>
-                </>
+                  </span>
+                  <Morph.Close
+                    render={<Button size="lg" iconOnly aria-label="Close Image Preview" icon="x" />}
+                  />
+                </div>
               ) : (
                 <runtime.ImageViewerPopup
                   key={visit.id}
@@ -186,8 +195,11 @@ export function ImageViewer(input: {
                   shortcuts={shortcuts}
                   name={input.name}
                   signal={visit.controller.signal}
+                  marking={marking}
+                  onMarking={setMarking}
                   draft={draft}
                   onDraft={setDraft}
+                  onDragOut={setAway}
                   onClose={close}
                 />
               )}

@@ -28,7 +28,7 @@ const model = (id: string, name: string): ModelInfo => ({
   reasoning: false,
   thinking: ["off"],
   defaultThinking: "off",
-  fast: null,
+  variants: [],
   contextWindow: 128_000,
   compactAt: 100_000,
   maxOutput: 8_000,

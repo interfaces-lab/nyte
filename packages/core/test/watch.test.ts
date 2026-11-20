@@ -14,13 +14,14 @@ import { assert, describe, expect, it, vi } from "vitest";
 import { createHostState, watchHost } from "../src/api/host.ts";
 import { sessionInfo } from "../src/api/session.ts";
 import { createKernel } from "../src/compose.ts";
-import { readView } from "../src/fold/window.ts";
-import { publishSet } from "../src/fold/watch.ts";
+import { readView } from "../src/watch/window.ts";
+import { publishSet } from "../src/watch/watch.ts";
 import { coalesce } from "../src/index.ts";
 import { envelope, headRef, inboxRef, memoryStore, sessionRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { CommitRecord, SessionRecord } from "../src/store.ts";
 import { fakeModels, open } from "./fake-models.ts";
+import { until } from "../src/harness.ts";
 
 const first: SessionId = asId("s1");
 
@@ -262,7 +263,7 @@ describe("watch", () => {
     assert(seen !== null);
 
     expect(opened.messages.map((message) => message.at <= seen)).toEqual([true, true]);
-    await new Promise((resolve) => setTimeout(resolve, 2));
+    await until(() => (Date.now() > seen ? true : undefined));
     await (await session.send("Again.")).settled();
     const current = await session.view();
     const again = current.messages.at(-2);

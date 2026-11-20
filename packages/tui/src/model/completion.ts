@@ -2,7 +2,6 @@ import fuzzysort from "fuzzysort";
 import type { Prepared } from "fuzzysort";
 import type { CommandCompletion } from "@nyte-ai/sdk";
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
-import { directoryCompletionQuery } from "../lib/directory-completion.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion } from "../lib/slash.ts";
 import type { SlashCommand, SlashIndex } from "../lib/slash.ts";
 import type { Draft } from "./state.ts";
@@ -13,7 +12,6 @@ export type CompletionState =
       readonly kind: "open";
       readonly token: CompletionToken;
       readonly highlighted: number;
-      readonly directories: { readonly path: string; readonly entries: readonly string[] } | null;
       readonly explicit: MentionFile | null;
       readonly suggestions: readonly CommandCompletion[] | null;
     };
@@ -24,14 +22,13 @@ export interface MentionFile {
   readonly label: string;
 }
 
-/** A workspace file the `@` list ranks, with its fuzzy-search targets prepared once with the list. */
 export interface IndexedMention extends MentionFile {
   readonly search: { readonly display: Prepared; readonly label: Prepared };
 }
 
 export type CompletionToken =
   | {
-      readonly trigger: "/" | "@" | "cd";
+      readonly trigger: "/" | "@";
       readonly query: string;
       readonly from: number;
       readonly to: number;
@@ -111,10 +108,6 @@ export function completionToken(
   draft: Pick<Draft, "text" | "cursor">,
   completing: ReadonlySet<string>,
 ): CompletionToken | null {
-  const directory = directoryCompletionQuery(draft.text, draft.cursor);
-
-  if (directory !== undefined)
-    return { trigger: "cd", query: directory.path, from: directory.start, to: directory.end };
   const argument = findCommandArgument(draft.text, draft.cursor);
 
   if (argument !== undefined && completing.has(argument.command))
@@ -145,7 +138,6 @@ export function nextCompletion(
     kind: "open",
     token,
     highlighted: 0,
-    directories: null,
     explicit: null,
     suggestions: null,
   };
@@ -223,48 +215,51 @@ function itemsFor(
   state: Extract<CompletionState, { kind: "open" }>,
   draft: Pick<Draft, "text" | "cursor">,
   sources: CompletionSources,
-): readonly CompletionItem[] | "loading" | null {
+):
+  | { readonly kind: "loading" }
+  | { readonly kind: "ready"; readonly items: readonly CompletionItem[] }
+  | null {
   switch (state.token.trigger) {
     case "/": {
       const slash = slashCompletion(draft.text, sources.commands, draft.cursor);
 
       if (slash === undefined || (slash.commands.length === 0 && !slash.leading)) return null;
 
-      return slash.commands.map((command) => ({
-        id: command.name,
-        label: slashCommandLabel(command),
-        detail: command.description,
-        kind: slashKind(command),
-      }));
+      return {
+        kind: "ready",
+        items: slash.commands.map((command) => ({
+          id: command.name,
+          label: slashCommandLabel(command),
+          detail: command.description,
+          kind: slashKind(command),
+        })),
+      };
     }
 
     case "@":
-      return mentionItems(state.token.query, state.explicit, sources.files).map((file) => ({
-        id: file.path,
-        label: file.label,
-        detail: file.display,
-        kind: file.path.endsWith("/") ? "directory" : "file",
-      }));
-    case "cd":
-      return state.directories === null
-        ? "loading"
-        : state.directories.entries.map((entry) => ({
-            id: entry,
-            label: entry,
-            detail: "",
-            kind: "directory",
-          }));
+      return {
+        kind: "ready",
+        items: mentionItems(state.token.query, state.explicit, sources.files).map((file) => ({
+          id: file.path,
+          label: file.label,
+          detail: file.display,
+          kind: file.path.endsWith("/") ? "directory" : "file",
+        })),
+      };
     case "argument":
-      if (state.suggestions === null) return "loading";
+      if (state.suggestions === null) return { kind: "loading" };
 
       return state.suggestions.length === 0
         ? null
-        : state.suggestions.map((suggestion) => ({
-            id: suggestion.value,
-            label: suggestion.label,
-            detail: suggestion.description ?? "",
-            kind: "argument",
-          }));
+        : {
+            kind: "ready",
+            items: state.suggestions.map((suggestion) => ({
+              id: suggestion.value,
+              label: suggestion.label,
+              detail: suggestion.description ?? "",
+              kind: "argument",
+            })),
+          };
     default: {
       const _exhaustive: never = state.token;
 
@@ -282,15 +277,15 @@ export function completionModel(
   const found = itemsFor(state, draft, sources);
 
   if (found === null) return null;
-  const items = found === "loading" ? [] : found;
+  const items = found.kind === "loading" ? [] : found.items;
   const highlighted = Math.max(0, Math.min(items.length - 1, state.highlighted));
 
   return {
     token: state.token,
     items,
-    loading: found === "loading",
+    loading: found.kind === "loading",
     highlighted,
-    ownsEnter: state.token.trigger !== "cd" && items.length > 0,
+    ownsEnter: state.token.trigger !== "argument" && items.length > 0,
     queueable: items[highlighted]?.kind === "skill",
   };
 }
@@ -327,13 +322,11 @@ export function completionEdit(
   if (model.token.trigger === "@")
     return { kind: "file", from, to, path: item.id, directory: item.id.endsWith("/") };
 
-  if (model.token.trigger === "cd" || model.token.trigger === "argument")
-    return { kind: "replace", from, to, text: item.id };
+  if (model.token.trigger === "argument") return { kind: "replace", from, to, text: item.id };
   const command = sources.commands.find((candidate) => candidate.name === item.id);
 
   if (command === undefined) return null;
 
-  if (command.name === "cd") return { kind: "replace", from, to, text: "/cd " };
   const leading = draft.text.slice(0, from).trim() === "";
   const acceptance = acceptSlashCommand(command, via, leading ? draft.text.slice(to).trim() : "");
 

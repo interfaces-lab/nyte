@@ -37,7 +37,7 @@ interface Row {
 
 export interface PaletteFile {
   readonly path: string;
-  readonly lines: number;
+  readonly contents: string;
   readonly symbols: readonly OutlineSymbol[];
 }
 
@@ -178,6 +178,22 @@ function paletteMode(query: string): Mode {
   return { kind: "files", needle: query.trim().toLocaleLowerCase() };
 }
 
+const ALPHABETICAL = new WeakMap<readonly MentionFile[], readonly MentionFile[]>();
+
+function alphabeticalFiles(files: readonly MentionFile[]): readonly MentionFile[] {
+  const held = ALPHABETICAL.get(files);
+
+  if (held !== undefined) return held;
+
+  const sorted = files
+    .filter((file) => file.kind === "file")
+    .toSorted((left, right) => left.displayPath.localeCompare(right.displayPath));
+
+  ALPHABETICAL.set(files, sorted);
+
+  return sorted;
+}
+
 function paletteRows(
   mode: Mode,
   input: {
@@ -190,18 +206,19 @@ function paletteRows(
 ): readonly Row[] {
   switch (mode.kind) {
     case "files": {
-      const indexed = (input.files ?? []).filter((file) => file.kind === "file");
       const recentPaths = new Set(input.recent.map((file) => file.path));
 
       const matches =
         mode.needle === ""
           ? [
               ...input.recent.filter((file) => file.kind === "file"),
-              ...indexed
+              ...alphabeticalFiles(input.files ?? [])
+                .slice(0, MATCH_LIMIT + recentPaths.size)
                 .filter((file) => !recentPaths.has(file.path))
-                .sort((left, right) => left.displayPath.localeCompare(right.displayPath)),
+                .slice(0, MATCH_LIMIT),
             ]
-          : indexed
+          : (input.files ?? [])
+              .filter((file) => file.kind === "file")
               .flatMap((file) => {
                 const name = file.displayPath.slice(file.displayPath.lastIndexOf("/") + 1);
                 const filename = fuzzyScore(name, mode.needle);
@@ -236,7 +253,7 @@ function paletteRows(
       const line = mode.line;
 
       if (active === undefined || line === undefined) return [];
-      const target = Math.min(Math.max(line, 1), active.lines);
+      const target = Math.min(Math.max(line, 1), active.contents.split("\n").length);
 
       return [
         {
@@ -281,7 +298,7 @@ function emptyMessage(mode: Mode, active: PaletteFile | undefined): string {
     case "line":
       return active === undefined
         ? "Open a file to go to a line"
-        : `Type a line number from 1 to ${String(active.lines)}`;
+        : `Type a line number from 1 to ${String(active.contents.split("\n").length)}`;
     case "symbol":
       if (active === undefined) return "Open a file to go to a symbol";
 

@@ -57,3 +57,24 @@ export const sessionSeqs: SchemaStep = {
   },
   indexed: { sqlite: SESSION_SEQS, postgres: SESSION_SEQS },
 };
+
+export const sessionIndexFilters: SchemaStep = {
+  kind: "schema",
+  name: "2026-11-05-session-index-filters",
+  sql: {
+    sqlite: [
+      "CREATE TABLE session_index_filters (name TEXT PRIMARY KEY, session TEXT NOT NULL UNIQUE, parent TEXT NULL, sort_at REAL NOT NULL, version TEXT NOT NULL, seq INTEGER NOT NULL DEFAULT 0, pinned INTEGER NOT NULL DEFAULT 0, name_folded TEXT NULL)",
+      "INSERT INTO session_index_filters (name, session, parent, sort_at, version, seq) SELECT name, session, parent, sort_at, version, seq FROM session_index",
+      "DROP TABLE session_index",
+      "ALTER TABLE session_index_filters RENAME TO session_index",
+      "CREATE INDEX session_index_activity ON session_index(sort_at, session)",
+      "CREATE INDEX session_index_parent_activity ON session_index(parent, sort_at, session)",
+      "CREATE INDEX session_index_pinned ON session_index(pinned, parent, sort_at, session)",
+    ],
+    postgres: [
+      "ALTER TABLE session_index ADD COLUMN IF NOT EXISTS pinned INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE session_index ADD COLUMN IF NOT EXISTS name_folded TEXT NULL",
+      "CREATE INDEX IF NOT EXISTS session_index_pinned ON session_index(pinned, parent, sort_at, session)",
+    ],
+  },
+};

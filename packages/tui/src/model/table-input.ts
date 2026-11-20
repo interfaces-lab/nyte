@@ -57,7 +57,6 @@ export interface EditingModel {
 export type Blocked =
   | { readonly kind: "no-session" }
   | { readonly kind: "switching" }
-  | { readonly kind: "changing-directory" }
   | { readonly kind: "authenticating"; readonly link: string | null }
   | { readonly kind: "editor" };
 
@@ -98,7 +97,6 @@ export function blockedBy(state: State): Blocked | null {
   if (chat === null || (chat.kind === "session" && chat.view === null))
     return { kind: "no-session" };
 
-  if (pending.some((op) => op.kind === "cd")) return { kind: "changing-directory" };
   const auth = pending.find((op) => op.kind === "auth");
 
   if (auth?.kind === "auth") return { kind: "authenticating", link: auth.link };

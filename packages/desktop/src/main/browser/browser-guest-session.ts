@@ -6,7 +6,7 @@ import type { Blocker } from "./adblock.ts";
 import type { BrowserOwner } from "../../shared/browser-agent.ts";
 import type { BrowserDownloads } from "./browser-downloads.ts";
 import { httpsUpgrade, permissionAllowed } from "./browser-policy.ts";
-import { countSessionHolders, hasViewHolder } from "./browser-surface.ts";
+import { countHolders, followsTabPolicy } from "./browser-surface.ts";
 import type { BrowserSurfacesDependencies, GuestSession, Surface } from "./browser-surface.ts";
 
 function partitionName(owner: BrowserOwner): string {
@@ -35,17 +35,26 @@ export class GuestSessions {
   readonly #sessions = new Map<string, GuestSession>();
   #blocker: Blocker | undefined;
   #blockerReady: Promise<void> | undefined;
+  #blockerSettled = false;
 
   constructor(options: GuestSessionsOptions) {
     this.#options = options;
   }
 
   ensureBlocker(): Promise<void> {
-    this.#blockerReady ??= loadBlocker(this.#options.dependencies.filterListPath).then((loaded) => {
-      this.#blocker = loaded;
-    });
+    this.#blockerReady ??= loadBlocker(this.#options.dependencies.filterListPath)
+      .then((loaded) => {
+        this.#blocker = loaded;
+      })
+      .finally(() => {
+        this.#blockerSettled = true;
+      });
 
     return this.#blockerReady;
+  }
+
+  blockerSettled(): boolean {
+    return this.#blockerSettled;
   }
 
   blocking(url: string): BrowserSurfaceState["blocking"] {
@@ -60,6 +69,10 @@ export class GuestSessions {
     return this.blocking(url) === "on" ? (this.#blocker?.stylesFor(url) ?? "") : "";
   }
 
+  hosts(partition: string): boolean {
+    return this.#sessions.has(partition);
+  }
+
   forOwner(owner: BrowserOwner): GuestSession {
     const partition = partitionName(owner);
     const existing = this.#sessions.get(partition);
@@ -70,6 +83,7 @@ export class GuestSessions {
 
     const guestSession: GuestSession = {
       session: session.fromPartition(partition),
+      partition,
       plainHosts: new Set(),
       upgrades: new Map(),
       trustedCertificateHosts: new Set(),
@@ -108,7 +122,11 @@ export class GuestSessions {
     guest.on("will-download", (event, item, contents) => {
       const surface = surfaceFor(contents.id);
 
-      if (surface === undefined || !hasViewHolder(surface) || countSessionHolders(surface) > 0) {
+      if (
+        surface === undefined ||
+        !followsTabPolicy(surface) ||
+        countHolders(surface, "session") > 0
+      ) {
         event.preventDefault();
 
         return;
@@ -121,7 +139,7 @@ export class GuestSessions {
       const surface =
         details.webContentsId === undefined ? undefined : surfaceFor(details.webContentsId);
 
-      const contents = surface?.view.webContents;
+      const contents = surface?.guest;
 
       const blocking = this.blocking(
         contents === undefined || contents.isDestroyed() ? "" : contents.getURL(),

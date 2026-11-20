@@ -1,7 +1,7 @@
 import type { HostId } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { useSyncExternalStore } from "react";
-import { currentLive, subscribeLive } from "../data/connection.ts";
+import { installedLive } from "../data/connection.ts";
 import { hostWatch } from "../data/watches.ts";
 import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 
@@ -106,10 +106,10 @@ export function followRoutes(hostId: HostId): void {
   };
 
   let unhealthy: ReturnType<typeof setTimeout> | undefined;
-  let leaveHealth: (() => void) | undefined;
+  const followed = installedLive((current) => current.health);
 
   const checkHealth = (): void => {
-    const health = currentLive()?.health.snapshot();
+    const health = followed.read();
 
     if (!state.direct || health?.kind === "open") {
       clearTimeout(unhealthy);
@@ -124,15 +124,9 @@ export function followRoutes(hostId: HostId): void {
     }, UNHEALTHY_MS);
   };
 
-  const followLive = (): void => {
-    leaveHealth?.();
-    leaveHealth = currentLive()?.health.subscribe(checkHealth);
-    checkHealth();
-  };
-
   watch.subscribe(remember);
-  subscribeLive(followLive);
-  followLive();
+  followed.subscribe(checkHealth);
+  checkHealth();
   remember();
 }
 

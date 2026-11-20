@@ -1,18 +1,27 @@
 import { SdkError } from "@nyte-ai/schema";
-import type { CommitId, HeadName, PromptOverride, RunId, SessionId } from "@nyte-ai/schema";
+import type {
+  CommitId,
+  HeadName,
+  ModelRef,
+  PromptOverride,
+  RunId,
+  SessionId,
+} from "@nyte-ai/schema";
 import type { SystemMessage } from "@nyte-ai/schema/model";
-import type { Kernel } from "../contract/kernel.ts";
+import type { Kernel, PluginRuntime } from "../contract/kernel.ts";
 import type { PromptSection } from "../contract/plugin.ts";
 import { decodePromptRecord } from "../contract/records.ts";
 import type { PromptRecord } from "../contract/records.ts";
 import type { Resources } from "../contract/workspace.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { promptRef } from "../store/refs.ts";
 import { attempt, load, put, readRefExpectation, STALE } from "../store/session.ts";
 
-export type SystemSection = { readonly id: string; readonly text: string };
+type SystemSection = { readonly id: string; readonly text: string };
 
-export type SystemPrompt = {
+export type FixedSection = PromptSection & { readonly text: string };
+
+type SystemPrompt = {
   readonly head: SystemMessage | null;
   readonly updates: ReadonlyMap<CommitId, readonly SystemMessage[]>;
 };
@@ -23,7 +32,7 @@ export function systemSections(
   own: PromptOverride | null,
   agent: PromptOverride | null,
   prompt: Resources["prompt"],
-  sections: readonly PromptSection[],
+  sections: readonly FixedSection[],
 ): readonly SystemSection[] {
   if (own?.kind === "replace") return nonEmpty([{ id: "prompt", text: own.text }]);
 
@@ -48,6 +57,37 @@ export function systemSections(
     ...body,
     ...(prompt.append === null ? [] : [{ id: "APPEND_SYSTEM.md", text: prompt.append }]),
   ]);
+}
+
+export async function resolveSections(
+  runtime: PluginRuntime,
+  model: ModelRef,
+): Promise<readonly FixedSection[]> {
+  const resolved = await Promise.all(
+    runtime.registries.prompt.entries().map(async (entry) => {
+      const section = entry.item;
+
+      if (typeof section.text === "string") return [{ ...section, text: section.text }];
+      const api = runtime.api(entry.owner);
+
+      if (api === undefined)
+        throw new SdkError(
+          "internal",
+          `Plugin ${entry.owner} is not active, so its prompt section ${section.id} has no API.`,
+        );
+
+      const text = await Promise.resolve(section.text({ model, api })).catch((error: unknown) => {
+        throw new SdkError(
+          "internal",
+          `Plugin ${entry.owner}'s prompt section ${section.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+
+      return text === null ? [] : [{ ...section, text }];
+    }),
+  );
+
+  return resolved.flat();
 }
 
 export async function settleSystemPrompt(
@@ -167,7 +207,7 @@ function systemMessage(sections: Update["sections"]): SystemMessage {
   };
 }
 
-function layerSection(id: string, override: PromptOverride | null): readonly PromptSection[] {
+function layerSection(id: string, override: PromptOverride | null): readonly FixedSection[] {
   return override?.kind === "layer" ? [{ id, text: override.text, order: override.order }] : [];
 }
 

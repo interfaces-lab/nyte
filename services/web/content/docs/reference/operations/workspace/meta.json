@@ -1,0 +1,19 @@
+{
+  "title": "workspace",
+  "pages": [
+    "info",
+    "watch",
+    "catalog",
+    "command",
+    "complete-command",
+    "update",
+    "reload",
+    "changes",
+    "patches",
+    "files",
+    "git",
+    "github",
+    "browser",
+    "language"
+  ]
+}

@@ -20,11 +20,6 @@ type Frozen<T> = [Json] extends [T]
 
 export type Decoded<S extends TSchema> = Frozen<StaticDecode<S>>;
 
-/**
- * A schema's named definitions, a cyclic type's or a JSON Schema's `$defs`, so a `$ref` to one
- * resolves by name. Where `eval` is blocked (the desktop renderer) TypeBox interprets the schema,
- * and without these it searches the whole schema for every `$ref` it follows.
- */
 function definitions(schema: TSchema): TProperties {
   const named = IsCyclic(schema) ? schema.$defs : "$defs" in schema ? schema.$defs : undefined;
 

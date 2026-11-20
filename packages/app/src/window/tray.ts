@@ -45,3 +45,9 @@ export function showTray(
 
   return view;
 }
+
+export function drawnTray(current: TrayView, deferred: TrayView, drawn: TrayView): TrayView {
+  if (current.kind !== "detail") return current;
+
+  return deferred.kind === "detail" && deferred.sessionId === current.sessionId ? deferred : drawn;
+}

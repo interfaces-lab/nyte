@@ -151,14 +151,7 @@ async function serveClaimed(
   await saveHostAddress(addressPath, { port, token });
 
   try {
-    const published = await publishHost(path, {
-      url: thread.address,
-      token,
-      pid: process.pid,
-      socket,
-    });
-
-    if (published.kind === "taken") return published;
+    await publishHost(path, { url: thread.address, token, pid: process.pid, socket });
 
     try {
       output.write(

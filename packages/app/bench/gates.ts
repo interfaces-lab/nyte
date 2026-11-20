@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 
 export const MarkdownCase = Type.Object({
-  variant: Type.Union([Type.Literal("prose"), Type.Literal("streamdown")]),
+  variant: Type.Union([Type.Literal("prose"), Type.Literal("streamdown"), Type.Literal("words")]),
 });
 
 export const MarkdownResult = Type.Array(

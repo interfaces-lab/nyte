@@ -59,8 +59,8 @@ const note: ToolDefinition<{ text: string }> = {
   description: "Pin a note.",
   parameters: standard(Type.Object({ text: Type.String() })),
   class: (args) => ({ kind: "custom", label: `Noting ${args.text}` }),
-  effects: "none",
-  replay: "safe",
+  changes: "none",
+  rerun: "safe",
   execute: async (args) => ({ content: [{ kind: "text", text: `Pinned ${args.text}.` }] }),
 };
 

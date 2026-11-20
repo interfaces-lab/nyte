@@ -6,6 +6,7 @@ import process from "node:process";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
+import { captureWindow } from "./window-capture.ts";
 import { buildSourceIndex, compileExpr } from "./grid/cause.ts";
 import type { SourceIndex } from "./grid/cause.ts";
 import { check } from "./grid/check.ts";
@@ -308,9 +309,9 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     const checked = check(snapshot);
     const result = stateResult({ state, snapshot, checked, index });
     await writeFile(join(out, `${state}.snapshot.json`), `${JSON.stringify(snapshot)}\n`);
-    await page.screenshot({ path: join(out, `${state}-plain.png`) });
+    await captureWindow(desktop, join(out, `${state}-plain.png`));
     await page.evaluate(drawOverlay, overlayMarks(result));
-    await page.screenshot({ path: join(out, `${state}.png`) });
+    await captureWindow(desktop, join(out, `${state}.png`));
     await page.evaluate(clearOverlay);
     results.push(result);
 

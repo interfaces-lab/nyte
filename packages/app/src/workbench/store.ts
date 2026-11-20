@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { PartId, SessionId } from "@nyte-ai/sdk";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import { nyte } from "../contract/nyte.ts";
+import { nyte, windowApp } from "../contract/nyte.ts";
 import { localArea } from "../lib/storage.ts";
 import { DEFAULT_VIEW } from "./model.ts";
 import type {
@@ -67,10 +67,18 @@ export function createWorkbenchStore(
   });
 }
 
-export const workbench = createWorkbenchStore(
-  () => clientCapabilities(nyte.host),
-  workbenchPersistence(localArea()),
-);
+let windowPersistence: WorkbenchPersistence | undefined;
+
+function appPersistence(): WorkbenchPersistence {
+  windowPersistence ??= workbenchPersistence(localArea(), windowApp());
+
+  return windowPersistence;
+}
+
+export const workbench = createWorkbenchStore(() => clientCapabilities(nyte.host), {
+  get: () => appPersistence().get(),
+  set: (value) => appPersistence().set(value),
+});
 
 export function useWorkbenchSnapshot(): WorkbenchSnapshot {
   return useSyncExternalStore(workbench.subscribe, workbench.getSnapshot, workbench.getSnapshot);

@@ -10,7 +10,7 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { SessionRow } from "../sidebar/sidebar-rows.tsx";
 import { ChatCardGroup } from "./chat-card.tsx";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
-import type { PaneController } from "../panes/pane-controller.ts";
+import type { TabPanes } from "../tabs/window-store.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
@@ -32,7 +32,6 @@ const folder: WorkspaceInfo = {
   trusted: true,
   projectSources: [],
   addedBy: asId("local"),
-  sessions: 1,
   writers: [],
   isolation: null,
 };
@@ -73,10 +72,10 @@ installScripted(
   }),
 );
 
-function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
+function Stage({ panes }: { readonly panes: TabPanes }): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
-      <PaneControllerProvider controller={panes}>
+      <PaneControllerProvider panes={panes}>
         <SessionDndProvider>
           <ChatCardGroup placement="row">
             <div style={{ width: 240 }}>
@@ -138,7 +137,7 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
     if (value !== null && value !== undefined) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
 }
 
@@ -166,8 +165,6 @@ function check(condition: boolean, message: string): void {
 async function openCard(trigger: Element): Promise<HTMLElement> {
   const started = performance.now();
   hover(trigger);
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 150));
-  check(card() === null, "The card opened before 250 ms");
   const opened = await until(card, "the chat card");
   check(performance.now() - started >= 240, "The card opened before 250 ms");
 

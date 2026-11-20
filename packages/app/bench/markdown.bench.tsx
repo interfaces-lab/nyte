@@ -1,6 +1,7 @@
 import type { Static } from "typebox";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { Markdown } from "@nyte-ai/ui/words/react";
 import { Streamdown } from "streamdown";
 import { Prose } from "../src/chat/markdown/prose.tsx";
 import { MarkdownCase } from "./gates.ts";
@@ -23,6 +24,10 @@ export async function run(): Promise<string> {
         <Page>
           {markdown === undefined ? null : variant === "prose" ? (
             <Prose markdown={markdown} streaming={streaming} />
+          ) : variant === "words" ? (
+            <Markdown isAnimating={streaming} animated controls={false} lineNumbers={false}>
+              {markdown}
+            </Markdown>
           ) : (
             <Streamdown isAnimating={streaming} skipHtml controls={false} lineNumbers={false}>
               {markdown}

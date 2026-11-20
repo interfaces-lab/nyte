@@ -227,20 +227,9 @@ export interface LoggedItem {
   readonly head: HeadPair | null;
 }
 
-/**
- * Puts logged events on the bus once each and in seq order per session, for every subscriber.
- * An event at or below the session's last published seq is dropped; one past the next seq first
- * publishes the gap from the log (another process's commits, or a concurrent publish not yet
- * here), and publishes anyway, leaving the gap to folds' own reads, when that read fails.
- * A session's sequence is dropped once the bus has had no subscriber for it, and this process no
- * event to publish, for a linger; a session logged again after that starts from that write's seqs.
- */
 export interface LogPublisher {
-  /** Publishes `items`, ascending, after everything handed over for the session before them. */
   publish(session: SessionId, items: readonly LoggedItem[]): Promise<void>;
-  /** Notes that this process logged the session's events `from` through `through` in one write, before they reach the bus. */
   logged(session: SessionId, from: number, through: number): void;
-  /** The highest seq this process has logged for the session, or 0: a fold behind it has events to read even when no other process committed. */
   loggedThrough(session: SessionId): number;
 }
 
@@ -269,10 +258,8 @@ export interface FoldCache {
 
   folding(session: SessionId): boolean;
 
-  /** Reads each fold's log past it and publishes what it finds on the bus: what another process logged since. */
   refresh(): Promise<void>;
 
-  /** Writes each fold's offered checkpoint now and waits for the writes in flight; no fold offers one after. */
   close(): Promise<void>;
 }
 

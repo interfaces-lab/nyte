@@ -19,6 +19,7 @@ const EXCERPT_ICONS = {
   terminal: "console",
   browser: "code-brackets",
   chat: "bubble-question",
+  design: "bezier-pointer",
 } as const satisfies Record<ExcerptSource["kind"], IconName>;
 
 function referenceIcon(reference: MessageReference): IconName {

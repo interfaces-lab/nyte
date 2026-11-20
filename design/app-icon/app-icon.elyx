@@ -1,0 +1,133 @@
+import "./arrangements.elyx" as arr
+
+// The macOS app icon: lit crescents on a squircle plate, 1024 canvas and 824 plate per Apple's grid.
+// Each variant swaps the plate paint; the `art` layer picks how the crescents sit.
+@variants(dusk, twilight, ink, indigo, haze, mist, paper)
+export appIcon = frame {
+  title: "Night",
+  left: 0px,
+  top: 0px,
+  width: 1024px,
+  height: 1024px,
+  children: plate,
+
+  plate = frame {
+    left: 100px,
+    top: 100px,
+    width: 824px,
+    height: 824px,
+    fill: {
+      linear-gradient: {
+        angle: 180deg,
+        stops: [
+          stop(0%, rgb(13.7255%, 16.47%, 26.6667%)),
+          stop(100%, rgb(4.7059%, 6.27%, 12.549%))
+        ]
+      }
+    },
+    border: {color: rgb(100%, 100%, 100%, 14%), width: 2px},
+    shadow: {
+      drop-shadow: {
+        color: rgb(0%, 0%, 0%, 28%),
+        offset: point(0px, 12px),
+        blur-radius: 24px
+      }
+    },
+    corner-radius: 185px,
+    corner-smoothing: 0.6,
+    overflow: .clip,
+    children: art,
+
+    // The crescents. Swap the arrangement with @with-variant(arr.quad) and the like.
+    art = frame : arr.single {
+      left: 0px,
+      top: 0px
+    }
+  }
+}
+
+// Gradient plates.
+export dusk = frame : appIcon {
+  title: "Dusk",
+  left: 1224px,
+  top: 0px,
+
+  plate {
+    fill[0].radial-gradient.from: [80%, 10%],
+    fill[0].radial-gradient.stops[2].position: 100%,
+    fill[0].radial-gradient.stops[1].position: 45%,
+    fill[0].radial-gradient.to: [80%, -140%],
+    fill[0].radial-gradient.stops[2].color: rgb(7.06%, 8.24%, 15.29%),
+    fill[0].radial-gradient.stops[1].color: rgb(20.39%, 24.71%, 45.1%),
+    fill[0].radial-gradient.stops[0].color: rgb(47.84%, 57.6471%, 83.92%),
+    fill[0].radial-gradient.ellipse-scale: 1
+  }
+}
+
+export twilight = frame : appIcon {
+  title: "Twilight",
+  left: 2448px,
+  top: 0px,
+
+  plate {
+    fill[0].linear-gradient.from: [32.899%, 3.0154%],
+    fill[0].linear-gradient.to: [67.1%, 96.98%],
+    fill[0].linear-gradient.stops[1].color: rgb(6.67%, 7.45%, 18.04%),
+    fill[0].linear-gradient.stops[0].color: rgb(22.75%, 24.71%, 61.18%)
+  }
+}
+
+export haze = frame : appIcon {
+  title: "Haze",
+  left: 3672px,
+  top: 0px,
+
+  plate {
+    border[0].color: rgb(0%, 0%, 0%, 6%),
+    fill[0].linear-gradient.stops[1].color: rgb(98.0392%, 98.0392%, 98.0392%),
+    fill[0].linear-gradient.stops[0].color: rgb(85.098%, 85.098%, 85.098%)
+  }
+}
+
+// Solid plates.
+export ink = frame : appIcon {
+  title: "Ink",
+  left: 0px,
+  top: 1224px,
+
+  plate {
+    fill[0].color: rgb(4.7059%, 6.27%, 12.549%)
+  }
+}
+
+export indigo = frame : appIcon {
+  title: "Indigo",
+  left: 1224px,
+  top: 1224px,
+
+  plate {
+    fill[0].color: rgb(13.73%, 15.69%, 56.08%)
+  }
+}
+
+export mist = frame : appIcon {
+  title: "Mist",
+  left: 2448px,
+  top: 1224px,
+
+  plate {
+    border[0].color: rgb(0%, 0%, 0%, 6%),
+    fill[0].color: rgb(86.67%, 86.67%, 86.67%)
+  }
+}
+
+export paper = frame : appIcon {
+  title: "Paper",
+  left: 3672px,
+  top: 1224px,
+
+  plate {
+    border[0].color: rgb(0%, 0%, 0%, 6%),
+    fill[0].color: rgb(96.08%, 96.08%, 96.86%)
+  }
+}

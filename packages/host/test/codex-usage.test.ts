@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import type { Models } from "@nyte-ai/ai";
-import { createUsageScanCaches, readCodexUsage } from "../src/usage.ts";
-import type { UsageWindow } from "../src/usage-types.ts";
+import { createUsageScanCaches, readCodexUsage } from "../src/usage/local-history.ts";
+import type { UsageWindow } from "../src/usage/types.ts";
 
 const model: ReturnType<Models["getModels"]>[number] = {
   id: "gpt-test-1",

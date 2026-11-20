@@ -32,7 +32,6 @@ const EXPOSURES = ["direct", "deferred", "codemode", "codemode-deferred", "hidde
 
 const LIST_WAIT_MS = 15_000;
 
-/** A failed server's stderr lines shown under its warning; `--json` has all of them. */
 const STDERR_LINES = 5;
 
 const STATES: Readonly<Record<McpServerState["kind"], string>> = {
@@ -49,7 +48,6 @@ const ADD_HELP: readonly NextStep[] = [
 
 const LIST: NextStep = { label: "See your servers", argv: ["nyte", "mcp", "list"] };
 
-/** Why `list` skips this folder's `.nyte/mcp.json`, and the command that makes the host read it. */
 const UNREAD = {
   unregistered: {
     warning: "This folder's .nyte/mcp.json isn't read until Nyte opens the folder.",
@@ -61,7 +59,6 @@ const UNREAD = {
   },
 } as const satisfies Record<string, { readonly warning: string; readonly next: NextStep }>;
 
-/** `add` options whose value can be a credential. `--bearer-token-env-var` names a variable, so it stays. */
 const SECRET_OPTIONS = [
   { flag: "--header", placeholder: "<HEADER>" },
   { flag: "--env", placeholder: "<KEY=VALUE>" },
@@ -70,18 +67,11 @@ const SECRET_OPTIONS = [
 
 interface Input {
   readonly args: readonly string[];
-  /** Opens the host connection; a `local` source starts a host when none runs. */
   readonly connect: (source: HostSource) => Promise<Connection>;
   readonly signal: AbortSignal;
   readonly output: Output;
 }
 
-/**
- * `nyte mcp`: changes `mcp.json` and signs in to servers for the folder it runs in. Receipts go to
- * stderr and the server's name to stdout when a script reads it. `list` reads a running host's
- * servers for a folder it already has, and answers 1 when an entry is invalid or an enabled server
- * isn't connected.
- */
 export async function mcpCommand(input: Input): Promise<number> {
   const found = readAction("mcp", input.args);
   const args = found.args;
@@ -105,7 +95,6 @@ export async function mcpCommand(input: Input): Promise<number> {
   }
 }
 
-/** A name already in the target `mcp.json` is a conflict; `--force` replaces it and the receipt names what it replaced. */
 async function add(args: readonly string[], input: Input): Promise<number> {
   const request = parseAdd(args);
   const mcp = await openWorkspace(input.connect, request.scope);
@@ -223,7 +212,6 @@ async function list(args: readonly string[], input: Input): Promise<number> {
   return failing ? 1 : 0;
 }
 
-/** A cancel at a prompt or while waiting for the browser signs nothing in, so it ends as `canceled`. */
 async function login(args: readonly string[], input: Input): Promise<number> {
   const named = parseCommandArgs("mcp", args, 1, "login").positionals[0];
   const output = input.output;
@@ -292,7 +280,6 @@ async function signIn(
   return { kind: "signed-in", server };
 }
 
-/** Servers that need a sign-in come first; with only one candidate there is nothing to ask. */
 async function chooseServer(view: McpView, driver: LoginDriver, output: Output): Promise<string> {
   const signable = view.servers
     .filter((server) => server.transport.kind === "http" && server.state.kind !== "disabled")
@@ -327,11 +314,6 @@ async function chooseServer(view: McpView, driver: LoginDriver, output: Output):
   );
 }
 
-/**
- * Mutations open the folder as a workspace, starting a host when none runs; the MCP API is per
- * workspace. A change to the `project` file fails first unless the host reads it: only in a trusted
- * folder, and never in the home folder, whose `.nyte/mcp.json` is the user file.
- */
 async function openWorkspace(connect: Input["connect"], scope?: McpScope): Promise<McpApi> {
   const connection = await connect({ kind: "local" });
   const workspace = connection.workspace(await addFolder(connection, process.cwd()));
@@ -357,11 +339,6 @@ async function openWorkspace(connect: Input["connect"], scope?: McpScope): Promi
   return workspace.mcp;
 }
 
-/**
- * A read starts no host and registers no folder. The host's MCP API reads registered workspaces
- * only, so for a folder it doesn't have, the home workspace, which it always has, answers with the
- * user-scope servers; `folder` is `unregistered` then.
- */
 async function listedWorkspace(connect: Input["connect"]): Promise<{
   readonly mcp: McpApi;
   readonly folder: "unregistered" | "untrusted" | "trusted";
@@ -402,18 +379,12 @@ async function homeWorkspace(connection: Connection): Promise<WorkspaceId | null
   return null;
 }
 
-/** The workspace's servers as configured, without waiting for any to connect. */
 async function firstView(mcp: McpApi): Promise<McpView> {
   for await (const view of mcp.watch()) return view;
 
   throw new CliError("failed", "Couldn't read the MCP servers.");
 }
 
-/**
- * The add's own argv with `--force` before a stdio command's `--`. A suggested command never holds a
- * secret, so the value of each option that can carry a credential becomes its placeholder, and the
- * label says which ones to fill in.
- */
 function replaceStep(args: readonly string[]): NextStep {
   const split = args.indexOf("--");
   const flags = split < 0 ? args : args.slice(0, split);
@@ -452,7 +423,6 @@ function settle(outcome: McpChange, verb: string, server: string): void {
   });
 }
 
-/** `✓ <text>` and its rows on stderr; the bare name on stdout when a script, not a person, reads it. */
 function receipt(output: Output, text: string, server: string, rows: readonly Row[]): void {
   output.status("done", printable(text));
   output.rows(rows);
@@ -467,10 +437,6 @@ function nextStep(output: Output, step: NextStep): void {
   output.say(formatCommand(step.argv, output.mode.stderr));
 }
 
-/**
- * Waits up to `LIST_WAIT_MS` for every server to leave `connecting`, telling `progress` how many it
- * waits on. `login` passes none: its prompts write past `Output`, so they can't clear that line.
- */
 async function settled(
   mcp: McpApi,
   signal: AbortSignal,
@@ -507,7 +473,6 @@ async function settled(
   return latest;
 }
 
-/** `exposure` uses the names `--exposure` and `mcp.json` take. */
 function listDocument(view: McpView): Json {
   return {
     servers: view.servers.map((server) => ({ ...server, exposure: exposureName(server.exposure) })),
@@ -527,7 +492,6 @@ function listDocument(view: McpView): Json {
   };
 }
 
-/** The table on stdout; why a server isn't connected, and invalid entries, as warnings on stderr. */
 function showList(view: McpView, output: Output): void {
   if (view.servers.length === 0 && view.issues.length === 0) {
     output.say("No MCP servers.");

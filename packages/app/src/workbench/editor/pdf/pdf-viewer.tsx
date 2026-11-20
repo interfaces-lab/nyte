@@ -52,7 +52,6 @@ const styles = create({
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
-    backgroundColor: role.bgBase,
   },
   failure: {
     position: "absolute",

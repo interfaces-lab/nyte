@@ -10,7 +10,6 @@ import {
   taskEnded,
   taskLabel,
   toolNoun,
-  toolOutput,
   toolStatus,
   toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
@@ -48,6 +47,7 @@ import { subagentCallStyles } from "./subagent-call.stylex.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 import { excerptText, outputExcerpt } from "./tool-output.tsx";
 import { useWholeToolState } from "./whole-tool-state.ts";
+import { toolFacts } from "./tool-facts.ts";
 import { useCommitCount } from "../../lib/work-counts.ts";
 
 type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
@@ -320,18 +320,15 @@ export function SubagentLineView({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const state = useWholeToolState(message, open);
-
-  const output = excerptText(
-    outputExcerpt(state.phase === "running" ? (state.progress?.text ?? "") : toolOutput(state)),
-  );
-
-  const status = toolStatus(message);
-  const running = status.tense === "running";
+  const facts = toolFacts(message, state, toolVerbs(toolClass), "subagent");
+  const output = excerptText(outputExcerpt(facts.output));
+  const status = facts.status;
+  const running = facts.running;
   const session = useTranscriptScope()?.sessionId;
   const task = asChild(useTask(session, delegateKey(toolClass, message.state.call)));
   const child = task?.id ?? toolClass.child ?? undefined;
   const label = task?.title ?? childTitle(undefined, toolClass.title);
-  const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
+  const verb = facts.verb;
   const expandable = output.trim() !== "";
 
   const agent = (

@@ -38,7 +38,7 @@ On a machine, `openHost` in [`@nyte-ai/host`](../host/README.md) calls `composeH
 
 A store holds two kinds of data. Objects are immutable and content-addressed, and core writes them before any publish. Refs are the only mutable state, and core publishes them in one all-or-nothing `refs.set` batch. `memoryStore` keeps both in process. The SQLite, PostgreSQL and Durable Object stores live in `@nyte-ai/host`.
 
-Core folds a session's log into its current state. `Head.view()` answers one `SessionView` from that fold. Clients in another process read rows and apply change events instead, as the [host protocol](../../docs/host-protocol/README.md) describes.
+Core folds a session's log into its current state. `Head.view()` answers one `SessionView` from that fold. Clients in another process read rows and apply change events instead.
 
 Core imports no `node:*` module, so the sdk's browser and React Native entry can load it.
 

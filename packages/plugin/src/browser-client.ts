@@ -190,15 +190,6 @@ export function sessionSurfaceId(sessionId: SessionId): string {
   return `stage:session:${encodeURIComponent(sessionId)}`;
 }
 
-/**
- * The browser tools, served by the connected app that offers
- * `BROWSER_ACTION`: each session's page is the one its agent holds in that
- * app. With no app connected that offers it, every tool answers that only
- * Nyte.app has the browser.
- *
- * @category plugins
- * @since 0.1.0
- */
 export function clientBrowserPlugins(actions: ClientActions, home: string): readonly Plugin[] {
   return [
     browserTools,
@@ -230,6 +221,8 @@ export function clientBrowserPlugins(actions: ClientActions, home: string): read
           },
           { once: true },
         );
+
+        return {};
       },
     },
   ];

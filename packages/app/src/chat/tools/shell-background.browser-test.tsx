@@ -126,17 +126,14 @@ const scriptedSet = scriptedConnection({
 
 const scripted = scriptedSet.connection;
 
-installConnection(
-  {
-    ...scripted,
-    workspace: (id) => {
-      const workspace = scripted.workspace(id);
+installConnection({
+  ...scripted,
+  workspace: (id) => {
+    const workspace = scripted.workspace(id);
 
-      return { ...workspace, jobs: { ...workspace.jobs, watch: () => jobs.watch() } };
-    },
+    return { ...workspace, jobs: { ...workspace.jobs, watch: () => jobs.watch() } };
   },
-  scriptedSet.live,
-);
+});
 
 function ShellStep({ density }: { readonly density: ToolCallDensity }): ReactElement | null {
   const message = useWatchSelect(chatStore(SESSION), ({ value }) => value?.messages[0]);
@@ -181,7 +178,7 @@ function Stage({
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-        <PaneControllerProvider controller={panes}>
+        <PaneControllerProvider panes={panes}>
           <TranscriptProvider paneId={PRIMARY} sessionId={SESSION}>
             <div style={{ padding: 16 }}>
               <ShellStep density={density} />
@@ -206,14 +203,12 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
     if (value !== null && value !== undefined) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await nextFrame();
   }
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function capture(name: string): Promise<void> {
@@ -247,14 +242,11 @@ export async function run(): Promise<string> {
   flushSync(() => root.render(<Stage density="compact" viewport={stage} />));
 
   const inline = await until(() => button(stage, "Move to background"), "the inline control");
-  await painted();
-  await painted();
+  await until(() => button(stage, "Open in terminal"), "the foreground step's terminal link");
 
   if (stage.querySelector("button[aria-description^='Open terminals']") !== null)
     failures.push("a foreground step shows the terminals pill");
-
-  if (button(stage, "Open in terminal") === undefined)
-    failures.push("a foreground step doesn't open its job in a terminal");
+  await nextFrame();
   await capture("shell-running-compact");
   inline.click();
   await until(() => (acts.length > 0 ? acts : null), "the background action");
@@ -278,23 +270,23 @@ export async function run(): Promise<string> {
     failures.push("a step moved to the background loses the link to its job");
 
   if (pill instanceof HTMLElement) pill.click();
-  await until(() => button(stage, "Stop Terminal"), "the tray's Stop Terminal");
+  await until(() => button(stage, `Stop ${COMMAND}`), "the terminal row's Stop");
 
   if (!pill.isConnected || pill.getAttribute("aria-expanded") !== "true")
     failures.push("the terminals chip does not stay pressed while its list is open");
 
   if (button(stage, "Move to Background") !== undefined)
     failures.push("the tray offers a background move");
-  await painted();
+  await nextFrame();
   await capture("terminals-background");
   applyDisplayMode("dark");
-  await painted();
+  await nextFrame();
   await capture("terminals-background-dark");
   applyDisplayMode("light");
 
   if (pill instanceof HTMLElement) pill.click();
   await until(
-    () => (button(stage, "Stop Terminal") === undefined ? true : null),
+    () => (button(stage, `Stop ${COMMAND}`) === undefined ? true : null),
     "the chip to close the list",
   );
 
@@ -313,7 +305,7 @@ export async function run(): Promise<string> {
   if (header.parentElement !== button(stage, "Copy command")?.parentElement)
     failures.push("the card control is not beside Copy command");
   header.focus();
-  await painted();
+  await nextFrame();
   await capture("shell-running-detailed");
   flushSync(() => detailed.unmount());
   stage.remove();

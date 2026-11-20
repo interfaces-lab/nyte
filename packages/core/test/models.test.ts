@@ -37,10 +37,10 @@ function catalog() {
 
 const tone = {
   id: "tone",
-  label: "Tone",
+  title: "Tone",
   schema: standard(Type.Union([Type.Literal("calm"), Type.Literal("loud")])),
   default: "calm",
-  scope: "session",
+  scope: "chat",
 } as const;
 
 const extras: Plugin<"core"> = {
@@ -87,7 +87,7 @@ describe("models", () => {
     expect(test.models[0]).toMatchObject({
       thinking: ["off"],
       defaultThinking: "off",
-      fast: null,
+      variants: [],
       contextWindow: 50_000,
       compactAt: 10_000,
     });
@@ -97,7 +97,7 @@ describe("models", () => {
       reasoning: true,
       thinking: ["off", "low", "medium", "high", "xhigh"],
       defaultThinking: "low",
-      fast: { provider: "test", id: "smart-fast" },
+      variants: [{ modes: ["fast"], ref: { provider: "test", id: "smart-fast" } }],
       contextWindow: 200_000,
       compactAt: 160_000,
       maxOutput: 32_000,
@@ -111,7 +111,7 @@ describe("models", () => {
 
     expect(modelInfo(fake.models, { provider: "test", id: "smart-fast" }, runtime)).toMatchObject({
       ref: { provider: "test", id: "smart-fast" },
-      fast: null,
+      variants: [],
     });
     expect(modelInfo(fake.models, { provider: "test", id: "nope" }, runtime)).toBeNull();
 

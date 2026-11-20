@@ -2,36 +2,32 @@ import { props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
-import { showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
+import { BrowserCallsView } from "../tools/browser-call.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
 import { Prose } from "../markdown/prose.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { reasoningHeading } from "./reasoning-heading.ts";
+import { thoughtProse } from "./transcript-row-views.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 import { nextPin, PINNED } from "./step-group-pin.ts";
 import type { StepGroupPinEvent } from "./step-group-pin.ts";
 import { useStepGroupOpen } from "./step-group-open.ts";
 import { stepGroupContent } from "./step-group-content.ts";
-import { stepGroupLine } from "./step-group-presentation.ts";
+import { stepGroupFacts } from "./step-group-presentation.ts";
+import type { StepGroupFacts } from "./step-group-presentation.ts";
+import type { StepEntry } from "./step-entries.ts";
 import { ChangeStats } from "../../components/change-stats.tsx";
 
 const STEP_LIMIT = 200;
 
 const FOCUSABLE = "a[href], button, [tabindex]";
 
-interface StepLine {
-  readonly key: string;
-  readonly message: StepMessage;
-  readonly markdown: string;
-}
-
-function StepLineView({
+export function StepEntryView({
   entry,
   cwd,
   density,
@@ -39,31 +35,48 @@ function StepLineView({
   titled,
   live,
 }: {
-  entry: StepLine;
+  entry: StepEntry;
   cwd: string | undefined;
   density: ToolCallDensity;
   thinkingOnly: boolean;
   titled: boolean;
   live: boolean;
-}): ReactElement | null {
-  const { message } = entry;
+}): ReactElement {
+  switch (entry.kind) {
+    case "tool":
+      return (
+        <ToolCallView message={entry.message} calls={entry.calls} cwd={cwd} density={density} />
+      );
+    case "browser":
+      return <BrowserCallsView calls={entry.steps} />;
+    case "thinking": {
+      if (thinkingOnly) {
+        const thought = thoughtProse(entry.message, entry.markdown, titled);
 
-  if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
-  const streaming = message.status.kind === "live";
+        return (
+          <div {...props(stepGroupStyles.thinking)}>
+            <span {...props(srOnly)}>Reasoning</span>
+            <Prose markdown={thought.markdown} streaming={thought.streaming} />
+          </div>
+        );
+      }
 
-  if (thinkingOnly) {
-    return (
-      <div {...props(stepGroupStyles.thinking)}>
-        <span {...props(srOnly)}>Reasoning</span>
-        <Prose
-          markdown={titled && !streaming ? reasoningHeading(entry.markdown).body : entry.markdown}
-          streaming={streaming}
+      return (
+        <ThinkingLine
+          message={entry.message}
+          text={entry.markdown}
+          live={live}
+          thoughtKey={entry.key}
         />
-      </div>
-    );
-  }
+      );
+    }
 
-  return <ThinkingLine text={entry.markdown} streaming={streaming} live={live} />;
+    default: {
+      const _exhaustive: never = entry;
+
+      return _exhaustive;
+    }
+  }
 }
 
 export function StepGroupView({
@@ -81,61 +94,43 @@ export function StepGroupView({
   running: boolean;
   density: ToolCallDensity;
 }): ReactElement {
-  const [now] = useState(() => Date.now());
-  const first = messages[0];
-  const last = messages.at(-1);
-  const lastAt = last?.status.kind === "settled" ? last.status.endedAt : last?.at;
+  return (
+    <StepGroupFactsView
+      facts={stepGroupFacts(messages, running)}
+      cwd={cwd}
+      added={added}
+      removed={removed}
+      running={running}
+      density={density}
+    />
+  );
+}
 
-  const durationMs =
-    first === undefined ? 0 : Math.max(0, (running ? now : (lastAt ?? first.at)) - first.at);
+export function StepGroupFactsView({
+  facts,
+  cwd,
+  added,
+  removed,
+  running,
+  density,
+}: {
+  facts: StepGroupFacts;
+  cwd: string | undefined;
+  added: number;
+  removed: number;
+  running: boolean;
+  density: ToolCallDensity;
+}): ReactElement {
+  const line = facts.line;
+  const thinkingOnly = facts.thinkingOnly;
+  const entries = facts.entries;
+  const titled = facts.titled;
+  const hasContent = facts.hasContent;
 
-  const line = stepGroupLine({ messages, durationMs, running });
-
-  const thinkingOnly = messages.every(showsThinking);
-
-  const entries = messages
-    .filter((message) => showsTool(message) || message.state.markdown.trim() !== "")
-    .reduce<StepLine[]>((merged, message) => {
-      const previous = merged.at(-1);
-
-      if (
-        !thinkingOnly &&
-        showsThinking(message) &&
-        previous !== undefined &&
-        showsThinking(previous.message)
-      ) {
-        merged[merged.length - 1] = {
-          ...previous,
-          message,
-          markdown: `${previous.markdown}\n\n${message.state.markdown}`,
-        };
-
-        return merged;
-      }
-
-      merged.push({
-        key: message.id,
-        message,
-        markdown: showsThinking(message) ? message.state.markdown : "",
-      });
-
-      return merged;
-    }, []);
-
-  const [open, setOpen] = useStepGroupOpen(first?.id);
+  const [open, setOpen] = useStepGroupOpen(facts.openKey);
 
   const [showEarlier, setShowEarlier] = useState(false);
   const earlier = showEarlier ? 0 : Math.max(0, entries.length - STEP_LIMIT);
-  const [onlyThought] = messages;
-  const titled = !running && thinkingOnly && messages.length === 1 && onlyThought !== undefined;
-
-  const hasContent =
-    entries.length > 0 &&
-    !(
-      titled &&
-      showsThinking(onlyThought) &&
-      reasoningHeading(onlyThought.state.markdown).body.trim() === ""
-    );
 
   const content = stepGroupContent({
     density,
@@ -277,7 +272,7 @@ export function StepGroupView({
               </Button>
             )}
             {entries.slice(earlier).map((entry) => (
-              <StepLineView
+              <StepEntryView
                 key={entry.key}
                 entry={entry}
                 cwd={cwd}

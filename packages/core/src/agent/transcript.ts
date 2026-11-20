@@ -35,17 +35,18 @@ import { branchSummary, compaction, text, thinking, tool } from "../contract/par
 import { decodeRunRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { walkCommitPath } from "../fold/paths.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import { modelImage } from "./images.ts";
+import { THOUGHTS } from "./open-parts.ts";
 import { runRef } from "../store/refs.ts";
 import { load, readPositionCommit, requireSession, START } from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
 import { projectSections } from "./project-prompt.ts";
-import { settleSystemPrompt, systemSections } from "./prompt-sections.ts";
-import { hiddenOwners } from "../engine/surface.ts";
-import { toolSource } from "../extend/registry.ts";
+import { resolveSections, settleSystemPrompt, systemSections } from "./prompt-sections.ts";
+import { hiddenOwners } from "./capabilities.ts";
+import { offeredTools, toolSource } from "../extend/registry.ts";
 
 interface Step {
   readonly commit: CommitId;
@@ -76,8 +77,6 @@ interface Group {
 
 type Settled = Extract<ToolPartState, { readonly phase: "settled" }>;
 
-const THOUGHTS = "\n\n";
-
 const SUMMARISED =
   "The earlier conversation was summarised to fit the context window. The summary:";
 
@@ -89,12 +88,18 @@ const CONTINUE =
 
 const projections = new WeakMap<object, CommitId>();
 
+const summaries = new WeakSet<Message>();
+
 const IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
 
 const imageCache = new WeakMap<Kernel, Map<BlobId, readonly (TextContent | ImageContent)[]>>();
 
 export function projectedCommit(message: Message): CommitId | null {
   return projections.get(message) ?? null;
+}
+
+export function projectsSummary(message: Message): boolean {
+  return summaries.has(message);
 }
 
 export async function requestBody(
@@ -132,25 +137,25 @@ export async function requestBody(
   const loads = await readLoads(steps, source);
   const loaded = new Set([...loads.values()].flat());
 
-  const tools = source
-    .list()
-    .filter(
-      (info) =>
-        (info.exposure === "model" ||
-          info.exposure === "model-only" ||
-          (info.exposure !== "hidden" && loaded.has(info.name))) &&
-        (named === undefined || named.includes(info.name)) &&
-        (info.owner === null || !hidden.has(info.owner)),
-    );
+  const tools = await offeredTools(
+    runtime,
+    source
+      .list()
+      .filter(
+        (info) =>
+          (info.exposure === "model" ||
+            info.exposure === "model-only" ||
+            (info.exposure !== "hidden" && loaded.has(info.name))) &&
+          (named === undefined || named.includes(info.name)) &&
+          (info.owner === null || !hidden.has(info.owner)),
+      ),
+    where,
+  );
 
   const declared = new Set(tools.map((info) => info.name));
 
   return {
-    transcript: await runtime.hooks.transform(
-      "transform_transcript",
-      { messages: messages.map((message) => markLoads(message, loads, declared)), tools },
-      where,
-    ),
+    transcript: { messages: messages.map((message) => markLoads(message, loads, declared)), tools },
     source,
   };
 }
@@ -254,7 +259,7 @@ async function buildContext(
     head: input.head,
     run: input.run,
     sections: systemSections(found.record.prompt, input.agent, resources.prompt, [
-      ...runtime.registries.prompt.list(),
+      ...(await resolveSections(runtime, configuration.model)),
       ...(await projectSections(kernel, found.record, resources)),
     ]),
     commits: input.steps.map((step) => step.commit),
@@ -347,9 +352,12 @@ function readCompactions(steps: readonly Step[]): {
   for (const step of [...steps].reverse()) {
     const body = step.record.body;
 
-    if (body.kind !== "compaction" || removed.has(step.commit)) continue;
+    if (body.kind !== "compaction") continue;
+    const replaced = removed.has(step.commit);
 
-    for (const replaced of body.replaces) removed.add(replaced);
+    for (const commit of body.replaces) removed.add(commit);
+
+    if (replaced) continue;
 
     const anchor =
       steps.find((other) => body.replaces.includes(other.commit))?.commit ?? step.commit;
@@ -434,15 +442,19 @@ async function conversation(
   const continueAfter = (cut: Group): void =>
     push({ role: "user", content: CONTINUE, timestamp: cut.at }, cut.commit);
 
-  const calls = steps.flatMap((step) => (step.part?.partKind === "tool" ? [step.part.id] : []));
+  const calls = new Set<string>(
+    steps.flatMap((step) => (step.part?.partKind === "tool" ? [step.part.id] : [])),
+  );
 
   const visit = async (step: Step): Promise<void> => {
     for (const compacted of anchors.get(step.commit) ?? []) {
       await flush();
       const summary = await readCompactionSummary(compacted);
 
-      if (summary !== null)
-        push({ role: "user", content: summary, timestamp: compacted.record.at }, compacted.commit);
+      if (summary === null) continue;
+      const message: Message = { role: "user", content: summary, timestamp: compacted.record.at };
+      summaries.add(message);
+      push(message, compacted.commit);
     }
 
     const body = step.record.body;
@@ -472,7 +484,7 @@ async function conversation(
 
     if (
       part.partKind === "tool" &&
-      calls.some((other) => other !== part.id && part.id.startsWith(`${other}:`))
+      [...part.id.matchAll(/:/g)].some((colon) => calls.has(part.id.slice(0, colon.index)))
     )
       return;
 
@@ -908,10 +920,21 @@ function excerptAttributes(source: ExcerptSource): string {
       return source.command === undefined
         ? `source="terminal"`
         : `source="terminal" ${attribute("command", source.command)}`;
-    case "browser":
-      return `source="browser" ${attribute("url", source.url)} ${attribute("selector", source.selector)}`;
+    case "browser": {
+      const page = `source="browser" ${attribute("url", source.url)} ${attribute("selector", source.selector)}`;
+      const region = source.region;
+
+      if (region === undefined) return page;
+
+      return `${page} region="x=${String(Math.round(region.x))} y=${String(Math.round(region.y))} w=${String(Math.round(region.width))} h=${String(Math.round(region.height))}"`;
+    }
     case "chat":
       return `source="side chat" ${attribute("title", source.title)}`;
+    case "design": {
+      const file = `source="design" ${attribute("path", source.path)}`;
+
+      return source.frame === null ? file : `${file} ${attribute("frame", source.frame)}`;
+    }
   }
 }
 

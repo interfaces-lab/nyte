@@ -21,9 +21,7 @@ export interface RunFlags {
   readonly model?: string;
   readonly effort?: Thinking;
   readonly trust?: boolean;
-  /** A running `nyte host` to attach to in place of starting one; its token comes from `NYTE_HOST_TOKEN`. */
   readonly hostUrl?: string;
-  /** `false` starts every new session of this run without context files (`Sessions.start`). */
   readonly contextFiles?: false;
   readonly rest: readonly string[];
 }
@@ -118,11 +116,6 @@ export function parseFlags(args: readonly string[]): RunFlags {
   return flags;
 }
 
-/**
- * The command a misplaced command name starts, as in `nyte --trust mcp list`: argv from that name
- * on, without the root options before it. Reads options loosely, so the command's own options don't
- * hide it. A prompt after `-p` may start with a command name.
- */
 export function misplacedCommand(
   args: readonly string[],
   names: readonly string[],
@@ -147,7 +140,6 @@ function usage(message: string): never {
   throw new CliError("invalid_arguments", message, { next: SEE_OPTIONS });
 }
 
-/** Node's `parseArgs` errors name the token in its own words; this names it in the CLI's. */
 function parseRootArgs(args: readonly string[]) {
   try {
     return parseArgs({
@@ -206,14 +198,12 @@ function rootArgsError(args: readonly string[], cause: unknown): CliError {
   );
 }
 
-/** Open the durable session in a terminal without admitting the original prompt again. The id rides as an inline option value, so one starting with a dash still parses, and the command POSIX-quotes it, so shell syntax and single quotes in it stay literal. */
 export function sessionRecovery(id: SessionId) {
   const argv = ["nyte", `--session=${id}`];
 
   return { argv, command: shellCommand(argv) };
 }
 
-/** In TTY mode only, the single positional value after --resume is a session ID. */
 export function resolveTuiResume(flags: RunFlags): RunFlags {
   if (flags.resume.kind !== "latest" || flags.rest.length === 0) return flags;
 
@@ -225,11 +215,6 @@ export function resolveTuiResume(flags: RunFlags): RunFlags {
   return { ...flags, resume: { kind: "session", id }, rest: [] };
 }
 
-/**
- * The prompt `-p` sends: the arguments, else piped stdin. Piped stdin beside an argument fails
- * rather than being dropped. Beside an argument, only a pipe or a file counts as piped: agent
- * harnesses hand commands a socket that never ends, so a socket is read only as the prompt itself.
- */
 export async function readPrompt(
   rest: readonly string[],
   terminal: boolean,
@@ -254,7 +239,6 @@ export async function readPrompt(
   return prompt;
 }
 
-/** Everything piped to stdin; `""` when stdin is a terminal, which is never read as input. A signal while it waits ends it as `Canceled.`. */
 export async function readStdin(terminal: boolean, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
 

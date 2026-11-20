@@ -1,11 +1,9 @@
-import { props } from "@stylexjs/stylex";
 import type { SessionId, UserContent } from "@nyte-ai/sdk";
 import type { ChatView } from "../../data/chat-store.ts";
 import { useState } from "react";
 // oxlint-disable-next-line no-restricted-imports -- TranscriptContent's uncompiled virtualizer calls renderRow on every scroll update, so each row needs its own memo boundary
 import { memo } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { showsAnswer } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import type { ToolCallDensity } from "../../preferences/index.ts";
@@ -15,15 +13,15 @@ import { Button } from "@nyte-ai/ui/button";
 import { Loader } from "@nyte-ai/ui/loader";
 import { MarkerContent, MarkerIcon } from "@nyte-ai/ui/marker";
 import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
-import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
-import { SubagentReportLine } from "../tools/subagent-call.tsx";
-import { AnswerLine } from "./answer-line.tsx";
-import { TranscriptContent, useTranscriptScope } from "./transcript.tsx";
+import { LiveTurn } from "./live-turn.tsx";
+import { TranscriptContent, useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
-import { ChangesFooter, TurnItemView } from "./turn-view.tsx";
+import { ChangesFooter } from "./changes-footer.tsx";
+import { TurnItemView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
 import { estimateRowSize, withDivider } from "./transcript-rows.ts";
 import type { TranscriptProjector } from "./transcript-rows.ts";
+import { changesRowView, shownRow } from "./transcript-row-views.ts";
 import { firstUnread, observeVisit, openVisit } from "./transcript-unread.ts";
 import type { UnreadVisit } from "./transcript-unread.ts";
 import { UnreadDivider } from "./transcript-unread-view.tsx";
@@ -48,35 +46,14 @@ interface RowContext {
 }
 
 function EarlierSteps(): ReactElement {
-  const loadEarlier = useTranscriptScope()?.loadEarlier;
-  const [stuck, setStuck] = useState(loadEarlier === undefined);
-
-  const watch = (marker: HTMLSpanElement): (() => void) => {
-    let empty = 0;
-
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      observer.unobserve(marker);
-      void (loadEarlier?.() ?? Promise.resolve(0)).then(
-        (loaded) => {
-          empty = loaded === 0 ? empty + 1 : 0;
-
-          if (loaded > 0 || (loaded === 0 && empty < 2)) observer.observe(marker);
-          else setStuck(true);
-        },
-        () => setStuck(true),
-      );
-    });
-
-    observer.observe(marker);
-
-    return () => observer.disconnect();
-  };
+  const scope = useTranscriptScope();
+  const controls = useTranscriptControls();
+  const loadable = scope?.loadEarlier !== undefined;
 
   return (
     <StatusMarker role="status">
-      {stuck ? (
-        <Button variant="text" disabled={loadEarlier === undefined} onClick={() => setStuck(false)}>
+      {!loadable || scope.historyStalled ? (
+        <Button variant="text" disabled={!loadable} onClick={() => controls.history()}>
           Show Earlier Steps
         </Button>
       ) : (
@@ -84,7 +61,7 @@ function EarlierSteps(): ReactElement {
           <MarkerIcon>
             <Loader />
           </MarkerIcon>
-          <MarkerContent ref={watch}>Loading Earlier Steps</MarkerContent>
+          <MarkerContent>Loading Earlier Steps</MarkerContent>
         </>
       )}
     </StatusMarker>
@@ -104,13 +81,14 @@ const TranscriptRowView = memo(function TranscriptRowView({
 }: RowContext & { readonly rowKey: string }): ReactElement | null {
   useCommitCount("render:transcript-row");
 
-  const row = useWatchSelect(store, (state) => {
+  const selected = useWatchSelect(store, (state) => {
     countWork("select:row");
 
     return projector.row(state, rowKey);
   });
 
-  if (row === undefined) return null;
+  if (selected === undefined) return null;
+  const row = shownRow(selected, navigating);
 
   switch (row.kind) {
     case "skeleton":
@@ -132,7 +110,6 @@ const TranscriptRowView = memo(function TranscriptRowView({
       return (
         <TurnItemView
           row={row}
-          running={row.kind === "step" && row.running}
           density={density}
           cwd={cwd}
           onEditUser={onEditUser}
@@ -142,32 +119,13 @@ const TranscriptRowView = memo(function TranscriptRowView({
     case "earlier":
       return <EarlierSteps />;
     case "changes": {
-      const state = navigating ? "pending" : row.state;
+      const changes = changesRowView(row);
 
-      return state === "pending" || row.files.length > 0 ? (
-        <ChangesFooter state={state} files={row.files} />
-      ) : null;
+      return changes === null ? null : <ChangesFooter view={changes} />;
     }
 
-    case "prompt": {
-      const { source } = row.message;
-
-      if (source.kind === "child" || source.kind === "job")
-        return (
-          <div {...props(liveTurnStyles.root)}>
-            <SubagentReportLine source={source} content={row.message.content} held={row.held} />
-          </div>
-        );
-
-      if (showsAnswer(row.message))
-        return (
-          <div {...props(liveTurnStyles.root)}>
-            <AnswerLine message={row.message} held={row.held} />
-          </div>
-        );
-
-      return <TurnItemView row={row} running={false} density={density} cwd={cwd} />;
-    }
+    case "prompt":
+      return <TurnItemView row={row} density={density} cwd={cwd} />;
 
     case "retry":
       return (
@@ -176,12 +134,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
         </StatusMarker>
       );
     case "live":
-      return (
-        <LiveTurn
-          state={navigating && row.state === "idle" ? "planning" : row.state}
-          thinking={projector.thinking}
-        />
-      );
+      return <LiveTurn live={row} />;
     default: {
       const _exhaustive: never = row;
 

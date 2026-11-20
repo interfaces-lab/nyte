@@ -3,5 +3,6 @@ export type {
   ContextMenuOpenContext,
   FileTree,
   FileTreeBatchOperation,
+  FileTreeDropResult,
   FileTreeRenameEvent,
 } from "@pierre/trees";

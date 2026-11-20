@@ -1,7 +1,7 @@
 import { asSeq } from "@nyte-ai/schema";
 import type { BackgroundItem, CallId, HeadName, SessionEvent, SessionId } from "@nyte-ai/schema";
 import type { ChildTable, Kernel } from "../contract/kernel.ts";
-import { backgroundItems } from "../fold/background.ts";
+import { backgroundItems } from "../watch/background.ts";
 import type { SessionRecord } from "../contract/records.ts";
 import { MAIN } from "../store/session.ts";
 

@@ -16,7 +16,7 @@ export interface TableSpec {
   readonly question?: "head" | "child";
   readonly editing?: "steer" | "queue";
   readonly shell?: boolean;
-  readonly completion?: "slash" | "skill" | "cd" | "empty";
+  readonly completion?: "slash" | "skill" | "argument" | "empty";
   readonly blocked?: "switching" | "authenticating";
   readonly waiting?: boolean;
   readonly models?: boolean;
@@ -75,10 +75,10 @@ function buildCompletion(spec: TableSpec["completion"]): CompletionModel | null 
       queueable: false,
     };
 
-  if (spec === "cd")
+  if (spec === "argument")
     return {
-      token: { trigger: "cd", query: "sr", from: 4, to: 6 },
-      items: [{ id: "src/", label: "src/", detail: "", kind: "directory" }],
+      token: { trigger: "argument", command: "cd", query: "sr", from: 4, to: 6 },
+      items: [{ id: "src/", label: "src/", detail: "", kind: "argument" }],
       loading: false,
       highlighted: 0,
       ownsEnter: false,

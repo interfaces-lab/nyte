@@ -41,9 +41,9 @@ import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord } from "../contract/records.ts";
 import { resolveHeadConfiguration } from "../engine/contributions.ts";
 import { modelInfo } from "../extend/models.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { walkCommitPath } from "../fold/paths.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import { failedParts, settling } from "../store/parts.ts";
 import { headRef, partRef, runRef, sessionRef } from "../store/refs.ts";
 import {
@@ -64,7 +64,12 @@ import { excerptText } from "../util/clip.ts";
 import { extractUserText } from "../util/text.ts";
 import { charge, complete, requestEvent, rideRef } from "./request.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
-import { estimateTranscriptTokens, projectedCommit, requestBody } from "./transcript.ts";
+import {
+  estimateTranscriptTokens,
+  projectedCommit,
+  projectsSummary,
+  requestBody,
+} from "./transcript.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 type Answer =
@@ -698,7 +703,8 @@ function splitTranscriptForCompaction(
   while (start < body.length && body[start]?.role === "toolResult") start += 1;
   const summarise = body.slice(0, start);
 
-  if (!summarise.some((message) => projectedCommit(message) !== null)) return null;
+  if (!summarise.some((message) => projectedCommit(message) !== null && !projectsSummary(message)))
+    return null;
 
   return { summarise, keep: body.slice(start) };
 }

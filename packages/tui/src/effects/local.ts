@@ -1,10 +1,9 @@
 import type { McpServerView, WorkspaceId } from "@nyte-ai/sdk";
-import { availableModels, findModel, modelId } from "../lib/catalog.ts";
+import { availableModels, modelId } from "../lib/catalog.ts";
 import { usageCard, usageLines } from "../lib/usage.ts";
 import { pluginCommands } from "../model/commands.ts";
 import type { DialogData } from "../model/dialogs/dialog.ts";
 import { mcpActionChoices, mcpDetailLines, mcpServerChoices } from "../model/mcp.ts";
-import type { Choice } from "../model/dialogs/list.ts";
 import type { ModelRow } from "../model/dialogs/model-picker.ts";
 import { gitHubLines } from "../lib/pull-request.ts";
 import type { Effect } from "../model/effect.ts";
@@ -174,17 +173,13 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
       context.dispatch({ kind: "catalog", generation, catalog });
       const models = availableModels(catalog);
 
-      const fastRefs = new Set(
-        models.flatMap((model) => (model.fast === null ? [] : [modelId(model.fast)])),
+      const variantRefs = new Set(
+        models.flatMap((model) => model.variants.map((variant) => modelId(variant.ref))),
       );
 
       const rows = models
-        .filter((model) => !fastRefs.has(modelId(model.ref)))
-        .map((model): ModelRow => ({
-          ref: model.ref,
-          info: model,
-          fast: model.fast === null ? null : (findModel(models, model.fast) ?? null),
-        }));
+        .filter((model) => !variantRefs.has(modelId(model.ref)))
+        .map((model): ModelRow => ({ ref: model.ref, info: model }));
 
       const costCeiling = rows.reduce(
         (ceiling, row) => Math.max(ceiling, row.info.cost.input + row.info.cost.output),
@@ -204,25 +199,6 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
       return {
         kind: "text",
         lines: usageLines(usageCard(view, providers)),
-      };
-    }
-
-    case "directory": {
-      const entries = await ports.files.listDirectory(request.path, read().facts.workspace.cwd);
-
-      return {
-        kind: "list",
-        choices: {
-          kind: "ready",
-          items: entries.map((path): Choice => ({
-            id: path,
-            label: path,
-            description: "",
-            timing: null,
-            status: null,
-            mark: null,
-          })),
-        },
       };
     }
 
@@ -292,14 +268,6 @@ async function mcpServer(
   if (found === undefined) throw new Error(`No MCP server is named ${name}.`);
 
   return found;
-}
-
-export async function listDirectory(
-  effect: Of<"list-directory">,
-  context: LocalHandlerContext,
-): Promise<void> {
-  const entries = await context.ports.files.listDirectory(effect.path, effect.cwd);
-  context.dispatch({ kind: "directory-listed", path: effect.path, entries });
 }
 
 export async function resolveMention(

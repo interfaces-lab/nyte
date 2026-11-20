@@ -66,11 +66,6 @@ const QWEN_TOKEN_PLAN_REASONING_EFFORT_UNSUPPORTED_MODEL_IDS = new Set([
 
 const QWEN_TOKEN_PLAN_EXCLUDED_MODEL_IDS = new Set(["qwen3.8-max-preview"]);
 
-/**
- * QwenCloud Token Plan Individual text-model allowlist, verified 2026-08-05.
- * Retired models remain excluded above even if the public catalog lags.
- * https://docs.qwencloud.com/token-plan/personal/token-plan-personal-overview
- */
 const QWEN_TOKEN_PLAN_INDIVIDUAL_MODEL_IDS = new Set<string>([
   "deepseek-v4-flash-0731",
   "deepseek-v4-pro",
@@ -121,7 +116,6 @@ const CLAUDE_FABLE_52: ModelsDevModel = {
   cost: { input: 8, output: 40, cache_read: 0.2, cache_write: 10 },
 };
 
-/** Lists Claude Fable 5.2 under the models.dev providers that serve it until models.dev does. */
 export function addUnlistedClaudeFable52(data: ModelsDevCatalog): void {
   const anthropic = data.anthropic?.models;
   const openrouter = data.openrouter?.models;

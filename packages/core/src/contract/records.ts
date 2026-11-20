@@ -12,6 +12,7 @@ import {
   JsonObjectType,
   JsonType,
   McpCeilingType,
+  MessageSourceType,
   ModelRefType,
   MoveOutcomeType,
   PartStatusType,
@@ -35,6 +36,7 @@ import type {
   JobEnd,
   Json,
   McpCeiling,
+  MessageSource,
   MoveOutcome,
   PartStatus,
   Placement,
@@ -83,6 +85,14 @@ const CatalogRecordType = record({ id: idSchema<"catalog">() });
 
 export type CatalogRecord = Static<typeof CatalogRecordType>;
 
+const AssignedPluginType = Type.Union([
+  record({ path: Type.String() }),
+  record({ id: Type.String() }),
+]);
+
+/** One plugin a session is assigned: a plugin file by path, or a plugin the serving host has loaded, by id. */
+export type AssignedPlugin = Static<typeof AssignedPluginType>;
+
 const SessionRecordType = record({
   id: idSchema<"session">(),
   name: nullable(Type.String()),
@@ -102,14 +112,11 @@ const SessionRecordType = record({
   lastActivityAt: Type.Number(),
   heads: list(HeadRecordType),
   prompt: nullable(typed<PromptOverride>()(PromptOverrideType)),
-  /** `false` when the chat started without context files (`Sessions.start`); absent loads them. */
   contextFiles: Type.Optional(Type.Literal(false)),
-  /** The MCP grant that started the session, or the session it descends from, and the approval ceiling it set; absent for every other session. A revoke leaves it in place. */
   mcp: Type.Optional(typed<McpCeiling>()(McpCeilingType)),
-  /** `true` for a side chat of `parent` (`Sessions.start`): it never reports to its parent or counts as its background work. */
   side: Type.Optional(Type.Literal(true)),
-  /** The project the session works in; a child starts in its parent's. Absent for a session in none. */
   project: Type.Optional(idSchema<"project">()),
+  plugins: Type.Optional(list(AssignedPluginType)),
 });
 
 export type SessionRecord = Static<typeof SessionRecordType>;
@@ -179,6 +186,13 @@ const RECEIPT = {
   digest: Type.String(),
 };
 
+const ReportedEndType = Type.Union([
+  record({ kind: Type.Literal("run"), session: idSchema<"session">(), run: idSchema<"run">() }),
+  record({ kind: Type.Literal("job"), job: idSchema<"job">() }),
+]);
+
+export type ReportedEnd = Static<typeof ReportedEndType>;
+
 const ReceiptRecordType = Type.Union([
   record({
     ...RECEIPT,
@@ -206,6 +220,15 @@ const ReceiptRecordType = Type.Union([
     ...RECEIPT,
     kind: Type.Literal("batch"),
     outcome: nullable(typed<BatchOutcome>()(BatchOutcomeType)),
+  }),
+  record({
+    id: idSchema<"receipt">(),
+    kind: Type.Literal("report"),
+    head: idSchema<"head">(),
+    content: Type.String(),
+    source: typed<MessageSource>()(MessageSourceType),
+    ended: ReportedEndType,
+    outcome: nullable(record({ kind: Type.Literal("undelivered"), reason: Type.String() })),
   }),
 ]);
 
@@ -304,6 +327,16 @@ const LeaseType = record({
 
 type Lease = Static<typeof LeaseType>;
 
+const OsProcessType = record({
+  boot: Type.String(),
+  pid: Type.Number(),
+  group: Type.Number(),
+  started: Type.String(),
+});
+
+/** An operating-system process as the machine that runs it identifies it: `boot` names the machine's boot (on Linux with its pid namespace), `group` the process group it leads, and `started` its start time as the platform reports it, a token compared only for equality with one read the same way on the same boot. A pid alone is reused; with its boot and start it names one process. */
+export type OsProcess = Static<typeof OsProcessType>;
+
 const ProcessRecordType = record({
   instance: Type.String(),
   holder: idSchema<"host">(),
@@ -311,6 +344,7 @@ const ProcessRecordType = record({
   pid: nullable(Type.Number()),
   capabilities: list(Type.String()),
   startedAt: Type.Number(),
+  os: Type.Optional(OsProcessType),
 });
 
 export type ProcessRecord = Static<typeof ProcessRecordType>;
@@ -318,6 +352,7 @@ export type ProcessRecord = Static<typeof ProcessRecordType>;
 const JobRecordType = record({
   id: idSchema<"job">(),
   instance: Type.String(),
+  os: Type.Optional(OsProcessType),
   workspace: idSchema<"workspace">(),
   session: idSchema<"session">(),
   head: idSchema<"head">(),

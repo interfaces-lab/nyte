@@ -1,42 +1,31 @@
-import { toast } from "@nyte-ai/ui/toast";
-import type { HostEvent, HostProcess } from "../contract/bridge.ts";
-import type { AlertState } from "../contract/desktop-settings.ts";
 import { keys, queryClient } from "../data/query-client.ts";
-import { commitHostWorkspace } from "../data/workspaces.ts";
+import { currentConnection } from "../data/connection.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
   applyBrowserEvent,
   applyBrowserAgentOpened,
+  applyBrowserBoard,
   applyBrowserKey,
+  applyBrowserPick,
 } from "../workbench/browser/browser-surfaces.ts";
 import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
+import { applyBrowserGuests } from "../workbench/browser/browser-guests.tsx";
 import { workbench } from "../workbench/store.ts";
-import { requestTrust } from "../panes/open-workspace.tsx";
-import { acceptHostSettings } from "../preferences/host.ts";
-import { windowTabs } from "../tabs/window-tabs.ts";
+import { showNotifiedChat } from "../settings/return.ts";
 
 export function useHostEvents(): void {
   useMountEffect(() => {
-    const showHostProcess = followHostProcess();
+    const reconnect = (): void => {
+      if (document.visibilityState !== "hidden") currentConnection()?.retry();
+    };
 
-    void nyte.host.hostProcess?.state().then(showHostProcess);
+    window.addEventListener("online", reconnect);
+    window.addEventListener("focus", reconnect);
+    document.addEventListener("visibilitychange", reconnect);
 
     const unsubscribe = nyte.host.onEvent((event) => {
       switch (event.kind) {
-        case "workspace_trust_required":
-          requestTrust(event.path);
-
-          return;
-        case "workspace_opened":
-          commitHostWorkspace(event.workspace);
-          void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
-
-          return;
-        case "workspace_closed":
-          commitHostWorkspace(undefined);
-
-          return;
         case "update_changed":
           queryClient.setQueryData(keys.updates, event.state);
 
@@ -47,11 +36,9 @@ export function useHostEvents(): void {
           return;
         case "host_process_changed":
           queryClient.setQueryData(keys.hostProcess, event.state);
-          showHostProcess(event.state);
 
-          return;
-        case "settings_changed":
-          acceptHostSettings(event.settings);
+          if (event.state.kind === "current" || event.state.kind === "stale")
+            currentConnection()?.retry();
 
           return;
         case "server_changed":
@@ -59,19 +46,11 @@ export function useHostEvents(): void {
 
           return;
         case "open_session":
-          windowTabs.openChat(event.session, "permanent");
-
-          return;
-        case "chat_alert":
-          showChatAlert(event);
+          showNotifiedChat(event.session);
 
           return;
         case "remote_access_changed":
           void queryClient.invalidateQueries({ queryKey: keys.remoteAccess });
-
-          return;
-        case "status":
-          toast.add({ title: event.message });
 
           return;
         case "browser_changed":
@@ -85,12 +64,25 @@ export function useHostEvents(): void {
           applyBrowserKey(event);
 
           return;
+        case "browser_design_pick":
+          applyBrowserPick(event);
+
+          return;
         case "browser_history_changed":
           applyBrowserHistory(event);
 
           return;
         case "browser_agent_opened":
           applyBrowserAgentOpened(workbench, event);
+
+          return;
+        case "browser_guests":
+          applyBrowserGuests(event);
+
+          return;
+        case "browser_board_leave":
+        case "browser_board_wheel":
+          applyBrowserBoard(event);
 
           return;
         default: {
@@ -101,85 +93,11 @@ export function useHostEvents(): void {
       }
     });
 
-    return unsubscribe;
-  });
-}
-
-const HOST_RESTART = "host-restart";
-
-function followHostProcess(): (state: HostProcess) => void {
-  let restarting = false;
-
-  return (state) => {
-    switch (state.kind) {
-      case "restarting":
-        restarting = true;
-        toast.add({
-          id: HOST_RESTART,
-          type: "loading",
-          timeout: 0,
-          title: "Restarting Nyte Host…",
-          description: undefined,
-          actionProps: undefined,
-        });
-
-        return;
-      case "stale":
-        restarting = false;
-        toast.close(HOST_RESTART);
-
-        return;
-      case "offline":
-        if (!restarting) toast.close(HOST_RESTART);
-
-        return;
-      case "current":
-        if (!restarting) {
-          toast.close(HOST_RESTART);
-
-          return;
-        }
-
-        restarting = false;
-        toast.add({
-          id: HOST_RESTART,
-          type: "success",
-          timeout: 4000,
-          title: "Nyte Host restarted",
-          description: undefined,
-          actionProps: undefined,
-        });
-
-        return;
-      default: {
-        const _exhaustive: never = state;
-
-        return _exhaustive;
-      }
-    }
-  };
-}
-
-const ALERT_TOAST = {
-  waiting: "warning",
-  failed: "error",
-  done: undefined,
-} as const satisfies Readonly<Record<AlertState, string | undefined>>;
-
-function showChatAlert(alert: Extract<HostEvent, { kind: "chat_alert" }>): void {
-  const id = `chat-alert:${alert.session}`;
-
-  toast.add({
-    id,
-    type: ALERT_TOAST[alert.state],
-    title: alert.title,
-    description: alert.body,
-    actionProps: {
-      children: "Open",
-      onClick: () => {
-        toast.close(id);
-        windowTabs.openChat(alert.session, "permanent");
-      },
-    },
+    return () => {
+      unsubscribe();
+      window.removeEventListener("online", reconnect);
+      window.removeEventListener("focus", reconnect);
+      document.removeEventListener("visibilitychange", reconnect);
+    };
   });
 }

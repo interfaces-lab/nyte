@@ -19,17 +19,11 @@ import { Code, Validator } from "typebox/compile";
 
 const RUNTIME_IMPORT = /^import \{ (\w+) \} from "(typebox\/\w+)"$/u;
 
-/** Each checks module's exports. A module that gains an export missing here fails the build: its importers find no such export in the generated module. */
 const CHECKS = {
   "frame-checks.ts": { welcomes, results, errors, events, texts, fragments },
   "event-checks.ts": { sessionChanges, sessionsChanges, activations, clientRows, performs },
 } as const;
 
-/**
- * Replaces the protocol's frame checks and the sdk's event checks with the code TypeBox generates
- * for the same validators, so the binary checks frames as fast as a compiled validator without
- * building one at import.
- */
 export const checksPlugin = {
   name: "nyte:checks",
   setup(build) {
@@ -57,7 +51,6 @@ export const checksPlugin = {
   },
 } satisfies BunPlugin;
 
-/** The validator's generated module as a block: its runtime imports hoisted into `runtime`, its exports made local, its external values written in. */
 function standalone(validator: Validator, runtime: Map<string, string>, path: string): string {
   const generated = Code(validator.Context(), validator.Type());
 

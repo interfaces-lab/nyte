@@ -1,4 +1,4 @@
-import { tabPanes, PRIMARY } from "../../../test/panes.ts";
+import { PRIMARY, selectSession, tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -86,8 +86,8 @@ function height(index: number): number {
   return index % 20 === 0 ? 48 : (HEIGHTS[index % HEIGHTS.length] ?? 100);
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 async function capture(name: string): Promise<void> {
@@ -167,7 +167,7 @@ export async function run(): Promise<string> {
   container.style.cssText = `display:flex;width:760px;height:540px;color:${foreground};background:${background}`;
   document.body.append(container);
   const controller = tabPanes();
-  controller.selectSession(SESSION);
+  selectSession(controller, SESSION);
   const root = createRoot(container);
 
   const render = (children: ReactNode): void =>
@@ -175,7 +175,7 @@ export async function run(): Promise<string> {
       root.render(
         <QueryClientProvider client={queryClient}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={controller}>{children}</PaneControllerProvider>
+            <PaneControllerProvider panes={controller}>{children}</PaneControllerProvider>
           </TooltipProvider>
         </QueryClientProvider>,
       ),
@@ -216,7 +216,7 @@ export async function run(): Promise<string> {
   );
 
   try {
-    for (let frame = 0; frame < 10; frame += 1) await painted();
+    for (let frame = 0; frame < 10; frame += 1) await nextFrame();
     const viewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
 
     if (viewport === null) throw new Error("Missing transcript viewport");
@@ -254,12 +254,12 @@ export async function run(): Promise<string> {
       );
 
       if (failed === 0 && failures.length > 0) await capture("transcript-scroll-failure");
-      await painted();
+      await nextFrame();
     }
 
     viewport.scrollTop = viewport.scrollHeight;
-    await painted();
-    await painted();
+    await nextFrame();
+    await nextFrame();
 
     const prompt = viewport.querySelector<HTMLElement>(
       "[data-row-key='frame:380'] [data-sticky-user-message]",
@@ -281,7 +281,7 @@ export async function run(): Promise<string> {
           failures.push("Opening the pinned editor moved its top");
       },
     );
-    await painted();
+    await nextFrame();
     const editor = prompt.querySelector<HTMLElement>("[contenteditable='true']");
 
     if (editor === null || editor.textContent !== PROMPT || document.activeElement !== editor)
@@ -297,7 +297,7 @@ export async function run(): Promise<string> {
             failures.push("Typing moved the pinned editor");
         },
       );
-      await painted();
+      await nextFrame();
     }
 
     const typedEditor = prompt.querySelector<HTMLElement>("[contenteditable='true']");
@@ -324,7 +324,7 @@ export async function run(): Promise<string> {
           failures.push("Cancelling moved the pinned prompt");
       },
     );
-    await painted();
+    await nextFrame();
 
     if (
       prompt.querySelector("[contenteditable='true']") !== null ||
@@ -385,7 +385,7 @@ export async function run(): Promise<string> {
       );
 
     renderFollowing([...followingHistory, ...turnRows(1, 96)]);
-    for (let frame = 0; frame < 10; frame += 1) await painted();
+    for (let frame = 0; frame < 10; frame += 1) await nextFrame();
     const followingViewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
 
     if (followingViewport === null) throw new Error("Missing the following transcript");
@@ -406,12 +406,12 @@ export async function run(): Promise<string> {
       [...followingHistory, ...previousTurn, ...turnRows(2, 56)],
       "response:following-2",
     );
-    await painted();
+    await nextFrame();
     checkFollowing("after the next turn arrives");
 
     for (const height of [56, 168, 336, 480]) {
       growResponse(height);
-      await painted();
+      await nextFrame();
       const reply = followingViewport.querySelector<HTMLElement>(
         "[data-row-key='response:following-2'] [data-growing-reply]",
       );
@@ -437,7 +437,7 @@ export async function run(): Promise<string> {
       [...followingHistory, ...previousTurn, ...secondTurn, ...turnRows(2, 480).slice(-1)],
       "response:following-2",
     );
-    await painted();
+    await nextFrame();
     checkFollowing("agents join before the unchanged latest summary");
     await capture("transcript-following-growth");
 
@@ -455,7 +455,7 @@ export async function run(): Promise<string> {
     );
     followingViewport.scrollTop -= readingStep;
     followingViewport.dispatchEvent(new Event("scroll"));
-    await painted();
+    await nextFrame();
 
     if (
       followingViewport.scrollHeight -
@@ -479,7 +479,7 @@ export async function run(): Promise<string> {
       [...followingHistory, ...previousTurn, ...secondTurn, ...turnRows(3, 56)],
       "response:following-3",
     );
-    await painted();
+    await nextFrame();
     const readingReply = followingViewport.querySelector<HTMLElement>(
       "[data-row-key='response:following-3'] [data-growing-reply]",
     );
@@ -488,7 +488,7 @@ export async function run(): Promise<string> {
 
     for (const height of [56, 168, 336, 480]) {
       growResponse(height);
-      await painted();
+      await nextFrame();
       const reply = followingViewport.querySelector<HTMLElement>(
         "[data-row-key='response:following-3'] [data-growing-reply]",
       );
@@ -545,7 +545,7 @@ export async function run(): Promise<string> {
 
     renderReflow(reflowTail);
 
-    for (let frame = 0; frame < 10; frame += 1) await painted();
+    for (let frame = 0; frame < 10; frame += 1) await nextFrame();
     const reflowViewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
     const reflowAnchor = container.querySelector<HTMLElement>(
       "[data-row-key='tall:3'] [data-reflow-anchor]",
@@ -595,7 +595,7 @@ export async function run(): Promise<string> {
       container.style.width = width;
 
       for (let frame = 0; frame < 3; frame += 1) {
-        await painted();
+        await nextFrame();
         checkReflow(`${width} reflow frame ${String(frame)}`);
       }
 
@@ -609,7 +609,7 @@ export async function run(): Promise<string> {
     renderReflow([...reflowHistory, ...reflowTail]);
 
     for (let frame = 0; frame < 3; frame += 1) {
-      await painted();
+      await nextFrame();
       checkReflow(`compact history prepended frame ${String(frame)}`);
     }
     await capture("transcript-reflow-anchor");
@@ -618,7 +618,7 @@ export async function run(): Promise<string> {
     reflowViewport.dispatchEvent(new Event("scroll"));
 
     for (let frame = 0; frame < 10; frame += 1) {
-      await painted();
+      await nextFrame();
       const sample = readFrame(reflowViewport);
 
       if (sample.gap > 1) {
@@ -650,7 +650,7 @@ export async function run(): Promise<string> {
 
     const checkCachedFrames = async (label: string): Promise<void> => {
       for (let frame = 0; frame < 4; frame += 1) {
-        await painted();
+        await nextFrame();
         const sample = readFrame(reflowViewport);
 
         if (sample.gap > 1 || sample.overlap > 1)

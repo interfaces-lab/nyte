@@ -5,21 +5,17 @@ import type { HostListening } from "@nyte-ai/service/serve-host";
 import { CliError } from "./cli/errors.ts";
 import type { Output } from "./cli/output.ts";
 import { HOST_WORKER } from "./host-thread.ts";
+import { extendShutdown } from "./lifecycle.ts";
 
-/**
- * Serves the store on 127.0.0.1 until `signal` aborts, publishing the URL and token in `host.json`
- * for clients to attach to. stdout gets the URL, or with `--json` one listening line; where it
- * listens goes to stderr. With `--log` the listening line goes to the host log instead of stdout.
- * With `--supervised`, which only `ensureHost` passes, the host retires once a newer `nyte` asks
- * and nothing runs, and that `nyte` starts its own build. Throws a `conflict` when another host
- * already serves this home.
- */
+const HOST_SHUTDOWN_MS = 12_000;
+
 export async function hostCommand(
   args: readonly string[],
   signal: AbortSignal,
   output: Output,
 ): Promise<number> {
   const options = parseHostArgs(args);
+  extendShutdown(HOST_SHUTDOWN_MS);
 
   const served = await serveHost({
     entry: HOST_WORKER,

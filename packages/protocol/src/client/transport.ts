@@ -1,0 +1,300 @@
+import { asId, OPERATIONS, SdkError } from "@nyte-ai/schema";
+import type {
+  ByteReader,
+  FileVersion,
+  HostId,
+  Json,
+  OutputFrame,
+  RequestOptions,
+} from "@nyte-ai/schema";
+import type { OperationName } from "../operations/declarations.ts";
+import { parseJson } from "../wire/json.ts";
+import {
+  HOST_HEADER,
+  OPERATIONS_HEADER,
+  decodeError,
+  parseOutputFrames,
+  parseSse,
+  withInputHeader,
+} from "../wire/wire.ts";
+import { createStreamClient, hostAnswer } from "./stream-client.ts";
+
+export type TransportOptions = {
+  readonly url: string;
+  headers(): Promise<Readonly<Record<string, string>>>;
+  readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+};
+
+/** Returns a byte reader over a response body: its size from `Content-Length` and its mime from `X-Nyte-Mime` when the host sent them (§40w), and the file version the host read when it sent one (`X-Nyte-Version`, §40h). */
+export type ResponseReader = ByteReader & { readonly version?: FileVersion };
+
+/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `frames` (a stream row's event-stream JSON frames), `output` (`job.output`'s framed octets as byte, `gap` and `exit` frames), `bytes` (an octet answer as a reader), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the first response that carried one, error answers included, §43j; a later response naming another host throws `stale` with that host's id, its answer unread); only a `TypeError` from `fetch` is `unavailable`, any other exception reaching the caller as thrown (§47m); `return()` on a `frames` or `output` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes, and `linkLost` tells an operation's answer from a failure of the link. */
+export type Transport = {
+  invoke(name: OperationName, input: Json, options?: RequestOptions): Promise<Json>;
+  frames(name: OperationName, input: Json): AsyncIterable<Json>;
+  output(input: Json): AsyncIterable<OutputFrame>;
+  bytes(name: OperationName, input: Json, options?: RequestOptions): Promise<ResponseReader>;
+  upload(
+    name: OperationName,
+    input: Json,
+    body: Uint8Array | ReadableStream<Uint8Array>,
+    options?: RequestOptions,
+  ): Promise<Json>;
+  credential(): string | null;
+  host(): HostId | null;
+  operations(): string | null;
+};
+
+const DONE = { done: true, value: undefined } as const;
+
+const CALL_MS = 30_000;
+
+/** Returns a transport over `fetch` and `ReadableStream`, with no `EventSource`, so headers reach every request and it runs in browsers and React Native; a host off loopback is asked for deflated stream frames. */
+export function createTransport(options: TransportOptions): Transport {
+  const base = options.url.replace(/\/+$/, "");
+  const send = options.fetch ?? fetch;
+  let credential: string | null = null;
+  let host: HostId | null = null;
+  let operations: string | null = null;
+
+  const post = async (
+    name: string,
+    init: { readonly headers: Readonly<Record<string, string>> } & Omit<RequestInit, "headers">,
+    operation = false,
+  ): Promise<Response> => {
+    const headers = { ...(await options.headers()), ...init.headers };
+    let response: Response;
+
+    try {
+      response = await send(`${base}/${name}`, { ...init, method: "POST", headers });
+    } catch (error) {
+      if (!(error instanceof TypeError) || init.signal?.aborted === true) throw error;
+
+      throw new SdkError("unavailable", error.message);
+    }
+
+    const answered = response.headers.get(HOST_HEADER);
+
+    if (answered !== null && host !== null && answered !== host) {
+      await response.body?.cancel();
+
+      throw new SdkError("stale", `Host ${answered} answered instead of ${host}.`, {
+        hostId: asId<"host">(answered),
+      });
+    }
+
+    if (answered !== null) host = asId<"host">(answered);
+    operations = response.headers.get(OPERATIONS_HEADER) ?? operations;
+    credential = response.headers.get("X-Nyte-Credential") ?? credential;
+
+    if (response.ok) return response;
+    const error = decodeError(jsonOrText(await response.text()), response.status);
+
+    throw operation && answered !== null ? hostAnswer(error) : error;
+  };
+
+  const json = (input: Json, headers?: Readonly<Record<string, string>>) => ({
+    body: JSON.stringify(input),
+    headers: { "Content-Type": "application/json", ...headers },
+  });
+
+  const stream = createStreamClient(post, crossesNetwork(base));
+
+  return {
+    async invoke(name, input, request) {
+      if ("wait" in OPERATIONS[name]) {
+        const controller = new AbortController();
+        const signal = request?.signal ?? controller.signal;
+        try {
+          return parseJson(await new Response(await stream(name, input, signal)).text());
+        } finally {
+          controller.abort();
+        }
+      }
+
+      const call = async (signal: AbortSignal | undefined): Promise<Json> => {
+        const response = await post(name, { ...json(input), signal }, true);
+
+        return parseJson(await response.text());
+      };
+
+      return OPERATIONS[name].kind === "command"
+        ? call(request?.signal)
+        : answered(name, request?.signal, call);
+    },
+    frames(name, input) {
+      return cancellable(async function* (signal) {
+        yield* answering(await stream(name, input, signal), parseSse);
+      });
+    },
+    output(input) {
+      return cancellable(async function* (signal) {
+        yield* answering(await stream("job.output", input, signal), parseOutputFrames);
+      });
+    },
+    async bytes(name, input, request) {
+      const response = await post(name, { ...json(input), signal: request?.signal }, true);
+      const length = response.headers.get("Content-Length");
+      const version = response.headers.get("X-Nyte-Version");
+      const body: ReadableStream<Uint8Array> | null = response.body;
+      const reader = body?.getReader() ?? null;
+
+      const close = async (): Promise<void> => {
+        await reader?.cancel();
+      };
+
+      return {
+        size: length === null ? null : Number(length),
+        mime: response.headers.get("X-Nyte-Mime"),
+        ...(version === null ? {} : { version: asId<"file-version">(version) }),
+        async *chunks() {
+          if (reader === null) return;
+
+          for (;;) {
+            const read = await reader.read();
+
+            if (read.done) return;
+            yield read.value;
+          }
+        },
+        close,
+        [Symbol.asyncDispose]: close,
+      };
+    },
+    async upload(name, input, body, request) {
+      const response = await post(
+        name,
+        { ...withInputHeader(input, body), signal: request?.signal },
+        true,
+      );
+
+      return parseJson(await response.text());
+    },
+    credential: () => credential,
+    host: () => host,
+    operations: () => operations,
+  };
+}
+
+async function answered<T>(
+  name: OperationName,
+  outer: AbortSignal | undefined,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), CALL_MS);
+
+  try {
+    return await run(
+      outer === undefined ? deadline.signal : AbortSignal.any([outer, deadline.signal]),
+    );
+  } catch (error) {
+    if (!deadline.signal.aborted || outer?.aborted === true) throw error;
+
+    throw new SdkError("unavailable", `The host didn't answer ${name} within ${CALL_MS / 1000} s.`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function cancellable<T>(open: (signal: AbortSignal) => AsyncIterable<T>): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator]() {
+      const controller = new AbortController();
+      const source = open(controller.signal)[Symbol.asyncIterator]();
+      let settle: ((result: IteratorResult<T>) => void) | null = null;
+
+      const release = (): void => {
+        void Promise.resolve(source.return?.()).catch(() => undefined);
+      };
+
+      return {
+        next(): Promise<IteratorResult<T>> {
+          if (controller.signal.aborted) return Promise.resolve(DONE);
+
+          const pulled = (async (): Promise<IteratorResult<T>> => {
+            try {
+              const next = await source.next();
+
+              if (!controller.signal.aborted) {
+                if (next.done === true) controller.abort();
+
+                return next;
+              }
+
+              if (next.done !== true) release();
+
+              return DONE;
+            } catch (error) {
+              if (controller.signal.aborted) return DONE;
+              controller.abort();
+
+              throw error;
+            }
+          })();
+
+          return Promise.race([
+            pulled,
+            new Promise<IteratorResult<T>>((resolve) => {
+              settle = resolve;
+            }),
+          ]).finally(() => {
+            settle = null;
+          });
+        },
+        async return(): Promise<IteratorResult<T>> {
+          const waiting = settle;
+          settle = null;
+
+          if (waiting === null && !controller.signal.aborted) release();
+          controller.abort();
+          waiting?.(DONE);
+
+          return DONE;
+        },
+      };
+    },
+  };
+}
+
+async function* answering<T>(
+  body: ReadableStream<Uint8Array>,
+  parse: (body: ReadableStream<Uint8Array>) => AsyncGenerator<T>,
+): AsyncGenerator<T> {
+  const reader = body.getReader();
+  let broken = false;
+
+  const read = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await reader.read().catch((cause: unknown) => {
+        broken = true;
+
+        throw cause;
+      });
+
+      if (next.done) controller.close();
+      else controller.enqueue(next.value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+
+  try {
+    yield* parse(read);
+  } catch (error) {
+    throw error instanceof SdkError && !broken ? hostAnswer(error) : error;
+  }
+}
+
+function crossesNetwork(url: string): boolean {
+  const { hostname } = new URL(url);
+
+  return hostname !== "localhost" && hostname !== "[::1]" && !hostname.startsWith("127.");
+}
+
+function jsonOrText(text: string): Json {
+  try {
+    return parseJson(text);
+  } catch {
+    return text;
+  }
+}

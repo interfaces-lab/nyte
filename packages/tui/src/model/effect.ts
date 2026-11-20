@@ -111,7 +111,6 @@ export type Effect =
   | { readonly kind: "open-editor"; readonly text: string; readonly command: string | null }
   | { readonly kind: "open-external"; readonly target: string }
   | { readonly kind: "write-settings"; readonly patch: SettingsPatch }
-  | { readonly kind: "change-directory"; readonly session: SessionId; readonly path: string }
   | { readonly kind: "reload" }
   | { readonly kind: "compact"; readonly session: SessionId; readonly instructions: string | null }
   | { readonly kind: "self-update"; readonly target: string | null }
@@ -120,6 +119,7 @@ export type Effect =
   | { readonly kind: "notify"; readonly title: string; readonly body: string }
   | { readonly kind: "exit"; readonly code: number }
   | { readonly kind: "refresh-workspace"; readonly cwd: string }
+  | { readonly kind: "chat-moved"; readonly session: SessionId; readonly workspace: WorkspaceId }
   | {
       readonly kind: "run-command";
       readonly session: SessionId;
@@ -139,7 +139,7 @@ export type Effect =
       readonly session: SessionId;
       readonly id: string;
       readonly label: string;
-      readonly scope: "host" | "session";
+      readonly scope: "host" | "chat";
       readonly value: Json;
     }
   | {
@@ -167,7 +167,6 @@ export type Effect =
   | { readonly kind: "load-folder-catalog"; readonly workspace: WorkspaceId }
   | { readonly kind: "login-answer"; readonly dialog: DialogId; readonly answer: string | null }
   | { readonly kind: "read-preview"; readonly marker: string; readonly path: string }
-  | { readonly kind: "list-directory"; readonly path: string; readonly cwd: string }
   | {
       readonly kind: "complete-command";
       readonly session: SessionId;

@@ -12,7 +12,7 @@ import { canvasRenderers } from "./canvas-frame.tsx";
 import { PartOrigin } from "../chat/transcript/part-origin.ts";
 import { RawPartView } from "../chat/transcript/raw-part.tsx";
 import { nyte } from "../contract/nyte.ts";
-import { connected, connection, registries } from "../data/connection.ts";
+import { connected, connection, onInstall } from "../data/connection.ts";
 import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { hostWatch } from "../data/watches.ts";
@@ -107,26 +107,24 @@ export function watchClientPlugins(
       );
   };
 
-  const remount = {
-    clear(): void {
-      const previous = mounted;
-      settle(undefined);
-      mount(session);
-      void previous?.dispose();
-      focused = undefined;
-      feed();
-      refocus();
-    },
-  };
+  const stopRemount = onInstall((replaced) => {
+    if (!replaced) return;
+    const previous = mounted;
+    settle(undefined);
+    mount(session);
+    void previous?.dispose();
+    focused = undefined;
+    feed();
+    refocus();
+  });
 
-  registries.add(remount);
   feed();
   refocus();
   const stopDirectory = subscribeSessionRows(feed);
   const stopFocus = focusMoved(refocus);
 
   return () => {
-    registries.delete(remount);
+    stopRemount();
     stopDirectory();
     stopFocus();
   };

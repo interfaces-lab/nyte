@@ -1,4 +1,4 @@
-import { PRIMARY, tabPanes } from "../../test/panes.ts";
+import { paneLayout, PRIMARY, selectSession, tabPanes } from "../../test/panes.ts";
 import assert from "node:assert/strict";
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -12,6 +12,7 @@ import { asId } from "@nyte-ai/schema";
 import { shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import {
+  focusNextPane,
   PaneControllerProvider,
   usePaneActions,
   useCanSplitPane,
@@ -33,7 +34,7 @@ test.each([560, 640])("split availability and execution agree at window width %s
   shellActions.showWorkspace();
   const controller = tabPanes();
   const requests: PaneId[] = [];
-  controller.store.onFocusRequest((pane) => requests.push(pane));
+  controller.layout.onFocusRequest((pane) => requests.push(pane));
 
   const router = createRouter({
     routeTree: createRootRoute(),
@@ -55,7 +56,7 @@ test.each([560, 640])("split availability and execution agree at window width %s
 
   renderToStaticMarkup(
     <RouterContextProvider router={router}>
-      <PaneControllerProvider controller={controller}>
+      <PaneControllerProvider panes={controller}>
         <Probe
           inspect={(actions, available) => {
             selected = { actions, available };
@@ -67,8 +68,8 @@ test.each([560, 640])("split availability and execution agree at window width %s
   assert.ok(selected);
   assert.equal(selected.available, width >= 640);
   selected.actions.split("right");
-  assert.equal(chatPanes(controller.getSnapshot()).length, selected.available ? 2 : 1);
-  assert.equal(selected.actions.focusNext(), selected.available);
+  assert.equal(chatPanes(paneLayout(controller)).length, selected.available ? 2 : 1);
+  assert.equal(focusNextPane(controller), selected.available);
 
   if (selected.available) assert.equal(requests.at(-1), PRIMARY);
 });
@@ -76,9 +77,9 @@ test.each([560, 640])("split availability and execution agree at window width %s
 afterAll(() => vi.unstubAllGlobals());
 
 test("new chat leaves Customize and selects the blank pane through the shared pane action", () => {
-  const controller = windowTabs.controller();
+  const controller = windowTabs.panes();
   const id = asId<"session">("previous-chat");
-  controller.selectSession(id);
+  selectSession(controller, id);
   shellActions.openCustomize(id);
 
   const router = createRouter({
@@ -118,7 +119,7 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
   assert.ok(actions);
   actions.newChat();
   expect(render()).toBe("<span>workspace:1</span>");
-  const layout = controller.getSnapshot();
+  const layout = paneLayout(controller);
   assert.equal(chatPanes(layout).length, 1);
   expect(activeSelection(layout)).toEqual({ kind: "blank" });
 });

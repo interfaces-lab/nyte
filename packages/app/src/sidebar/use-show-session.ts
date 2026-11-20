@@ -10,7 +10,6 @@ export async function activateWorkspace(path: string | null): Promise<boolean> {
   if (path === current) return true;
 
   if (path === null) {
-    await nyte.host.closeWorkspace();
     commitHostWorkspace(undefined);
 
     return true;
@@ -19,8 +18,5 @@ export async function activateWorkspace(path: string | null): Promise<boolean> {
   const outcome = await nyte.host.openWorkspace({ path });
   handleOpenOutcome(outcome);
 
-  if (outcome.kind !== "opened") return false;
-  commitHostWorkspace(outcome.workspace);
-
-  return true;
+  return outcome.kind === "opened";
 }

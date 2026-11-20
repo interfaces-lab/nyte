@@ -21,6 +21,7 @@ import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import {
+  folderName,
   useForgetWorkspace,
   useHomeWorkspace,
   useWorkspaces,
@@ -117,7 +118,6 @@ function NewChatRow({
 export function Sidebar(): ReactElement {
   const sessionListId = useId();
   const workspaceCollectionID = useId();
-  const panes = usePaneActions();
   const host = useHostState();
   const open = host.data.workspace;
   const home = useHomeWorkspace();
@@ -234,7 +234,7 @@ export function Sidebar(): ReactElement {
   const newWorkspaceChat = async (place: SessionPlace): Promise<void> => {
     if (!(await activateWorkspace(place.path))) return;
     setExpanded(place.workspace, true);
-    panes.newChat();
+    windowTabs.newChat({ folder: place.path });
   };
 
   const showDrafts =
@@ -353,7 +353,7 @@ export function Sidebar(): ReactElement {
         ? undefined
         : outsideProjects(localSessions(workspaceGroups, place.workspace));
 
-    const name = entry.kind === "home" ? "Home" : entry.name;
+    const name = folderName(entry.kind === "home" ? undefined : entry, home);
     const expanded = !folded.includes(place.workspace);
 
     const kept =
@@ -371,7 +371,7 @@ export function Sidebar(): ReactElement {
       <WorkspaceRow
         key={entry.kind === "home" ? "home" : entry.id}
         name={name}
-        path={entry.kind === "home" ? "Home" : entry.path}
+        path={entry.kind === "home" ? name : entry.path}
         available={entry.kind === "home" || entry.available !== false}
         active={place.workspace === openPlace}
         expanded={expanded}
@@ -433,18 +433,7 @@ export function Sidebar(): ReactElement {
               recentSessions={listed?.map(({ session }) => session)}
               onOpenChange={shellActions.setSearchOpen}
               onOpenSession={(sessionId) => windowTabs.openChat(sessionId, "permanent")}
-              onNewChat={() => panes.newChat()}
-              onOpenFolder={openFolder}
-              onOpenHome={
-                open === undefined
-                  ? undefined
-                  : () => {
-                      shellActions.showWorkspace();
-                      void nyte.host.closeWorkspace();
-                    }
-              }
-              onOpenSettings={openSettings}
-              onOpenCustomize={() => shellActions.openCustomize(paneSessionId)}
+              home={open !== undefined}
               trigger={
                 <Row variant="nav" xstyle={styles.navRow}>
                   <Row.Leading xstyle={styles.navLeading}>

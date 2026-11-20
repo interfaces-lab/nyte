@@ -19,12 +19,28 @@ export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
+export function homeWorkspaceId(): WorkspaceId | null | undefined {
+  const live = hostWatch("host").getState().value?.defaultWorkspace;
+
+  return live === undefined
+    ? queryClient.getQueryData<WorkspaceId | null>(keys.firstFrameHome)
+    : live;
+}
+
 export function useHomeWorkspace(): WorkspaceId | null | undefined {
   const live = useWatchSelect(hostWatch("host"), (state) => state.value?.defaultWorkspace);
 
   return live === undefined
     ? queryClient.getQueryData<WorkspaceId | null>(keys.firstFrameHome)
     : live;
+}
+
+/** What every surface calls a folder: the host's own folder, or none, is Home. */
+export function folderName(
+  workspace: Pick<SelectedWorkspace, "id" | "name"> | undefined,
+  home: WorkspaceId | null | undefined,
+): string {
+  return workspace === undefined || workspace.id === home ? "Home" : workspace.name;
 }
 
 export interface RailWorkspace extends SelectedWorkspace {

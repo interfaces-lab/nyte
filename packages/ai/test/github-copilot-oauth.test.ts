@@ -306,15 +306,17 @@ describe("GitHub Copilot device sign-in", () => {
   test("auth requests refuse redirects", async () => {
     const transport = fakeFetch({ [DEVICE]: () => deviceCode() });
     const seen: (RequestInit["redirect"] | undefined)[] = [];
+    const requested = Promise.withResolvers<void>();
     const observing: typeof globalThis.fetch = (input, init) => {
       seen.push(init?.redirect);
+      requested.resolve();
       return transport.fetch(input, init);
     };
     const controller = new AbortController();
     const login = githubCopilotOAuth({ fetch: observing, clientId: "c" }).login(
       interaction(controller.signal),
     );
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await requested.promise;
     controller.abort();
     await login.catch(() => undefined);
     assert.deepEqual(seen, ["error"]);

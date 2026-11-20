@@ -1,13 +1,8 @@
 import { describeOperations, SdkError } from "@nyte-ai/schema";
-import type {
-  Capability,
-  CredentialSource,
-  PluginReplacementReport,
-  SessionId,
-  WorkspaceId,
-} from "@nyte-ai/schema";
+import type { Capability, CredentialSource, WorkspaceId } from "@nyte-ai/schema";
 import { ALL_AUTHORITY, LOCAL } from "../contract/host.ts";
 import type {
+  ClientsApi,
   Connection,
   ConnectionContext,
   DocumentsApi,
@@ -19,7 +14,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { GitHubAccountApi, Workspace } from "../contract/workspace.ts";
 import { advance, cover, repair } from "../drive/execution.ts";
 import { pause, resume } from "../engine/pause.ts";
-import { createPrincipals, gate, gated } from "../engine/principals.ts";
+import { createPrincipals, gate, gated } from "./principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
 import { createProjects, projectHandle } from "./projects.ts";
 import { loadPlugins } from "../extend/plugin-folders.ts";
@@ -43,6 +38,15 @@ const NO_GITHUB: GitHubAccountApi = {
 
 function unavailableGitHub(): never {
   throw new SdkError("unavailable", "This host has no GitHub CLI login to serve.");
+}
+
+const NO_CLIENTS: ClientsApi = {
+  rows: () => unsupportedClients(),
+  perform: async () => unsupportedClients(),
+};
+
+function unsupportedClients(): never {
+  throw new SdkError("not_supported", "This host serves no socket for a client to connect to.");
 }
 
 const NO_DOCUMENTS: DocumentsApi = {
@@ -138,10 +142,12 @@ export function createConnection(
       git: () => capability("git", () => handle.git()),
       github: () => capability("github", () => handle.github()),
       browser: () => capability("browser", () => handle.browser()),
+      language: () => capability("language", () => handle.language()),
     });
   };
 
   const documents = kernel.documents ?? NO_DOCUMENTS;
+  const clients = kernel.clients ?? NO_CLIENTS;
 
   const close = async (): Promise<void> => {
     for (const stop of streams) stop();
@@ -160,8 +166,23 @@ export function createConnection(
     },
     workspaces: gated("workspaces", createWorkspaces(kernel, context), authority),
     projects: gated("projects", createProjects(kernel), authority),
+    clients: gated("clients", { read: async () => clients.rows() }, authority),
     session: (id) => sessionHandle(kernel, context, id),
     project: (id) => gated("project", projectHandle(kernel, id), authority),
+    client: (id) =>
+      gated(
+        "client",
+        {
+          perform: (action, input, options) =>
+            clients.perform(context.principal, {
+              client: id,
+              action,
+              input,
+              timeoutMs: options?.timeoutMs,
+            }),
+        },
+        authority,
+      ),
     workspace,
     watch: () =>
       track(watchHost(kernel, { principal: context.principal, authority: context.authority })),
@@ -192,7 +213,14 @@ export function createConnection(
     plugins: gated(
       "plugins",
       {
-        replace: (plugins, scope) => replaceFiles(kernel, plugins, scope),
+        async replace(plugins, scope) {
+          await requireLoader(kernel);
+
+          return kernel.plugins.replace(
+            listPluginPaths(plugins).map((path) => ({ path })),
+            scope,
+          );
+        },
         check: async (plugins) =>
           kernel.plugins.check(await kernel.plugins.load(listPluginPaths(plugins))),
       },
@@ -244,18 +272,8 @@ export function createHost(
   };
 }
 
-async function replaceFiles(
-  kernel: Kernel,
-  files: readonly PluginFile[],
-  scope?: { readonly session: SessionId },
-): Promise<PluginReplacementReport> {
-  const paths = listPluginPaths(files);
-  await kernel.plugins.load(paths);
-
-  return kernel.plugins.replace(
-    paths.map((path) => ({ path })),
-    scope,
-  );
+async function requireLoader(kernel: Kernel): Promise<void> {
+  await kernel.plugins.load([]);
 }
 
 function listPluginPaths(files: readonly PluginFile[]): readonly string[] {

@@ -48,7 +48,7 @@ function AgentTranscript(props: {
       wholeTools: NO_WHOLE_TOOLS,
     };
 
-    return deriveTranscript(props.task.view ?? null, [], local);
+    return deriveTranscript(props.task.view ?? null, [], local, props.task.info);
   });
 
   createEffect(

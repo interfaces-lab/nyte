@@ -84,7 +84,6 @@ export const WorkspaceInfoType = Type.Object({
   trusted: nullable(Type.Boolean()),
   projectSources: Type.Array(Type.String()),
   addedBy: idSchema<"principal">(),
-  sessions: Type.Number(),
   writers: Type.Array(idSchema<"run">()),
   isolation: nullable(WorktreeIsolationType),
 });

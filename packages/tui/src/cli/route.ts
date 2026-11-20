@@ -1,19 +1,6 @@
 import { COMMANDS, findCommand } from "./commands.ts";
 import type { CommandName } from "./commands.ts";
 
-/**
- * What an argv asks for, decided from argv alone. Total: an unknown word is a route, never a throw,
- * so the entry knows the output format before anything can fail.
- *
- * - `help`: `help [path…]`, `<path> help`, `--help` or `-h` anywhere before `--`, or a group with no
- *   action word and no `default` action. `path` is the deepest known prefix.
- * - `version`: `--version` or `-v` before `--` and no help request.
- * - `command`: argv[0] names a command. `json` is true only when that command takes `--json` and
- *   argv has it before `--`.
- * - `chat`: argv is empty or argv[0] is an option. The TUI or print mode; `parseFlags` reads it.
- *   `json` is true when argv has `--json` before `--`, which only print mode takes.
- * - `unknown`: argv[0] is a word that names no command.
- */
 export type Route =
   | { readonly kind: "help"; readonly path: readonly string[] }
   | { readonly kind: "version"; readonly json: boolean }
@@ -79,7 +66,6 @@ export function route(argv: readonly string[]): Route {
   };
 }
 
-/** The longest prefix of `words` that names a command and then one of its subcommands. */
 function knownPath(words: readonly string[]): readonly string[] {
   const command = words[0] === undefined ? undefined : findCommand(words[0]);
 

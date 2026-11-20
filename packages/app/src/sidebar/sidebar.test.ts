@@ -20,7 +20,7 @@ test(
     const output = await testRenderer(
       new URL("./sidebar.browser-test.tsx", import.meta.url),
       `localStorage.setItem("nyte.desktop.sidebar.v3", ${JSON.stringify(STORED)});
-window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {}, state: async () => ({ workspace: undefined }), server: { state: async () => ({ kind: "none" }) } } };`,
+window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {}, server: { state: async () => ({ kind: "none" }) } } };`,
     );
 
     expect(output).toBe("passed");

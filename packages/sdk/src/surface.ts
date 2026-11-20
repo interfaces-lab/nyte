@@ -5,7 +5,9 @@ export type {
   Agent,
   Available,
   BrowserApi,
+  Client,
   ClientApi,
+  Clients,
   Command,
   ConnectOptions,
   Connection,
@@ -34,6 +36,7 @@ export type {
   Job,
   Jobs,
   Keybinding,
+  LanguageApi,
   ListenOptions,
   Listener,
   Login,
@@ -145,6 +148,7 @@ export type {
   ForkOutcome,
   FormatOutcome,
   WorktreeCleanup,
+  GitCommitFiles,
   GitCommitId,
   GitOutcome,
   GitRefsView,
@@ -179,6 +183,8 @@ export type {
   JobView,
   JournalEntry,
   Json,
+  LanguageLocation,
+  LanguageServerView,
   LineStat,
   LoginMethod,
   McpChange,
@@ -236,6 +242,8 @@ export type {
   RefUpdate,
   RemoveHeadOutcome,
   RemoveSessionOutcome,
+  ReorderOutcome,
+  ReorderPlace,
   RepairPage,
   RequestOptions,
   ReviseOptions,
@@ -265,6 +273,9 @@ export type {
   StopOutcome,
   Submission,
   SubmitDraft,
+  TextChange,
+  TextPosition,
+  TextRange,
   Thinking,
   ToolCall,
   ToolClass,
@@ -326,10 +337,6 @@ export { SdkError } from "@nyte-ai/schema";
 
 export { operationsDigest } from "@nyte-ai/protocol";
 
-export { pagedViews } from "./history.ts";
-
-export { tracePaints } from "./paint-spans.ts";
-
-export type { PagedViews } from "./history.ts";
+export { paintSpans, tracePaints } from "./view/paint-spans.ts";
 
 export type { DevRow } from "@nyte-ai/core";

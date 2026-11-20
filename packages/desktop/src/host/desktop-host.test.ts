@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, vi } from "vitest";
 import { titleReply } from "@nyte-ai/bench";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import type { Connection } from "@nyte-ai/sdk";
-import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import { socketTest, testDesktop } from "./fixtures/desktop-host.ts";
 import type { TestDesktop } from "./fixtures/desktop-host.ts";
 
@@ -120,6 +119,35 @@ socketTest("with pause on sleep off, a suspend leaves the stream running", async
   assert.equal(made.fake.requests.length, 1);
 });
 
+socketTest(
+  "a host that answers only after main started still reaches main: its settings arrive and its live run counts as running work",
+  async () => {
+    const seen: boolean[] = [];
+
+    const made = await desktop(
+      { settingsChanged: (settings) => seen.push(settings.blockAds) },
+      { reachable: false },
+    );
+
+    await vi.waitFor(() => assert.equal(made.link.state.kind, "unreachable"));
+    made.reachable(true);
+    const finish = Promise.withResolvers<void>();
+    made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });
+    const { receipt } = await made.served.sessions.start({ name: "work", content: "Work" });
+    await vi.waitFor(() => assert.equal(made.fake.requests.length, 1));
+
+    await vi.waitFor(() => assert.equal(seen.at(-1), true), { timeout: 5_000 });
+    assert.deepEqual(await made.host.updateActivity(), {
+      kind: "busy",
+      taskCount: 1,
+      terminalCommandCount: 0,
+    });
+
+    finish.resolve();
+    await receipt.settled();
+  },
+);
+
 socketTest("the desktop's settings reach main from the host view", async () => {
   const seen: boolean[] = [];
   const made = await desktop({ settingsChanged: (settings) => seen.push(settings.blockAds) });
@@ -178,60 +206,50 @@ socketTest(
 );
 
 socketTest(
-  "opening a folder registers it and selects it for that window only; a failed open changes nothing",
+  "opening a folder registers it under the host's path and announces nothing; a folder the host can't take, or a host that doesn't answer, answers failed",
   async () => {
-    const received: { readonly event: HostEvent; readonly window: number | undefined }[] = [];
-
-    const made = await desktop({
-      emitHostEvent: (event, window) => received.push({ event, window }),
-    });
-
+    const made = await desktop();
     const folder = join(made.home, "project");
     await mkdir(folder);
+    await symlink(folder, join(made.home, "linked"));
 
     const opened = await made.host.call(1, "host.openWorkspace", { path: folder });
 
     if (opened.kind !== "opened") throw new Error("The folder did not open");
     assert.deepEqual(opened.workspace, { id: opened.workspace.id, path: folder, name: "project" });
+
+    assert.deepEqual(
+      await made.host.call(1, "host.openWorkspace", { path: join(made.home, "linked") }),
+      opened,
+    );
     assert.ok(
       (await made.served.workspaces.list()).some((entry) => entry.id === opened.workspace.id),
     );
-    assert.equal(
-      (await made.host.call(1, "host.state", undefined)).workspace?.id,
-      opened.workspace.id,
-    );
-    assert.equal((await made.host.call(2, "host.state", undefined)).workspace, undefined);
-    assert.deepEqual(received, [
-      { event: { kind: "workspace_opened", workspace: opened.workspace }, window: 1 },
-    ]);
 
-    assert.equal(
-      (await made.host.call(1, "host.openWorkspace", { path: join(folder, "missing") })).kind,
-      "failed",
+    assert.deepEqual(
+      await made.host.call(1, "host.openWorkspace", { path: join(folder, "missing") }),
+      {
+        kind: "failed",
+        message:
+          "Nyte can't read this folder. Check that it exists and that Nyte has access to it.",
+      },
     );
-    assert.equal(
-      (await made.host.call(1, "host.state", undefined)).workspace?.id,
-      opened.workspace.id,
-    );
-    assert.equal(received.length, 1);
+    assert.deepEqual(made.events, []);
 
-    await made.host.call(1, "host.closeWorkspace", undefined);
-    assert.equal((await made.host.call(1, "host.state", undefined)).workspace, undefined);
-    await made.host.call(1, "host.closeWorkspace", undefined);
-    assert.deepEqual(received, [
-      { event: { kind: "workspace_opened", workspace: opened.workspace }, window: 1 },
-      { event: { kind: "workspace_closed" }, window: 1 },
-    ]);
+    const away = await desktop({}, { reachable: false });
+
+    assert.equal((await away.host.call(1, "host.openWorkspace", { path: folder })).kind, "failed");
   },
 );
 
 socketTest(
-  "a window reopening on a chat answers its state with the chat's folder selected, and announces nothing",
+  "a window reopening on a chat is answered the chat's folder, whatever any window opened, and nothing is announced",
   async () => {
-    const received: HostEvent[] = [];
-    const made = await desktop({ emitHostEvent: (event) => received.push(event) });
+    const made = await desktop();
     const folder = join(made.home, "project");
+    const other = join(made.home, "other");
     await mkdir(folder);
+    await mkdir(other);
     const opened = await made.host.call(1, "host.openWorkspace", { path: folder });
 
     if (opened.kind !== "opened") throw new Error("The folder did not open");
@@ -243,17 +261,14 @@ socketTest(
       content: "Hi.",
     });
 
-    received.length = 0;
+    await made.host.call(2, "host.openWorkspace", { path: other });
 
-    assert.deepEqual((await made.host.call(2, "host.restore", { session: chat.id })).workspace, {
+    assert.deepEqual(await made.host.call(2, "host.restore", { session: chat.id }), {
       id: opened.workspace.id,
       path: folder,
       name: "project",
     });
-    assert.equal(
-      (await made.host.call(3, "host.restore", { session: "gone" })).workspace,
-      undefined,
-    );
-    assert.deepEqual(received, []);
+    assert.equal(await made.host.call(3, "host.restore", { session: "gone" }), undefined);
+    assert.deepEqual(made.events, []);
   },
 );

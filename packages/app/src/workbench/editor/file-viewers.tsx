@@ -25,7 +25,6 @@ export const viewerStyles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: role.bgBase,
   },
   hidden: { visibility: "hidden", pointerEvents: "none" },
   message: {
@@ -58,7 +57,6 @@ export const viewerStyles = create({
     color: role.contentSecondary,
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
-    backgroundColor: role.bgBase,
   },
   statusText: {
     flex: 1,

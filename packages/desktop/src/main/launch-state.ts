@@ -5,6 +5,9 @@ import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { Value } from "typebox/value";
 import { themeSource } from "../shared/ipc-inputs.ts";
+import { DesktopAppType, SelectedWorkspaceType } from "@nyte-ai/app/contract/desktop-window.ts";
+import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
+import type { DesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 
 const rect = Type.Object({
   x: Type.Integer(),
@@ -19,21 +22,74 @@ const windowFrame = Type.Object({
   fullscreen: Type.Boolean(),
 });
 
+const windowKind = Type.Object({
+  app: DesktopAppType,
+  workspace: Type.Optional(SelectedWorkspaceType),
+});
+
 const stateSchema = Type.Object({
   theme: themeSource,
   window: Type.Optional(windowFrame),
   windows: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  frames: Type.Optional(Type.Record(Type.String({ minLength: 1 }), windowFrame)),
+  apps: Type.Optional(Type.Record(Type.String({ minLength: 1 }), windowKind)),
 });
 
 const launchState = Compile(stateSchema);
 
 type ThemeSource = Static<typeof themeSource>;
 
-type WindowFrame = Static<typeof windowFrame>;
+type Rect = Static<typeof rect>;
+
+export type WindowFrame = Static<typeof windowFrame>;
+
+type WindowKind = Static<typeof windowKind>;
+
+export interface Reopening {
+  readonly app: DesktopApp;
+  readonly opening: DesktopWindowOpen | undefined;
+}
 
 type LaunchState = Static<typeof stateSchema>;
 
+export interface OpeningFrame {
+  readonly bounds: Partial<Rect>;
+  readonly maximized: boolean;
+  readonly fullscreen: boolean;
+}
+
 const INITIAL: LaunchState = { theme: "system" };
+
+export function openingFrame(input: {
+  readonly own: WindowFrame | undefined;
+  readonly last: WindowFrame | undefined;
+  readonly first: boolean;
+  readonly onScreen: (bounds: Rect) => boolean;
+}): OpeningFrame {
+  const own = input.own;
+  const last = input.last;
+
+  if (own !== undefined && input.onScreen(own.bounds)) return own;
+
+  if (last !== undefined && own === undefined && input.first && input.onScreen(last.bounds))
+    return last;
+
+  return {
+    bounds: { width: last?.bounds.width ?? 1280, height: last?.bounds.height ?? 800 },
+    maximized: false,
+    fullscreen: false,
+  };
+}
+
+export function windowsAfterClose(
+  kept: readonly string[],
+  closed: string,
+  input: { readonly quitting: boolean; readonly remaining: number },
+): readonly string[] | undefined {
+  if (input.quitting || input.remaining === 0) return undefined;
+
+  return kept.filter((windowId) => windowId !== closed);
+}
 
 function readState(path: string): LaunchState {
   try {
@@ -64,16 +120,55 @@ export class LaunchStateStore {
     return this.#state.windows ?? [];
   }
 
+  frame(windowId: string): WindowFrame | undefined {
+    return this.#state.frames?.[windowId];
+  }
+
+  /** How a kept window reopens: as the same app, and Code or Studio on its project. A window from before kinds is Nyte. */
+  reopening(windowId: string): Reopening {
+    const kind: WindowKind = this.#state.apps?.[windowId] ?? { app: "nyte" };
+
+    return {
+      app: kind.app,
+      opening:
+        kind.workspace === undefined ? undefined : { kind: "app", workspace: kind.workspace },
+    };
+  }
+
   setTheme(theme: ThemeSource): void {
     this.#write({ ...this.#state, theme });
   }
 
-  setWindow(window: WindowFrame): void {
-    this.#write({ ...this.#state, window });
+  setWindow(windowId: string, window: WindowFrame): void {
+    this.#write({
+      ...this.#state,
+      window,
+      frames: { ...this.#state.frames, [windowId]: window },
+    });
   }
 
   setWindows(windows: readonly string[]): void {
-    this.#write({ ...this.#state, windows: [...windows] });
+    const frames = Object.fromEntries(
+      Object.entries(this.#state.frames ?? {}).filter(([windowId]) => windows.includes(windowId)),
+    );
+
+    const apps = Object.fromEntries(
+      Object.entries(this.#state.apps ?? {}).filter((entry) => windows.includes(entry[0])),
+    );
+
+    this.#write({ ...this.#state, windows: [...windows], frames, apps });
+  }
+
+  keepWindow(windowId: string, app: DesktopApp, opening: DesktopWindowOpen | undefined): void {
+    const windows = this.windows();
+    const workspace = app === "nyte" ? undefined : opening?.workspace;
+    const kind = workspace === undefined ? { app } : { app, workspace };
+
+    this.#write({
+      ...this.#state,
+      windows: windows.includes(windowId) ? [...windows] : [...windows, windowId],
+      apps: { ...this.#state.apps, [windowId]: kind },
+    });
   }
 
   #write(next: LaunchState): void {

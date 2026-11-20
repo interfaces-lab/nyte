@@ -5,7 +5,6 @@ import type { ChangeSource, GitCommitId, GitScope, SessionId, WorkspaceId } from
 export const keys = {
   host: ["host"] as const,
   clientOperations: ["client-operations"] as const,
-  hostSettings: ["host-settings"] as const,
   updates: ["updates"] as const,
   updateChannel: ["updates", "channel"] as const,
   hostProcess: ["host-process"] as const,
@@ -59,6 +58,27 @@ export const keys = {
   mermaid: (source: string) => ["mermaid", source] as const,
 };
 
+const HOST_READS: ReadonlySet<unknown> = new Set([
+  "workspaces",
+  "catalog",
+  "account-limits",
+  "model-accounts",
+  "github",
+  "github-account",
+  "session",
+  "git",
+  "files",
+  "documents",
+  "blob",
+  "canvas-revision",
+  "part-view",
+  "command-completion",
+]);
+
+export function readsHost(query: { readonly queryKey: QueryKey }): boolean {
+  return HOST_READS.has(query.queryKey[0]);
+}
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -71,10 +91,6 @@ export const queryClient = new QueryClient({
   },
 });
 
-/**
- * For store sources, which read on every snapshot: `getQueryData` merges the defaults and hashes
- * the key on each call, so the reader hashes it once.
- */
 export function queryDataReader<T>(queryKey: QueryKey): () => T | undefined {
   const queryHash = hashKey(queryKey);
 

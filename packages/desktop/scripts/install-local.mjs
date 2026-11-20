@@ -18,8 +18,6 @@ const root = join(desktop, "..", "..");
 
 const application = "/Applications/Nyte.app";
 
-const BUILD_ATTEMPTS = 3;
-
 const support = join(homedir(), "Library", "Application Support", "Nyte");
 
 const updateLog = join(support, "updates.log");
@@ -46,7 +44,6 @@ const version = nightlyVersion();
 
 console.log(`Building Nyte ${version} to replace ${installed}.`);
 
-/** Each run packages a new ~200 MB archive; only the one this run serves is worth keeping. */
 const dist = join(desktop, "dist");
 
 for (const name of existsSync(dist) ? readdirSync(dist) : []) {
@@ -101,7 +98,6 @@ try {
   server.close();
 }
 
-/** The next patch after the latest stable tag, as nightlies are, with the time as the run so it sorts above the installed build. */
 function nightlyVersion() {
   const time = new Date().toISOString().slice(11, 19).replaceAll(":", "");
   const run = String(Math.max(1, Number(time)));
@@ -115,7 +111,6 @@ function nightlyVersion() {
   return output.trim().replace(/^version=/u, "");
 }
 
-/** Empty while ShipIt has the bundle half swapped. */
 function bundleVersion() {
   return spawnSync(
     "plutil",
@@ -138,7 +133,6 @@ function logSize() {
   return existsSync(updateLog) ? readFileSync(updateLog).length : 0;
 }
 
-/** Waits for the app's own update log to report this build downloaded, so the swap goes through its updater. */
 async function downloaded(offset) {
   await until(`Nyte to download ${version}`, 300_000, () => {
     const lines = existsSync(updateLog)
@@ -181,32 +175,23 @@ async function until(label, timeout, done) {
   }
 }
 
-/** Apple's timestamp server drops the odd one of the hundreds of signing requests a build makes, so a failed build runs again, three times in all. */
 function packageBuild() {
-  for (let attempt = 1; ; attempt += 1) {
-    const status = spawnSync(
-      "node",
-      [
-        "scripts/build.mjs",
-        ...process.argv.slice(2).filter((argument) => argument === "--warn-budgets"),
-        "--package",
-        "--publish",
-        "never",
-        "--mac",
-        "zip",
-        "--arm64",
-      ],
-      { cwd: desktop, env: { ...process.env, NYTE_RELEASE_VERSION: version }, stdio: "inherit" },
-    ).status;
+  const status = spawnSync(
+    "node",
+    [
+      "scripts/build.mjs",
+      ...process.argv.slice(2).filter((argument) => argument === "--warn-budgets"),
+      "--package",
+      "--publish",
+      "never",
+      "--mac",
+      "zip",
+      "--arm64",
+    ],
+    { cwd: desktop, env: { ...process.env, NYTE_RELEASE_VERSION: version }, stdio: "inherit" },
+  ).status;
 
-    if (status === 0) return;
-
-    if (attempt === BUILD_ATTEMPTS) {
-      throw new Error(`The build failed ${BUILD_ATTEMPTS} times. Nyte ${installed} is unchanged.`);
-    }
-
-    console.log(`The build failed (attempt ${attempt} of ${BUILD_ATTEMPTS}). Building again.`);
-  }
+  if (status !== 0) throw new Error(`The build failed. Nyte ${installed} is unchanged.`);
 }
 
 function run(command, args, env = {}) {

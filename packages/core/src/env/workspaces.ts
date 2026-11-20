@@ -33,7 +33,7 @@ import type {
 import { createJobs, jobHandle } from "../engine/jobs.ts";
 import { discardSession } from "../engine/start.ts";
 import { cleanWorktrees } from "./worktrees.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { endedRunRef, parseSessionRef, runRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,
@@ -99,8 +99,11 @@ export function createWorkspaces(
 ): Workspaces {
   return {
     async list() {
-      const records = await workspaceRecords(kernel.store);
-      const trust = await readFolderTrust(kernel);
+      const [records, trust] = await Promise.all([
+        workspaceRecords(kernel.store),
+        readFolderTrust(kernel),
+      ]);
+
       const infos = await Promise.all(
         records.map((record) => workspaceInfo(kernel, record.id, trust)),
       );
@@ -170,8 +173,9 @@ export function createWorkspaces(
 
         if (options?.projectResources === undefined) changed(kernel, id);
         else {
+          const before = await readTrust(kernel);
           await decideTrust(kernel, record, options.projectResources);
-          await trustChanged(kernel);
+          await trustChanged(kernel, before);
         }
 
         return { kind: "added", workspace: id };
@@ -212,7 +216,6 @@ export function createWorkspaces(
   };
 }
 
-/** The sessions on `workspace` or one of its worktrees, with every session below them, children before their parents. */
 async function sessionsUnder(
   store: StoreConnection,
   workspace: WorkspaceId,
@@ -365,8 +368,9 @@ export function workspaceHandle(
       if (record === null) return { kind: "missing" };
 
       if (patch.projectResources !== undefined) {
+        const before = await readTrust(kernel);
         await decideTrust(kernel, record, patch.projectResources);
-        await trustChanged(kernel);
+        await trustChanged(kernel, before);
       }
 
       return { kind: "updated" };
@@ -411,6 +415,7 @@ export function workspaceHandle(
     },
     github: async () => (await capabilities()).github,
     browser: async () => (await capabilities()).browser,
+    language: async () => (await capabilities()).language,
   };
 }
 
@@ -423,9 +428,10 @@ async function workspaceInfo(
 
   if (record === null) return null;
 
-  const [availability, sessions] = await Promise.all([
+  const [availability, trusted, writers] = await Promise.all([
     inspectWorkspaceAvailability(kernel, record),
-    sessionsOn(kernel.store, id),
+    workspaceTrust(kernel, record, trust),
+    readWriters(kernel.store, id),
   ]);
 
   return {
@@ -433,11 +439,10 @@ async function workspaceInfo(
     target: record.target,
     identity: record.identity,
     availability,
-    ...(await workspaceTrust(kernel, record, trust)),
+    ...trusted,
     projectSources: record.projectSources,
     addedBy: record.addedBy,
-    sessions: sessions.length,
-    writers: await readWriters(kernel.store, id),
+    writers,
     isolation: record.isolation,
   };
 }
@@ -672,20 +677,30 @@ async function changeRange(
     case "run": {
       const range = await runSnapshots(kernel.store, workspace, source.run);
 
+      if (range === null) {
+        const now = await snapshots.capture({ kind: "paths", paths: [] });
+
+        return { from: now, to: now, paths: new Set() };
+      }
+
+      const paths = await readRunPaths(kernel, range.session, source.run);
+
       return {
-        from: range?.from ?? (await snapshots.before(source.run)),
-        to: range?.to ?? (await snapshots.after(source.run)),
-        paths: range === null ? new Set() : await readRunPaths(kernel, range.session, source.run),
+        from: range.from,
+        to: range.to ?? (await snapshots.capture({ kind: "paths", paths: [...paths] })),
+        paths,
       };
     }
 
     case "session": {
-      const [range, paths] = await Promise.all([
-        sessionSnapshots(kernel.store, source.session, snapshots),
-        readAttributedPaths(kernel.store, source.session),
-      ]);
+      const paths = await readAttributedPaths(kernel.store, source.session);
 
-      return { ...range, paths };
+      return {
+        ...(await sessionSnapshots(kernel.store, source.session, () =>
+          snapshots.capture({ kind: "paths", paths: [...paths] }),
+        )),
+        paths,
+      };
     }
 
     default: {
@@ -699,7 +714,7 @@ async function changeRange(
 async function sessionSnapshots(
   store: StoreConnection,
   session: SessionId,
-  snapshots: SnapshotsApi,
+  capture: () => Promise<SnapshotId>,
 ): Promise<{ readonly from: SnapshotId; readonly to: SnapshotId }> {
   const [found, from] = await Promise.all([
     readSession(store, session),
@@ -714,7 +729,7 @@ async function sessionSnapshots(
 
   const [live] = await liveRuns(store, session);
 
-  if (live !== undefined) return { from, to: await snapshots.after(live.record.view.id) };
+  if (live !== undefined) return { from, to: await capture() };
 
   const [last] = found.record.heads
     .flatMap((head) => (head.lastRun === null ? [] : [head.lastRun]))
@@ -730,7 +745,7 @@ async function sessionSnapshots(
 
   return {
     from,
-    to: ended?.record.lastSnapshot ?? ended?.record.snapshot ?? (await snapshots.after(last.id)),
+    to: ended?.record.lastSnapshot ?? ended?.record.snapshot ?? (await capture()),
   };
 }
 
@@ -768,13 +783,51 @@ async function runSnapshots(
   return null;
 }
 
-export async function trustChanged(kernel: Kernel): Promise<void> {
-  dropScans(kernel);
+export type TrustSnapshot = ReadonlyMap<
+  WorkspaceId,
+  Pick<WorkspaceInfo, "projectResources" | "trusted">
+>;
 
-  for (const record of await workspaceRecords(kernel.store)) changed(kernel, record.id);
+export async function readTrust(kernel: Kernel): Promise<TrustSnapshot> {
+  const [records, trust] = await Promise.all([
+    workspaceRecords(kernel.store),
+    readFolderTrust(kernel),
+  ]);
+
+  return new Map(
+    records.map((record) => [
+      record.id,
+      { projectResources: trust.decided(record), trusted: trust.trusted(record) },
+    ]),
+  );
+}
+
+export async function trustChanged(kernel: Kernel, before: TrustSnapshot): Promise<void> {
+  const moved = [...(await readTrust(kernel))].filter(([id, trust]) => {
+    const was = before.get(id);
+
+    return was?.trusted !== trust.trusted || was.projectResources !== trust.projectResources;
+  });
+
+  for (const [id] of moved) changed(kernel, id);
+
+  const flipped = new Set(
+    moved.flatMap(([id, trust]) =>
+      (before.get(id)?.trusted === true) === (trust.trusted === true) ? [] : [id],
+    ),
+  );
+
+  dropScans(kernel, (_session, cached) => flipped.has(cached.workspace));
+
+  const sessions = await Promise.all(
+    [...flipped].map((workspace) => sessionsOn(kernel.store, workspace)),
+  );
 
   await Promise.allSettled(
-    [...kernel.plugins.runtimes().keys()].map((session) => kernel.plugins.reload(session)),
+    sessions
+      .flat()
+      .filter((session) => kernel.plugins.runtimes().has(session))
+      .map((session) => kernel.plugins.reload(session)),
   );
 }
 

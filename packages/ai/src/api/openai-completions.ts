@@ -597,16 +597,6 @@ function createClient(input: {
   });
 }
 
-/**
- * Usage from a Chat Completions chunk, following documented OpenAI and OpenRouter semantics:
- * `cached_tokens` counts cache reads. Providers place it differently: OpenAI and OpenRouter in
- * `prompt_tokens_details.cached_tokens`, DeepSeek in `prompt_cache_hit_tokens`, Kimi at the top
- * level of the final usage chunk. OpenAI never emits `cache_write_tokens`, but OpenRouter-compatible
- * providers can send it as a separate write count
- * (https://github.com/OpenRouterTeam/ai-sdk-provider/pull/409, also in
- * https://github.com/antirez/ds4/pull/29). Writes are not subtracted from `cached_tokens`, which
- * would under-report spec-compliant providers. `completion_tokens` already includes reasoning.
- */
 function parseChunkUsage(
   rawUsage: Static<typeof ChoiceUsageSchema>["usage"],
   model: Model<"openai-completions">,

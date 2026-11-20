@@ -111,14 +111,18 @@ export async function submit(
       return;
     }
 
-    const { message } = await port.send(decision.draft.content, {
+    const sending = await port.send(decision.draft.content, {
       delivery: decision.draft.delivery,
       ...(submission.replace === null
         ? {}
         : { replace: submission.replace, running: "refuse" as const }),
     });
 
-    dispatch({ kind: "sent", submission: submission.id, message });
+    dispatch({ kind: "sent", submission: submission.id, message: sending.message });
+    void sending.delivered.then((end) => {
+      if (end.kind === "refused")
+        refuse(`Message not sent: ${end.reason}. It is back in the composer.`);
+    });
   } catch (error) {
     refuse(`Message not sent: ${errorMessage(error)}. It is back in the composer.`);
     throw error;
@@ -271,6 +275,7 @@ function refuseSubmission(submission: Submission, reason: string, context: Handl
   context.dispatch({
     kind: "send-refused",
     submission: submission.id,
+    session: submission.session,
     reason,
     snapshot: submission.snapshot,
   });

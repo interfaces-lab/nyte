@@ -16,7 +16,7 @@ import type {
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { killTree } from "./local/command.ts";
+import { killTree } from "./local/process/command.ts";
 
 const ORIGIN = "https://canvas.preview/";
 

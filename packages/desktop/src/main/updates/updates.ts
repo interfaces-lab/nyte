@@ -90,7 +90,7 @@ export async function registerUpdates({
   const applyChannel = (): void => {
     autoUpdater.channel = channel === "nightly" ? "nightly" : "latest";
     autoUpdater.allowPrerelease = channel === "nightly";
-    autoUpdater.allowDowngrade = channel === "stable" && app.getVersion().includes("-nightly.");
+    autoUpdater.allowDowngrade = true;
   };
 
   applyChannel();
@@ -175,7 +175,6 @@ export async function registerUpdates({
   };
 }
 
-/** A loopback feed only: Squirrel.Mac still installs nothing but a build signed like this one. */
 function localFeedUrl(port: string | undefined): string | undefined {
   if (port === undefined || !/^[1-9]\d{0,4}$/u.test(port) || Number(port) > 65_535)
     return undefined;

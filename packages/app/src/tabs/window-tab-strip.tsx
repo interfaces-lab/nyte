@@ -1,7 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import type { ComponentProps, ReactElement, ReactNode, RefObject } from "react";
+import type { ComponentProps, ReactElement, RefObject } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import {
   ContextMenu,
@@ -11,6 +11,7 @@ import {
   ContextMenuTrigger,
 } from "@nyte-ai/ui/context-menu";
 import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Input } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";
@@ -21,7 +22,9 @@ import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { ChatCardGroup, ChatCardTrigger } from "../components/chat-card.tsx";
 import { ChatMenuItems } from "../components/chat-menu.tsx";
 import { TaskMark } from "../components/task-mark.tsx";
+import { tabName } from "./tab-items.ts";
 import { useSessionRow } from "../data/session-rows.ts";
+import { useCommitCount } from "../lib/work-counts.ts";
 import { useChatMark, useChatWindow } from "../window/index.ts";
 import type { ChatMark } from "../window/index.ts";
 import {
@@ -32,6 +35,8 @@ import {
 } from "../components/sortable-strip.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
+import { nextHeld, RELEASED } from "./held-keys.ts";
+import type { HeldKeys } from "./held-keys.ts";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
 
 export type WindowTabSplit = "right" | "down";
@@ -43,7 +48,7 @@ export interface WindowTabItem {
   readonly sessions: readonly SessionId[];
   readonly parent?: SessionId;
   readonly chat: SessionId | undefined;
-  readonly glyph: ReactNode;
+  readonly glyph: IconName | undefined;
   readonly preview: boolean;
   readonly split: WindowTabSplit | undefined;
 }
@@ -78,27 +83,13 @@ interface TabRename {
   readonly name: string;
 }
 
-interface HeldKeys {
-  readonly meta: boolean;
-  readonly ctrl: boolean;
-  readonly digit: string | undefined;
-}
-
-const RELEASED: HeldKeys = { meta: false, ctrl: false, digit: undefined };
-
 function useHeldKeys(): HeldKeys {
   const [held, setHeld] = useState<HeldKeys>(RELEASED);
 
   useMountEffect(() => {
-    const read = (event: KeyboardEvent): void => {
-      setHeld({
-        meta: event.metaKey,
-        ctrl: event.ctrlKey,
-        digit: event.type === "keydown" ? /^Digit([1-9])$/.exec(event.code)?.[1] : undefined,
-      });
-    };
+    const read = (event: KeyboardEvent): void => setHeld((held) => nextHeld(held, event));
 
-    const clear = (): void => setHeld(RELEASED);
+    const clear = (): void => setHeld((held) => nextHeld(held, undefined));
 
     window.addEventListener("keydown", read);
     window.addEventListener("keyup", read);
@@ -153,7 +144,9 @@ function TabView({
   readonly strip: WindowTabStripProps;
   readonly closeAndFocusSelected: (tabId: string) => void;
 }): ReactElement {
+  useCommitCount("render:window-tab");
   const unread = mark?.unread === true;
+  const marked = mark !== undefined && (mark.state !== "done" || unread);
   const digit = position < 9 ? String(position + 1) : undefined;
   const shortcut = (key: string): string => (strip.mac ? `⌘${key}` : `Ctrl+${key}`);
   const modifierHeld = strip.mac ? held.meta : held.ctrl;
@@ -182,7 +175,6 @@ function TabView({
               closable && stripStyles.tabClosable,
               active && stripStyles.tabActive,
               active && hairline.ring,
-              tab.preview && stripStyles.tabPreview,
             )}
             onMouseDown={(event) => {
               if (event.button === 1) event.preventDefault();
@@ -216,7 +208,7 @@ function TabView({
               ref={returnFocus}
               variant="bare"
               value={tab.id}
-              aria-label={`${tab.tooltip}${unread ? ", unread" : ""}${tab.preview ? ", preview" : ""}`}
+              aria-label={tabName(tab, mark)}
               aria-keyshortcuts={MOVE_SHORTCUTS}
               onKeyDown={(event) => {
                 const step = readMoveStep(event);
@@ -239,8 +231,12 @@ function TabView({
             />
           }
         >
-          <span {...props(stripStyles.glyph)}>
-            {mark === undefined ? tab.glyph : <TaskMark state={mark.state} unread={unread} />}
+          <span aria-hidden {...props(stripStyles.glyph)}>
+            {marked ? (
+              <TaskMark state={mark.state} unread={unread} />
+            ) : (
+              tab.glyph !== undefined && <Icon name={tab.glyph} size="sm" />
+            )}
           </span>
           <span {...props(stripStyles.label, unread && stripStyles.labelUnread)}>{tab.title}</span>
           {tab.split !== undefined && (
@@ -366,7 +362,11 @@ function TabChatItems({
   );
 }
 
-function RevealSelected({ list }: { readonly list: RefObject<HTMLDivElement | null> }): null {
+export function RevealSelected({
+  list,
+}: {
+  readonly list: RefObject<HTMLDivElement | null>;
+}): null {
   useMountEffect(() => {
     list.current
       ?.querySelector('[role="tab"][aria-selected="true"]')
@@ -427,14 +427,14 @@ export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
                 <Button
                   iconOnly
                   icon="plus"
-                  aria-label="New tab"
+                  aria-label="New chat tab"
                   title={undefined}
                   onClick={strip.onNewTab}
                 />
               }
             />
             <TooltipContent shortcut={clientActionKeys(clientActions.newTab, mac)}>
-              New Tab
+              New Chat Tab
             </TooltipContent>
           </Tooltip>
         </span>

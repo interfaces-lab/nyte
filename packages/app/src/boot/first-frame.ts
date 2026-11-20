@@ -9,13 +9,15 @@ import type { Decoded } from "@nyte-ai/schema";
 import { hashKey } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { Type } from "typebox";
-import type { HostState } from "../contract/bridge.ts";
+import type { HostState, SelectedWorkspace } from "../contract/bridge.ts";
 import { SelectedWorkspaceType } from "../contract/desktop-window.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { newestModelCatalog } from "../data/catalog.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { sessionList } from "../data/directory.ts";
+import { sessionRows } from "../data/session-rows.ts";
 import { hostWatch } from "../data/watches.ts";
+import type { WatchStore } from "../data/watch-store.ts";
 import { sessionId } from "../data/schemas.ts";
 import { startupConnection } from "../data/startup.ts";
 import { activeTab, tabPlace } from "../tabs/model.ts";
@@ -66,7 +68,9 @@ export function forgetFirstFrame(): void {
   removeStored(localArea(), FIRST_FRAME_KEY);
 }
 
-export function seedFirstFrame(host: string): boolean {
+export function seedFirstFrame(host: string, workspace: SelectedWorkspace | undefined): boolean {
+  if (workspace !== undefined)
+    queryClient.setQueryData(keys.host, { workspace } satisfies HostState);
   const stored = readStored(localArea(), FIRST_FRAME_KEY, FirstFrameType, null);
   const frame = stored?.host === host ? stored : undefined;
 
@@ -83,7 +87,12 @@ export function seedFirstFrame(host: string): boolean {
   queryClient.setQueryData(keys.firstFrameHome, frame.home, { updatedAt: 0 });
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
 
-  if (frame.folder !== null && place.kind === "session" && place.sessionId === frame.folder.session)
+  if (
+    workspace === undefined &&
+    frame.folder !== null &&
+    place.kind === "session" &&
+    place.sessionId === frame.folder.session
+  )
     queryClient.setQueryData(keys.host, { workspace: frame.folder.workspace } satisfies HostState, {
       updatedAt: 0,
     });
@@ -119,7 +128,7 @@ function windowFolder(): FirstFrame["folder"] {
 function write(): void {
   const catalog = newestModelCatalog();
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
-  const directory = sessionList("roots").value;
+  const directory = sessionRows().roots;
   const host = hostWatch("host").value;
 
   if (recording === undefined || catalog === undefined) return;
@@ -162,7 +171,7 @@ export async function windowContentReady(): Promise<void> {
   const check = (): void => {
     const kind = startupConnection.read().kind;
 
-    if (kind === "failed" || kind === "unreachable" || kind === "migrating") noContent.resolve();
+    if (kind === "failed" || kind === "unreachable") noContent.resolve();
   };
 
   const leave = startupConnection.subscribe(check);
@@ -174,13 +183,24 @@ export async function windowContentReady(): Promise<void> {
       noContent.promise,
       Promise.all([
         queryClient.getQueryData(keys.firstFrameRoots) === undefined
-          ? sessionList("roots").first()
+          ? arrived(sessionList("roots"))
           : undefined,
-        place.kind === "session" ? chatStore(place.sessionId).first() : undefined,
+        place.kind === "session" ? arrived(chatStore(place.sessionId)) : undefined,
       ]),
     ]);
   } finally {
     clearTimeout(limit);
     leave();
   }
+}
+
+function arrived<T>(store: WatchStore<T>): Promise<void> | undefined {
+  return store.active && store.error === undefined
+    ? store
+        .until(() => true)
+        .then(
+          () => undefined,
+          () => undefined,
+        )
+    : undefined;
 }

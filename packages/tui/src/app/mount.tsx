@@ -1,7 +1,7 @@
-import type { Connection, SessionId } from "@nyte-ai/sdk";
-import type { HostConnection } from "@nyte-ai/sdk/client";
-import { CliRenderEvents, MouseButton, engine, maybeMakeRenderable } from "@opentui/core";
-import type { CliRenderer, Renderable } from "@opentui/core";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
+import { CliRenderEvents, MouseButton, Renderable, engine } from "@opentui/core";
+import type { CliRenderer } from "@opentui/core";
 import { RendererContext, _render, createComponent } from "@opentui/solid";
 import { createRoot, createSignal } from "solid-js";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
@@ -15,7 +15,8 @@ import { createRunner } from "../effects/runner.ts";
 import { exitStatus } from "../lifecycle.ts";
 import { installMiniScrollback } from "../mini/scrollback.tsx";
 import type { Msg } from "../model/msg.ts";
-import { followedSession, initialState } from "../model/state.ts";
+import { initialState } from "../model/initial-state.ts";
+import { followedSession } from "../model/state.ts";
 import { waitingMessages } from "../model/table-input.ts";
 import type { FailureReport, TerminalFacts } from "../model/state.ts";
 import { readDraft } from "../ui/composer/composer.tsx";
@@ -33,8 +34,7 @@ import type { Typeahead } from "./typeahead.ts";
 export type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
 
 export interface HostLink {
-  readonly connection: Connection;
-  readonly live: HostConnection;
+  readonly connection: ClientConnection;
   readonly folder: string | null;
   readonly contextFiles?: false;
 }
@@ -213,7 +213,14 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
       store.dispatch({ kind: "copy-text", text });
   };
 
-  const onFocus = (): void => store.dispatch({ kind: "terminal-focus", focused: true });
+  const onFocus = (): void => {
+    store.dispatch({ kind: "terminal-focus", focused: true });
+    void options.host.then(
+      (link) => link.connection.retry(),
+      () => undefined,
+    );
+  };
+
   const onBlur = (): void => store.dispatch({ kind: "terminal-focus", focused: false });
 
   renderer.on(CliRenderEvents.RESIZE, syncTerminal);
@@ -389,7 +396,7 @@ async function openHost(
     : options.plugins(link, dispatch));
 
   return {
-    host: hostPort(link.connection, link.live, link.folder, () => nextFrame(options.renderer), {
+    host: hostPort(link.connection, link.folder, () => nextFrame(options.renderer), {
       contextFiles: link.contextFiles,
     }),
     plugins,
@@ -404,7 +411,7 @@ function terminalPlugins(
   ports: LocalPorts,
   dispatch: (msg: Msg) => void,
 ): Promise<ClientPlugins> {
-  return pluginsPort(link.connection, link.live, {
+  return pluginsPort(link.connection, {
     notify: (title, body, sound) => ports.terminal.notify(title, body, sound),
     report: (plugin, message) =>
       dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
@@ -412,7 +419,10 @@ function terminalPlugins(
 }
 
 export function drawnPart(renderer: CliRenderer, drawn: unknown): Renderable | null {
-  return drawn === undefined || drawn === null ? null : maybeMakeRenderable(renderer, drawn);
+  if (typeof drawn !== "function") return null;
+  const node: unknown = drawn(renderer);
+
+  return node instanceof Renderable ? node : null;
 }
 
 export function nextFrame(renderer: CliRenderer): Promise<void> {

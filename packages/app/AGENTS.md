@@ -4,13 +4,28 @@ Load the nyte-styles skill before writing StyleX, and read the ui package's AGEN
 a shared component.
 
 Each source folder owns one concept and sits in a layer; a folder never imports one above it.
-`pnpm layers` checks this; when it fails it names the doc that lists what each folder owns. Load
-the naming skill before adding a folder.
+`pnpm layers` checks this; when it fails it prints the rule and the fix.
 
 ## Priorities
 
 Stability, then simplicity, then performance. A faster path that can break, or that adds a second
 way to do the same thing, loses to the plain one.
+
+## Actions
+
+- Everything the app does by name is an `AppAction`: a row in `APP_ACTIONS` and a case in
+  `runAction`. A key, a menu item and the palette name one through a `clientActions` entry (`action`
+  and `input`). `nyte action run` and plugins reach the same case through `offerActions`. Never add
+  a second dispatcher.
+- A preference a script reads or sets gets a `setting.<name>` row in `SETTING_ACTIONS`. Leave out
+  what the app remembers about its own layout, and every switch that guards links, developer tools
+  or remote control (`remoteControl`, `developerMode`, `trustedLinkHosts`, `confirmExternalLinks`,
+  `linkTarget`).
+- The declared list never changes while the app runs: a changed list reconnects the socket. An
+  action that can't run now answers `unavailable`. The whole list fits one hello
+  (`HELLO_MAX_BYTES`).
+- `offerActions` runs a request from the connection's own principal, and any other only while
+  `preferences.remoteControl` is on.
 
 ## Fonts
 
@@ -40,3 +55,24 @@ These rules hold in every package.
 - Choose at the call site. A component that can show either takes the fact that decides, as
   `TaskMark` takes `job`, never a style.
 - Never restyle a shared indicator to look like the other.
+
+## Workbench editor
+
+- `WorkbenchViewState.tabs` is the only file-tab list. The strip shows Editor as one slot, and
+  `move-slot` moves its file records as a block.
+- Resolve Editor's target file with `activeEditorFile`.
+- Close requests append to the view's `closeQueue` and never replace it. Cancel empties the queue
+  and keeps those files open with their drafts. A saving entry can't be discarded.
+- Split placement uses the source file's group, not the focused one. Native drag (`FILE_TAB_DRAG`)
+  is the only drag owner on file tabs; never wrap them in the strip's `SortableList`.
+- The focused group's marker reads `appearance.focusColor`, not `focusRing`, which pointer modality
+  clears.
+- Lists that grow with a file or a workspace render a window of rows: the outline through
+  `useVirtualizer`, Quick Open through `MATCH_LIMIT`.
+
+## Renderer tests
+
+- A renderer test is a vitest test that calls `testRenderer(url, setup, { captures })`, plus a
+  browser file exporting a `run()` that returns a string.
+- To capture, call `window.rendererCapture(name)`, then await the `renderer-captured` document event.
+- The window is 800×600. Size the layout with a container element, not the window.

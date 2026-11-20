@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import { Compile } from "typebox/compile";
 import type { OpenSocket } from "@nyte-ai/sdk/client";
 
 export const HOST_PORT_ORIGIN = "http://127.0.0.1";
@@ -46,6 +46,8 @@ const PortMessageType = Type.Union([
 ]);
 
 export type PortMessage = Static<typeof PortMessageType>;
+
+const portMessages = Compile(PortMessageType);
 
 export interface PortEnd {
   open(handlers: { readonly message: (data: unknown) => void; readonly closed: () => void }): void;
@@ -736,7 +738,7 @@ function wholeBuffer(bytes: Uint8Array): Uint8Array {
 }
 
 function readMessage(data: unknown): PortMessage | undefined {
-  return Value.Check(PortMessageType, data) ? data : undefined;
+  return portMessages.Check(data) ? data : undefined;
 }
 
 function sendableCode(code: number): number {

@@ -1,0 +1,117 @@
+---
+title: Icon
+description: "Named glyphs from Central Icons, outlined or filled"
+---
+
+```ts title="Import"
+import { ControlGlyphs, Icon, IconSwap, PanelToggleIcon, SplitPreviewIcon } from "@nyte-ai/ui/icon";
+```
+
+Named glyphs.
+
+## Usage
+
+- Animate glyph changes with `IconSwap`.
+- Wrap custom controls in `ControlGlyphs` for inherited color and full opacity.
+
+## Examples
+
+<Preview>
+  <IconDemo />
+</Preview>
+
+```tsx
+<Icon name="folder" />
+<Icon name="warning" variant="filled" />
+<Icon name="warning" size="sm" label="Warning" />
+<Icon name="sparkle" size="xs" />
+```
+
+### Panel toggle
+
+<Preview>
+  <PanelToggleIconDemo />
+</Preview>
+
+```tsx
+const [visible, setVisible] = useState(true);
+
+<Button
+  iconOnly
+  aria-label={visible ? "Hide sidebar" : "Show sidebar"}
+  onClick={() => setVisible(!visible)}
+>
+  <PanelToggleIcon side="left" visible={visible} />
+</Button>;
+```
+
+### Split preview
+
+The pane a split would open fills while the button holding the glyph is pointed at or focused.
+
+<Preview>
+  <SplitPreviewIconDemo />
+</Preview>
+
+```tsx
+<Button iconOnly aria-label="Split down">
+  <SplitPreviewIcon side="down" />
+</Button>
+```
+
+## Props
+
+### Icon and IconSwap
+
+| Prop        | Type                           | Default      | Description                                                  |
+| ----------- | ------------------------------ | ------------ | ------------------------------------------------------------ |
+| `name`      | `IconName` or `FilledIconName` | Required     | Use `FilledIconName` for filled icons, `IconName` otherwise. |
+| `size`      | `GlyphSize`                    | `"md"`       |                                                              |
+| `variant`   | `"outlined" \| "filled"`       | `"outlined"` |                                                              |
+| `label`     | `string`                       |              | Announced as `role="img"`. Omit to hide.                     |
+| `xstyle`    | `Restyle<"Icon">`              |              |                                                              |
+| `className` | `string`                       |              |                                                              |
+| `style`     | `React.CSSProperties`          |              |                                                              |
+
+### ControlGlyphs
+
+| Prop       | Type        | Default  |
+| ---------- | ----------- | -------- |
+| `children` | `ReactNode` | Required |
+
+### PanelToggleIcon
+
+| Prop      | Type                | Default |
+| --------- | ------------------- | ------- |
+| `side`    | `"left" \| "right"` |         |
+| `visible` | `boolean`           |         |
+| `size`    | `GlyphSize`         | `"md"`  |
+
+### SplitPreviewIcon
+
+| Prop   | Type                | Default |
+| ------ | ------------------- | ------- |
+| `side` | `"right" \| "down"` |         |
+| `size` | `GlyphSize`         | `"md"`  |
+
+### GlyphSize
+
+| Step    | Size at the default UI size |
+| ------- | --------------------------- |
+| `"2xs"` | 10px                        |
+| `"xs"`  | 12px                        |
+| `"sm"`  | 14px                        |
+| `"md"`  | 16px                        |
+| `"lg"`  | 20px                        |
+
+### IconName
+
+`agent`, `agent-amp`, `agent-antigravity`, `agent-cursor`, `agent-devin`, `agent-goose`, `agent-junie`, `agent-kilo`, `agent-langchain`, `apps`, `archive`, `arrow-down`, `arrow-left`, `arrow-right`, `arrow-up`, `arrow-wall-left`, `bell`, `bezier-pointer`, `bolt`, `book`, `box-3d`, `brackets`, `browser`, `bubble-heart`, `bubble-question`, `bug`, `camera`, `canvas-grid`, `chart`, `checkmark`, `chevron-down`, `chevron-right`, `chevron-up-down`, `circle-ban`, `circle-check`, `circle-info`, `circle-x`, `circles`, `clock`, `close`, `cloud`, `cloud-api`, `cloudflare`, `code-brackets`, `collapse`, `command`, `computer`, `console`, `copy`, `cube`, `cursor-click`, `customize`, `devices`, `diff`, `drag-handle`, `draft`, `eraser`, `expand`, `eye`, `file`, `file-add`, `file-text`, `filters`, `folder`, `folder-add`, `folder-open`, `fork`, `git`, `git-branch`, `github`, `globe`, `grok`, `hourglass`, `imac`, `inbox-checked`, `inbox-empty`, `javascript`, `key`, `keyboard`, `laptop`, `layers`, `linear`, `list`, `loader`, `lock`, `mcp`, `merged`, `minimize`, `model-anthropic`, `model-deepseek`, `model-gemini`, `model-generic`, `model-kimi`, `model-minimax`, `model-mistral`, `model-openai`, `model-qwen`, `model-zai`, `moon`, `more`, `more-horizontal`, `mouse-scroll-down`, `mouse-scroll-up`, `new-chat`, `new-chat-folder`, `nyte`, `panel-left`, `panel-right`, `paperclip`, `pencil`, `phone`, `pin`, `plus`, `provider-acp`, `provider-claude-code`, `provider-copilot`, `provider-openai-codex`, `provider-opencode`, `provider-openrouter`, `provider-vercel`, `pull-request`, `pull-request-closed`, `react`, `refresh`, `return`, `ruler`, `script`, `search`, `server`, `settings`, `shield`, `slack`, `skills`, `sparkle`, `speed-low`, `split-down`, `split-right`, `square`, `square-checklist`, `star`, `status`, `test-tube`, `trash`, `trending`, `typescript`, `unarchive`, `unpin`, `user`, `user-key`, `warning`, `website`, `window-app`, `writing`, `x`.
+
+### FilledIconName
+
+`bubble-question`, `star`, `warning`.
+
+## Accessibility
+
+- Name icon-only controls with `aria-label`.

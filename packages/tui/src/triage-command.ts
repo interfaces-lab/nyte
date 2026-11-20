@@ -31,17 +31,14 @@ const NEW_ISSUE_URL = `https://github.com/${REPOSITORY}/issues/new?template=bug_
 
 const LOG_LINES = 400;
 
-/** Declining the confirmation the run needs, or Ctrl+C at a prompt, exits as Ctrl+C would. */
 const CANCELED_EXIT = exitStatus("SIGINT");
 
 export type TriageAgent = "nyte" | "claude" | "codex";
 
 const AGENTS: readonly TriageAgent[] = ["nyte", "claude", "codex"];
 
-/** The last line `nyte -p --json` prints on stdout when the run completed. */
 const resultLines = Compile(Type.Object({ type: Type.Literal("result"), session: Type.String() }));
 
-/** The line `nyte -p --json` prints on stdout when the agent starts a tool. */
 const toolLines = Compile(Type.Object({ type: Type.Literal("tool"), name: Type.String() }));
 
 const ErrorDocumentType = Type.Object({
@@ -52,23 +49,16 @@ const ErrorDocumentType = Type.Object({
   ),
 });
 
-/** The one document `nyte -p --json` prints on stderr when it fails; `data.session` once a session exists. */
 type ErrorDocument = Static<typeof ErrorDocumentType>;
 
 const errorDocuments = Compile(ErrorDocumentType);
 
-/** One file of the bundle: shown in the preview, written only after the person agrees. */
 interface BundleFile {
   readonly name: string;
   readonly detail: string;
   readonly text: () => Promise<string>;
 }
 
-/**
- * Previews the bundle and the agent, asks once, then writes the bundle and starts the agent in it.
- * Nothing is written before the person answers y. Returns the agent's exit code, gh's when the
- * person posts the issue, or 130 when they decline or press Ctrl+C at a prompt.
- */
 export async function triageCommand(
   args: readonly string[],
   context: { readonly output: Output; readonly invocation: Invocation },
@@ -151,7 +141,6 @@ export function parseTriageArgs(args: readonly string[]) {
   return { agent, problem: words.join(" ").trim() };
 }
 
-/** The issue draft: the first non-empty line is the title, the rest is the body. */
 export function parseIssue(markdown: string): { readonly title: string; readonly body: string } {
   const lines = markdown.replace(/\r\n/gu, "\n").split("\n");
   const first = lines.findIndex((line) => line.trim() !== "");
@@ -167,7 +156,6 @@ export function parseIssue(markdown: string): { readonly title: string; readonly
   };
 }
 
-/** Claude Code settings that deny reading secret files and posting issues. */
 export function claudeSettings(home: string = homedir()): string {
   const nyte = nyteHome().replace(home, "~");
 
@@ -227,7 +215,6 @@ function systemText(): string {
   ].join("\n");
 }
 
-/** What the bundle will hold. Reads only the allowlisted logs, each through readShareable, and only when written. */
 async function planBundle(report: DoctorReport, problem: string): Promise<readonly BundleFile[]> {
   const logs = join(nyteHome(), "logs");
   const tuiLog = join(logs, "tui.log");
@@ -291,7 +278,6 @@ async function writeBundle(folder: string, bundle: readonly BundleFile[]): Promi
     await writeFile(join(folder, file.name), redact(await file.text()), { mode: 0o600 });
 }
 
-/** Nyte when a provider has a credential, else Claude Code, else Codex. With no host running the credentials are unknown, so Nyte goes last instead of not at all. */
 function pickAgent(
   report: DoctorReport,
   requested: TriageAgent | undefined,
@@ -328,11 +314,6 @@ function agentLabel(agent: TriageAgent, report: DoctorReport): string {
   }
 }
 
-/**
- * After the handoff, Ctrl+C is triage's to handle. The agent gets its own from the terminal, so
- * triage ignores it and stays alive to offer the issue; at the issue question it cancels. Each
- * call listens afresh, so a Ctrl+C meant for the agent doesn't answer the question.
- */
 async function ownInterrupts<T>(work: (interrupted: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
   const interrupt = (): void => controller.abort();
@@ -353,12 +334,6 @@ function run(command: string, args: readonly string[], cwd: string): Promise<num
   });
 }
 
-/**
- * Sends the playbook as the first turn with `nyte -p --json`, naming each tool the agent runs as
- * its line arrives, then opens that session in the TUI. The session comes from the `result` line on
- * stdout, or from the error document's `data.session` on stderr when the run didn't complete; a run
- * that never started a session fails here.
- */
 async function runNyte(folder: string, message: string, output: Output): Promise<number> {
   const command = selfCommand();
   output.progress("Sending the playbook to nyte…");
@@ -395,7 +370,6 @@ async function runNyte(folder: string, message: string, output: Output): Promise
   return run(command[0], [...command.slice(1), "--session", session], folder);
 }
 
-/** One line of the child's output as JSON, or `undefined` for a line that isn't. */
 function jsonLine(line: string): Json | undefined {
   try {
     return toJson(JSON.parse(line));
@@ -404,7 +378,6 @@ function jsonLine(line: string): Json | undefined {
   }
 }
 
-/** nyte's own error document, retold as triage's failure with the same recovery commands. */
 function childFailure(document: ErrorDocument | undefined): CliError {
   return new CliError("failed", "Couldn't start the triage chat in nyte.", {
     details:
@@ -444,7 +417,6 @@ async function startAgent(
   }
 }
 
-/** Prints the whole issue, asks, and creates it with gh only after y. Declining keeps the agent's exit code; Ctrl+C (`signal`) exits 130. */
 async function offerIssue(
   folder: string,
   agentCode: number,

@@ -99,12 +99,10 @@ export function railModel(input: {
 
       if (kind === "changes" && changes) return [];
 
-      if (descriptor.launch.policy === "new")
-        return [{ kind, label: `New ${descriptor.label}`, icon: descriptor.icon }];
+      if (descriptor.launch.policy !== "new" && openTabs.some((tab) => tab.kind === kind))
+        return [];
 
-      return openTabs.some((tab) => tab.kind === kind)
-        ? []
-        : [{ kind, label: descriptor.label, icon: descriptor.icon }];
+      return [{ kind, label: descriptor.label, icon: descriptor.icon }];
     }),
   };
 }

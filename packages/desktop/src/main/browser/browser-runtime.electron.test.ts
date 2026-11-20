@@ -1,13 +1,7 @@
-import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import electronBinary from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { build } from "vite";
 import { expect, test } from "vitest";
+import { runBrowserHarness } from "./fixtures/browser-harness.ts";
 
 const PAGE_ONE = `<!doctype html><meta charset="utf-8"><title>page one</title>
 <body style="font:16px system-ui;margin:0">
@@ -25,6 +19,24 @@ const PAGE_ONE = `<!doctype html><meta charset="utf-8"><title>page one</title>
 </script>
 `;
 
+const AUTOFOCUS_PAGE = `<!doctype html><title>autofocus</title><input id="q" autofocus>`;
+
+const SCRIPT_FOCUS_PAGE = `<!doctype html><title>script focus</title><input id="q">
+<script>
+  document.getElementById("q").focus();
+  window.__focused = document.activeElement.id;
+</script>`;
+
+const LATER_FOCUS_PAGE = `<!doctype html><title>later</title>
+<button id="later" style="width:180px;height:40px">Focus Later</button><input id="q">
+<script>
+  document.getElementById("later").addEventListener("click", () =>
+    setTimeout(() => {
+      document.getElementById("q").focus();
+      window.__focused = document.activeElement.id;
+    }, 400));
+</script>`;
+
 const PAGE_TWO = `<!doctype html><meta charset="utf-8"><title>page two</title>
 <body style="font:16px system-ui;margin:0">
 <button id="gamma" style="position:absolute;left:40px;top:40px;width:180px;height:40px">Gamma Button</button>
@@ -34,66 +46,58 @@ const PAGE_TWO = `<!doctype html><meta charset="utf-8"><title>page two</title>
 </script>
 `;
 
-const HARNESS = `const { app, BaseWindow, WebContentsView, session } = require("electron");
-process.stdin.on("close", () => app.exit(1));
-process.stdin.resume();
-const http = require("node:http");
-const fs = require("node:fs");
-const rt = require("./runtime.cjs");
-
-const dir = __dirname;
-const profile = dir + "/profile";
-fs.mkdirSync(profile);
-app.setPath("userData", profile);
-app.setPath("sessionData", profile);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-app.whenReady().then(async () => {
+const SCRIPT = `
+  const rt = require("./runtime.cjs");
   const pages = {
     one: fs.readFileSync(dir + "/page1.html"),
     two: fs.readFileSync(dir + "/page2.html"),
+    autofocus: fs.readFileSync(dir + "/autofocus.html"),
+    focus: fs.readFileSync(dir + "/focus.html"),
+    later: fs.readFileSync(dir + "/later.html"),
   };
-  const server = http.createServer((req, res) => {
-    res.writeHead(200, { "content-type": "text/html" });
-    res.end(req.url.startsWith("/two") ? pages.two : pages.one);
-  });
-  await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const base = "http://127.0.0.1:" + server.address().port;
-
-  const win = new BaseWindow({ show: false, width: 900, height: 600 });
-  const view = new WebContentsView({
-    webPreferences: {
-      session: session.fromPartition("persist:browser-e2e"),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      devTools: false,
-      backgroundThrottling: false,
-    },
-  });
-  win.contentView.addChildView(view);
-  view.setBounds({ x: 0, y: 0, width: 900, height: 600 });
-  const wc = view.webContents;
+  const server = await serve((path) => pages[path.slice(1)] ?? pages.one);
+  const base = server.url;
+  const context = browser();
+  const host = await context.guestWindow({ show: true });
+  context.surfaces.open({ surface: "runtime", url: base + "/one", holder: "tab" }, host.id);
+  await host.show("runtime", { x: 0, y: 0, width: 900, height: 600 });
+  const wc = await context.attached("runtime");
+  await until(() => !wc.isLoading() && wc.getURL() === base + "/one");
+  const key = await focusWindow(host.window);
+  await host.focusComposer();
+  const focus = [];
+  const keyboard = async (step) =>
+    focus.push([step, await host.page("document.activeElement.id || document.activeElement.tagName"), wc.focusedFrame !== null]);
+  await keyboard("start");
 
   const runtime = rt.createSurfaceRuntime();
-  await wc.loadURL(base + "/one");
-  win.show();
-  await sleep(300);
 
   const first = await rt.takeSnapshot(wc, runtime);
   const button = first.nodes.find((n) => n.name === "Alpha Button");
   const clicked = await rt.performClick(wc, runtime, button.ref, "left", false, true);
   const clickTarget = await wc.executeJavaScript("window.__clicked");
+  await keyboard("click");
 
   const typing = await rt.takeSnapshot(wc, runtime);
   const field = typing.nodes.find((n) => n.editable === true);
   const typed = await rt.performType(wc, runtime, field.ref, "hello world", false, true, true);
   const fieldValue = await wc.executeJavaScript("document.getElementById('q').value");
   const submitted = await wc.executeJavaScript("window.__submitted || null");
+  await keyboard("type");
+  await rt.performPress(wc, runtime, "Tab", undefined, true);
+  await keyboard("press");
+
+  const pressed = async () =>
+    (await host.messages()).filter(([, channel]) => channel === "nyte:browser-page-press").length;
+  const agentPresses = await pressed();
+  const alpha = (await rt.takeSnapshot(wc, runtime)).nodes.find((n) => n.name === "Alpha Button");
+  await wc.executeJavaScript("document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); true");
+  await rt.performClick(wc, runtime, alpha.ref, "left", false, true);
+  await until(async () => (await pressed()) > agentPresses);
+  const forgedPresses = (await pressed()) - agentPresses - 1;
 
   const staleRef = (await rt.takeSnapshot(wc, runtime)).nodes.find((n) => n.name === "Alpha Button").ref;
   await wc.loadURL(base + "/two");
-  await sleep(200);
   const stale = await rt.performClick(wc, runtime, staleRef, "left", false, true);
   const staleTarget = await wc.executeJavaScript("window.__clicked");
 
@@ -104,7 +108,27 @@ app.whenReady().then(async () => {
 
   const shot = await rt.performCapture(wc);
 
-  console.log("BROWSER_E2E " + JSON.stringify({
+  for (const step of ["autofocus", "focus"]) {
+    await host.focusComposer();
+    await wc.loadURL(base + "/" + step);
+    await until(() => host.page("document.activeElement.tagName === 'WEBVIEW'"), 20);
+    await keyboard(step + " on load");
+  }
+
+  const focusedOnLoad = await wc.executeJavaScript("window.__focused ?? null");
+
+  await host.focusComposer();
+  await wc.loadURL(base + "/later");
+  const later = (await rt.takeSnapshot(wc, runtime)).nodes.find((n) => n.name === "Focus Later");
+  await rt.performClick(wc, runtime, later.ref, "left", false, true);
+  await keyboard("after the agent's press");
+  await until(() => wc.executeJavaScript("window.__focused === 'q'"));
+  await until(() => host.page("document.activeElement.tagName === 'WEBVIEW'"), 20);
+  await keyboard("focus after activation");
+  const focusedLater = await wc.executeJavaScript("window.__focused ?? null");
+
+  report({
+    key,
     refs: first.nodes.length,
     clickKind: clicked.kind,
     clickTarget,
@@ -116,81 +140,66 @@ app.whenReady().then(async () => {
     freshKind: freshClick.kind,
     freshTarget,
     captureBytes: shot ? shot.length : 0,
-  }));
+    focus,
+    agentPresses,
+    forgedPresses,
+    pageFocused: [focusedOnLoad, focusedLater],
+  });
   server.close();
-  app.exit(0);
-}).catch((e) => { console.log("BROWSER_E2E_FATAL " + e.stack); app.exit(1); });
 `;
 
 test.runIf(process.env["NYTE_DESKTOP_BROWSER_E2E"] === "1")(
-  "the browser runtime snapshots, clicks, types, and invalidates refs across a navigation",
+  "the browser runtime snapshots, clicks, types and presses in a guest without taking the app's keyboard, and invalidates refs across a navigation",
   async () => {
-    const dir = await mkdtemp(join(tmpdir(), "nyte-browser-e2e-"));
-
-    try {
-      await build({
-        logLevel: "silent",
-        configFile: false,
-        ssr: { noExternal: true },
-        build: {
-          ssr: fileURLToPath(new URL("./browser-runtime.ts", import.meta.url)),
-          outDir: dir,
-          emptyOutDir: false,
-          minify: false,
-          rollupOptions: {
-            external: ["electron"],
-            output: { format: "cjs", entryFileNames: "runtime.cjs" },
-          },
+    const report: unknown = JSON.parse(
+      await runBrowserHarness({
+        script: SCRIPT,
+        files: {
+          "page1.html": PAGE_ONE,
+          "page2.html": PAGE_TWO,
+          "autofocus.html": AUTOFOCUS_PAGE,
+          "focus.html": SCRIPT_FOCUS_PAGE,
+          "later.html": LATER_FOCUS_PAGE,
         },
-      });
-      await writeFile(join(dir, "page1.html"), PAGE_ONE);
-      await writeFile(join(dir, "page2.html"), PAGE_TWO);
-      await writeFile(join(dir, "harness.js"), HARNESS);
+      }),
+    );
 
-      const electronPath = Value.Parse(Type.String(), electronBinary);
+    expect(report).toMatchObject({
+      key: true,
+      focus: [
+        ["start", "composer", false],
+        ["click", "composer", false],
+        ["type", "composer", false],
+        ["press", "composer", false],
+        ["autofocus on load", "composer", false],
+        ["focus on load", "composer", false],
+        ["after the agent's press", "composer", false],
+        ["focus after activation", "composer", false],
+      ],
+      pageFocused: ["q", "q"],
+      agentPresses: 2,
+      forgedPresses: 0,
+      clickKind: "ok",
+      clickTarget: "alpha",
+      typeKind: "ok",
+      fieldValue: "hello world",
+      submitted: "hello world",
+      staleTarget: "",
+      freshKind: "ok",
+      freshTarget: "gamma",
+    });
+    expect(report).toHaveProperty(
+      "staleFailure",
+      expect.stringMatching(/unknown_ref|stale_document|detached/),
+    );
 
-      const output = await new Promise<string>((resolve, reject) => {
-        const child = spawn(
-          electronPath,
-          [join(dir, "harness.js"), "--use-mock-keychain", "--password-store=basic"],
-          { stdio: ["pipe", "pipe", "ignore"] },
-        );
+    const bytes = Value.Parse(
+      Type.Object({ refs: Type.Number(), captureBytes: Type.Number() }),
+      report,
+    );
 
-        let stdout = "";
-        child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-        child.on("error", reject);
-        child.on("close", () => resolve(stdout));
-      });
-
-      const line = output.split("\n").find((l) => l.startsWith("BROWSER_E2E "));
-      expect(line, output).toBeDefined();
-      const report: unknown = JSON.parse((line ?? "").slice("BROWSER_E2E ".length));
-
-      expect(report).toMatchObject({
-        clickKind: "ok",
-        clickTarget: "alpha",
-        typeKind: "ok",
-        fieldValue: "hello world",
-        submitted: "hello world",
-        staleTarget: "",
-        freshKind: "ok",
-        freshTarget: "gamma",
-      });
-      expect(report).toHaveProperty(
-        "staleFailure",
-        expect.stringMatching(/unknown_ref|stale_document|detached/),
-      );
-
-      const bytes = Value.Parse(
-        Type.Object({ refs: Type.Number(), captureBytes: Type.Number() }),
-        report,
-      );
-
-      expect(bytes.refs).toBeGreaterThan(0);
-      expect(bytes.captureBytes).toBeGreaterThan(1000);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    expect(bytes.refs).toBeGreaterThan(0);
+    expect(bytes.captureBytes).toBeGreaterThan(1000);
   },
   120_000,
 );

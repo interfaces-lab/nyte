@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { homedir } from "node:os";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { sdk } from "@nyte-ai/sdk/client";
+import { connect } from "@nyte-ai/sdk/client";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import { tryLockFile } from "@nyte-ai/connect/host";
 import { SdkError } from "@nyte-ai/schema";
@@ -20,6 +22,7 @@ import { printable } from "./cli/format.ts";
 import { selfCommand } from "./compiled.ts";
 import { hostFailure } from "./host-socket.ts";
 import { supersedes } from "./releases.ts";
+import { fileJournal } from "./send-journal.ts";
 import { VERSION } from "./version.ts";
 
 export type HostSource =
@@ -27,7 +30,7 @@ export type HostSource =
   | { readonly kind: "attached"; readonly endpoint: LocalEndpoint };
 
 export interface HostSession {
-  readonly connection: Connection;
+  readonly connection: ClientConnection;
   readonly endpoint: LocalEndpoint;
   close(): Promise<void>;
 }
@@ -38,20 +41,16 @@ const HOST_POLL_MS = 100;
 
 const HOST_WATCH_MS = 2_000;
 
-/**
- * `progress` hears the phase of a wait the person would otherwise sit through in silence, such as
- * starting a host. One-shot commands pass `Output.progress`; the full-screen TUI passes nothing,
- * because its screen owns the terminal.
- */
 export async function connectHost(
   source: HostSource,
+  kind: "tui" | "cli",
   progress?: (phase: string) => void,
 ): Promise<HostSession> {
   switch (source.kind) {
     case "local":
-      return retireOutdatedHost(await attachHost(await ensureHost(progress)));
+      return retireOutdatedHost(await attachHost(await ensureHost(progress), kind));
     case "attached":
-      return attachHost(source.endpoint);
+      return attachHost(source.endpoint, kind);
     default: {
       const _exhaustive: never = source;
 
@@ -66,6 +65,29 @@ async function ensureHost(progress?: (phase: string) => void): Promise<LocalEndp
 
   if (running !== null) return { url: running.url, token: running.token };
   progress?.("Starting a Nyte host…");
+  const deadline = Date.now() + HOST_START_MS;
+  let child: ChildProcess | null = null;
+
+  while (Date.now() < deadline) {
+    const exited = child !== null && (child.exitCode !== null || child.signalCode !== null);
+
+    if ((child === null || exited) && !hostLockHeld()) {
+      if (exited) throw new Error(`The Nyte host stopped while starting. See ${hostLogPath()}.`);
+      child = startHost();
+    }
+
+    await sleep(HOST_POLL_MS);
+    const started = await findRunningHost(path);
+
+    if (started !== null) return { url: started.url, token: started.token };
+  }
+
+  throw new Error(
+    `The Nyte host didn't start within ${String(HOST_START_MS / 1000)} s. See ${hostLogPath()}.`,
+  );
+}
+
+function startHost(): ChildProcess {
   const command = selfCommand();
 
   const child = spawn(command[0], [...command.slice(1), "host", "--log", "--supervised"], {
@@ -78,23 +100,8 @@ async function ensureHost(progress?: (phase: string) => void): Promise<LocalEndp
   });
 
   child.unref();
-  const deadline = Date.now() + HOST_START_MS;
 
-  while (Date.now() < deadline) {
-    const exited = child.exitCode !== null || child.signalCode !== null;
-
-    await sleep(HOST_POLL_MS);
-    const started = await findRunningHost(path);
-
-    if (started !== null) return { url: started.url, token: started.token };
-
-    if (exited && !hostLockHeld())
-      throw new Error(`The Nyte host stopped while starting. See ${hostLogPath()}.`);
-  }
-
-  throw new Error(
-    `The Nyte host didn't start within ${String(HOST_START_MS / 1000)} s. See ${hostLogPath()}.`,
-  );
+  return child;
 }
 
 function retireOutdatedHost(session: HostSession): HostSession {
@@ -134,12 +141,6 @@ async function retireWhenOutdated(connection: Connection, signal: AbortSignal): 
   await request.withdraw();
 }
 
-/**
- * Whether a host holds `host.lock`, so one is starting or serving even though `host.json` doesn't
- * name it yet. Asked only after the host this command started has exited: it either lost the lock
- * to that host or failed. Taking the lock to ask holds it for one SQLite open, so a host claiming
- * it in that instant sees it taken.
- */
 function hostLockHeld(): boolean {
   const release = tryLockFile(hostLockPath());
   release?.();
@@ -147,25 +148,27 @@ function hostLockHeld(): boolean {
   return release === null;
 }
 
-/** A host that answers and refuses is reported with its wire error; one that never answers (`unavailable`) is `network_error`, its cause in a detail row. */
-async function attachHost(endpoint: LocalEndpoint): Promise<HostSession> {
-  const connection = await sdk
-    .connect({ url: endpoint.url, credentials: { kind: "token", token: endpoint.token } })
-    .catch((cause: unknown) => {
-      if (cause instanceof SdkError && cause.code !== "unavailable")
-        hostFailure(`attach to the host at ${endpoint.url}`)(cause);
+async function attachHost(endpoint: LocalEndpoint, kind: "tui" | "cli"): Promise<HostSession> {
+  const connection = await connect({
+    url: endpoint.url,
+    credentials: { kind: "token", token: endpoint.token },
+    client: { kind, name: "nyte", version: VERSION },
+    journal: fileJournal(),
+  }).catch((cause: unknown) => {
+    if (cause instanceof SdkError && cause.code !== "unavailable")
+      hostFailure(`attach to the host at ${endpoint.url}`)(cause);
 
-      throw new CliError("network_error", `Couldn't reach the host at ${endpoint.url}.`, {
-        details: [
-          {
-            label: "Cause",
-            value: printable(cause instanceof Error ? cause.message : String(cause)),
-          },
-          { label: "Host file", value: "nyte host writes its URL and token to ~/.nyte/host.json" },
-        ],
-        next: [{ label: "Start a host on that machine", argv: ["nyte", "host"] }],
-      });
+    throw new CliError("network_error", `Couldn't reach the host at ${endpoint.url}.`, {
+      details: [
+        {
+          label: "Cause",
+          value: printable(cause instanceof Error ? cause.message : String(cause)),
+        },
+        { label: "Host file", value: "nyte host writes its URL and token to ~/.nyte/host.json" },
+      ],
+      next: [{ label: "Start a host on that machine", argv: ["nyte", "host"] }],
     });
+  });
 
   return {
     connection,

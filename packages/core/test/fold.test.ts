@@ -17,7 +17,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import { partView } from "../src/fold/draft.ts";
 import { emptyFold, fold } from "../src/fold/fold.ts";
-import { readView } from "../src/fold/window.ts";
+import { readView } from "../src/watch/window.ts";
 import type { FoldState } from "../src/contract/fold.ts";
 
 const session: SessionId = asId("s1");

@@ -264,7 +264,7 @@ export const sessionCases = {
   ),
   MoveOptionsSchema: sample(
     MoveOptionsSchema,
-    { running: "refuse", abandoned: "keep", expect: revision },
+    { running: "refuse", abandoned: { kind: "keep" }, expect: revision },
     { abandoned: "drop" },
   ),
   SendOptionsSchema: sample(SendOptionsSchema, sendOptions, { delivery: "later" }),

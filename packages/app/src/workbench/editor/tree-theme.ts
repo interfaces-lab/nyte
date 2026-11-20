@@ -10,14 +10,19 @@ import { workbenchStyles } from "../workbench.stylex.ts";
 const styles = create({ status: { color: role.contentAccent } });
 
 export function treeItemHeight(): number {
+  return resolveHeight(`max(${target.min}, ${type.leadingSm} + 8px)`);
+}
+
+/** A CSS height in pixels as the page resolves it now, for a virtual list that needs its row height as a number. */
+export function resolveHeight(height: string): number {
   const probe = document.createElement("div");
-  probe.style.cssText = `position: absolute; visibility: hidden; height: max(${target.min}, ${type.leadingSm} + 8px)`;
+  probe.style.cssText = `position: absolute; visibility: hidden; height: ${height}`;
   document.body.append(probe);
 
-  const height = Math.ceil(probe.getBoundingClientRect().height);
+  const pixels = Math.ceil(probe.getBoundingClientRect().height);
   probe.remove();
 
-  return height;
+  return pixels;
 }
 
 export function useTreeStatusTheme() {

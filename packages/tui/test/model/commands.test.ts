@@ -31,12 +31,12 @@ const view: SessionView = {
       {
         id: "fast-mode",
         owner: "plugin",
-        scope: "session",
-        label: "Fast mode",
+        scope: "chat",
+        title: "Fast mode",
         schema: {},
         choices: [
-          { value: true, label: "on", badge: "fast" },
-          { value: false, label: "off" },
+          { value: true, title: "on", note: "fast" },
+          { value: false, title: "off" },
         ],
         value: false,
         from: "default",
@@ -69,7 +69,6 @@ describe("built-in commands", () => {
       { kind: "open", dialog: { kind: "list", purpose: { kind: "resume", sessions: [] } } },
     ],
     ["new", "", { kind: "switch-session", session: "new", announce: false }],
-    ["cd", "~/src", { kind: "change-directory", path: "~/src" }],
     [
       "settings",
       "",
@@ -114,10 +113,6 @@ describe("built-in commands", () => {
       expect(registry.find((entry) => entry.name === builtin.name)?.source).toBe("builtin");
   });
 
-  test("/cd without a path prefills instead of running", () => {
-    expect(run("cd")).toBeNull();
-  });
-
   test("a command that takes no argument refuses one", () => {
     expect(run("tree", "now")).toEqual({ kind: "refuse", reason: "/tree takes no argument" });
   });
@@ -128,7 +123,7 @@ describe("settings", () => {
     expect(run("model")).toEqual({ kind: "open", dialog: { kind: "model" } });
     expect(run("model", "other")).toEqual({
       kind: "configure",
-      selection: { model: { provider: "test", id: "other" }, effort: "off", fast: false },
+      selection: { model: { provider: "test", id: "other" }, effort: "off", modes: [] },
     });
   });
 
@@ -149,7 +144,7 @@ describe("settings", () => {
       kind: "apply-setting",
       id: "fast-mode",
       label: "Fast mode",
-      scope: "session",
+      scope: "chat",
       value: true,
     });
   });
@@ -211,24 +206,36 @@ describe("palette", () => {
 });
 
 describe("command text suggestions", () => {
+  const withKey: SessionView = {
+    ...base,
+    catalog: {
+      ...base.catalog,
+      commands: [
+        {
+          name: "websearch-key",
+          owner: "web",
+          side: "core",
+          title: "Key",
+          description: "Key",
+          takesText: true,
+          completes: true,
+        },
+      ],
+    },
+  };
+
+  test("picking a command that takes text prefills it; typing it alone runs it", () => {
+    expect(
+      play(ready(withKey), { kind: "run-command", name: "websearch-key", argument: "" }).effects,
+    ).toEqual([{ kind: "composer", op: { kind: "insert", text: "/websearch-key ", at: "start" } }]);
+    expect(
+      play(ready(withKey), typed("/websearch-key"), { kind: "send", delivery: "queue" }).effects,
+    ).toContainEqual(
+      expect.objectContaining({ kind: "run-command", name: "websearch-key", argument: "" }),
+    );
+  });
+
   test("a command that suggests its text asks as it is typed, and Tab takes a suggestion", () => {
-    const withKey: SessionView = {
-      ...base,
-      catalog: {
-        ...base.catalog,
-        commands: [
-          {
-            name: "websearch-key",
-            owner: "web",
-            side: "core",
-            title: "Key",
-            description: "Key",
-            takesText: true,
-            completes: true,
-          },
-        ],
-      },
-    };
     const asked = play(ready(withKey), typed("/websearch-key ta"));
 
     expect(asked.effects).toContainEqual({

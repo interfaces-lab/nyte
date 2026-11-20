@@ -129,6 +129,16 @@
       "types": "./dist/highlights.d.ts",
       "default": "./dist/highlights.js"
     },
+    "./table": {
+      "nyte-source": "./src/table.tsx",
+      "types": "./dist/table.d.ts",
+      "default": "./dist/table.js"
+    },
+    "./words/react": {
+      "nyte-source": "./src/words/react.ts",
+      "types": "./dist/words/react.d.ts",
+      "default": "./dist/words/react.js"
+    },
     "./trees": {
       "nyte-source": "./src/trees.ts",
       "types": "./dist/trees.d.ts",
@@ -272,6 +282,7 @@
     "./test/icon-references": "./test/icon-references.ts",
     "./styles/base.css": "./src/styles/base.css",
     "./styles/tailwind.css": "./src/styles/tailwind.css",
+    "./words/styles.css": "./src/words/styles.css",
     "./ui.css": "./dist/ui.css",
     "./avatar": {
       "nyte-source": "./src/avatar.tsx",
@@ -306,31 +317,34 @@
     "@nivo/bar": "^0.99.0",
     "@nivo/line": "^0.99.0",
     "@pierre/diffs": "1.7.0-beta.3",
-    "@pierre/highlights": "^0.5.0",
-    "@pierre/trees": "^1.0.0-beta.6",
+    "@pierre/highlights": "^0.5.1",
+    "@pierre/theme": "2.0.0",
+    "@pierre/trees": "^1.0.0",
+    "@pierre/words": "^0.2.2",
     "@shadcn/react": "^0.3.1",
-    "@stylexjs/stylex": "^0.19.1",
+    "@stylexjs/stylex": "^0.19.2",
+    "@tanstack/react-table": "^9.3.1",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
-    "lucide-react": "^1.67.0",
-    "motion": "^14.9.0",
-    "simple-icons": "^16.36.0"
+    "lucide-react": "^1.73.0",
+    "motion": "^14.14.0",
+    "simple-icons": "^16.38.0"
   },
   "devDependencies": {
-    "@stylexjs/unplugin": "^0.19.1",
+    "@stylexjs/unplugin": "^0.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "vite": "^8.3.5"
+    "vite": "^8.3.8"
   },
   "peerDependencies": {
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "optionalDependencies": {
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.27",
-    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.27"
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.46",
+    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.46"
   }
 }

@@ -7,8 +7,6 @@ import { ThemeChoicesSchema, VscodeThemeSchema } from "../theme/vscode-theme.ts"
 import { definePreference } from "./store.ts";
 import type { Preference } from "./store.ts";
 
-export { hostSetting } from "./host.ts";
-
 export { useSetting } from "./store.ts";
 
 export type { Preference, Setting } from "./store.ts";
@@ -35,12 +33,20 @@ export const preferences = {
     Type.Enum(["new-chat", "last-session"]),
     "new-chat",
   ),
-  /** Each model's own effort and Fast, by model key, so picking a model brings them back. */
+  draftFolder: definePreference(
+    { key: "nyte:draft-folder:v1" },
+    Type.Union([Type.String(), Type.Null()]),
+    null,
+  ),
   modelSettings: definePreference(
     { key: "nyte:model-settings:v1" },
     Type.Record(
       Type.String(),
-      Type.Object({ thinking: Type.Enum([...MODEL_THINKING_LEVELS]), fast: Type.Boolean() }),
+      Type.Object({
+        thinking: Type.Enum([...MODEL_THINKING_LEVELS]),
+        fast: Type.Boolean(),
+        daybreak: Type.Optional(Type.Boolean()),
+      }),
     ),
     {},
   ),
@@ -174,6 +180,7 @@ export const preferences = {
     {},
   ),
   developerMode: definePreference({ key: "nyte:developer-mode:v1" }, Type.Boolean(), false),
+  remoteControl: definePreference({ key: "nyte:remote-control:v1" }, Type.Boolean(), false),
   projects: definePreference({ key: "nyte:projects:v1" }, Type.Boolean(), true),
 } as const;
 

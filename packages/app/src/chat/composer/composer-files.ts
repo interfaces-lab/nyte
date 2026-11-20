@@ -131,3 +131,55 @@ export async function attachComposerFiles(args: {
 
   return { attachments, error };
 }
+
+export interface Intake {
+  readonly reads: number;
+  readonly error: string | undefined;
+}
+
+export const NO_INTAKE: Intake = { reads: 0, error: undefined };
+
+export type IntakeEvent =
+  | { readonly kind: "reading" }
+  | { readonly kind: "read"; readonly error: string | undefined }
+  | { readonly kind: "settled" }
+  | { readonly kind: "cleared" };
+
+export function nextIntake(intake: Intake, event: IntakeEvent): Intake {
+  switch (event.kind) {
+    case "reading":
+      return { ...intake, reads: intake.reads + 1 };
+    case "read":
+      return intake.error === event.error ? intake : { ...intake, error: event.error };
+    case "settled":
+      return { ...intake, reads: intake.reads - 1 };
+    case "cleared":
+      return intake.error === undefined ? intake : { ...intake, error: undefined };
+    default: {
+      const _exhaustive: never = event;
+
+      return _exhaustive;
+    }
+  }
+}
+
+export async function takeFiles(input: {
+  readonly files: readonly ComposerFile[];
+  readonly editor: ComposerEditorHandle | null;
+  readonly signal: AbortSignal | undefined;
+  readonly step: (event: IntakeEvent) => void;
+  readonly attach: (attachments: readonly ComposerImageAttachment[]) => void;
+}): Promise<string | undefined> {
+  input.step({ kind: "reading" });
+
+  return attachComposerFiles({ files: input.files, editor: input.editor })
+    .then((result) => {
+      input.signal?.throwIfAborted();
+
+      if (result.attachments.length > 0) input.attach(result.attachments);
+      input.step({ kind: "read", error: result.error });
+
+      return result.error;
+    })
+    .finally(() => input.step({ kind: "settled" }));
+}

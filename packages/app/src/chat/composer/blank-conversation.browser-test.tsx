@@ -1,4 +1,4 @@
-import { tabPanes, PRIMARY } from "../../../test/panes.ts";
+import { paneLayout, PRIMARY, tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -25,7 +25,7 @@ const MODEL: ModelInfo = {
   reasoning: false,
   thinking: ["off"],
   defaultThinking: "off",
-  fast: null,
+  variants: [],
   contextWindow: 1_000,
   compactAt: 900,
   maxOutput: 100,
@@ -84,7 +84,7 @@ function mount(container: HTMLElement): Root {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -108,26 +108,21 @@ async function until<T>(read: () => T | null | undefined | false, what: string):
     if (value !== null && value !== undefined && value !== false) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
-}
-
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
 }
 
 async function send(container: HTMLElement, text: string): Promise<void> {
   const editor = await until(
-    () => container.querySelector<HTMLElement>("[data-placeholder]"),
-    "the editor",
+    () =>
+      container.querySelector<HTMLElement>(
+        "[aria-disabled='false'][data-placeholder='Ask Nyte, or type / for skills and @ for context']",
+      ),
+    "a new chat's editor",
   );
 
-  await painted();
   editor.focus();
   document.execCommand("insertText", false, text);
-  await painted();
 
   const button = await until(() => {
     const found = container.querySelector<HTMLButtonElement>("button[aria-label='Send message']");
@@ -148,31 +143,28 @@ function connect(ids: readonly SessionId[]): void {
     models: { list: async () => hostCatalog },
   });
 
-  installConnection(
-    {
-      ...scripted.connection,
-      sessions: {
-        ...scripted.connection.sessions,
-        start: async (input) => {
-          const id = input.id ?? asId<"session">("unnamed");
-          starts.push(id);
+  installConnection({
+    ...scripted.connection,
+    sessions: {
+      ...scripted.connection.sessions,
+      start: async (input) => {
+        const id = input.id ?? asId<"session">("unnamed");
+        starts.push(id);
 
-          return {
-            session: scripted.connection.session(id),
-            receipt: {
-              id: asId<"receipt">(id),
-              message: asId<"message">(id),
-              status: refuse,
-              settled: refuse,
-              stop: refuse,
-              landed: refuse,
-            },
-          };
-        },
+        return {
+          session: scripted.connection.session(id),
+          receipt: {
+            id: asId<"receipt">(id),
+            message: asId<"message">(id),
+            status: refuse,
+            settled: refuse,
+            stop: refuse,
+            landed: refuse,
+          },
+        };
       },
     },
-    scripted.live,
-  );
+  });
 }
 
 async function checkSends(): Promise<string> {
@@ -189,17 +181,16 @@ async function checkSends(): Promise<string> {
     await send(container, "Parked before the host");
     const parked = panes.viewState.readBlank(PRIMARY).id;
     await until(() => statusText(container)?.includes("Sends when Nyte connects"), "the hold");
-    panes.newChat();
+    panes.window.newChat(panes.tabId);
 
     await send(container, "Shown when the host arrives");
     const shown = panes.viewState.readBlank(PRIMARY).id;
     await until(() => statusText(container)?.includes("Sends when Nyte connects"), "the hold");
     flushSync(() => root.unmount());
     root = mount(container);
-    await painted();
-    expectRule(
-      statusText(container)?.includes("Sends when Nyte connects") === true,
-      "a remount dropped the held send",
+    await until(
+      () => statusText(container)?.includes("Sends when Nyte connects"),
+      "the held send after a remount",
     );
 
     connect([asId<"session">(parked), asId<"session">(shown)]);
@@ -207,20 +198,18 @@ async function checkSends(): Promise<string> {
       () => starts.length === 2 && panes.viewState.readDraft(shown) === undefined,
       "both starts",
     );
-    await painted();
     expectRule(
       starts.toSorted().join() === [parked, shown].toSorted().join(),
       `each held draft starts once: ${starts.join()}`,
     );
-    const selection = activeSelection(panes.getSnapshot());
-    expectRule(
-      selection.kind === "session" && selection.sessionId === shown,
-      `the chat opens in the pane that shows its draft: ${JSON.stringify(selection)}`,
-    );
+    await until(() => {
+      const selection = activeSelection(paneLayout(panes));
+
+      return selection.kind === "session" && selection.sessionId === shown;
+    }, "the chat to open in the pane that shows its draft");
     expectRule(panes.viewState.readDraft(parked) === undefined, "the parked draft stayed a draft");
 
-    panes.newChat();
-    await painted();
+    panes.window.newChat(panes.tabId);
     hostCatalog = catalog("missing");
     await send(container, "On a model the host no longer lists");
     const refused = panes.viewState.readBlank(PRIMARY).id;

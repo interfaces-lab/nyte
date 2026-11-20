@@ -29,7 +29,7 @@
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
-    "typebox": "^1.4.6"
+    "typebox": "^1.4.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

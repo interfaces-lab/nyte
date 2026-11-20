@@ -7,7 +7,6 @@ import type { ReactElement } from "react";
 import type {
   CommandInfo,
   HostView,
-  Json,
   SessionId,
   SettingInfo,
   SkillInfo,
@@ -16,8 +15,6 @@ import type {
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
-import { Switch } from "@nyte-ai/ui/switch";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -36,6 +33,7 @@ import { chatStore } from "../data/chat-store.ts";
 import { useWatch, useWatchSelect } from "../data/watch-store.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { settingsStyles as page } from "../settings/settings.stylex.ts";
+import { PluginSetting } from "../settings/plugin-settings.tsx";
 import { ConnectionRow, ConnectionStatus } from "../components/connection-list.tsx";
 import { McpServersTab, mcpNeedsAttention } from "./customize-mcp.tsx";
 import {
@@ -216,67 +214,6 @@ function matches(query: string, candidates: readonly string[]): boolean {
   return query === "" || candidates.some((candidate) => candidate.toLowerCase().includes(query));
 }
 
-function choiceKey(value: Json): string {
-  return JSON.stringify(value);
-}
-
-function PluginSetting({
-  setting,
-  disabled,
-  onApply,
-}: {
-  readonly setting: SettingInfo;
-  readonly disabled: boolean;
-  readonly onApply: (value: Json) => void;
-}): ReactElement {
-  if (typeof setting.value === "boolean")
-    return (
-      <Switch
-        label={setting.label}
-        checked={setting.value}
-        disabled={disabled}
-        onCheckedChange={(checked) => onApply(checked)}
-      />
-    );
-
-  const choices = setting.choices ?? [];
-
-  const badge = choices.find(
-    (choice) => choiceKey(choice.value) === choiceKey(setting.value),
-  )?.badge;
-
-  return (
-    <>
-      <Select
-        items={choices.map((choice) => ({ value: choiceKey(choice.value), label: choice.label }))}
-        disabled={disabled || choices.length === 0}
-        value={choiceKey(setting.value)}
-        onValueChange={(key) => {
-          const choice = choices.find((candidate) => choiceKey(candidate.value) === key);
-
-          if (choice !== undefined) onApply(choice.value);
-        }}
-      >
-        <SelectTrigger aria-label={setting.label}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {choices.map((choice) => (
-            <SelectItem
-              key={choiceKey(choice.value)}
-              value={choiceKey(choice.value)}
-              label={choice.label}
-            >
-              {choice.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {badge !== undefined && <span {...props(text.sm, styles.note)}>{badge}</span>}
-    </>
-  );
-}
-
 function PluginDetails({
   plugin,
   sessionId,
@@ -288,7 +225,7 @@ function PluginDetails({
   const applyToChat = useApplyPluginSetting(sessionId);
   const { failure, settings, commands, tools } = plugin;
   const path = plugin.info.path;
-  const perChat = settings.some((setting) => setting.scope === "session");
+  const perChat = settings.some((setting) => setting.scope === "chat");
 
   return (
     <Details>
@@ -318,12 +255,15 @@ function PluginDetails({
         const apply = setting.scope === "host" ? applyToHost : applyToChat;
 
         return (
-          <Field key={setting.id} label={setting.label}>
+          <Field key={setting.id} label={setting.title}>
             <PluginSetting
               setting={setting}
-              disabled={(sessionId === undefined && setting.scope === "session") || apply.isPending}
+              disabled={(sessionId === undefined && setting.scope === "chat") || apply.isPending}
               onApply={(value) => apply.mutate({ id: setting.id, value })}
             />
+            {setting.description !== undefined && (
+              <span {...props(text.sm, styles.note)}>{setting.description}</span>
+            )}
           </Field>
         );
       })}

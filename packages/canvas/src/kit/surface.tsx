@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { createContext } from "react";
+import { Children, createContext, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
@@ -8,8 +8,12 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { findLayoutRole, flowItems, snapStep } from "./floor.ts";
+import { spaceFlow } from "./layout.tsx";
 
 export const FlushCardContext = createContext(false);
+
+const PADDINGS = [0, 2, 3, 4] as const;
 
 const card = create({
   root: {
@@ -23,9 +27,11 @@ const card = create({
   },
   head: {
     display: "flex",
+    flexWrap: "wrap",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: space.s3,
+    columnGap: space.s3,
+    rowGap: space.s2,
     minWidth: 0,
     paddingTop: space.s3,
     paddingInline: space.s4,
@@ -36,13 +42,13 @@ const card = create({
     margin: 0,
     color: role.contentPrimary,
     fontWeight: type.weightSemibold,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    overflowWrap: "break-word",
+    textWrap: "balance",
   },
   description: { margin: 0, color: role.contentSecondary, textWrap: "pretty" },
   actions: { display: "flex", alignItems: "center", gap: space.s1, flexShrink: 0 },
   body: { minWidth: 0 },
+  inset: { minWidth: 0, paddingBlock: space.s3, paddingInline: space.s4 },
   titled: { paddingTop: space.s3 },
   0: { padding: 0 },
   2: { padding: space.s2 },
@@ -54,7 +60,7 @@ export function Card({
   title,
   description,
   actions,
-  padding = 4,
+  padding: asked = 4,
   children,
 }: {
   readonly title?: ReactNode;
@@ -63,6 +69,7 @@ export function Card({
   readonly padding?: 0 | 2 | 3 | 4;
   readonly children?: ReactNode;
 }): ReactElement {
+  const padding = snapStep(asked, PADDINGS, 4);
   const titled = title !== undefined || actions !== undefined;
 
   return (
@@ -79,9 +86,40 @@ export function Card({
         </header>
       ) : null}
       <div {...props(card.body, card[padding], titled && padding !== 0 && card.titled)}>
-        <FlushCardContext value={padding === 0}>{children}</FlushCardContext>
+        <FlushCardContext value={padding === 0}>
+          {padding === 0 ? insetRuns(children) : spaceBlock(children)}
+        </FlushCardContext>
       </div>
     </section>
+  );
+}
+
+function spaceBlock(children: ReactNode): ReactNode {
+  const items = flowItems(children, 0, "block");
+
+  return items === undefined ? children : spaceFlow(items, "block");
+}
+
+function insetRuns(children: ReactNode): ReactNode[] {
+  const runs: { readonly flush: boolean; readonly nodes: ReactNode[] }[] = [];
+
+  for (const node of Children.toArray(children)) {
+    const role = findLayoutRole(node);
+    const flush = role === "flush" || (role === undefined && isValidElement(node));
+    const last = runs.at(-1);
+
+    if (last?.flush === flush) last.nodes.push(node);
+    else runs.push({ flush, nodes: [node] });
+  }
+
+  return runs.flatMap((run, index): ReactNode[] =>
+    run.flush
+      ? run.nodes
+      : [
+          <div key={`inset-${String(index)}`} {...props(card.inset)}>
+            <FlushCardContext value={false}>{spaceBlock(run.nodes)}</FlushCardContext>
+          </div>,
+        ],
   );
 }
 

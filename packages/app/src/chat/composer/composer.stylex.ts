@@ -1,4 +1,4 @@
-import { create, keyframes } from "@stylexjs/stylex";
+import { create, keyframes, when } from "@stylexjs/stylex";
 import {
   button,
   clipboardPreview,
@@ -97,10 +97,9 @@ export const composerStyles = create({
   },
   preComposerPills: {
     display: "flex",
-    flexDirection: { default: "row", ":has([data-slot='tray'] > :not([inert]))": "column" },
-    flexWrap: { default: "wrap", ":has([data-slot='tray'] > :not([inert]))": "nowrap" },
-    alignItems: { default: "center", ":has([data-slot='tray'] > :not([inert]))": "stretch" },
-    columnGap: space.s1,
+    flexWrap: "wrap",
+    alignItems: "center",
+    columnGap: space.s1_5,
     rowGap: tray.gap,
     width: { default: "fit-content", ":has([data-slot='tray'] > :not([inert]))": "100%" },
     maxWidth: "100%",
@@ -332,6 +331,9 @@ export const composerStyles = create({
   attachmentErrorNewChat: { marginBlockStart: space.s2_5 },
   attachmentErrorInsetCompact: { marginInline: space.s0_5 },
   input: {
+    "--_selection-band": role.fillPrimary,
+    "--_selection-edge": role.strokeSecondary,
+    "--_selection-ink": role.contentPrimary,
     display: "block",
     boxSizing: "border-box",
     width: "100%",
@@ -445,10 +447,23 @@ export const composerStyles = create({
     alignItems: "baseline",
     verticalAlign: "baseline",
     gap: space.s0_5,
-    color: role.contentSecondary,
+    paddingInline: space.s1_5,
+    borderRadius: radius.pill,
+    backgroundColor: {
+      default: role.fillTertiary,
+      [when.ancestor("[data-composer-selected]")]: "var(--_selection-band)",
+    },
+    boxShadow: {
+      default: null,
+      [when.ancestor("[data-composer-selected]")]: "inset 0 0 0 1px var(--_selection-edge)",
+    },
+    color: {
+      default: role.contentSecondary,
+      [when.ancestor("[data-composer-selected]")]: "var(--_selection-ink)",
+    },
     fontSize: "inherit",
     fontWeight: type.weightRegular,
-    lineHeight: "inherit",
+    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
   },
   mentionChipLabel: {
@@ -539,7 +554,6 @@ export const composerStyles = create({
   controlsNewChat: { paddingInline: space.s3, paddingBlockEnd: space.s2 },
   controlsInset: { paddingInline: space.s2, paddingBlockEnd: space.s2 },
   controlsCompact: { display: "contents" },
-  /** Add rests on the fill a ghost button shows on hover; hovering stacks one step up. */
   addButton: {
     display: "inline-flex",
     borderRadius: radius.pill,
@@ -578,6 +592,7 @@ export const composerStyles = create({
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
+    padding: space.s1_5,
     overflowY: "auto",
     overscrollBehavior: "contain",
     scrollbarWidth: "none",
@@ -586,20 +601,18 @@ export const composerStyles = create({
   suggestionItem: {
     position: "relative",
     display: "grid",
-    gridTemplateColumns: "12px minmax(0, 1fr) auto",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
     boxSizing: "border-box",
     alignItems: "center",
     columnGap: menu.itemGap,
     minHeight: row.heightLg,
     paddingBlock: space.s1_5,
-    paddingInline: space.s3,
+    paddingInline: space.s2,
     borderStyle: "none",
+    borderRadius: row.radius,
     outline: "none",
     backgroundColor: "transparent",
-    color: {
-      default: role.contentSecondary,
-      ":hover": { [media.hover]: role.contentPrimary },
-    },
+    color: role.contentPrimary,
     cursor: appearance.cursorInteractive,
     userSelect: "none",
   },
@@ -611,7 +624,8 @@ export const composerStyles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 12,
+    width: glyph.md,
+    color: role.contentSecondary,
   },
   suggestionText: {
     display: "flex",
@@ -635,7 +649,7 @@ export const composerStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  suggestionMatch: { color: role.contentSecondary, fontWeight: "inherit" },
+  suggestionMatch: { color: role.contentAccent, fontWeight: "inherit" },
   suggestionGroupStart: {
     marginBlockStart: pane.dividerGap,
     "::before": {
@@ -698,16 +712,26 @@ export const composerStyles = create({
   suggestionPreviewPath: {
     display: "flex",
     flexDirection: "column",
-    gap: space.s0_5,
     minWidth: 0,
-    marginBlockStart: space.s2,
   },
   suggestionPreviewPathRow: {
     display: "flex",
     alignItems: "center",
-    gap: space.s1,
+    alignSelf: "stretch",
+    gap: space.s1_5,
     minWidth: 0,
+    minHeight: row.heightMd,
     color: role.contentSecondary,
+  },
+  suggestionPreviewGuide: {
+    display: "flex",
+    alignSelf: "stretch",
+    flexShrink: 0,
+    width: `calc(${glyph.md} + ${space.s0_5} - ${space.s1_5})`,
+  },
+  suggestionPreviewGuideLine: {
+    width: 1,
+    marginInlineStart: `calc(${glyph.md} / 2)`,
   },
   suggestionPreviewPathIcon: {
     display: "inline-flex",
@@ -717,7 +741,6 @@ export const composerStyles = create({
     width: glyph.md,
     height: glyph.md,
   },
-  suggestionPreviewPathIndent: (depth: number) => ({ paddingInlineStart: depth * 12 }),
   suggestionPreviewPathLeaf: { color: role.contentPrimary },
   suggestionPreviewPathLabel: {
     minWidth: 0,

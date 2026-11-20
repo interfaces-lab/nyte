@@ -2,9 +2,6 @@ import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { sleep } from "./abort.ts";
 import { classifyAssistantFailure, retryCanHelp } from "./failure.ts";
 
-/**
- * Bounded retries with exponential backoff. `maxAgentDelayMs` defaults to 60 seconds.
- */
 export interface RetryPolicy {
   enabled: boolean;
   /** Max retry attempts (0 = no retries). The initial call never counts as a retry. */

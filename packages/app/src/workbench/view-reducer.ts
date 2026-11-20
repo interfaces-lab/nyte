@@ -1,13 +1,13 @@
 import {
   activeEditorFile,
   changesScopeValue,
-  MAXIMIZED_CHAT_LAYOUT,
   MAXIMIZED_WORKBENCH_LAYOUT,
   matchingTab,
+  NARROW_LAYOUT,
   revealWorkbench,
   SPLIT_LAYOUT,
   tabSlot,
-  workbenchShowsChat,
+  workbenchNarrow,
 } from "./model.ts";
 import type {
   EditorGroupId,
@@ -41,14 +41,8 @@ type WorkbenchTabPatch =
 export type ChangesTabPatch = Extract<WorkbenchTabPatch, { readonly kind: "changes" }>["patch"];
 
 export type WorkbenchViewAction =
-  /** Focuses the open tab `tab` names, or adds `tab`. */
   | { readonly kind: "open"; readonly tab: WorkbenchTab; readonly activate: boolean }
-  /** Adds `tab` even when an open tab has its identity. */
   | { readonly kind: "add"; readonly tab: WorkbenchTab }
-  /**
-   * Focuses the file's tab, pinning it unless this open is a preview, or adds it in place of
-   * `replace`, the clean preview the file store chose.
-   */
   | {
       readonly kind: "open-file";
       readonly tab: KindTab<"file">;
@@ -69,6 +63,7 @@ export type WorkbenchViewAction =
   | { readonly kind: "toggle-maximized" }
   | { readonly kind: "maximize" }
   | { readonly kind: "show-chat" }
+  | { readonly kind: "fit"; readonly narrow: boolean }
   | { readonly kind: "set-width"; readonly pixels: number }
   | { readonly kind: "toggle-sidebar"; readonly slot: string }
   | {
@@ -181,17 +176,33 @@ export function reduceView(
     case "toggle-collapsed":
       return { ...state, collapsed: state.collapsed === "floating" ? "compact" : "floating" };
     case "toggle-maximized":
+      if (state.layout.kind === "split") return { ...state, layout: MAXIMIZED_WORKBENCH_LAYOUT };
+
+      if (!state.layout.narrow) return { ...state, layout: SPLIT_LAYOUT };
+
       return {
         ...state,
-        layout: state.layout.kind === "maximized" ? SPLIT_LAYOUT : MAXIMIZED_WORKBENCH_LAYOUT,
+        layout: {
+          ...state.layout,
+          showing: state.layout.showing === "chat" ? "workbench" : "chat",
+        },
       };
     case "maximize":
-      return state.layout.kind === "maximized" && !workbenchShowsChat(state.layout)
+      return state.layout.kind === "maximized" &&
+        state.layout.showing === "workbench" &&
+        !state.layout.narrow
         ? state
         : { ...state, layout: MAXIMIZED_WORKBENCH_LAYOUT };
     case "show-chat":
-      return state.layout.kind === "maximized" && !workbenchShowsChat(state.layout)
-        ? { ...state, layout: MAXIMIZED_CHAT_LAYOUT }
+      return state.layout.kind === "maximized" && state.layout.showing === "workbench"
+        ? { ...state, layout: { ...state.layout, showing: "chat" } }
+        : state;
+    case "fit":
+      if (action.narrow && state.layout.kind === "split")
+        return { ...state, layout: NARROW_LAYOUT };
+
+      return !action.narrow && workbenchNarrow(state.layout)
+        ? { ...state, layout: SPLIT_LAYOUT }
         : state;
     case "set-width": {
       const pixels = Math.round(action.pixels);
@@ -364,7 +375,6 @@ function insertFile(
   return activate({ ...state, tabs: [...kept.slice(0, index), tab, ...kept.slice(index)] }, tab.id);
 }
 
-/** Moves `tab` into `group`; the group it leaves closes once it holds nothing, unless it's the last. */
 function withGroup(
   state: WorkbenchViewState,
   tab: KindTab<"file">,
@@ -385,7 +395,6 @@ function withGroup(
   return pruneGroups({ ...state, tabs, groups: left });
 }
 
-/** The file tab a group shows once `tab` leaves it: the one after it, else the one before. */
 function groupNeighbour(
   tabs: readonly WorkbenchTab[],
   tab: KindTab<"file">,

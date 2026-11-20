@@ -1,0 +1,194 @@
+---
+title: language.status
+description: Lists the workspace's language servers and their state.
+---
+
+Lists one row per language server the workspace has started: its language, program, project root, state, version and executable. A server is `starting`, `ready`, `busy` with a progress title, `missing` with the command that installs it, `failed` with a reason, or `idle` after it shut down for want of use. There is one server per language and project root, the nearest folder holding a `go.mod` or `go.work` for Go and a `tsconfig.json`, `jsconfig.json` or `package.json` for TypeScript and JavaScript.
+
+## When to call it
+
+To show which servers run and why one answers nothing. To follow changes, use [`language.watchStatus`](/docs/reference/operations/language/watch-status).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+[
+  {
+    "language": "go",
+    "server": "gopls",
+    "root": "",
+    "state": { "kind": "ready" },
+    "version": "v0.24.0",
+    "executable": "/Users/ada/go/bin/gopls"
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["language", "server", "root", "state", "version", "executable"],
+    "properties": {
+      "language": {
+        "enum": ["go", "typescript"]
+      },
+      "server": {
+        "type": "string"
+      },
+      "root": {
+        "type": "string"
+      },
+      "state": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "starting"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "ready"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "title", "percent"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "busy"
+              },
+              "title": {
+                "type": "string"
+              },
+              "percent": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "hint"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "missing"
+              },
+              "hint": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "reason"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "failed"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "idle"
+              }
+            }
+          }
+        ]
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "executable": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

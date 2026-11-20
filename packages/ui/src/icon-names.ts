@@ -1,9 +1,5 @@
 import type { ComponentType } from "react";
 
-/**
- * Every icon name @nyte-ai/ui draws. Both icon sets map exactly these names,
- * and test/icons.test.ts fails when the Lucide set misses one.
- */
 export const ICON_NAMES = [
   "agent",
   "agent-amp",
@@ -27,15 +23,19 @@ export const ICON_NAMES = [
   "book",
   "box-3d",
   "brackets",
+  "browser",
   "bubble-heart",
   "bubble-question",
   "bug",
+  "camera",
   "canvas-grid",
   "chart",
   "checkmark",
   "chevron-down",
   "chevron-right",
   "chevron-up-down",
+  "circle-ban",
+  "circle-check",
   "circle-info",
   "circle-x",
   "circles",
@@ -45,19 +45,23 @@ export const ICON_NAMES = [
   "cloud-api",
   "cloudflare",
   "code-brackets",
+  "collapse",
   "command",
   "computer",
   "console",
   "copy",
   "cube",
+  "cursor-click",
   "customize",
   "devices",
   "diff",
   "drag-handle",
   "draft",
+  "eraser",
   "expand",
   "eye",
   "file",
+  "file-add",
   "file-text",
   "filters",
   "folder",
@@ -69,6 +73,7 @@ export const ICON_NAMES = [
   "github",
   "globe",
   "grok",
+  "hourglass",
   "imac",
   "inbox-checked",
   "inbox-empty",
@@ -94,10 +99,14 @@ export const ICON_NAMES = [
   "model-openai",
   "model-qwen",
   "model-zai",
+  "moon",
   "more",
   "more-horizontal",
+  "mouse-scroll-down",
+  "mouse-scroll-up",
   "new-chat",
   "new-chat-folder",
+  "nyte",
   "panel-left",
   "panel-right",
   "paperclip",
@@ -118,6 +127,7 @@ export const ICON_NAMES = [
   "refresh",
   "return",
   "ruler",
+  "script",
   "search",
   "server",
   "settings",
@@ -149,7 +159,6 @@ export const ICON_NAMES = [
 
 export type IconName = (typeof ICON_NAMES)[number];
 
-/** The names that also have a filled variant. */
 export const FILLED_ICON_NAMES = [
   "bubble-question",
   "star",
@@ -158,7 +167,6 @@ export const FILLED_ICON_NAMES = [
 
 export type FilledIconName = (typeof FILLED_ICON_NAMES)[number];
 
-/** What `Icon` passes every glyph: it fills its frame and is hidden from assistive tech. */
 export interface GlyphProps {
   readonly size: number | string;
 }

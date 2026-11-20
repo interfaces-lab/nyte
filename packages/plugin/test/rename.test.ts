@@ -13,6 +13,7 @@ it("titles an untitled session from its first message, and a later run asks noth
     },
     { content: [{ type: "text", text: "Use a 30 s timeout." }] },
     { content: [{ type: "text", text: "Done." }] },
+    { content: [{ type: "text", text: "Still done." }] },
   );
 
   await using host = await open(fake, [rename]);
@@ -33,8 +34,8 @@ it("titles an untitled session from its first message, and a later run asks noth
   });
 
   await (await session.send("Thanks.")).settled();
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await (await session.send("And again.")).settled();
 
-  expect(fake.requests).toHaveLength(3);
+  expect(fake.requests).toHaveLength(4);
   expect((await session.info()).name).toBe("Timeout for flaky fetch");
 });

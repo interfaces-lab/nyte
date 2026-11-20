@@ -604,13 +604,24 @@ describe("listen's execution (§41b)", () => {
   function recording(host: Composed): {
     readonly host: Composed;
     readonly covered: ExecutionCoverage[];
+    readonly driven: ExecutionCoverage[];
   } {
     const covered: ExecutionCoverage[] = [];
+    const driven: ExecutionCoverage[] = [];
 
     return {
       covered,
+      driven,
       host: {
         ...host,
+        server: {
+          ...host.server,
+          drive: (coverage) => {
+            driven.push(coverage);
+
+            return host.server.drive(coverage);
+          },
+        },
         execution: {
           ...host.execution,
           cover: async (coverage): Promise<Owned> => {
@@ -626,7 +637,7 @@ describe("listen's execution (§41b)", () => {
   it("drives sessions in process when the kernel only admits", async () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Driven." }] });
-    const { host, covered } = recording(await compose(fake, { kind: "admit-only" }));
+    const { host, covered, driven } = recording(await compose(fake, { kind: "admit-only" }));
     const listener = await serve(host);
     const { session, receipt } = await sent(listener);
 
@@ -636,6 +647,7 @@ describe("listen's execution (§41b)", () => {
       },
     );
     expect(covered).toEqual([]);
+    expect(driven).toEqual([{ kind: "all" }]);
   });
 
   it("only takes leases when the kernel already runs", async () => {
@@ -648,12 +660,12 @@ describe("listen's execution (§41b)", () => {
   it("takes nothing and drives nothing under admit-only", async () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Never." }] });
-    const { host, covered } = recording(await compose(fake, { kind: "admit-only" }));
+    const { host, covered, driven } = recording(await compose(fake, { kind: "admit-only" }));
     const listener = await serve(host, { execution: { kind: "admit-only" } });
     const { session, receipt } = await sent(listener);
-    await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(covered).toEqual([]);
+    expect(driven).toEqual([]);
     expect(fake.requests).toHaveLength(0);
     expect(await json(await post(listener, "receipt.status", { session, receipt }))).toMatchObject({
       kind: "pending",

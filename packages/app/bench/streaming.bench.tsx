@@ -33,12 +33,15 @@ export async function run(): Promise<string> {
         <div {...props(styles.row)}>
           {Array.from({ length: benchCase.streams }, (_, index) => (
             <div key={index} {...props(styles.column)}>
-              <Prose markdown={markdown} streaming={streaming} />
+              <Prose
+                markdown={`Answer ${String(index + 1)}.\n\n${markdown}`}
+                streaming={streaming}
+              />
             </div>
           ))}
           {benchCase.covered && (
             <div {...props(styles.covered)}>
-              <Prose markdown={markdown} streaming={streaming} />
+              <Prose markdown={`Covered answer.\n\n${markdown}`} streaming={streaming} />
             </div>
           )}
         </div>

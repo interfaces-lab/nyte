@@ -1,0 +1,227 @@
+---
+title: language.diagnostics
+description: Streams the diagnostics of each file whose list changed, starting with every file's known list.
+---
+
+Streams diagnostics as the servers publish them. The first frame holds every file's known list; each later frame holds the files whose list changed since the frame before, each with its whole list. `version` is the document version a list describes, or null for a file no client opened. A list for an older version of an open document is dropped.
+
+## When to call it
+
+To paint squiggles, a problems panel and error counts.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+A frame:
+
+```json
+[
+  {
+    "path": "hub/hub.go",
+    "version": null,
+    "diagnostics": [
+      {
+        "range": {
+          "start": { "line": 79, "utf16Column": 9 },
+          "end": { "line": 79, "utf16Column": 25 }
+        },
+        "severity": "warning",
+        "message": "nil dereference in field selection",
+        "source": "nilness",
+        "code": null,
+        "tags": [],
+        "related": []
+      }
+    ]
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["path", "version", "diagnostics"],
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "diagnostics": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["range", "severity", "message", "source", "code", "tags", "related"],
+          "properties": {
+            "range": {
+              "type": "object",
+              "required": ["start", "end"],
+              "properties": {
+                "start": {
+                  "type": "object",
+                  "required": ["line", "utf16Column"],
+                  "properties": {
+                    "line": {
+                      "type": "number"
+                    },
+                    "utf16Column": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "end": {
+                  "type": "object",
+                  "required": ["line", "utf16Column"],
+                  "properties": {
+                    "line": {
+                      "type": "number"
+                    },
+                    "utf16Column": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            },
+            "severity": {
+              "enum": ["error", "warning", "information", "hint"]
+            },
+            "message": {
+              "type": "string"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "enum": ["unnecessary", "deprecated"]
+              }
+            },
+            "related": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["location", "message"],
+                "properties": {
+                  "location": {
+                    "type": "object",
+                    "required": ["path", "range"],
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "range": {
+                        "type": "object",
+                        "required": ["start", "end"],
+                        "properties": {
+                          "start": {
+                            "type": "object",
+                            "required": ["line", "utf16Column"],
+                            "properties": {
+                              "line": {
+                                "type": "number"
+                              },
+                              "utf16Column": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          "end": {
+                            "type": "object",
+                            "required": ["line", "utf16Column"],
+                            "properties": {
+                              "line": {
+                                "type": "number"
+                              },
+                              "utf16Column": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

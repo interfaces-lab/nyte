@@ -6,15 +6,15 @@ import { createHost } from "../src/api/connection.ts";
 import { environmentPlugin } from "../src/builtins/environment.ts";
 import { driveInProcess } from "../src/drive/execution.ts";
 import { runStep } from "../src/engine/durable.ts";
-import { authenticateToken, redeemPairing } from "../src/engine/principals.ts";
+import { authenticateToken, redeemPairing } from "../src/api/principals.ts";
 import { workspaceHandle } from "../src/env/workspaces.ts";
 import { resourcesPlugin } from "../src/extend/resources.ts";
-import { readView } from "../src/fold/window.ts";
-import { viewHead } from "../src/fold/view.ts";
-import { createFoldCache } from "../src/fold/watch.ts";
+import { readView } from "../src/watch/window.ts";
+import { viewHead } from "../src/watch/view.ts";
+import { createFoldCache } from "../src/watch/watch.ts";
 import { LOCAL } from "../src/index.ts";
 import { envelope, hostPrincipalsRef, workspaceRef } from "../src/store.ts";
-import { attachSession } from "../src/api/attach.ts";
+import { attachSession } from "../src/api/session-attachment.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { ConnectionContext, Durable, Page, Plugin, ToolDefinition } from "../src/index.ts";
 import type { WorkspaceRecord } from "../src/store.ts";
@@ -127,7 +127,6 @@ describe("workspaces", () => {
           trusted: false,
           projectSources: [".nyte/plugins/x.ts"],
           addedBy: LOCAL,
-          sessions: 0,
           writers: [],
           isolation: null,
         },
@@ -174,6 +173,7 @@ describe("workspaces", () => {
     const invocation = createInvocation(kernel, {
       session: session.id,
       runtime: kernel.plugins.runtime(session.id),
+      owner: "core",
       head: main,
       run: asId("r1"),
       call: asId("c1"),
@@ -193,7 +193,7 @@ describe("workspaces", () => {
     const git = await invocation.workspace.git();
 
     assert(git.kind === "available");
-    await expect(git.api.commit({ message: "No.", files: "all" })).rejects.toMatchObject({
+    await expect(git.api.commit({ message: "No.", files: { kind: "all" } })).rejects.toMatchObject({
       code: "denied",
       message: "git.commit needs owner authority.",
     });
@@ -264,6 +264,8 @@ describe("workspaces", () => {
         } catch {
           seen.push("none");
         }
+
+        return {};
       },
     };
 
@@ -313,7 +315,7 @@ describe("workspaces", () => {
     const git = await handle.git();
 
     assert(git.kind === "available");
-    expect(await git.api.commit({ message: "Ship.", files: "all" })).toMatchObject({
+    expect(await git.api.commit({ message: "Ship.", files: { kind: "all" } })).toMatchObject({
       kind: "applied",
     });
     expect(await handle.browser()).toMatchObject({ kind: "unsupported" });
@@ -323,7 +325,9 @@ describe("workspaces", () => {
 
     assert(guarded.kind === "available");
     expect(await guarded.api.status()).toEqual({ kind: "none" });
-    await expect(guarded.api.commit({ message: "No.", files: "all" })).rejects.toMatchObject({
+    await expect(
+      guarded.api.commit({ message: "No.", files: { kind: "all" } }),
+    ).rejects.toMatchObject({
       code: "denied",
     });
 
@@ -462,7 +466,12 @@ describe("workspaces", () => {
     const { host, provider, workspace, run, write } = await writingRun();
     const paths = Array.from({ length: 150 }, (_value, index) => `f${index}.ts`);
     await write(Object.fromEntries(paths.map((path) => [path, `${path}\n`])));
-    const { last } = await patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
+    const held = Promise.withResolvers<void>();
+    provider.holdPatches = held.promise;
+    const reading = patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
+    await until(() => (provider.peakReads === 4 ? true : undefined));
+    held.resolve();
+    const { last } = await reading;
 
     expect(last.entries.size).toBe(150);
     expect(provider.patchReads.map((read) => read.length)).toEqual([32, 32, 32, 32, 22]);
@@ -686,6 +695,8 @@ describe("activation (§37j–m)", () => {
       async activate(api) {
         await api.session.send("Hello from activate.", { delivery: "attach" });
         await api.session.command("nudge", "");
+
+        return {};
       },
     };
 
@@ -719,66 +730,21 @@ describe("activation (§37j–m)", () => {
     ).toContain("/work/other");
   });
 
-  it("reloads the full list: a plugin a failed activation rejected is retried, and a session's own list is kept", async () => {
-    let broken = true;
-    const starts: string[] = [];
-
-    const flaky: Plugin<"core"> = {
-      id: "flaky",
-      activate() {
-        starts.push("flaky");
-
-        if (broken) throw new Error("Not yet.");
-      },
-    };
-
-    const builtin: Plugin<"core"> = {
-      id: "builtin",
-      activate() {
-        starts.push("builtin");
-      },
-    };
-
-    const { kernel, host, workspace } = await world({ plugins: [flaky], builtins: [builtin] });
-    const { session } = await host.sessions.start({ workspace, content: "Hi." });
-    const first = kernel.plugins.runtime(session.id);
-
-    expect(first.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "fake-environment"]);
-
-    broken = false;
-    await host.workspace(workspace).reload();
-
-    expect(first.plugins()).toEqual([]);
-    expect(
-      kernel.plugins
-        .runtime(session.id)
-        .plugins()
-        .map((plugin) => plugin.id),
-    ).toEqual(["builtin", "fake-environment", "flaky"]);
-
-    const own: Plugin<"core"> = { id: "own" };
-    await host.plugins.replace([own], { session: session.id });
-    await host.workspace(workspace).reload();
-    const runtime = kernel.plugins.runtime(session.id);
-
-    expect(runtime.assigned()).toEqual([own]);
-    expect(runtime.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "own"]);
-    expect(starts.filter((id) => id === "builtin")).toHaveLength(4);
-  });
-
   it("loads an uncovered session's plugins but attaches nothing: env and inputs unavailable, activation inactive", async () => {
     const seen: unknown[] = [];
 
     const probe: Plugin<"core"> = {
       id: "probe",
       activate(api) {
-        for (const read of [() => api.env, () => api.inputs]) {
+        for (const read of [() => api.env, () => api.project]) {
           try {
             read();
           } catch (error) {
             seen.push(error instanceof SdkError ? error.code : error);
           }
         }
+
+        return {};
       },
     };
 

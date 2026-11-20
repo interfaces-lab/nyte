@@ -20,8 +20,10 @@ import { amongOptions, chatMark, sessionsForNavigation } from "./sidebar-view.ts
 import { useSessionSearch } from "../data/sessions.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
-import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
+import { settingsSectionGroups } from "../settings/index.ts";
 import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
+import type { AppAction } from "../contract/client-actions.ts";
+import { appActions } from "../data/app-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { actionIcons, settingsActionPages } from "./action-icons.ts";
 
@@ -35,11 +37,10 @@ interface SearchPaletteProps {
   readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
   readonly onOpenSession: (sessionId: SessionId) => void;
-  readonly onNewChat: () => void;
-  readonly onOpenFolder: (() => void) | undefined;
-  readonly onOpenHome: (() => void) | undefined;
-  readonly onOpenSettings: (section: SettingsSection) => void;
-  readonly onOpenCustomize: () => void;
+  /** Whether Open Home is listed: a window that shows one folder's chats leaves it out. */
+  readonly home: boolean;
+  /** Called after the palette ran `action`. */
+  readonly onRan?: (action: AppAction) => void;
 }
 
 interface PaletteAction {
@@ -116,11 +117,8 @@ export function SearchPalette({
   recentSessions,
   onOpenChange,
   onOpenSession,
-  onNewChat,
-  onOpenFolder,
-  onOpenHome,
-  onOpenSettings,
-  onOpenCustomize,
+  home,
+  onRan,
 }: SearchPaletteProps): ReactElement {
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
@@ -159,33 +157,13 @@ export function SearchPalette({
     )
       return [];
 
-    if (action.id === "open-folder" && onOpenFolder === undefined) return [];
+    if (action.id === "open-folder" && nyte.host.pickWorkspace === undefined) return [];
 
-    if (action.id === "open-home" && onOpenHome === undefined) return [];
+    if (action.id === "open-home" && !home) return [];
 
     const run = (): void => {
-      switch (action.id) {
-        case "new-chat":
-          return onNewChat();
-        case "open-folder":
-          return onOpenFolder?.();
-        case "open-home":
-          return onOpenHome?.();
-        case "general-settings":
-        case "appearance-settings":
-        case "model-settings":
-        case "profile-settings":
-          return onOpenSettings(settingsActionPages[action.id]);
-        case "customize-settings":
-          return onOpenCustomize();
-        case "reload-window":
-          return window.location.reload();
-        default: {
-          const _exhaustive: never = action;
-
-          return _exhaustive;
-        }
-      }
+      appActions.run(action.action, "input" in action ? action.input : {});
+      onRan?.(action.action);
     };
 
     const keys = clientActionKeys(action, mac);

@@ -30,13 +30,6 @@ __pycache__/
 .dev.vars*
 !.dev.vars.example
 
-# Nyte's per-workspace folders. The repo dogfoods its plugins, skills and MCP servers
-**/.nyte/*
-!/.nyte/plugins/
-!/.nyte/skills/
-!/.nyte/mcp.json
-.uji/
-
 # Anything personal or machine-specific lives in a .local folder
 .local/
 
@@ -47,3 +40,14 @@ __pycache__/
 
 # Git only: the lab stays on your machine, and `vercel deploy` still uploads it.
 /packages/lab/
+
+# The brand kit and what `pnpm brand` draws stay on your machine
+/scripts/brand/
+/output/brand/
+
+# The Good Nyte pages stay on your machine
+/services/web/src/components/good-nyte/
+/services/web/src/lib/visitor.ts
+/services/web/src/routes/good-nyte.tsx
+/services/web/src/routes/_site/_landing/good-nyte-3.tsx
+/services/web/src/styles/good-nyte.css

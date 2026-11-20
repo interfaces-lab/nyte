@@ -1,6 +1,7 @@
-export const TRANSCRIPT_PADDING_START = 16;
+import { stuckPrompt } from "./transcript-rows.ts";
+import type { StickySpans } from "./transcript-rows.ts";
 
-const STICKY_EPSILON = 2;
+export const TRANSCRIPT_PADDING_START = 16;
 
 export const TRANSCRIPT_PADDING_END = 114;
 
@@ -20,7 +21,22 @@ export function topIn(viewport: HTMLElement, element: Element): number {
   return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
 }
 
-export function syncSticky(viewport: HTMLElement, content: HTMLElement): void {
+export function revealDistance(viewport: HTMLElement, element: Element): number {
+  const box = element.getBoundingClientRect();
+  const view = viewport.getBoundingClientRect();
+
+  if (box.bottom <= view.top) return box.top - view.top;
+
+  if (box.top < view.bottom) return 0;
+
+  return box.height > view.height ? box.top - view.top : box.bottom - view.bottom;
+}
+
+export function syncSticky(
+  viewport: HTMLElement,
+  content: HTMLElement,
+  handovers: StickySpans["handovers"],
+): void {
   const edge = viewport.getBoundingClientRect().top;
   const height = viewport.clientHeight;
   const scrolled = viewport.scrollTop > 0;
@@ -29,27 +45,27 @@ export function syncSticky(viewport: HTMLElement, content: HTMLElement): void {
     content.querySelectorAll<HTMLElement>("[data-sticky-user-message]"),
     (element) => {
       const rect = element.getBoundingClientRect();
+      const row = element.closest<HTMLElement>("[data-index]");
 
-      return { element, top: rect.top, eligible: rect.height < height };
+      return {
+        element,
+        index: Number(row?.dataset.index ?? -1),
+        top: rect.top - edge,
+        height: rect.height,
+      };
     },
   );
 
-  const active = prompts.findLast(
-    (prompt) => prompt.eligible && Math.abs(prompt.top - edge) <= STICKY_EPSILON,
-  );
+  const active = stuckPrompt(prompts, height, handovers);
 
   for (const prompt of prompts) {
-    setDataState(prompt.element, "stickyDisabled", !prompt.eligible);
-    setDataState(prompt.element, "stickyActive", prompt === active);
+    setDataState(prompt.element, "stickyDisabled", prompt.height >= height);
+    setDataState(prompt.element, "stickyActive", prompt.index === active);
   }
 
   setDataState(viewport, "topFade", scrolled && active === undefined);
 }
 
-/**
- * Wheel and touch inside an embedded frame never reach the viewport's listeners, but the scroll
- * they chain out still moves it. A hovered or focused frame is the only place that input can be.
- */
 export function frameHasInput(viewport: HTMLElement): boolean {
   const active = document.activeElement;
 

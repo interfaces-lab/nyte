@@ -1,6 +1,7 @@
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
+import { enabledModels } from "@nyte-ai/schema";
 import type {
   ModelCatalogView,
   ModelInfo,
@@ -25,9 +26,7 @@ export interface DesktopModelOption {
   readonly cost: ModelInfo["cost"];
   readonly thinkingLevels: readonly Thinking[];
   readonly defaultThinking: Thinking;
-  readonly fastMode:
-    | { readonly kind: "unavailable" }
-    | { readonly kind: "available"; readonly id: string };
+  readonly info: ModelInfo;
   readonly input: ModelInfo["input"];
   readonly capabilities: ModelInfo["capabilities"];
   readonly listing: ModelListing;
@@ -70,6 +69,7 @@ export interface DesktopCatalog {
 }
 
 export function toDesktopCatalog(view: ModelCatalogView): DesktopCatalog {
+  const enabled = new Set(enabledModels(view));
   const models = view.providers.flatMap((provider) =>
     provider.models.map((model): DesktopModelOption => {
       const listing = provider.listings[model.ref.id] ?? "shown";
@@ -83,12 +83,11 @@ export function toDesktopCatalog(view: ModelCatalogView): DesktopCatalog {
         cost: model.cost,
         thinkingLevels: model.thinking,
         defaultThinking: model.defaultThinking,
-        fastMode:
-          model.fast === null ? { kind: "unavailable" } : { kind: "available", id: model.fast.id },
+        info: model,
         input: model.input,
         capabilities: model.capabilities,
         listing,
-        listed: provider.credential !== "missing" && listing !== "hidden",
+        listed: enabled.has(model),
       };
     }),
   );

@@ -1,0 +1,57 @@
+// Generated from @nyte-ai/ui (platform-colors and the compiled roles). Regenerate instead of editing.
+import "./color-dark.elyx" as dark
+
+// Colour roles at the default gray. The user's hue tint is an app setting, not part of the kit.
+@variants(dark.role)
+export role = tokens {
+  content-primary: #2c2c2b,
+  content-secondary: #494846,
+  content-tertiary: #66635e,
+  content-quaternary: #83807b,
+  content-disabled: #bcbab6,
+  content-accent: #5f5e59,
+  content-on-interactive-strong: #ffffff,
+  content-on-control: #ffffff,
+  stroke-primary: #5f5e59,
+  stroke-secondary: #1b150030,
+  stroke-tertiary: #1b12001c,
+  stroke-quaternary: #2b1c0012,
+  stroke-accent: #8e8b86,
+  fill-primary: #1b150030,
+  fill-secondary: #2b1c0012,
+  fill-tertiary: #3b14000d,
+  bg-base: #ffffff,
+  bg-chrome: #fbfbfa,
+  bg-muted: #f9f8f7,
+  bg-elevated: #ffffff,
+  bg-muted-translucent: #40200008,
+  bg-scrim: #00000026,
+  bg-scrim-translucent: #1b150030,
+  bg-interactive-strong: #2c2c2b,
+  bg-control: #8e8b86,
+  bg-control-hover: #84817d,
+  bg-control-pressed: #777470,
+  bg-control-selected: #2c2c2b,
+  bg-control-selected-hover: #282827,
+  bg-control-selected-pressed: #232322,
+  button-fill: #6b6864,
+  button-fill-hover: #64615c,
+  button-fill-pressed: #5a5752,
+  chart-series: #7d7a75,
+  scrollbar-thumb: #a19e9980,
+  window-wash: #ffffff29,
+  sidebar-material: #fbfbfa6b,
+  surface-material: #ffffffd6,
+  popup-material: #ffffffcc,
+  conversation-user-shell-bg: #fbfbfa99,
+  focus: #2783de
+}
+
+// Shadow colours for the elevation steps: near and mid are the tight and soft layers, far is the deep layer of shadowXl.
+@variants(dark.shadow)
+export shadow = tokens {
+  near: #42230308,
+  mid: #2a1c0012,
+  far: #1b150030,
+  workbench: #00000014
+}

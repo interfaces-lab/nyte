@@ -13,7 +13,7 @@ const fan: ToolDefinition<Infer<typeof nothing>> = {
   description: "Call echo many times at once, as a codemode script does.",
   parameters: nothing,
   class: () => ({ kind: "custom", label: "Fanning out" }),
-  replay: "safe",
+  rerun: "safe",
   async execute(_args, invocation) {
     const outcomes = await Promise.all(
       Array.from({ length: CALLS }, (_, index) =>

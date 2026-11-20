@@ -15,7 +15,9 @@ const parameters = standard(
 
 export default {
   id: "bash-description",
-  activate(api) {
-    api.contribute.tools.add((draft) => draft.wrap("bash", (bash) => ({ ...bash, parameters })));
-  },
+  activate: () => ({
+    contribute: {
+      tools: [(draft) => draft.wrap("bash", (bash) => ({ ...bash, parameters }))],
+    },
+  }),
 } satisfies Plugin;

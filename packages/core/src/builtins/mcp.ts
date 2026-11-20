@@ -21,20 +21,7 @@ export function mcpPlugin(
         info.project === undefined ? [] : (await readProject(info.project)).disabledMcp,
       );
 
-      if (api.signal.aborted) return;
-
-      api.contribute.tools.add((draft) => {
-        for (const tool of hub.tools(workspace))
-          if (!disabled.has(tool.name.split("__")[1] ?? "")) draft.set(tool.name, tool);
-      });
-
-      api.contribute.prompt.add((draft) => {
-        const text = describeServers(
-          hub.briefs(workspace).filter((brief) => !disabled.has(brief.name)),
-        );
-
-        if (text !== null) draft.set("mcp", { id: "mcp", order: 95, text });
-      });
+      if (api.signal.aborted) return {};
 
       const changes = hub.watch(workspace)[Symbol.asyncIterator]();
       api.signal.addEventListener("abort", () => void changes.return?.());
@@ -52,6 +39,26 @@ export function mcpPlugin(
           });
         }
       })();
+
+      return {
+        contribute: {
+          tools: [
+            (draft) => {
+              for (const tool of hub.tools(workspace))
+                if (!disabled.has(tool.name.split("__")[1] ?? "")) draft.set(tool.name, tool);
+            },
+          ],
+          prompt: [
+            (draft) => {
+              const text = describeServers(
+                hub.briefs(workspace).filter((brief) => !disabled.has(brief.name)),
+              );
+
+              if (text !== null) draft.set("mcp", { id: "mcp", order: 95, text });
+            },
+          ],
+        },
+      };
     },
   };
 }

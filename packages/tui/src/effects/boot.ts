@@ -3,7 +3,7 @@ import type { ModelCatalogView, SessionId, Thinking } from "@nyte-ai/sdk";
 import { availableModels, findModel } from "../lib/catalog.ts";
 import type { BlankChat, Selection } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate } from "../update.ts";
-import { checkForUpdate } from "../releases.ts";
+import { findUpdate } from "../releases.ts";
 import { configure } from "./commands.ts";
 import type { HandlerContext } from "./scope.ts";
 import {
@@ -16,6 +16,7 @@ import {
   settleFolder,
   watchHealth,
   watchHost,
+  watchRefused,
 } from "./session.ts";
 
 export interface BootOptions {
@@ -52,6 +53,14 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
     .finally(() => scope.watches.delete(health));
 
   scope.watches.add(health);
+
+  const refused: Promise<void> = watchRefused(context)
+    .catch((cause: unknown) => {
+      ports.log.write("watch", cause);
+    })
+    .finally(() => scope.watches.delete(refused));
+
+  scope.watches.add(refused);
   const catalog = await ports.host.listModels();
   const { settings } = context.read().facts;
   dispatch({ kind: "catalog", generation: (scope.catalogGeneration += 1), catalog });
@@ -106,7 +115,7 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
         session: target,
         selection: {
           model: options.model === null ? undefined : flagged.model,
-          fast: options.model === null ? undefined : flagged.fast,
+          modes: options.model === null ? undefined : flagged.modes,
           effort: options.effort === null ? undefined : flagged.effort,
         },
       },
@@ -163,7 +172,7 @@ function flagSelection(
     const model = { provider, id: rest.join("/") };
     const listed = findModel(availableModels(catalog), model);
 
-    return { model, effort: options.effort ?? listed?.defaultThinking ?? "medium", fast: false };
+    return { model, effort: options.effort ?? listed?.defaultThinking ?? "medium", modes: [] };
   }
 
   const found = availableModels(catalog).find((model) => model.ref.id === options.model);
@@ -173,12 +182,12 @@ function flagSelection(
   return {
     model: found.ref,
     effort: options.effort ?? found.defaultThinking,
-    fast: false,
+    modes: [],
   };
 }
 
 async function checkUpdate(autoUpdate: boolean, context: HandlerContext): Promise<void> {
-  const release = await checkForUpdate();
+  const release = await findUpdate(context.signal).catch(() => undefined);
 
   if (release === undefined || context.signal.aborted) return;
 
@@ -192,7 +201,7 @@ async function checkUpdate(autoUpdate: boolean, context: HandlerContext): Promis
     return;
   }
 
-  const outcome = await selfUpdate({ target: release.version });
+  const outcome = await selfUpdate({ target: release.version, signal: context.signal });
 
   if (context.signal.aborted) return;
 

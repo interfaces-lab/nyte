@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type {
+  GitCommitFiles,
   GitHubAccountState,
   GitHubApi,
   GitHubPullRequestInput,
@@ -273,8 +274,8 @@ function actionFailureMessage(cause: unknown): CommitBarResult {
   return { tone: "error", text: "The action didn’t go through.", detail: errorMessage(cause) };
 }
 
-function commitTargetFor(scope: WorkbenchChangesScope): "staged" | "all" {
-  return scope.kind === "staged" ? "staged" : "all";
+function commitTargetFor(scope: WorkbenchChangesScope): GitCommitFiles {
+  return scope.kind === "staged" ? { kind: "staged" } : { kind: "all" };
 }
 
 function pullRequestInput(message: string): GitHubPullRequestInput {
@@ -375,7 +376,15 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
     if (plan.push) {
       const pushed = await git.push({ setUpstream: options.setUpstream === true }, { expect });
 
-      const outcome = pushResultMessage(pushed);
+      const outcome =
+        pushed.kind === "rejected" && (await git.refs()).remotes.length === 0
+          ? {
+              tone: "error" as const,
+              text: "This repository has no remote to push to.",
+              detail:
+                "Add one with git remote add, or create the repository on GitHub with gh repo create.",
+            }
+          : pushResultMessage(pushed);
 
       if (outcome.tone === "error") {
         if (pushed.kind !== "stale") run.onPushInterrupted();

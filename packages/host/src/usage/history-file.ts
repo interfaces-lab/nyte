@@ -1,0 +1,199 @@
+import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
+import { constants } from "node:fs";
+import type { Stats } from "node:fs";
+import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { Type, type TSchema } from "typebox";
+
+export interface HistoryLine {
+  readonly text: string;
+  readonly terminated: boolean;
+}
+
+export interface HistoryFold<Scan> {
+  line(line: HistoryLine): void;
+  scan(): Scan;
+}
+
+export type HistoryParser<Scan> = (from: Scan | undefined) => HistoryFold<Scan>;
+
+export interface FileScan<Scan> {
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly position: number;
+  readonly committed: Scan;
+}
+
+export function fileScanSchema<Scan extends TSchema>(scan: Scan) {
+  return Type.Object({
+    size: Type.Number({ minimum: 0 }),
+    mtimeMs: Type.Number(),
+    position: Type.Number({ minimum: 0 }),
+    committed: scan,
+  });
+}
+
+export class UsageScanCache<Scan> {
+  readonly #files: Map<string, FileScan<Scan>>;
+  #changed = false;
+
+  constructor(files: Iterable<readonly [string, FileScan<Scan>]> = []) {
+    this.#files = new Map(files);
+  }
+
+  keys(): IterableIterator<string> {
+    return this.#files.keys();
+  }
+
+  entries(): IterableIterator<[string, FileScan<Scan>]> {
+    return this.#files.entries();
+  }
+
+  get(path: string): FileScan<Scan> | undefined {
+    return this.#files.get(path);
+  }
+
+  set(path: string, scan: FileScan<Scan>): void {
+    if (this.#files.get(path) === scan) return;
+    this.#files.set(path, scan);
+    this.#changed = true;
+  }
+
+  keepOnly(seen: ReadonlySet<string>): void {
+    for (const path of this.#files.keys()) {
+      if (seen.has(path)) continue;
+      this.#files.delete(path);
+      this.#changed = true;
+    }
+  }
+
+  get changed(): boolean {
+    return this.#changed;
+  }
+
+  markSaved(): void {
+    this.#changed = false;
+  }
+}
+
+export async function readHistory<Scan>(
+  path: string,
+  info: Stats,
+  parser: HistoryParser<Scan>,
+  cache: UsageScanCache<Scan> | undefined,
+  signal: AbortSignal | undefined,
+): Promise<Scan> {
+  const hit = cache?.get(path);
+  const unchanged = hit !== undefined && hit.size === info.size && hit.mtimeMs === info.mtimeMs;
+
+  if (unchanged && hit.position === info.size) return hit.committed;
+  const from = unchanged || (hit !== undefined && info.size > hit.size) ? hit : undefined;
+  const fold = parser(from?.committed);
+  let position = from?.position ?? 0;
+  let unterminated: HistoryLine | undefined;
+
+  for await (const line of historyLines(path, position, signal)) {
+    signal?.throwIfAborted();
+
+    if (!line.terminated) {
+      unterminated = line;
+      continue;
+    }
+
+    fold.line(line);
+    position = line.end;
+  }
+
+  const committed = fold.scan();
+  cache?.set(
+    path,
+    unchanged ? hit : { size: info.size, mtimeMs: info.mtimeMs, position, committed },
+  );
+
+  if (unterminated === undefined) return committed;
+  fold.line(unterminated);
+
+  return fold.scan();
+}
+
+async function* historyLines(path: string, start: number, signal: AbortSignal | undefined) {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+
+  try {
+    const stat = await file.stat();
+
+    if (!stat.isFile()) throw new Error("History is not a regular file.");
+    const buffer = Buffer.alloc(64 * 1024);
+    const pending: Buffer[] = [];
+    let position = start;
+
+    while (position < stat.size) {
+      signal?.throwIfAborted();
+
+      const { bytesRead } = await file.read(
+        buffer,
+        0,
+        Math.min(buffer.length, stat.size - position),
+        position,
+      );
+
+      if (bytesRead === 0) break;
+      const read = buffer.subarray(0, bytesRead);
+      const readStart = position;
+      position += bytesRead;
+      let from = 0;
+
+      for (let newline = read.indexOf(0x0a); newline !== -1; newline = read.indexOf(0x0a, from)) {
+        yield {
+          text:
+            pending.length === 0
+              ? read.toString("utf8", from, newline)
+              : Buffer.concat([...pending.splice(0), read.subarray(0, newline)]).toString("utf8"),
+          terminated: true,
+          end: readStart + newline + 1,
+        };
+        from = newline + 1;
+      }
+
+      if (from < bytesRead) pending.push(Buffer.from(read.subarray(from)));
+    }
+
+    if (pending.length > 0)
+      yield { text: Buffer.concat(pending).toString("utf8"), terminated: false, end: position };
+  } finally {
+    await file.close();
+  }
+}
+
+export async function readCacheDocument<Document>(
+  path: string,
+  validator: { Check(value: unknown): value is Document },
+): Promise<Document | undefined> {
+  try {
+    const value: unknown = JSON.parse(await readFile(path, "utf8"));
+
+    return validator.Check(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function writeCacheDocument<Document>(
+  path: string,
+  document: Document,
+): Promise<boolean> {
+  const temporary = `${path}.${randomUUID()}.tmp`;
+
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(temporary, JSON.stringify(document), { mode: 0o600 });
+    await rename(temporary, path);
+
+    return true;
+  } catch {
+    await rm(temporary, { force: true }).catch(() => undefined);
+
+    return false;
+  }
+}

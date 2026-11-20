@@ -1,0 +1,319 @@
+import { router } from "expo-router";
+import { SymbolView, type SFSymbol } from "expo-symbols";
+import { useState } from "react";
+import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native";
+import { css, html } from "react-strict-dom";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { SessionId } from "@nyte-ai/sdk";
+import { formatWholeDuration } from "@nyte-ai/plugin/client/presentation";
+import { useHost } from "../connection/host-context.tsx";
+import { EmptyState } from "../ui/empty-state.tsx";
+import { GlassButton } from "../ui/glass-button.tsx";
+import { SectionHeader } from "../ui/section-header.tsx";
+import { Group, GroupRow } from "../ui/group.tsx";
+import { IconTile } from "../ui/icon-tile.tsx";
+import { statusLabels, formatActivity, markTone } from "../chat/sessions.ts";
+import { latestChangedTurn, turnAnswer } from "../chat/turn-changes.ts";
+import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
+import { useRemoteChat } from "../chat/remote-chat.ts";
+import { askToMerge, returnedDraft } from "../chat/send-answer.ts";
+import { useChatDraft } from "../chat/drafts.ts";
+import { Markdown } from "../chat/markdown.tsx";
+import { chatMark, openQuestion } from "../view-helpers.ts";
+import {
+  controls,
+  list,
+  useTheme,
+  radii,
+  spacing,
+  textStyles,
+  tokens,
+  typography,
+} from "../theme.ts";
+
+function dirname(path: string): string {
+  const slash = path.lastIndexOf("/");
+
+  return slash <= 0 ? "" : path.slice(0, slash);
+}
+
+function basename(path: string): string {
+  const slash = path.lastIndexOf("/");
+
+  return slash < 0 ? path : path.slice(slash + 1);
+}
+
+export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
+  const theme = useTheme();
+  const { client } = useHost();
+  const insets = useSafeAreaInsets();
+  const chat = useRemoteChat(client, sessionId);
+  const [, setDraft] = useChatDraft(sessionId);
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState<string>();
+  const [now] = useState(() => Date.now());
+  const summaryWidth = useWindowDimensions().width - list.gutter * 2;
+
+  const view = chat.state;
+  const changes = view?.changes ?? [];
+
+  const changedTurn = view === undefined ? undefined : latestChangedTurn(view);
+
+  const summary =
+    view === undefined || changedTurn === undefined ? undefined : turnAnswer(view, changedTurn);
+
+  const info = chat.info;
+  const execution = view?.execution;
+  const run = execution === undefined || execution.kind === "idle" ? undefined : execution.run;
+  const waiting = view === undefined ? undefined : openQuestion(view);
+  const running = run !== undefined;
+  const mark = chatMark(info, execution);
+  const added = changes.reduce((total, file) => total + file.added, 0);
+  const removed = changes.reduce((total, file) => total + file.removed, 0);
+  const tone = markTone(mark, theme);
+  const ended = execution?.kind === "idle" ? execution.lastRun?.end.kind : undefined;
+  const outcome = ended === "stopped" ? "aborted" : ended;
+
+  const readiness: { headline: string; symbol: SFSymbol; tint: string; detail: string } =
+    mark === "waiting" || (!running && waiting !== undefined)
+      ? {
+          headline: "Needs your answer",
+          symbol: "questionmark.circle.fill",
+          tint: theme.warning,
+          detail: "Waiting for your answer",
+        }
+      : running
+        ? {
+            headline: "Agent is working",
+            symbol: "clock",
+            tint: theme.muted,
+            detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatWholeDuration(now - run.startedAt)}`}`,
+          }
+        : changes.length === 0
+          ? {
+              headline: "No file changes",
+              symbol: "doc",
+              tint: theme.muted,
+              detail: "The agent hasn't edited files in this conversation.",
+            }
+          : outcome === "failed"
+            ? {
+                headline: "Failed with changes",
+                symbol: "xmark.circle.fill",
+                tint: theme.danger,
+                detail: "The run failed.",
+              }
+            : outcome === "aborted"
+              ? {
+                  headline: "Stopped with changes",
+                  symbol: "stop.circle.fill",
+                  tint: theme.muted,
+                  detail: "Stopped. Check the diff first.",
+                }
+              : {
+                  headline: "Ready for review",
+                  symbol: "checkmark.circle.fill",
+                  tint: theme.success,
+                  detail:
+                    changedTurn === undefined || changedTurn.endedAt === null
+                      ? "Finished"
+                      : `Finished in ${formatWholeDuration(changedTurn.endedAt - changedTurn.startedAt)}`,
+                };
+
+  async function merge() {
+    if (merging) return;
+    setMerging(true);
+    setMergeError(undefined);
+
+    const asked = await askToMerge(
+      () => chat.send(MERGE_PROMPT),
+      () => setDraft((current) => returnedDraft(current, MERGE_PROMPT)),
+    );
+
+    setMerging(false);
+
+    if (asked?.kind === "back") router.back();
+
+    if (asked?.kind === "failed") setMergeError(asked.error);
+  }
+
+  if (chat.state === undefined) {
+    return (
+      <html.div style={[styles.centered, styles.topInset(insets.top)]}>
+        {chat.error !== undefined ? (
+          <EmptyState title="Couldn't load review" description={chat.error} />
+        ) : (
+          <ActivityIndicator color={theme.muted} />
+        )}
+      </html.div>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: theme.background }}
+      contentContainerStyle={{ flexGrow: 1 }}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      <html.div style={[styles.page, styles.bottomInset(insets.bottom)]}>
+        <html.h1 style={[textStyles.heading, styles.title]}>
+          {info?.name || "Untitled conversation"}
+        </html.h1>
+        <html.div style={styles.statusRow}>
+          <html.div style={styles.pill(tone)}>
+            <html.span style={styles.pillText(tone)}>{statusLabels[mark]}</html.span>
+          </html.div>
+          <html.span style={[textStyles.secondary, styles.totals]}>
+            <html.span style={styles.added}>{`+${String(added)} `}</html.span>
+            <html.span style={styles.removed}>{`\u2212${String(removed)}`}</html.span>
+            {` \u00b7 ${String(changes.length)} ${changes.length === 1 ? "file" : "files"}`}
+          </html.span>
+          <html.div style={styles.rule} />
+          <html.span style={textStyles.secondary}>
+            {info === undefined
+              ? ""
+              : formatActivity(info.lastActivityAt, now) === "Now"
+                ? "Just now"
+                : `${formatActivity(info.lastActivityAt, now)} ago`}
+          </html.span>
+        </html.div>
+        <html.div style={styles.readiness}>
+          <html.span style={textStyles.headline}>{readiness.headline}</html.span>
+          <html.div style={styles.evidence}>
+            <SymbolView name={readiness.symbol} size={controls.icon} tintColor={readiness.tint} />
+            <html.span style={textStyles.secondary}>{readiness.detail}</html.span>
+          </html.div>
+          {mergeError !== undefined && (
+            <html.p role="alert" style={textStyles.error}>
+              {mergeError}
+            </html.p>
+          )}
+          {waiting !== undefined ? (
+            <GlassButton label="Answer in Chat" prominent fill href={`/chat/${sessionId}`} />
+          ) : changes.length > 0 ? (
+            <>
+              <GlassButton
+                label="Ask to Merge"
+                busy={merging}
+                disabled={running}
+                prominent
+                fill
+                onPress={() => confirmMergeRequest({ onSend: () => void merge() })}
+              />
+              <html.p aria-live="polite" style={textStyles.caption}>
+                {merging
+                  ? "Asking Nyte to merge…"
+                  : "Sends a follow-up to the agent on your Mac. It runs git there and replies in the conversation."}
+              </html.p>
+            </>
+          ) : null}
+        </html.div>
+        {changes.length > 0 && (
+          <>
+            <SectionHeader label="Changed files" first />
+            <Group>
+              {changes.map((file) => (
+                <GroupRow
+                  key={file.path}
+                  href={`/changes/${sessionId}?path=${encodeURIComponent(file.path)}`}
+                  trail="push"
+                >
+                  <IconTile name="doc.text" />
+                  <html.div style={styles.fileText}>
+                    <html.span style={[textStyles.secondary, styles.fileName]}>
+                      {basename(file.path)}
+                    </html.span>
+                    <html.span style={textStyles.caption}>{dirname(file.path)}</html.span>
+                  </html.div>
+                  <html.span style={[textStyles.caption, styles.totals]}>
+                    <html.span style={styles.added}>{`+${String(file.added)} `}</html.span>
+                    <html.span style={styles.removed}>{`\u2212${String(file.removed)}`}</html.span>
+                  </html.span>
+                </GroupRow>
+              ))}
+            </Group>
+          </>
+        )}
+        {summary !== undefined && summary !== "" && (
+          <>
+            <SectionHeader label="Agent summary" />
+            <Markdown text={summary} width={summaryWidth} />
+          </>
+        )}
+      </html.div>
+    </ScrollView>
+  );
+}
+
+const styles = css.create({
+  page: {
+    display: "flex",
+    flexDirection: "column",
+    paddingInline: list.gutter,
+    paddingTop: spacing.md,
+    gap: spacing.lg,
+  },
+  bottomInset: (bottom: number) => ({ paddingBottom: bottom + spacing.lg }),
+  centered: {
+    flexGrow: 1,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: spacing.lg,
+    padding: spacing.xl,
+    backgroundColor: tokens.background,
+  },
+  topInset: (top: number) => ({ paddingTop: top + spacing.xl }),
+  title: { lineClamp: 3, textAlign: "start" },
+  statusRow: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  pill: (tone: { color: string; fill: string }) => ({
+    display: "flex",
+    height: 26,
+    paddingInline: 10,
+    borderRadius: radii.pill,
+    backgroundColor: tone.fill,
+    justifyContent: "center",
+  }),
+  pillText: (tone: { color: string; fill: string }) => ({
+    ...typography.label,
+    lineHeight: `${typography.label.lineHeight}px`,
+    color: tone.color,
+  }),
+  totals: { fontVariant: "tabular-nums" },
+  added: { color: tokens.success },
+  removed: { color: tokens.danger },
+  rule: { width: 1, height: 14, backgroundColor: tokens.separator },
+  readiness: {
+    display: "flex",
+    flexDirection: "column",
+    gap: spacing.md,
+    padding: spacing.lg,
+    backgroundColor: tokens.surface,
+    borderRadius: radii.card,
+    borderWidth: controls.hairline,
+    borderStyle: "solid",
+    borderColor: tokens.border,
+    boxShadow: tokens.shadow,
+  },
+  evidence: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  fileText: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: "flex-start",
+    gap: 2,
+  },
+  fileName: {
+    color: tokens.foreground,
+    lineClamp: 1,
+    fontWeight: 600,
+    textAlign: "start",
+  },
+});

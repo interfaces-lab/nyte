@@ -9,14 +9,13 @@ import { fakeModels, open } from "./fake-models.ts";
 import { until } from "../src/harness.ts";
 
 const nothing = standard(Type.Object({}));
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const echo: ToolDefinition<Infer<typeof nothing>> = {
   name: "echo",
   description: "The echo tool.",
   parameters: nothing,
   class: () => ({ kind: "custom", label: "echo" }),
-  replay: "safe",
+  rerun: "safe",
   execute: async () => ({ content: [{ kind: "text", text: "echo ran" }] }),
 };
 
@@ -41,6 +40,8 @@ function slow(release: Promise<void>): Plugin<"core"> & { readonly activations: 
       activations += 1;
 
       if (activations === 2) await release;
+
+      return {};
     },
   };
 }
@@ -50,11 +51,16 @@ function observer(seen: string[]): Plugin<"core"> {
 
   return {
     id: "observer",
-    activate(api) {
+    activate() {
       activations += 1;
       const n = activations;
-      api.hook("after_request", (event) => void seen.push(`runtime${n}:${event.step}`));
-      api.hook("run_ended", (end) => void seen.push(`runtime${n}:run_ended:${end.kind}`));
+
+      return {
+        hooks: {
+          after_request: (event) => void seen.push(`runtime${n}:${event.step}`),
+          run_ended: (end) => void seen.push(`runtime${n}:run_ended:${end.kind}`),
+        },
+      };
     },
   };
 }
@@ -136,7 +142,6 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
     const { session, receipt } = await host.sessions.start({ content: "Go." });
     await until(() => (fake.requests.length === 1 ? true : undefined));
     await host.kernel.plugins.reload(session.id);
-    await sleep(20);
     streaming.resolve();
     expect((await receipt.settled()).kind).toBe("completed");
     await until(() => (seen.includes("runtime1:assistant") ? true : undefined));

@@ -1,0 +1,56 @@
+// Generated from @nyte-ai/ui (platform-colors and the compiled roles). Regenerate instead of editing.
+import "./color.elyx" as base
+
+@context(theme=dark)
+file {}
+
+export role = tokens : base.role {
+  content-primary: #f0efed,
+  content-secondary: #bcbab6,
+  content-tertiary: #a19e99,
+  content-quaternary: #7d7a75,
+  content-disabled: #5f5e59,
+  content-accent: #adaaa5,
+  content-on-interactive-strong: #ffffff,
+  content-on-control: #ffffff,
+  stroke-primary: #8e8b86,
+  stroke-secondary: #fffceb4e,
+  stroke-tertiary: #fffff022,
+  stroke-quaternary: #ffffff0f,
+  stroke-accent: #8e8b86,
+  fill-primary: #fffff022,
+  fill-secondary: #fffff315,
+  fill-tertiary: #ffffff0f,
+  bg-base: #1b1b1b,
+  bg-chrome: #191919,
+  bg-muted: #202020,
+  bg-elevated: #202020,
+  bg-muted-translucent: #ffffff08,
+  bg-scrim: #000000bf,
+  bg-scrim-translucent: #fffceb4e,
+  bg-interactive-strong: #5f5e59,
+  bg-control: #5f5e59,
+  bg-control-hover: #666560,
+  bg-control-pressed: #6f6e69,
+  bg-control-selected: #5f5e59,
+  bg-control-selected-hover: #666560,
+  bg-control-selected-pressed: #6f6e69,
+  button-fill: #6b6864,
+  button-fill-hover: #64615c,
+  button-fill-pressed: #5a5752,
+  chart-series: #7d7a75,
+  scrollbar-thumb: #7d7a7580,
+  window-wash: #0000006b,
+  sidebar-material: #1919195c,
+  surface-material: #1b1b1bb8,
+  popup-material: #202020e6,
+  conversation-user-shell-bg: #19191999,
+  focus: #2783de
+}
+
+export shadow = tokens : base.shadow {
+  near: #42230310,
+  mid: #2a1c0024,
+  far: #1b150060,
+  workbench: #00000014
+}

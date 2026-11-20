@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -19,8 +19,11 @@ import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import type { ClientActions } from "@nyte-ai/plugin/core/browser-client";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import canvas from "@nyte-ai/plugin/core/canvas";
+import cd from "@nyte-ai/plugin/core/cd";
 import { claudeCodeSdk } from "@nyte-ai/plugin/core/claude-code-sdk";
 import codemode from "@nyte-ai/plugin/core/codemode";
+import designGuide from "@nyte-ai/plugin/core/design-guide";
+import languageTools from "@nyte-ai/plugin/core/language-tools";
 import openaiAstraContext from "@nyte-ai/plugin/core/openai-astra-context";
 import { openaiCompaction } from "@nyte-ai/plugin/core/openai-compaction";
 import question from "@nyte-ai/plugin/core/question";
@@ -28,31 +31,33 @@ import rename from "@nyte-ai/plugin/core/rename";
 import secretRequests from "@nyte-ai/plugin/core/secret";
 import subagents from "@nyte-ai/plugin/core/subagents";
 import telemetry from "@nyte-ai/plugin/core/telemetry";
+import threads from "@nyte-ai/plugin/core/threads";
 import toolSearch from "@nyte-ai/plugin/core/tool-search";
 import web from "@nyte-ai/plugin/core/web";
 import manifest from "../package.json" with { type: "json" };
-import { credentialStore } from "./credentials.ts";
-import { identitySigner } from "./identity-key.ts";
-import { readErrorCode } from "./local/tree.ts";
-import { localDocuments } from "./local/documents.ts";
-import { createMediaLinks } from "./local/media.ts";
-import { localGitHubAccount } from "./local/github.ts";
+import { credentialStore } from "./keys/credentials.ts";
+import { identitySigner } from "./keys/identity-key.ts";
+import { missing, readErrorCode } from "./fs-errors.ts";
+import { localDocuments } from "./local/files/documents.ts";
+import { createMediaLinks } from "./serve/media.ts";
+import { localGitHubAccount } from "./local/git/github.ts";
+import { localMachine } from "./local/process/machine.ts";
 import { localProvider } from "./local/provider.ts";
-import { importLegacyTrust } from "./local/legacy-trust.ts";
-import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts";
-import { listen } from "./listen.ts";
+import { importLegacyTrust } from "./local/migrations/legacy-trust.ts";
+import { migrateLocalWorkspaceIdentities } from "./local/migrations/workspace-identities.ts";
+import { listen } from "./serve/listen.ts";
 import { nodeImages } from "./images/node.ts";
-import { createMcpHub } from "./mcp/hub.ts";
+import { createMcpHub } from "./mcp-client/hub.ts";
 import type { ClientMetadataFetch } from "./mcp-server/client-metadata.ts";
 import { openMcpServer } from "./mcp-server/server.ts";
 import { createViewCompiler } from "./plugins/views.ts";
-import { performOffered, sharedClients } from "./serve/clients.ts";
+import { performFor, performOffered, sharedClients } from "./serve/clients.ts";
 import { createPluginLoader } from "./plugins/loader.ts";
 import type { PluginImport } from "./plugins/loader.ts";
-import { defaultSecrets } from "./secrets.ts";
-import type { SecretsSource } from "./secrets.ts";
-import { sqliteStore, storePath } from "./sqlite.ts";
-import { openTailnet } from "./tailnet.ts";
+import { defaultSecrets } from "./keys/secrets.ts";
+import type { SecretsSource } from "./keys/secrets.ts";
+import { sqliteStore, storePath } from "./store/sqlite.ts";
+import { openTailnet } from "./serve/tailnet.ts";
 
 declare const NYTE_BUILT_VERSION: string | undefined;
 
@@ -92,11 +97,13 @@ export async function openHost(options: OpenHostOptions = {}): Promise<Host> {
 async function defaultStore(home: string, onMigrate?: () => void): Promise<Store> {
   const path = storePath(home);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await (await open(path, "a", 0o600)).close();
+
+  for (const file of [path, `${path}-wal`, `${path}-shm`]) await chmod(file, 0o600).catch(missing);
 
   return sqliteStore({ path, onMigrate });
 }
 
-/** Defers the release of each thing it starts on `opened`, which runs them newest first and each at most once: when a later step throws, or when the returned host closes. A store the caller gave is never deferred, so it stays open. */
 async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStack): Promise<Host> {
   const home = options.home ?? homedir();
   const workspace = options.workspace ?? { kind: "local", path: process.cwd() };
@@ -117,7 +124,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
         .some((row) => row.actions.some((declared) => declared.name === action)),
     perform: (action, input, timeoutMs) =>
       server === null
-        ? Promise.reject(new SdkError("unavailable", "The host is still opening."))
+        ? Promise.reject(new SdkError("unavailable", "The host is still opening.", { retry: true }))
         : performOffered(server, { action, input, timeoutMs }),
   };
 
@@ -144,7 +151,9 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     question,
     secretRequests,
     rename,
+    cd,
     subagents,
+    threads,
     bashDescription,
     web,
     codemode,
@@ -153,6 +162,8 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     openaiAstraContext,
     telemetry,
     canvas,
+    designGuide,
+    languageTools,
     claudeCode.plugin,
     acp.plugin,
   ];
@@ -188,6 +199,15 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     compileView: createViewCompiler(),
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
+    clients: {
+      rows: () => (server === null ? [] : sharedClients(server).rows()),
+      perform: (principal, request) =>
+        server === null
+          ? Promise.reject(
+              new SdkError("unavailable", "The host is still opening.", { retry: true }),
+            )
+          : performFor(server, principal, request),
+    },
     github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),
     documents:
       options.documents ?? (usesLocalProvider ? localDocuments(documentsClosed.signal) : undefined),
@@ -201,6 +221,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     member: {
       label: options.label ?? "nyte",
       pid: process.pid,
+      machine: localMachine,
       capabilities: given.some((plugin) => plugin.id === browserTools.id) ? [browserTools.id] : [],
     },
     revoked: options.onRevoked,

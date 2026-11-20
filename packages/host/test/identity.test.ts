@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asId } from "@nyte-ai/schema";
 import { afterEach, describe, expect, it } from "vitest";
-import { seedSigner } from "../src/identity.ts";
-import { identitySigner } from "../src/identity-key.ts";
+import { seedSigner } from "../src/keys/identity.ts";
+import { identitySigner } from "../src/keys/identity-key.ts";
 
 const seed = new Uint8Array(32).fill(7);
 

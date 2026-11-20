@@ -17,12 +17,12 @@ interface Hop {
 
 export const HOPS: ReadonlyMap<string, Hop> = new Map([
   ["composer.submit", hop("app/src/conversation/composer-send.ts:startComposerChat", 55, 50)],
-  ["sdk.send", hop("sdk/src/client.ts:sessions.start", 55, 50)],
+  ["sdk.send", hop("sdk/src/connection/client.ts:sessions.start", 55, 50)],
   ["host.admit", hop("core/src/api/session.ts:start", 40, 45)],
   ["turn.start", hop("core/src/agent/turn.ts:prepareRequest", 795, 540)],
   ["model.stream", hop("core/src/agent/turn.ts:stream", 200, 160)],
-  ["mcp.connect", hop("host/src/mcp/hub.ts:connectTraced", 825, 555)],
-  ["mcp.call:search_places", hop("host/src/mcp/tools.ts:execute", 80, 70)],
+  ["mcp.connect", hop("host/src/mcp-client/hub.ts:connectTraced", 825, 555)],
+  ["mcp.call:search_places", hop("host/src/mcp-client/tools.ts:execute", 80, 70)],
   ["mcp.serve", hop("bench/src/scenarios/mcp-server.mjs:serve", 70, 65)],
   ["tool.run:read", hop("core/src/agent/turn.ts:execute", 25, 25)],
   ["tool.run:mcp__places__search_places", hop("core/src/agent/turn.ts:execute", 110, 70)],
@@ -30,9 +30,9 @@ export const HOPS: ReadonlyMap<string, Hop> = new Map([
   ["tool.run:bash", hop("core/src/agent/turn.ts:execute", 4210, 4020)],
   ["canvas.compile", hop("plugin/src/canvas/canvas.ts:canvas_render.execute", 25, 25)],
   ["canvas.paint", hop("app/src/canvas/canvas-frame.tsx:CanvasFrame", 455, 170)],
-  ["pty.spawn", hop("host/src/local/jobs.ts:localExec", 25, 25)],
-  ["pty.output", hop("host/src/local/jobs.ts:localExec (output.push)", 3835, 3855)],
-  ["part.publish", hop("core/src/fold/watch.ts:publishSet", 25, 25)],
+  ["pty.spawn", hop("host/src/local/process/jobs.ts:localExec", 25, 25)],
+  ["pty.output", hop("host/src/local/process/jobs.ts:localExec (output.push)", 3835, 3855)],
+  ["part.publish", hop("core/src/watch/watch.ts:publishSet", 25, 25)],
   ["client.paint", hop("app/src/paint-spans.ts:tracePaints", 315, 45)],
 ]);
 

@@ -1,0 +1,706 @@
+{
+  "commit": "ff729c9b56a8087d9689f9858f6dee456896bf7f",
+  "node": "v26.13.0",
+  "deflate": {
+    "offered": "permessage-deflate; client_max_window_bits",
+    "accepted": null
+  },
+  "steps": {
+    "S1": {
+      "title": "stream text",
+      "down": {
+        "bytes": 27895,
+        "messages": 86,
+        "ws": 27796,
+        "http": {
+          "requests": 1,
+          "bytes": 99
+        },
+        "socket": 28501,
+        "deflate": {
+          "alone": 11219,
+          "shared": 1734
+        },
+        "kinds": {
+          "http head.send": {
+            "messages": 1,
+            "bytes": 99
+          },
+          "event change host sessions": {
+            "messages": 3,
+            "bytes": 2709
+          },
+          "event change session heads+messages+turns": {
+            "messages": 1,
+            "bytes": 1610
+          },
+          "event change session messages+turns": {
+            "messages": 1,
+            "bytes": 1193
+          },
+          "text whole": {
+            "messages": 2,
+            "bytes": 344
+          },
+          "text append": {
+            "messages": 77,
+            "bytes": 14333
+          },
+          "event change session messages": {
+            "messages": 1,
+            "bytes": 657
+          },
+          "event change session heads+messages+turns+usage": {
+            "messages": 1,
+            "bytes": 6950
+          }
+        }
+      },
+      "up": {
+        "bytes": 155,
+        "messages": 0,
+        "ws": 0,
+        "http": {
+          "requests": 1,
+          "bytes": 155
+        },
+        "socket": 448,
+        "deflate": {
+          "alone": 0,
+          "shared": 0
+        },
+        "kinds": {
+          "http head.send": {
+            "messages": 1,
+            "bytes": 155
+          }
+        }
+      },
+      "extra": {
+        "streamed-text messages": 79,
+        "streamed-text median bytes": 191,
+        "streamed-text p90 bytes": 191,
+        "overhead ratio": 6.34
+      },
+      "sequence": ["http head.send"]
+    },
+    "S2": {
+      "title": "tool turn",
+      "down": {
+        "bytes": 25477,
+        "messages": 31,
+        "ws": 25378,
+        "http": {
+          "requests": 1,
+          "bytes": 99
+        },
+        "socket": 25863,
+        "deflate": {
+          "alone": 8654,
+          "shared": 1387
+        },
+        "kinds": {
+          "http head.send": {
+            "messages": 1,
+            "bytes": 99
+          },
+          "event change host sessions": {
+            "messages": 6,
+            "bytes": 5303
+          },
+          "event change session heads+messages+turns": {
+            "messages": 2,
+            "bytes": 3469
+          },
+          "event change session background": {
+            "messages": 1,
+            "bytes": 375
+          },
+          "text progress": {
+            "messages": 1,
+            "bytes": 4466
+          },
+          "event change session background+heads+messages+turns": {
+            "messages": 1,
+            "bytes": 4250
+          },
+          "event change session heads+messages": {
+            "messages": 1,
+            "bytes": 1045
+          },
+          "text whole": {
+            "messages": 1,
+            "bytes": 167
+          },
+          "text append": {
+            "messages": 17,
+            "bytes": 3161
+          },
+          "event change session heads+messages+turns+usage": {
+            "messages": 1,
+            "bytes": 3142
+          }
+        }
+      },
+      "up": {
+        "bytes": 159,
+        "messages": 0,
+        "ws": 0,
+        "http": {
+          "requests": 1,
+          "bytes": 159
+        },
+        "socket": 452,
+        "deflate": {
+          "alone": 0,
+          "shared": 0
+        },
+        "kinds": {
+          "http head.send": {
+            "messages": 1,
+            "bytes": 159
+          }
+        }
+      },
+      "extra": {
+        "tool call bytes": 8521,
+        "tool call messages": 4
+      },
+      "sequence": ["http head.send"]
+    },
+    "S3": {
+      "title": "cold open, newest screen",
+      "down": {
+        "bytes": 75245,
+        "messages": 6,
+        "ws": 67816,
+        "http": {
+          "requests": 4,
+          "bytes": 7429
+        },
+        "socket": 76492,
+        "deflate": {
+          "alone": 11835,
+          "shared": 11629
+        },
+        "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 255
+          },
+          "http stream comment": {
+            "messages": 1,
+            "bytes": 13
+          },
+          "http stream connection.watch chunk": {
+            "messages": 1,
+            "bytes": 7086
+          },
+          "http .nyte/ws/ticket": {
+            "messages": 1,
+            "bytes": 75
+          },
+          "welcome": {
+            "messages": 1,
+            "bytes": 249
+          },
+          "result text.open": {
+            "messages": 1,
+            "bytes": 48
+          },
+          "event live session": {
+            "messages": 1,
+            "bytes": 135
+          },
+          "result events.subscribe": {
+            "messages": 1,
+            "bytes": 48
+          },
+          "result head.read": {
+            "messages": 1,
+            "bytes": 43750
+          },
+          "result catalogs.read": {
+            "messages": 1,
+            "bytes": 23586
+          }
+        }
+      },
+      "up": {
+        "bytes": 554,
+        "messages": 5,
+        "ws": 548,
+        "http": {
+          "requests": 4,
+          "bytes": 6
+        },
+        "socket": 2241,
+        "deflate": {
+          "alone": 459,
+          "shared": 315
+        },
+        "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 0
+          },
+          "http .nyte/streams": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "http connection.watch": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "http .nyte/ws/ticket": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "hello": {
+            "messages": 1,
+            "bytes": 134
+          },
+          "call events.subscribe": {
+            "messages": 1,
+            "bytes": 124
+          },
+          "call head.read": {
+            "messages": 1,
+            "bytes": 143
+          },
+          "call text.open": {
+            "messages": 1,
+            "bytes": 60
+          },
+          "call catalogs.read": {
+            "messages": 1,
+            "bytes": 87
+          }
+        }
+      },
+      "extra": {
+        "window messages": 40,
+        "round trips": 8
+      },
+      "sequence": [
+        "http .nyte/identity",
+        "http .nyte/streams",
+        "http connection.watch",
+        "http .nyte/ws/ticket",
+        "call events.subscribe",
+        "call head.read",
+        "call text.open",
+        "call catalogs.read"
+      ]
+    },
+    "S3.all": {
+      "title": "cold open, all history",
+      "down": {
+        "bytes": 236937,
+        "messages": 6,
+        "ws": 67816,
+        "http": {
+          "requests": 6,
+          "bytes": 169121
+        },
+        "socket": 238711,
+        "deflate": {
+          "alone": 11835,
+          "shared": 11629
+        },
+        "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 255
+          },
+          "http stream comment": {
+            "messages": 1,
+            "bytes": 13
+          },
+          "http stream connection.watch chunk": {
+            "messages": 1,
+            "bytes": 7086
+          },
+          "http .nyte/ws/ticket": {
+            "messages": 1,
+            "bytes": 75
+          },
+          "welcome": {
+            "messages": 1,
+            "bytes": 249
+          },
+          "result text.open": {
+            "messages": 1,
+            "bytes": 48
+          },
+          "event live session": {
+            "messages": 1,
+            "bytes": 135
+          },
+          "result events.subscribe": {
+            "messages": 1,
+            "bytes": 48
+          },
+          "result head.read": {
+            "messages": 1,
+            "bytes": 43750
+          },
+          "result catalogs.read": {
+            "messages": 1,
+            "bytes": 23586
+          },
+          "http head.history": {
+            "messages": 4,
+            "bytes": 161692
+          }
+        }
+      },
+      "up": {
+        "bytes": 802,
+        "messages": 5,
+        "ws": 548,
+        "http": {
+          "requests": 6,
+          "bytes": 254
+        },
+        "socket": 3081,
+        "deflate": {
+          "alone": 459,
+          "shared": 315
+        },
+        "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 0
+          },
+          "http .nyte/streams": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "http connection.watch": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "http .nyte/ws/ticket": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "hello": {
+            "messages": 1,
+            "bytes": 134
+          },
+          "call events.subscribe": {
+            "messages": 1,
+            "bytes": 124
+          },
+          "call head.read": {
+            "messages": 1,
+            "bytes": 143
+          },
+          "call text.open": {
+            "messages": 1,
+            "bytes": 60
+          },
+          "call catalogs.read": {
+            "messages": 1,
+            "bytes": 87
+          },
+          "http head.history": {
+            "messages": 2,
+            "bytes": 248
+          }
+        }
+      },
+      "extra": {
+        "messages shown": 200,
+        "history pages with messages": 1,
+        "round trips": 10
+      },
+      "sequence": [
+        "http .nyte/identity",
+        "http .nyte/streams",
+        "http connection.watch",
+        "http .nyte/ws/ticket",
+        "call events.subscribe",
+        "call head.read",
+        "call text.open",
+        "call catalogs.read",
+        "http head.history",
+        "http head.history"
+      ]
+    },
+    "S4": {
+      "title": "session list",
+      "down": {
+        "bytes": 53750,
+        "messages": 5,
+        "ws": 46321,
+        "http": {
+          "requests": 4,
+          "bytes": 7429
+        },
+        "socket": 54995,
+        "deflate": {
+          "alone": 6874,
+          "shared": 6691
+        },
+        "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 255
+          },
+          "http stream comment": {
+            "messages": 1,
+            "bytes": 13
+          },
+          "http stream connection.watch chunk": {
+            "messages": 1,
+            "bytes": 7086
+          },
+          "http .nyte/ws/ticket": {
+            "messages": 1,
+            "bytes": 75
+          },
+          "welcome": {
+            "messages": 1,
+            "bytes": 249
+          },
+          "event live host": {
+            "messages": 1,
+            "bytes": 370
+          },
+          "event status host": {
+            "messages": 1,
+            "bytes": 230
+          },
+          "result events.subscribe": {
+            "messages": 1,
+            "bytes": 48
+          },
+          "result sessions.read": {
+            "messages": 1,
+            "bytes": 45424
+          }
+        }
+      },
+      "up": {
+        "bytes": 314,
+        "messages": 3,
+        "ws": 308,
+        "http": {
+          "requests": 4,
+          "bytes": 6
+        },
+        "socket": 1987,
+        "deflate": {
+          "alone": 253,
+          "shared": 203
+        },
+        "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 0
+          },
+          "http .nyte/streams": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "http connection.watch": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "http .nyte/ws/ticket": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "hello": {
+            "messages": 1,
+            "bytes": 134
+          },
+          "call events.subscribe": {
+            "messages": 1,
+            "bytes": 84
+          },
+          "call sessions.read": {
+            "messages": 1,
+            "bytes": 90
+          }
+        }
+      },
+      "extra": {
+        "sessions listed": 50
+      },
+      "sequence": [
+        "http .nyte/identity",
+        "http .nyte/streams",
+        "http connection.watch",
+        "http .nyte/ws/ticket",
+        "call events.subscribe",
+        "call sessions.read"
+      ]
+    },
+    "S4.title": {
+      "title": "one title changes",
+      "down": {
+        "bytes": 979,
+        "messages": 1,
+        "ws": 979,
+        "http": {
+          "requests": 0,
+          "bytes": 0
+        },
+        "socket": 983,
+        "deflate": {
+          "alone": 528,
+          "shared": 228
+        },
+        "kinds": {
+          "event change host sessions": {
+            "messages": 1,
+            "bytes": 979
+          }
+        }
+      },
+      "up": {
+        "bytes": 0,
+        "messages": 0,
+        "ws": 0,
+        "http": {
+          "requests": 0,
+          "bytes": 0
+        },
+        "socket": 0,
+        "deflate": {
+          "alone": 0,
+          "shared": 0
+        },
+        "kinds": {}
+      },
+      "extra": {},
+      "sequence": []
+    },
+    "S5": {
+      "title": "idle",
+      "down": {
+        "bytes": 0,
+        "messages": 0,
+        "ws": 0,
+        "http": {
+          "requests": 0,
+          "bytes": 0
+        },
+        "socket": 0,
+        "deflate": {
+          "alone": 0,
+          "shared": 0
+        },
+        "kinds": {}
+      },
+      "up": {
+        "bytes": 0,
+        "messages": 0,
+        "ws": 0,
+        "http": {
+          "requests": 0,
+          "bytes": 0
+        },
+        "socket": 0,
+        "deflate": {
+          "alone": 0,
+          "shared": 0
+        },
+        "kinds": {}
+      },
+      "extra": {},
+      "sequence": []
+    },
+    "S6": {
+      "title": "reconnect",
+      "down": {
+        "bytes": 1038,
+        "messages": 5,
+        "ws": 963,
+        "http": {
+          "requests": 1,
+          "bytes": 75
+        },
+        "socket": 1445,
+        "deflate": {
+          "alone": 580,
+          "shared": 472
+        },
+        "kinds": {
+          "http .nyte/ws/ticket": {
+            "messages": 1,
+            "bytes": 75
+          },
+          "welcome": {
+            "messages": 1,
+            "bytes": 249
+          },
+          "result text.open": {
+            "messages": 1,
+            "bytes": 48
+          },
+          "event live session": {
+            "messages": 1,
+            "bytes": 135
+          },
+          "result events.subscribe": {
+            "messages": 1,
+            "bytes": 48
+          },
+          "result head.read": {
+            "messages": 1,
+            "bytes": 483
+          }
+        }
+      },
+      "up": {
+        "bytes": 579,
+        "messages": 4,
+        "ws": 577,
+        "http": {
+          "requests": 1,
+          "bytes": 2
+        },
+        "socket": 1333,
+        "deflate": {
+          "alone": 455,
+          "shared": 363
+        },
+        "kinds": {
+          "http .nyte/ws/ticket": {
+            "messages": 1,
+            "bytes": 2
+          },
+          "hello": {
+            "messages": 1,
+            "bytes": 134
+          },
+          "call events.subscribe": {
+            "messages": 1,
+            "bytes": 124
+          },
+          "call text.open": {
+            "messages": 1,
+            "bytes": 60
+          },
+          "call head.read": {
+            "messages": 1,
+            "bytes": 259
+          }
+        }
+      },
+      "extra": {
+        "round trips": 4
+      },
+      "sequence": [
+        "http .nyte/ws/ticket",
+        "call events.subscribe",
+        "call text.open",
+        "call head.read"
+      ]
+    }
+  }
+}

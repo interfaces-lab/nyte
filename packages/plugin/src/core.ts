@@ -10,6 +10,7 @@ export { branchSummary, compaction, definePart, isPart, text, thinking, tool } f
 export type {
   ActionContext,
   Agent,
+  Chat,
   Command,
   Durable,
   HookTable,
@@ -25,6 +26,7 @@ export type {
   Skill,
   ToolDefinition,
   ToolInvocation,
+  When,
 } from "@nyte-ai/core";
 export type {
   CompactionPlan,

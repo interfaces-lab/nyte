@@ -1,0 +1,25 @@
+{
+  "name": "@nyte-ai/connect-broker",
+  "private": true,
+  "description": "The Nyte Connect broker: a Cloudflare Worker over D1 that links desktops to Clerk accounts, leases device access, and relays phone requests to each desktop through a Durable Object.",
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo .wrangler dist",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "deploy": "node scripts/deploy.mjs"
+  },
+  "dependencies": {
+    "@clerk/backend": "^3.29.0",
+    "@nyte-ai/connect": "workspace:*",
+    "jose": "^6.2.17",
+    "typebox": "^1.4.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261116.1",
+    "@types/node": "^26.6.6",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.163.0"
+  }
+}

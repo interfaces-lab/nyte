@@ -19,7 +19,6 @@ const styles = create({
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.strokeQuaternary,
-    backgroundColor: role.bgBase,
   },
   item: {
     display: "flex",

@@ -1,7 +1,7 @@
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createEffect, For, Match, on, onCleanup, Show, Switch } from "solid-js";
+import { createEffect, For, Match, on, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS } from "../../lib/constants.ts";
@@ -141,9 +141,7 @@ export function AuthView(props: { readonly dialog: AuthDialog }): JSX.Element {
               <scrollbox
                 ref={(box) => {
                   scroll = box;
-                  const reveal = () => revealRow(box, highlighted());
-                  box.viewport.on("resize", reveal);
-                  onCleanup(() => box.viewport.off("resize", reveal));
+                  box.viewport.on("resize", () => revealRow(box, highlighted()));
                 }}
                 height={Math.min(step().options.length, cap())}
                 scrollX={false}

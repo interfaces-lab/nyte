@@ -18,7 +18,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
 import { useChat } from "../chats/index.ts";
-import { useGitHubRepository } from "../account/github-account.ts";
+import { useGitHubRepository } from "../data/github.ts";
 import { gitStatusWatch } from "../data/watches.ts";
 import { useWatch } from "../data/watch-store.ts";
 import { chatCardFacts } from "./chat-card-facts.ts";

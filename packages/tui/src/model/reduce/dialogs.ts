@@ -42,9 +42,11 @@ export const dialogHandlers = {
 
     if (entry === null) return refuse(state, `Unknown command /${msg.name}`, now);
 
+    const prefill: Intent = { kind: "prefill", text: `/${entry.name} ` };
+
     return reduce(
       state,
-      entry.run(msg.argument) ?? { kind: "prefill", text: `/${entry.name} ` },
+      entry.takesText && msg.argument === "" ? prefill : (entry.run(msg.argument) ?? prefill),
       now,
     );
   },

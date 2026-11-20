@@ -18,6 +18,8 @@ interface PartContext {
 
 export const ABORTED: Failure = { class: "aborted", message: "The run was stopped." };
 
+export const THOUGHTS = "\n\n";
+
 type ThoughtSignature = {
   readonly length: number;
   readonly signature: string | null;

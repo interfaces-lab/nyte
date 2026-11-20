@@ -16,7 +16,7 @@ const Step = Type.Object({
   }),
 });
 
-const KEPT_IN_PLACE = ["focus", "resize", "zoom", "unzoom"];
+const KEPT_IN_PLACE = ["focus", "resize"];
 
 const Report = Type.Object({
   scrollTop: Type.Number(),
@@ -25,7 +25,7 @@ const Report = Type.Object({
 });
 
 test(
-  "focusing, resizing, zooming and moving a pane keep each chat's element, and only a move redraws a chat",
+  "focusing, resizing and moving a pane keep each chat's element, and only a move redraws a chat",
   { timeout: 120_000 },
   async () => {
     const output = await testRenderer(
@@ -51,9 +51,6 @@ test(
     }
 
     expect(steps.get("focus")?.scrollTop).toBe(report.scrollTop);
-    const resized = steps.get("resize")?.scrollTop;
-    expect(steps.get("zoom")?.scrollTop).toBe(resized);
-    expect(steps.get("unzoom")?.scrollTop).toBe(resized);
 
     const moved = steps.get("move");
     expect(moved?.sameElements).toBe(true);

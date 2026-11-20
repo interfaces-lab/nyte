@@ -9,12 +9,23 @@ const BLINK_MS = 600;
 
 const HELD_REDRAW_MS = 1_050;
 
+/** A grid of `cols` by `rows` cells of `cell` CSS pixels. */
+export interface GridSize {
+  readonly cols: number;
+  readonly rows: number;
+  readonly cell: CellSize;
+}
+
 export interface TerminalSurface {
   readonly terminal: Terminal;
   readonly canvas: HTMLCanvasElement;
   cell(): CellSize;
   draw(full: boolean): void;
   fit(): void;
+  /** The grid the element holds, as last measured. */
+  fitted(): GridSize;
+  /** Gives the terminal a new grid, reflowing its lines. */
+  resize(size: GridSize): void;
   show(): void;
   hide(): void;
   focus(focused: boolean): void;
@@ -24,11 +35,17 @@ export interface TerminalSurface {
 }
 
 export interface SurfaceOptions {
+  /**
+   * What sizes the grid: the element, at once, or a program's terminal, whose grid waits for `resize` until the program
+   * has the new size, so output it wrote for one width never lands in a grid of another.
+   */
+  readonly grid: "element" | "program";
   readonly cursor: "shell" | "none" | "always";
   readonly newlineMode: boolean;
   readonly reply: (bytes: Uint8Array) => void;
   readonly title: (title: string) => void;
   readonly painted: (cursor: Cursor | null) => void;
+  /** The grid the element holds changed. */
   readonly resized: () => void;
 }
 
@@ -64,7 +81,9 @@ export async function openTerminalSurface(
 
   const cell = (): CellSize => ({ width: metrics.width / ratio, height: metrics.height / ratio });
 
-  let sizedCell = cell();
+  let fitted: GridSize = { cols: 80, rows: 24, cell: cell() };
+
+  let grid = fitted;
 
   const cursor = () => ({
     style: preferences.terminalCursorStyle.get(),
@@ -72,9 +91,9 @@ export async function openTerminalSurface(
   });
 
   const terminal = await createTerminal(engine, {
-    cols: 80,
-    rows: 24,
-    cell: sizedCell,
+    cols: fitted.cols,
+    rows: fitted.rows,
+    cell: fitted.cell,
     scrollback: preferences.terminalScrollback.get(),
     palette: appearance.palette,
     cursor: cursor(),
@@ -132,21 +151,24 @@ export async function openTerminalSurface(
       repaint = "full";
     }
 
-    const cols = Math.min(1000, Math.max(2, Math.floor(width / metrics.width)));
-    const rows = Math.min(1000, Math.max(1, Math.floor(height / metrics.height)));
-    const size = cell();
+    const next = {
+      cols: Math.min(1000, Math.max(2, Math.floor(width / metrics.width))),
+      rows: Math.min(1000, Math.max(1, Math.floor(height / metrics.height))),
+      cell: cell(),
+    };
 
-    if (
-      cols === terminal.cols &&
-      rows === terminal.rows &&
-      size.width === sizedCell.width &&
-      size.height === sizedCell.height
-    )
-      return;
-    sizedCell = size;
-    terminal.resize(cols, rows, size);
-    repaint = "full";
+    if (sameGrid(next, fitted)) return;
+    fitted = next;
+
+    if (options.grid === "element") resizeGrid(next);
     options.resized();
+  };
+
+  const resizeGrid = (size: GridSize): void => {
+    if (sameGrid(size, grid)) return;
+    grid = size;
+    terminal.resize(size.cols, size.rows, size.cell);
+    draw(true);
   };
 
   const paint = (): void => {
@@ -250,6 +272,8 @@ export async function openTerminalSurface(
     cell,
     draw,
     fit: render,
+    fitted: () => fitted,
+    resize: resizeGrid,
     show() {
       shown = true;
       render();
@@ -292,4 +316,13 @@ export async function openTerminalSurface(
       canvas.remove();
     },
   };
+}
+
+function sameGrid(first: GridSize, second: GridSize): boolean {
+  return (
+    first.cols === second.cols &&
+    first.rows === second.rows &&
+    first.cell.width === second.cell.width &&
+    first.cell.height === second.cell.height
+  );
 }

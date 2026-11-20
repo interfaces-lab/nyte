@@ -76,8 +76,10 @@ function Unlisted(): string {
   return `${chat.kind === "ready" ? chat.chat.title : chat.kind} / ${listed}`;
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
 }
 
 export async function run(): Promise<string> {
@@ -87,16 +89,17 @@ export async function run(): Promise<string> {
   const root = createRoot(container);
   flushSync(() => root.render(<Roots />));
   const loading = container.textContent;
-  await store.first();
-  await painted();
+  await store.until(() => true);
+  await nextFrame();
   const report = [{ phase: "initial", shown: container.textContent, commits: commits() }];
 
   const publish = async (phase: string, rows: readonly SessionInfo[]): Promise<void> => {
     const before = commits();
-    const received = store.next();
+    const shown = store.getState().value;
+    const received = store.until((value) => value !== shown);
     source.push(rows);
     await received;
-    await painted();
+    await nextFrame();
     report.push({ phase, shown: container.textContent, commits: commits() - before });
   };
 
@@ -125,7 +128,8 @@ export async function run(): Promise<string> {
     const seen: (string | null)[] = [];
 
     const until = async (text: string): Promise<void> => {
-      for (let frame = 0; frame < 100 && unlisted.textContent !== text; frame += 1) await painted();
+      for (let frame = 0; frame < 100 && unlisted.textContent !== text; frame += 1)
+        await nextFrame();
       seen.push(unlisted.textContent);
     };
 

@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
-import type { SessionInfo } from "@nyte-ai/sdk";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { ActionToasts } from "../lib/action-toasts.ts";
-import { SessionActions } from "./session-actions.ts";
+import { reflects, SessionActions } from "./session-actions.ts";
+import type { HeldDeletes } from "./session-actions.ts";
 import { keys } from "./query-client.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 
@@ -25,12 +26,38 @@ function chat(id: string): SessionInfo {
   };
 }
 
-function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
+function pageLedger(): HeldDeletes & { readonly ids: () => readonly SessionId[] } {
+  let ids: readonly SessionId[] = [];
+
+  return {
+    ids: () => ids,
+    read: () => ids,
+    write(next) {
+      ids = next;
+    },
+  };
+}
+
+function fixture(
+  chats: readonly SessionInfo[] = [chat("one"), chat("two"), chat("three")],
+  held: HeldDeletes = pageLedger(),
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const saved = new Map(chats.map((session) => [session.id, session]));
   const writes = Promise.withResolvers<void>();
   const failures = new Set<string>();
   const rows = { current: chats };
+  const lag = { held: false, next: chats };
+  const listeners = new Set<() => void>();
+
+  const publish = (next: readonly SessionInfo[]): void => {
+    lag.next = next;
+
+    if (lag.held) return;
+    rows.current = next;
+
+    for (const listener of listeners) listener();
+  };
 
   for (const session of chats) client.setQueryData(keys.session(session.id), session);
 
@@ -51,16 +78,18 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
           ...(patch.name === undefined ? {} : { name: patch.name }),
         };
         saved.set(id, next);
-        rows.current = rows.current.map((row) =>
-          row.id === id
-            ? {
-                ...row,
-                name: next.name,
-                pinned: next.pinned,
-                archived: next.archived,
-                workspace: patch.workspace ?? row.workspace,
-              }
-            : row,
+        publish(
+          rows.current.map((row) =>
+            row.id === id
+              ? {
+                  ...row,
+                  name: next.name,
+                  pinned: next.pinned,
+                  archived: next.archived,
+                  workspace: patch.workspace ?? row.workspace,
+                }
+              : row,
+          ),
         );
 
         return { kind: "updated" };
@@ -70,7 +99,7 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
 
         if (failures.has(id)) throw new Error("Disk unavailable");
         saved.delete(id);
-        rows.current = rows.current.filter((row) => row.id !== id);
+        publish(rows.current.filter((row) => row.id !== id));
 
         return { kind: "removed" };
       },
@@ -81,11 +110,25 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
     toasts,
     client,
     findRow: () => undefined,
+    hosted: {
+      row: (id) => rows.current.find((row) => row.id === id),
+      subscribe(listener) {
+        listeners.add(listener);
+
+        return () => listeners.delete(listener);
+      },
+    },
     sessions: () => connection,
+    held,
   });
   const directory = () => rows.current.flatMap((row) => actions.projectSession(row) ?? []);
 
-  return { client, saved, writes, failures, actions, directory, toasts, rows };
+  const release = (): void => {
+    lag.held = false;
+    publish(lag.next);
+  };
+
+  return { client, saved, writes, failures, actions, directory, toasts, rows, lag, release };
 }
 
 const notifications = new Map<string, Parameters<typeof toast.add>[0] & { id: string }>();
@@ -262,6 +305,53 @@ test("delete commits when the notification closes", async () => {
   f.client.clear();
 });
 
+test.each<{
+  readonly name: string;
+  readonly before: (f: ReturnType<typeof fixture>) => void;
+  readonly listed: number;
+  readonly saved: number;
+}>([
+  {
+    name: "a delete still waiting on its Undo stays hidden and commits on the reloaded page",
+    before: () => undefined,
+    listed: 2,
+    saved: 2,
+  },
+  {
+    name: "an undone delete stays undone",
+    before: (f) => undo("1 chat deleted", f.toasts),
+    listed: 3,
+    saved: 3,
+  },
+  {
+    name: "a delete committed before the reload isn't sent again",
+    before: () => toast.close(notification("1 chat deleted").id),
+    listed: 3,
+    saved: 3,
+  },
+])("a reload within a delete's Undo: $name", async (row) => {
+  const page = pageLedger();
+  const before = fixture(undefined, page);
+  before.writes.resolve();
+  before.actions.delete(asId<"session">("one"), () => () => {});
+  row.before(before);
+  await Promise.resolve();
+
+  const reloaded = fixture(undefined, page);
+  reloaded.writes.resolve();
+  const hidden = reloaded.directory().length;
+  reloaded.actions.commitHeld();
+  await vi.waitFor(() => assert.equal(reloaded.saved.size, row.saved));
+  await Promise.resolve();
+
+  const outcome = { hidden, saved: reloaded.saved.size, held: page.ids() };
+  toast.close();
+  before.client.clear();
+  reloaded.client.clear();
+
+  assert.deepEqual(outcome, { hidden: row.listed, saved: row.saved, held: [] });
+});
+
 test("failed permanent deletion restores the chat and its pane", async () => {
   const f = fixture();
   let open = true;
@@ -279,5 +369,159 @@ test("failed permanent deletion restores the chat and its pane", async () => {
   await vi.waitFor(() => assert.equal(open, true));
   assert.equal(f.directory().length, 3);
   notification("Couldn't delete this chat. Try again.");
+  f.client.clear();
+});
+
+test("undoing the delete of a chat being archived leaves it archived with no archive notification", async () => {
+  const f = fixture();
+  const id = asId<"session">("one");
+  let open = true;
+  f.actions.archive([id], true);
+  notification("1 chat archived");
+  f.actions.delete(id, () => {
+    open = false;
+
+    return () => {
+      open = true;
+    };
+  });
+  undo("1 chat deleted", f.toasts);
+  assert.equal(open, true);
+  assert.equal(f.directory()[0]?.archived, true);
+  assert.deepEqual(
+    [...notifications.values()].map((notice) => notice.title),
+    [],
+  );
+  f.writes.resolve();
+  await vi.waitFor(() => {
+    assert.equal(f.saved.get(id)?.archived, true);
+    assert.equal(f.actions.getSnapshot().length, 0);
+  });
+  assert.equal(f.directory()[0]?.archived, true);
+  f.client.clear();
+});
+
+test.each<{
+  readonly name: string;
+  readonly row: SessionInfo | undefined;
+  readonly change: Parameters<typeof reflects>[1];
+  readonly reflects: boolean;
+}>([
+  {
+    name: "an archived row shows an archive",
+    row: { ...chat("one"), archived: true },
+    change: { kind: "archive", archived: true },
+    reflects: true,
+  },
+  {
+    name: "a row not yet archived does not",
+    row: chat("one"),
+    change: { kind: "archive", archived: true },
+    reflects: false,
+  },
+  {
+    name: "a pinned row shows a pin",
+    row: { ...chat("one"), pinned: true },
+    change: { kind: "pin", pinned: true },
+    reflects: true,
+  },
+  {
+    name: "a row with the old name does not show a rename",
+    row: chat("one"),
+    change: { kind: "rename", name: "two" },
+    reflects: false,
+  },
+  {
+    name: "a row with the new name shows a rename",
+    row: chat("one"),
+    change: { kind: "rename", name: "one" },
+    reflects: true,
+  },
+  {
+    name: "a row still there does not show a delete",
+    row: chat("one"),
+    change: { kind: "delete" },
+    reflects: false,
+  },
+  { name: "no row shows a delete", row: undefined, change: { kind: "delete" }, reflects: true },
+  {
+    name: "no row left shows nothing older than a rename",
+    row: undefined,
+    change: { kind: "rename", name: "two" },
+    reflects: true,
+  },
+])("reflects: $name", (row) => {
+  assert.equal(reflects(row.row, row.change), row.reflects);
+});
+
+test.each<{
+  readonly name: string;
+  readonly fails: boolean;
+  readonly back?: true;
+  readonly rowAfter: number | null;
+  readonly afterAnswer: { readonly name: string; readonly pending: number };
+  readonly settled: { readonly name: string; readonly pending: number };
+}>([
+  {
+    name: "a rename stays shown between the answer and the row that shows it",
+    fails: false,
+    rowAfter: 500,
+    afterAnswer: { name: "renamed", pending: 1 },
+    settled: { name: "renamed", pending: 0 },
+  },
+  {
+    name: "a rename whose row never comes drops after 2 s",
+    fails: false,
+    rowAfter: null,
+    afterAnswer: { name: "renamed", pending: 1 },
+    settled: { name: "one", pending: 0 },
+  },
+  {
+    name: "a rename the host refuses drops at the answer",
+    fails: true,
+    rowAfter: null,
+    afterAnswer: { name: "one", pending: 0 },
+    settled: { name: "one", pending: 0 },
+  },
+  {
+    name: "a rename back to the old name is not undone by the rename before it",
+    fails: false,
+    back: true,
+    rowAfter: 500,
+    afterAnswer: { name: "one", pending: 0 },
+    settled: { name: "one", pending: 0 },
+  },
+])("between the answer and the row: $name", async (row) => {
+  vi.useFakeTimers();
+  const f = fixture();
+  const id = asId<"session">("one");
+  f.lag.held = true;
+
+  if (row.fails) f.failures.add("renamed");
+  f.writes.resolve();
+  await f.actions.rename({ sessionId: id, name: "renamed" });
+
+  if (row.back === true) await f.actions.rename({ sessionId: id, name: "one" });
+
+  const afterAnswer = {
+    name: f.directory()[0]?.name,
+    pending: f.actions.getSnapshot().length,
+  };
+
+  if (row.rowAfter !== null) {
+    await vi.advanceTimersByTimeAsync(row.rowAfter);
+    f.release();
+  }
+
+  await vi.advanceTimersByTimeAsync(2_000);
+
+  assert.deepEqual(
+    {
+      afterAnswer,
+      settled: { name: f.directory()[0]?.name, pending: f.actions.getSnapshot().length },
+    },
+    { afterAnswer: row.afterAnswer, settled: row.settled },
+  );
+  vi.useRealTimers();
   f.client.clear();
 });

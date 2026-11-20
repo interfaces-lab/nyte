@@ -64,7 +64,7 @@ Before you commit, run the checks:
 pnpm check
 ```
 
-- [Build an agent app](packages/docs/content/docs/build/composition.mdx) in the web framework you already use.
+- [Build an agent app](services/web/content/docs/build/composition.mdx) in the web framework you already use.
 - [CONTRIBUTING.md](CONTRIBUTING.md) covers the package map, checks and commits.
 - [PACKAGES.md](PACKAGES.md) covers package distribution and npm publishing.
 - [AGENTS.md](AGENTS.md) holds the instructions for coding agents.

@@ -13,6 +13,7 @@ export const deliveryChoices: DeliveryChoices = { steer: "steer", queue: "queue"
 
 interface EnterKeyState {
   readonly key: string;
+  readonly keyCode: number;
   readonly shiftKey: boolean;
   readonly metaKey: boolean;
   readonly ctrlKey: boolean;
@@ -21,10 +22,94 @@ interface EnterKeyState {
 
 export type SubmitAction = "submit" | "submit-alternate";
 
+export interface KeySituation {
+  readonly from: "editor" | "form";
+  readonly disabled: boolean;
+  readonly submitting: boolean;
+  readonly editing: boolean;
+  readonly empty: boolean;
+  readonly steerQueued: boolean;
+  readonly trayOpen: boolean;
+  readonly menuOpen: boolean;
+  readonly canStop: boolean;
+  readonly canRecall: boolean;
+}
+
+type KeyState = EnterKeyState & {
+  readonly altKey: boolean;
+  readonly repeat: boolean;
+  readonly defaultPrevented: boolean;
+};
+
+export type KeyAction =
+  | { readonly kind: "pass" }
+  | { readonly kind: "submit"; readonly action: SubmitAction }
+  | { readonly kind: "steer-queued" }
+  | { readonly kind: "recall"; readonly direction: RecallDirection }
+  | { readonly kind: "cancel-edit" }
+  | { readonly kind: "swallow" }
+  | { readonly kind: "dismiss-tray" }
+  | { readonly kind: "stop" };
+
+const PASS: KeyAction = { kind: "pass" };
+
+export const IME_KEY_CODE = 229;
+
+export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
+  if (situation.from === "form") return formKey(situation, key);
+  const recall = recallDirection(key);
+
+  if (recall !== undefined)
+    return situation.canRecall ? { kind: "recall", direction: recall } : PASS;
+  const enter = composerEnterAction(key);
+
+  if ((enter === "submit" || enter === "submit-alternate") && key.repeat)
+    return { kind: "swallow" };
+
+  if (enter === "submit-alternate") return { kind: "submit", action: enter };
+
+  if (enter === "submit") {
+    return situation.empty &&
+      situation.steerQueued &&
+      !situation.disabled &&
+      !situation.submitting &&
+      !situation.editing
+      ? { kind: "steer-queued" }
+      : { kind: "submit", action: enter };
+  }
+
+  if (key.key !== "Escape" || situation.menuOpen || situation.disabled) return PASS;
+
+  if (situation.editing)
+    return situation.submitting ? { kind: "swallow" } : { kind: "cancel-edit" };
+
+  if (situation.trayOpen) return { kind: "dismiss-tray" };
+
+  return situation.canStop ? { kind: "stop" } : PASS;
+}
+
+export function draftEmpty(text: string, attachments: number): boolean {
+  return text.trim() === "" && attachments === 0;
+}
+
+function formKey(situation: KeySituation, key: KeyState): KeyAction {
+  if (
+    key.key !== "Escape" ||
+    key.defaultPrevented ||
+    situation.disabled ||
+    situation.submitting ||
+    situation.menuOpen ||
+    !situation.editing
+  )
+    return PASS;
+
+  return { kind: "cancel-edit" };
+}
+
 type ComposerEnterAction = SubmitAction | "newline" | "none";
 
 export function composerEnterAction(event: EnterKeyState): ComposerEnterAction {
-  if (event.key !== "Enter" || event.isComposing) return "none";
+  if (event.key !== "Enter" || event.isComposing || event.keyCode === IME_KEY_CODE) return "none";
 
   if (event.shiftKey) return "newline";
 

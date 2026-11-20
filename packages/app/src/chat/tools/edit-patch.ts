@@ -3,6 +3,7 @@ import { Value } from "typebox/value";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 
 interface EditPatch {
+  readonly path: string;
   readonly patch: string;
   readonly added: number;
   readonly removed: number;
@@ -18,6 +19,7 @@ export function editPatch(message: ToolMessage): EditPatch | undefined {
   if (!Value.Check(PatchEntryType, output) || output.kind !== "text") return undefined;
 
   return {
+    path: output.path,
     patch: output.patch,
     added: output.added,
     removed: output.removed,

@@ -56,8 +56,9 @@ test("a chat pages in earlier messages while it is watched, and none once nobody
 
   const store = chatStore(session);
   const leave = store.subscribe(() => undefined);
-  await store.first();
-  const paged = store.next();
+  await store.until(() => true);
+  const shown = store.getState().value;
+  const paged = store.until((value) => value !== shown);
 
   assert.equal(await loadEarlierMessages(session, 10), 1);
   assert.deepEqual(
@@ -66,7 +67,7 @@ test("a chat pages in earlier messages while it is watched, and none once nobody
   );
 
   leave();
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.resolve();
 
   assert.equal(await loadEarlierMessages(session, 10), 0);
 });

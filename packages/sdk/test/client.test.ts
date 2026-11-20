@@ -5,8 +5,10 @@ import type { WorkspaceId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_PATH, encodeError, STREAM_HEADER } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it } from "vitest";
-import { connect } from "../src/connect.ts";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { connect } from "../src/connection/connect.ts";
+import { createSendJournal } from "../src/send/journal.ts";
+import type { JournalStorage } from "../src/send/journal.ts";
 import { BASE, readOperation, TOKEN_SECRET, until } from "./served.ts";
 import { cleanups, client, closeOpened, open, settledChat, text, users } from "./connection.ts";
 
@@ -254,14 +256,17 @@ describe("client", () => {
     const files = await connection.workspace(info.id).files();
     assert(files.kind === "available");
 
+    const pulled = Promise.withResolvers<void>();
+
     const uploading = files.api.upload(
       (async function* () {
         yield new Uint8Array([1]);
+        pulled.resolve();
         await new Promise(() => undefined);
       })(),
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await pulled.promise;
     await connection.close();
 
     await expect(uploading).rejects.toMatchObject({ code: "unavailable" });
@@ -342,25 +347,31 @@ describe("client", () => {
       content: "Hi.",
     });
 
-    const failed = Promise.withResolvers<void>();
+    const lines: string[] = [];
+    dev.on((line) => lines.push(line));
+    cleanups.push(async () => dev.off());
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
     let waits = 0;
 
     host.intercept(async (request, next) => {
       if (readOperation(request) !== "receipt.settled") return next(request);
       waits += 1;
-      failed.resolve();
 
       throw new TypeError("fetch failed");
     });
 
     const controller = new AbortController();
     const settled = receipt.settled({ signal: controller.signal });
-    await failed.promise;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await vi.waitFor(() =>
+      expect(lines).toContainEqual(expect.stringContaining("DEV:sdk wait retrying")),
+    );
     controller.abort(new Error("Gave up."));
 
     await expect(settled).rejects.toThrow("Gave up.");
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(waits).toBe(1);
   });
 
@@ -474,6 +485,38 @@ describe("client", () => {
 
     expect(await pending).toEqual({ done: true, value: undefined });
     expect(cancelled).toBe(1);
+  });
+
+  it("lands two sends to a head in the order they were made when storage finishes the first write last", async () => {
+    const texts = new Map<string, string>();
+    const slower = Promise.withResolvers<void>();
+    let writes = 0;
+
+    const storage: JournalStorage = {
+      read: () => texts.entries(),
+      async write(key, value) {
+        writes += 1;
+
+        if (writes === 1) await slower.promise;
+        texts.set(key, value);
+      },
+      remove: (key) => void texts.delete(key),
+    };
+
+    const host = await open();
+    const connection = await client(host, createSendJournal(storage));
+    const session = await settledChat(host, connection);
+    host.fake.reply(text("One."));
+    host.fake.reply(text("Two."));
+
+    const sending = ["First.", "Second."].map((words) =>
+      session.send(words, { delivery: "queue" }),
+    );
+
+    slower.resolve();
+    await Promise.all((await Promise.all(sending)).map((receipt) => receipt.settled()));
+
+    expect(users(await session.view())).toEqual(["Hi.", "First.", "Second."]);
   });
 
   it("ends every stream and fails requests unavailable once closed", async () => {

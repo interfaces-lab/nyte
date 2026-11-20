@@ -3,6 +3,7 @@ import type { ActionDeclaration } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { ClientActions } from "../browser-client.ts";
+import { CanvasPreviewFindingType } from "./canvas-preview.ts";
 import type {
   CanvasPreviewOutcome,
   CanvasPreviewRequest,
@@ -36,6 +37,7 @@ export const CanvasPreviewAnswerType = Type.Union([
         }),
       ),
       console: Type.Array(Type.Object({ level: Type.String(), text: Type.String() })),
+      findings: Type.Array(CanvasPreviewFindingType),
     }),
   }),
   Type.Object({ kind: Type.Literal("unavailable"), reason: Type.String() }),

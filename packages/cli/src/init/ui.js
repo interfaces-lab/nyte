@@ -79,8 +79,6 @@ function failureFooter(ctx, step) {
 }
 
 /**
- * `finish` ends the running step's spinner or task log; each step replaces it.
- *
  * @returns {InitUI}
  */
 export function clackUI(ctx, next) {

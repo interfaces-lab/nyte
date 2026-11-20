@@ -1,5 +1,5 @@
-import { assert, expect, it } from "vitest";
-import { definePart } from "@nyte-ai/core";
+import { assert, expect, it, onTestFinished } from "vitest";
+import { definePart, dev } from "@nyte-ai/core";
 import { asId, SdkError, standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import {
@@ -283,8 +283,14 @@ it("pauses a blocked channel's sources and releases them on cancellation", async
   const response = channels.open(owner, controller.signal, false);
   const id = response.headers.get(CHANNEL_HEADER);
   assert(id !== null && response.body !== null);
+  const full = Promise.withResolvers<void>();
+  dev.on((line) => {
+    if (line.startsWith("DEV:stream write waits ")) full.resolve();
+  });
+  onTestFinished(() => dev.off());
   let canceled = false;
   let produced = 0;
+  let producedAtCancel = 0;
   await channels.start(
     owner,
     id,
@@ -292,26 +298,29 @@ it("pauses a blocked channel's sources and releases them on cancellation", async
     controller.signal,
     async () =>
       new Response(
-        new ReadableStream<Uint8Array>({
-          pull(stream) {
-            produced += 1;
-            stream.enqueue(new Uint8Array(64 * 1024));
+        new ReadableStream<Uint8Array>(
+          {
+            pull(stream) {
+              produced += 1;
+              stream.enqueue(new Uint8Array(64 * 1024));
+            },
+            cancel() {
+              canceled = true;
+              producedAtCancel = produced;
+            },
           },
-          cancel() {
-            canceled = true;
-          },
-        }),
+          { highWaterMark: 0 },
+        ),
       ),
   );
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await full.promise;
   const paused = produced;
   expect(paused).toBeGreaterThan(1);
   expect(paused).toBeLessThan(128);
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  expect(produced).toBe(paused);
   expect(canceled).toBe(false);
   controller.abort();
   await expect.poll(() => canceled).toBe(true);
+  expect(producedAtCancel).toBe(paused);
   const frames = parseSse(response.body);
   await expect(frames.next()).rejects.toMatchObject({
     code: "unavailable",

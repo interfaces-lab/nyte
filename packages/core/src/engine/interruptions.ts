@@ -3,7 +3,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { RunRecord } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { headRef, runCallsPrefix, runRef } from "../store/refs.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import { liveRun, put } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";

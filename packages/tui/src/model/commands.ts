@@ -18,6 +18,7 @@ interface CommandEntry {
   readonly description: string;
   readonly source: "builtin" | "setting" | "plugin" | "skill";
   readonly prompt: boolean;
+  readonly takesText: boolean;
   readonly run: (argument: string) => Intent | null;
 }
 
@@ -46,8 +47,6 @@ function builtin(name: BuiltinSlashName, argument: string): Intent | null {
         session: "new",
         announce: false,
       });
-    case "cd":
-      return argument === "" ? null : { kind: "change-directory", path: argument };
     case "settings":
       return noArgument(name, argument, {
         kind: "open",
@@ -172,7 +171,6 @@ export function slashNamespace(state: State): readonly SlashCommand[] {
   );
 }
 
-/** `state` with its slash namespace indexed in canonical order, for a reducer whose transition changed the catalog. */
 export function indexSlash(state: State): State {
   return { ...state, facts: { ...state.facts, slash: slashIndex(slashNamespace(state)) } };
 }
@@ -195,6 +193,7 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
         ...base,
         source: "builtin",
         prompt: false,
+        takesText: false,
         run: (argument) => builtin(builtinName, argument),
       };
     const row = rows.get(command.name);
@@ -204,14 +203,18 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
         ...base,
         source: "setting",
         prompt: false,
+        takesText: false,
         run: (argument) => setting(state, row, argument),
       };
 
-    if (plugins.get(command.name)?.side === "core")
+    const plugin = plugins.get(command.name);
+
+    if (plugin?.side === "core")
       return {
         ...base,
         source: "plugin",
         prompt: false,
+        takesText: plugin.takesText,
         run: (argument) => ({ kind: "plugin-command", name: command.name, argument }),
       };
 
@@ -219,6 +222,7 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
       ...base,
       source: command.kind === "prompt" ? "skill" : "plugin",
       prompt: true,
+      takesText: true,
       run: () => ({ kind: "prefill", text: `/${command.name} ` }),
     };
   });
@@ -256,7 +260,7 @@ export function runnableCommand(
 
   if (entry === null || entry.prompt) return null;
 
-  if (entry.name !== "cd" && hasInlineSkills(text, indexSkills(state))) return null;
+  if (!entry.takesText && hasInlineSkills(text, indexSkills(state))) return null;
 
   return { entry, argument: parsed.command.argument };
 }

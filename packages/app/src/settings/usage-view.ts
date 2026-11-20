@@ -1,8 +1,8 @@
-import type { SessionId } from "@nyte-ai/sdk";
-import type { ProviderUsage } from "@nyte-ai/sdk";
+import type { ModelInfo, ProviderUsage } from "@nyte-ai/sdk";
+import type { IconName } from "@nyte-ai/ui/icon";
 import type { UsageSnapshot } from "../contract/bridge.ts";
-import type { UsageReport, UsageTotals, UsageWindow } from "../contract/nyte.ts";
-import { formatPercent, formatTokens, formatUsd, groupDigits } from "../lib/format.ts";
+import type { UsageTotals, UsageWindow } from "../contract/nyte.ts";
+import { formatTokens, formatUsd, groupDigits } from "../lib/format.ts";
 
 export const USAGE_RANGES = ["7d", "30d", "90d", "all"] as const;
 
@@ -23,45 +23,96 @@ const RANGE_LENGTHS: Readonly<Record<Exclude<UsageRange, "all">, number>> = {
 
 const WEEKLY_ABOVE_DAYS = 120;
 
-type UsageGrain = "day" | "week";
-
-export interface UsagePoint {
-  readonly key: string;
-  readonly label: string;
-  readonly value: number;
-}
-
 const LOW_CACHE_HIT = 0.5;
 
-export interface UsageCache {
-  readonly hit: string;
-  readonly saved: string | undefined;
-  readonly tone: "plain" | "low" | "absent";
-}
+const PACE_SAMPLE_DAYS = 7;
 
-export interface UsageRow {
-  readonly key: string;
-  readonly label: string;
-  readonly meta: string;
-  readonly cache: UsageCache;
-  readonly trend: readonly number[] | undefined;
-  readonly value: { readonly text: string; readonly absent: boolean };
-  readonly share: number;
-}
+const MIN_PACE_DAYS = 3;
+
+export type UsageGrain = "day" | "week";
 
 export type UsageMeasure = "cost" | "tokens";
 
+export type ListPrice = ModelInfo["cost"];
+
+export interface CacheUse {
+  readonly ratio: number | undefined;
+  readonly cached: number;
+  readonly uncached: number;
+  readonly saved: number;
+  readonly low: boolean;
+}
+
+export interface ModelUsage {
+  readonly key: string;
+  readonly model: string;
+  readonly vendor: string;
+  readonly via: string | undefined;
+  readonly icon: IconName;
+  readonly totals: UsageTotals;
+  readonly amount: number;
+  readonly share: number;
+  readonly chats: number;
+  readonly series: readonly number[];
+  readonly perChat: { readonly cost: number; readonly tokens: number };
+  readonly rate: number | undefined;
+  readonly list: ListPrice | undefined;
+  readonly cache: CacheUse;
+}
+
+export interface UsageSeries {
+  readonly key: string;
+  readonly label: string;
+  readonly rank: number | undefined;
+}
+
+export interface UsageBucket {
+  readonly key: string;
+  readonly label: string;
+  readonly tick: string | undefined;
+  readonly partial: boolean;
+  readonly total: number;
+  readonly values: readonly number[];
+}
+
+export interface PacePoint {
+  readonly day: string;
+  readonly value: number;
+}
+
+export interface UsagePace {
+  readonly points: readonly PacePoint[];
+  readonly forecast: PacePoint | undefined;
+  readonly days: readonly string[];
+}
+
+export interface ShareRow {
+  readonly key: string;
+  readonly label: string;
+  readonly meta: string;
+  readonly icon: IconName | undefined;
+  readonly share: number;
+  readonly value: string;
+  readonly absent: boolean;
+}
+
 export interface UsageDerived {
-  readonly grain: UsageGrain;
   readonly measure: UsageMeasure;
+  readonly priced: boolean;
+  readonly grain: UsageGrain;
   readonly from: string;
   readonly to: string;
-  readonly points: readonly UsagePoint[];
   readonly totals: UsageTotals;
-  readonly previousCost: number | undefined;
-  readonly models: readonly UsageRow[];
-  readonly folders: readonly UsageRow[];
-  readonly chats: readonly UsageRow[];
+  readonly amount: number;
+  readonly chats: number;
+  readonly change: number | undefined;
+  readonly models: readonly ModelUsage[];
+  readonly series: readonly UsageSeries[];
+  readonly buckets: readonly UsageBucket[];
+  readonly average: number;
+  readonly pace: UsagePace;
+  readonly folders: readonly ShareRow[];
+  readonly chatRows: readonly ShareRow[];
   readonly unreadFolders: readonly string[];
 }
 
@@ -87,6 +138,12 @@ function addTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
     cost: left.cost + right.cost,
     cacheSavings: left.cacheSavings + right.cacheSavings,
   };
+}
+
+export function promptTokens(
+  tokens: Pick<UsageTotals, "input" | "cacheRead" | "cacheWrite">,
+): number {
+  return tokens.input + tokens.cacheRead + tokens.cacheWrite;
 }
 
 function plural(count: number, noun: string): string {
@@ -116,15 +173,25 @@ function shiftDay(day: string, delta: number): string {
   return localDay(date.getTime());
 }
 
-function dayLabel(day: string): string {
+export function dayLabel(day: string): string {
   return new Date(dayStart(day)).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
 }
 
-export function spanLabel(from: string, to: string): string {
-  return from === to ? dayLabel(to) : `${dayLabel(from)} – ${dayLabel(to)}`;
+function weekdayLabel(day: string): string {
+  return new Date(dayStart(day)).toLocaleDateString(undefined, { weekday: "short" });
+}
+
+function monthLabel(day: string): string {
+  return new Date(dayStart(day)).toLocaleDateString(undefined, { month: "short" });
+}
+
+function monthEnd(day: string): string {
+  const date = new Date(dayStart(day));
+
+  return localDay(new Date(date.getFullYear(), date.getMonth() + 1, 0).getTime());
 }
 
 export function timeLabel(at: number): string {
@@ -134,64 +201,13 @@ export function timeLabel(at: number): string {
 export function windowLabel(window: UsageWindow): string {
   return window.sinceDay === null
     ? "all time"
-    : `last ${plural(daysBetween(window.sinceDay, window.untilDay), "day")}`;
+    : `the last ${plural(daysBetween(window.sinceDay, window.untilDay), "day")}`;
 }
 
-export function costChange(
-  current: number,
-  previous: number | undefined,
-  window: UsageWindow,
-): { readonly direction: "up" | "down" | "flat"; readonly label: string } | undefined {
-  if (previous === undefined || window.sinceDay === null) return undefined;
-  const prior = `prior ${plural(daysBetween(window.sinceDay, window.untilDay), "day")}`;
-
-  if (previous === 0)
-    return current === 0 ? undefined : { direction: "up", label: `None in the ${prior}` };
-  const change = (current - previous) / previous;
-
-  if (Math.abs(change) < 0.005) return { direction: "flat", label: `No change vs ${prior}` };
-
-  return {
-    direction: change > 0 ? "up" : "down",
-    label: `${change > 0 ? "↑" : "↓"} ${formatPercent(Math.abs(change))} vs ${prior}`,
-  };
-}
-
-interface CacheCounts {
-  readonly prompt: number;
-  readonly cacheRead: number;
-  readonly savings: number;
-  readonly cost: number;
-}
-
-const NO_CACHE: UsageCache = { hit: "—", saved: undefined, tone: "absent" };
-
-function promptTokens(tokens: Pick<UsageTotals, "input" | "cacheRead" | "cacheWrite">): number {
-  return tokens.input + tokens.cacheRead + tokens.cacheWrite;
-}
-
-function describeCache(counts: CacheCounts): UsageCache {
-  if (counts.prompt === 0) return NO_CACHE;
-  const hit = counts.cacheRead / counts.prompt;
-
-  return {
-    hit: formatPercent(hit),
-    saved: counts.savings > 0 ? `saved ${formatUsd(counts.savings)}` : undefined,
-    tone: counts.cost > 0 && hit < LOW_CACHE_HIT ? "low" : "plain",
-  };
-}
-
-export function describeTotals(totals: UsageTotals): string {
-  const cache = describeCache({
-    prompt: promptTokens(totals),
-    cacheRead: totals.cacheRead,
-    savings: totals.cacheSavings,
-    cost: totals.cost,
-  });
-
-  if (cache.tone === "absent") return `${formatTokens(totals.tokens)} tokens`;
-
-  return [`${cache.hit} cache hit`, cache.saved].filter((part) => part !== undefined).join(" · ");
+export function priorLabel(window: UsageWindow): string {
+  return window.sinceDay === null
+    ? "the prior period"
+    : `the prior ${plural(daysBetween(window.sinceDay, window.untilDay), "day")}`;
 }
 
 export function usageWindow(range: UsageRange, now: number): UsageWindow {
@@ -211,16 +227,18 @@ function daySpan(from: string, to: string): readonly string[] {
   return days;
 }
 
-function bucketLabel(first: string, last: string, grain: UsageGrain): string {
-  return grain === "day" ? dayLabel(first) : `${dayLabel(first)} – ${dayLabel(last)}`;
-}
-
 function daysBetween(from: string, to: string): number {
   let span = 1;
 
   for (let day = from; day < to; day = shiftDay(day, 1)) span += 1;
 
   return span;
+}
+
+export function defaultGrain(window: UsageWindow, earliestDay: string | undefined): UsageGrain {
+  const from = window.sinceDay ?? earliestDay ?? window.untilDay;
+
+  return daysBetween(from, window.untilDay) > WEEKLY_ABOVE_DAYS ? "week" : "day";
 }
 
 function folderLabel(path: string | null): string {
@@ -237,200 +255,331 @@ function folderParent(path: string | null): string | undefined {
   return segments.at(-2);
 }
 
-function chatLabel(name: string | undefined): string {
-  const trimmed = name?.trim();
-
-  return trimmed === undefined || trimmed === "" ? "Untitled chat" : trimmed;
-}
-
-interface Spend {
-  cost: number;
-  tokens: number;
-  cacheRead: number;
-  prompt: number;
-  savings: number;
-  readonly costs: number[];
-  readonly tokensBy: number[];
-}
-
-function emptySpend(buckets: number): Spend {
-  return {
-    cost: 0,
-    tokens: 0,
-    cacheRead: 0,
-    prompt: 0,
-    savings: 0,
-    costs: Array.from({ length: buckets }, () => 0),
-    tokensBy: Array.from({ length: buckets }, () => 0),
-  };
-}
-
-function addSpend(spend: Spend, totals: UsageTotals, bucket: number): void {
-  spend.cost += totals.cost;
-  spend.tokens += totals.tokens;
-  spend.cacheRead += totals.cacheRead;
-  spend.prompt += promptTokens(totals);
-  spend.savings += totals.cacheSavings;
-  spend.costs[bucket] = (spend.costs[bucket] ?? 0) + totals.cost;
-  spend.tokensBy[bucket] = (spend.tokensBy[bucket] ?? 0) + totals.tokens;
-}
-
-export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDerived {
+export function deriveUsage({
+  report,
+  window,
+  grain,
+  measure: wanted,
+  prices,
+  charted,
+}: {
+  readonly report: UsageSnapshot;
+  readonly window: UsageWindow;
+  readonly grain: UsageGrain;
+  readonly measure: UsageMeasure;
+  readonly prices: ReadonlyMap<string, ListPrice>;
+  readonly charted: number;
+}): UsageDerived {
   const to = window.untilDay;
   const from = window.sinceDay ?? report.earliestDay ?? to;
   const days = daySpan(from, to);
-  const grain: UsageGrain = days.length > WEEKLY_ABOVE_DAYS ? "week" : "day";
-  const bucketSize = grain === "day" ? 1 : 7;
-  const bucketCount = Math.ceil(days.length / bucketSize);
-  const bucketOf = new Map(days.map((day, index) => [day, Math.floor(index / bucketSize)]));
+  const offset = grain === "week" ? (new Date(dayStart(from)).getDay() + 6) % 7 : 0;
 
-  const whole = emptySpend(bucketCount);
-  const perModel = new Map<string, { provider: string; model: string; spend: Spend }>();
-  const perFolder = new Map<string, { path: string | null; spend: Spend }>();
-  const perChat = new Map<SessionId, Spend>();
-  const overhead = emptySpend(bucketCount);
-  let totals = EMPTY_TOTALS;
+  const bucketOfIndex = (index: number): number =>
+    grain === "day" ? index : Math.floor((index + offset) / 7);
+
+  const bucketCount = bucketOfIndex(days.length - 1) + 1;
+  const dayIndex = new Map(days.map((day, index) => [day, index]));
+  const totals = report.entries.reduce((sum, entry) => addTotals(sum, entry.totals), EMPTY_TOTALS);
+  const priced = totals.cost > 0;
+  const measure: UsageMeasure = priced ? wanted : "tokens";
+  const pick = (value: UsageTotals): number => (measure === "cost" ? value.cost : value.tokens);
+  const amount = pick(totals);
+
+  const perModel = new Map<
+    string,
+    { provider: string; model: string; totals: UsageTotals; chats: Set<string>; series: number[] }
+  >();
+
+  const whole = Array.from({ length: bucketCount }, () => 0);
+  const daily = Array.from({ length: days.length }, () => 0);
 
   for (const entry of report.entries) {
-    const bucket = bucketOf.get(entry.day);
+    const index = dayIndex.get(entry.day);
 
-    if (bucket === undefined) continue;
+    if (index === undefined) continue;
+    const bucket = bucketOfIndex(index);
+    const value = pick(entry.totals);
+    whole[bucket] = (whole[bucket] ?? 0) + value;
+    daily[index] = (daily[index] ?? 0) + value;
 
-    totals = addTotals(totals, entry.totals);
-    addSpend(whole, entry.totals, bucket);
+    if (entry.subject.kind !== "model") continue;
+    const key = `${entry.subject.provider}/${entry.subject.model}`;
 
-    const folderKey = entry.workspacePath ?? "";
-
-    const folder = perFolder.get(folderKey) ?? {
-      path: entry.workspacePath,
-      spend: emptySpend(bucketCount),
+    const model = perModel.get(key) ?? {
+      provider: entry.subject.provider,
+      model: entry.subject.model,
+      totals: EMPTY_TOTALS,
+      chats: new Set<string>(),
+      series: Array.from({ length: bucketCount }, () => 0),
     };
 
-    addSpend(folder.spend, entry.totals, bucket);
-    perFolder.set(folderKey, folder);
-
-    const chat = perChat.get(entry.sessionId) ?? emptySpend(bucketCount);
-    addSpend(chat, entry.totals, bucket);
-    perChat.set(entry.sessionId, chat);
-
-    if (entry.subject.kind === "model") {
-      const key = JSON.stringify([entry.subject.provider, entry.subject.model]);
-
-      const model = perModel.get(key) ?? {
-        provider: entry.subject.provider,
-        model: entry.subject.model,
-        spend: emptySpend(bucketCount),
-      };
-
-      addSpend(model.spend, entry.totals, bucket);
-      perModel.set(key, model);
-      continue;
-    }
-
-    addSpend(overhead, entry.totals, bucket);
+    model.totals = addTotals(model.totals, entry.totals);
+    model.chats.add(entry.sessionId);
+    model.series[bucket] = (model.series[bucket] ?? 0) + value;
+    perModel.set(key, model);
   }
 
-  const measure: UsageMeasure = totals.cost > 0 ? "cost" : "tokens";
-  const wholeAmount = measure === "cost" ? totals.cost : totals.tokens;
+  const models = [...perModel]
+    .map(([key, model]): ModelUsage => {
+      const vendor = findVendor(model.model, model.provider);
+      const provider = providerName(model.provider);
+      const prompt = promptTokens(model.totals);
+      const ratio = prompt === 0 ? undefined : model.totals.cacheRead / prompt;
+      const chats = Math.max(model.chats.size, 1);
 
-  const row = (key: string, label: string, meta: string, spend: Spend): UsageRow => ({
-    key,
-    label,
-    meta,
-    cache: describeCache(spend),
-    trend: measure === "cost" && spend.cost > 0 ? spend.costs : spend.tokensBy,
-    value:
-      measure === "tokens"
-        ? { text: `${formatTokens(spend.tokens)} tokens`, absent: false }
-        : spend.cost === 0
-          ? { text: "No price", absent: true }
-          : { text: formatUsd(spend.cost), absent: false },
-    share: wholeAmount === 0 ? 0 : (measure === "cost" ? spend.cost : spend.tokens) / wholeAmount,
-  });
+      return {
+        key,
+        model: model.model,
+        vendor: vendor.name,
+        via: vendor.name === provider ? undefined : provider,
+        icon: vendor.icon,
+        totals: model.totals,
+        amount: pick(model.totals),
+        share: amount === 0 ? 0 : pick(model.totals) / amount,
+        chats: model.chats.size,
+        series: model.series,
+        perChat: { cost: model.totals.cost / chats, tokens: model.totals.tokens / chats },
+        rate:
+          model.totals.cost === 0 || model.totals.tokens === 0
+            ? undefined
+            : (model.totals.cost / model.totals.tokens) * 1_000_000,
+        list: prices.get(key),
+        cache: {
+          ratio,
+          cached: model.totals.cacheRead,
+          uncached: prompt - model.totals.cacheRead,
+          saved: model.totals.cacheSavings,
+          low: ratio !== undefined && ratio < LOW_CACHE_HIT && model.totals.cost > 0,
+        },
+      };
+    })
+    .toSorted((left, right) => right.amount - left.amount);
 
-  const ranked = (rows: readonly UsageRow[]): readonly UsageRow[] =>
-    rows.toSorted((left, right) => right.share - left.share);
+  const top = models.slice(0, charted);
 
-  const points = Array.from({ length: bucketCount }, (_slot, index): UsagePoint => {
-    const first = days[index * bucketSize] ?? from;
-    const last = days[Math.min((index + 1) * bucketSize, days.length) - 1] ?? first;
+  const folded =
+    models.length > top.length ||
+    whole.some(
+      (value, bucket) => value > top.reduce((sum, model) => sum + (model.series[bucket] ?? 0), 0),
+    );
+
+  const series: UsageSeries[] = [
+    ...top.map((model, rank) => ({ key: model.key, label: model.model, rank })),
+    ...(folded ? [{ key: "other", label: "Other", rank: undefined }] : []),
+  ];
+
+  const buckets = Array.from({ length: bucketCount }, (_slot, bucket): UsageBucket => {
+    const inBucket = days.filter((_day, index) => bucketOfIndex(index) === bucket);
+    const first = inBucket[0] ?? from;
+    const last = inBucket.at(-1) ?? first;
+    const values = top.map((model) => model.series[bucket] ?? 0);
+    const total = whole[bucket] ?? 0;
+    const rest = Math.max(total - values.reduce((sum, value) => sum + value, 0), 0);
+
+    const previousFirst =
+      bucket === 0 ? undefined : days.find((_day, index) => bucketOfIndex(index) === bucket - 1);
 
     return {
       key: first,
-      label: bucketLabel(first, last, grain),
-      value: (measure === "cost" ? whole.costs[index] : whole.tokensBy[index]) ?? 0,
+      label:
+        grain === "day"
+          ? `${weekdayLabel(first)}, ${dayLabel(first)}`
+          : first === last
+            ? dayLabel(first)
+            : `${dayLabel(first)} – ${dayLabel(last)}`,
+      tick: tickFor(first, previousFirst, grain, days.length),
+      partial: last === to,
+      total,
+      values: folded ? [...values, rest] : values,
     };
   });
 
-  const leafCounts = new Map<string, number>();
+  const firstUsed = buckets.findIndex((bucket) => bucket.total > 0);
 
-  for (const folder of perFolder.values()) {
-    const leaf = folderLabel(folder.path);
-    leafCounts.set(leaf, (leafCounts.get(leaf) ?? 0) + 1);
-  }
-
-  const models = [...perModel].map(([key, model]) =>
-    row(
-      key,
-      model.model,
-      `${model.provider} · ${formatTokens(model.spend.tokens)} tokens`,
-      model.spend,
-    ),
+  const counted = buckets.filter(
+    (bucket, index) => !bucket.partial && firstUsed !== -1 && index >= firstUsed,
   );
 
-  if (overhead.cost > 0 || overhead.tokens > 0) {
-    models.push(
-      row(
-        "overhead",
-        "Compaction and tools",
-        `No model of its own · ${formatTokens(overhead.tokens)} tokens`,
-        overhead,
-      ),
-    );
-  }
+  const previous =
+    report.previous === undefined
+      ? undefined
+      : measure === "cost"
+        ? report.previous.cost
+        : report.previous.tokens;
 
   return {
-    grain,
     measure,
+    priced,
+    grain,
     from,
     to,
-    points,
     totals,
-    previousCost: report.previous?.cost,
-    models: ranked(models),
-    folders: ranked(
-      [...perFolder].map(([key, folder]) => {
-        const leaf = folderLabel(folder.path);
-        const parent = (leafCounts.get(leaf) ?? 0) > 1 ? folderParent(folder.path) : undefined;
-
-        return row(
-          key,
-          parent === undefined ? leaf : `${leaf} in ${parent}`,
-          `${formatTokens(folder.spend.tokens)} tokens`,
-          folder.spend,
-        );
-      }),
-    ),
-    chats: ranked(
-      report.sessions.flatMap((session) => {
-        const spent = perChat.get(session.sessionId);
-
-        return spent === undefined
-          ? []
-          : [
-              row(
-                session.sessionId,
-                chatLabel(session.name),
-                `${folderLabel(session.workspacePath)} · ${formatTokens(spent.tokens)} tokens`,
-                spent,
-              ),
-            ];
-      }),
-    ),
+    amount,
+    chats: new Set(report.entries.map((entry) => entry.sessionId)).size,
+    change: previous === undefined || previous === 0 ? undefined : (amount - previous) / previous,
+    models,
+    series,
+    buckets,
+    average:
+      counted.length === 0
+        ? 0
+        : counted.reduce((sum, bucket) => sum + bucket.total, 0) / counted.length,
+    pace: derivePace(days, daily),
+    ...deriveShares(report, measure, amount),
     unreadFolders: report.sources
       .filter((source) => source.status === "failed")
       .map((source) => folderLabel(source.workspacePath)),
   };
+}
+
+function tickFor(
+  first: string,
+  previous: string | undefined,
+  grain: UsageGrain,
+  span: number,
+): string | undefined {
+  if (grain === "week") {
+    return previous === undefined || previous.slice(0, 7) !== first.slice(0, 7)
+      ? monthLabel(first)
+      : undefined;
+  }
+
+  if (span <= 10) return weekdayLabel(first);
+
+  if (span <= 45) return new Date(dayStart(first)).getDay() === 1 ? dayLabel(first) : undefined;
+
+  return first.endsWith("-01") ? monthLabel(first) : undefined;
+}
+
+function derivePace(days: readonly string[], daily: readonly number[]): UsagePace {
+  let running = 0;
+
+  const points = days.map((day, index) => {
+    running += daily[index] ?? 0;
+
+    return { day, value: running };
+  });
+
+  const today = days.at(-1);
+  const firstUsed = daily.findIndex((value) => value > 0);
+  const sample = daily.slice(Math.max(firstUsed, daily.length - 1 - PACE_SAMPLE_DAYS), -1);
+
+  if (today === undefined || firstUsed === -1 || sample.length < MIN_PACE_DAYS) {
+    return { points, forecast: undefined, days };
+  }
+
+  const end = monthEnd(today) === today ? shiftDay(today, PACE_SAMPLE_DAYS) : monthEnd(today);
+  const ahead = daySpan(shiftDay(today, 1), end);
+  const perDay = sample.reduce((sum, value) => sum + value, 0) / sample.length;
+  const todaySoFar = daily.at(-1) ?? 0;
+  const value = running + Math.max(perDay - todaySoFar, 0) + perDay * ahead.length;
+
+  return { points, forecast: { day: end, value }, days: [...days, ...ahead] };
+}
+
+function deriveShares(
+  report: UsageSnapshot,
+  measure: UsageMeasure,
+  amount: number,
+): Pick<UsageDerived, "folders" | "chatRows"> {
+  const perFolder = new Map<
+    string,
+    { path: string | null; totals: UsageTotals; chats: Set<string> }
+  >();
+
+  const perChat = new Map<string, UsageTotals>();
+
+  for (const entry of report.entries) {
+    const key = entry.workspacePath ?? "";
+
+    const folder = perFolder.get(key) ?? {
+      path: entry.workspacePath,
+      totals: EMPTY_TOTALS,
+      chats: new Set<string>(),
+    };
+
+    folder.totals = addTotals(folder.totals, entry.totals);
+    folder.chats.add(entry.sessionId);
+    perFolder.set(key, folder);
+
+    perChat.set(
+      entry.sessionId,
+      addTotals(perChat.get(entry.sessionId) ?? EMPTY_TOTALS, entry.totals),
+    );
+  }
+
+  const leaves = new Map<string, number>();
+
+  for (const folder of perFolder.values()) {
+    const leaf = folderLabel(folder.path);
+    leaves.set(leaf, (leaves.get(leaf) ?? 0) + 1);
+  }
+
+  const row = (
+    key: string,
+    label: string,
+    meta: string,
+    totals: UsageTotals,
+    icon: IconName | undefined,
+  ): ShareRow => ({
+    key,
+    label,
+    meta,
+    icon,
+    share: amount === 0 ? 0 : (measure === "cost" ? totals.cost : totals.tokens) / amount,
+    ...shareValue(totals, measure),
+  });
+
+  const ranked = (rows: readonly ShareRow[]) =>
+    rows.toSorted((left, right) => right.share - left.share);
+
+  return {
+    folders: ranked(
+      [...perFolder].map(([key, folder]) => {
+        const leaf = folderLabel(folder.path);
+        const parent = (leaves.get(leaf) ?? 0) > 1 ? folderParent(folder.path) : undefined;
+
+        return row(
+          key,
+          parent === undefined ? leaf : `${leaf} in ${parent}`,
+          `${plural(folder.chats.size, "chat")} · ${formatTokens(folder.totals.tokens)} tokens`,
+          folder.totals,
+          folder.path === null ? "laptop" : "folder",
+        );
+      }),
+    ),
+    chatRows: ranked(
+      report.sessions.flatMap((session) => {
+        const totals = perChat.get(session.sessionId);
+        const name = session.name?.trim();
+
+        return totals === undefined
+          ? []
+          : [
+              row(
+                session.sessionId,
+                name === undefined || name === "" ? "Untitled chat" : name,
+                `${folderLabel(session.workspacePath)} · ${formatTokens(totals.tokens)} tokens`,
+                totals,
+                undefined,
+              ),
+            ];
+      }),
+    ),
+  };
+}
+
+function shareValue(
+  totals: Pick<UsageTotals, "cost" | "tokens">,
+  measure: UsageMeasure,
+): Pick<ShareRow, "value" | "absent"> {
+  if (measure === "tokens")
+    return { value: `${formatTokens(totals.tokens)} tokens`, absent: false };
+
+  return totals.cost === 0
+    ? { value: "No price", absent: true }
+    : { value: formatUsd(totals.cost), absent: false };
 }
 
 export function describeEmptyRange(
@@ -450,15 +599,14 @@ export function describeEmptyRange(
 
   if (earliest === undefined) {
     return {
-      title: "No recorded Nyte usage",
-      body: "Usage from Nyte chats will appear here.",
+      title: "No usage yet",
+      body: "Start a chat in Nyte and its spend shows up here.",
       offerAllTime: false,
     };
   }
 
   return {
-    title:
-      window.sinceDay === null ? "No usage in this range" : `Nothing in the ${windowLabel(window)}`,
+    title: `Nothing in ${windowLabel(window)}`,
     body: `Earliest recorded usage: ${dayLabel(earliest)}.`,
     offerAllTime: window.sinceDay !== null,
   };
@@ -474,6 +622,12 @@ const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
   nyte: "Nyte",
   claudeCode: "Claude Code",
   codex: "Codex",
+};
+
+const USAGE_TOOL_ICONS: Readonly<Record<UsageTool, IconName>> = {
+  nyte: "nyte",
+  claudeCode: "provider-claude-code",
+  codex: "provider-openai-codex",
 };
 
 const USAGE_TOOL_HOMES: Readonly<Record<LocalTool, string>> = {
@@ -492,7 +646,7 @@ function coverageGaps(usage: Extract<LocalHistory, { kind: "ready" }>): readonly
 }
 
 type ToolSpend =
-  | (CacheCounts & { readonly tokens: number; readonly partial: boolean })
+  | { readonly cost: number; readonly tokens: number; readonly partial: boolean }
   | { readonly absent: string; readonly meta: string };
 
 function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
@@ -507,9 +661,6 @@ function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
     return {
       cost: totals.cost,
       tokens: totals.tokens,
-      prompt: promptTokens(totals),
-      cacheRead: totals.cacheRead,
-      savings: totals.cacheSavings,
       partial: report.sources.some((source) => source.status === "failed"),
     };
   }
@@ -521,52 +672,83 @@ function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
 
   if (history.kind === "failed") return { absent: "Couldn't read", meta: history.message };
 
-  const { total, cacheSavings } = history.summary;
-
   return {
-    cost: total.cost.total,
-    tokens: total.total,
-    prompt: promptTokens(total),
-    cacheRead: total.cacheRead,
-    savings: cacheSavings,
+    cost: history.summary.total.cost.total,
+    tokens: history.summary.total.total,
     partial: coverageGaps(history).length > 0,
   };
 }
 
-export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
+export function deriveTools(report: UsageSnapshot): readonly ShareRow[] {
   const spends = USAGE_TOOLS.map((tool) => ({ tool, spend: toolSpend(report, tool) }));
   const counted = spends.flatMap(({ spend }) => ("absent" in spend ? [] : [spend]));
-  const byCost = counted.some((spend) => spend.cost > 0);
-  const whole = counted.reduce((sum, spend) => sum + (byCost ? spend.cost : spend.tokens), 0);
+  const measure: UsageMeasure = counted.some((spend) => spend.cost > 0) ? "cost" : "tokens";
 
-  return spends.map(({ tool, spend }): UsageRow => {
-    const base = { key: tool, label: USAGE_TOOL_LABELS[tool], trend: undefined };
+  const pick = (spend: { readonly cost: number; readonly tokens: number }) =>
+    measure === "cost" ? spend.cost : spend.tokens;
+
+  const whole = counted.reduce((sum, spend) => sum + pick(spend), 0);
+
+  return spends.map(({ tool, spend }): ShareRow => {
+    const base = { key: tool, label: USAGE_TOOL_LABELS[tool], icon: USAGE_TOOL_ICONS[tool] };
 
     if ("absent" in spend) {
-      return {
-        ...base,
-        meta: spend.meta,
-        cache: NO_CACHE,
-        value: { text: spend.absent, absent: true },
-        share: 0,
-      };
+      return { ...base, meta: spend.meta, share: 0, value: spend.absent, absent: true };
     }
 
     return {
       ...base,
       meta: `${formatTokens(spend.tokens)} tokens${spend.partial ? " · partial history" : ""}`,
-      cache: describeCache(spend),
-      value:
-        spend.tokens === 0
-          ? { text: "No usage", absent: true }
-          : byCost
-            ? spend.cost === 0
-              ? { text: "No price", absent: true }
-              : { text: formatUsd(spend.cost), absent: false }
-            : { text: `${formatTokens(spend.tokens)} tokens`, absent: false },
-      share: whole === 0 ? 0 : (byCost ? spend.cost : spend.tokens) / whole,
+      share: whole === 0 ? 0 : pick(spend) / whole,
+      ...(spend.tokens === 0 ? { value: "No usage", absent: true } : shareValue(spend, measure)),
     };
   });
+}
+
+const VENDORS: readonly {
+  readonly prefix: RegExp;
+  readonly name: string;
+  readonly icon: IconName;
+}[] = [
+  { prefix: /^claude/u, name: "Anthropic", icon: "model-anthropic" },
+  { prefix: /^(gpt|o\d|codex)/u, name: "OpenAI", icon: "model-openai" },
+  { prefix: /^gemini/u, name: "Google", icon: "model-gemini" },
+  { prefix: /^kimi/u, name: "Moonshot", icon: "model-kimi" },
+  { prefix: /^glm/u, name: "Zhipu", icon: "model-zai" },
+  { prefix: /^deepseek/u, name: "DeepSeek", icon: "model-deepseek" },
+  { prefix: /^minimax/u, name: "MiniMax", icon: "model-minimax" },
+  { prefix: /^qwen/u, name: "Alibaba", icon: "model-qwen" },
+  { prefix: /^(devstral|mistral|codestral)/u, name: "Mistral", icon: "model-mistral" },
+  { prefix: /^grok/u, name: "xAI", icon: "grok" },
+];
+
+const PROVIDER_NAMES = new Map([
+  ["anthropic", "Anthropic"],
+  ["openai", "OpenAI"],
+  ["openai-codex", "ChatGPT"],
+  ["opencode", "OpenCode"],
+  ["opencode-go", "OpenCode"],
+  ["openrouter", "OpenRouter"],
+  ["github-copilot", "Copilot"],
+  ["vercel-ai-gateway", "Vercel"],
+]);
+
+function providerName(provider: string): string {
+  return PROVIDER_NAMES.get(provider) ?? provider;
+}
+
+function findVendor(
+  model: string,
+  provider: string,
+): { readonly name: string; readonly icon: IconName } {
+  const id = model.split("/").at(-1) ?? model;
+
+  return (
+    VENDORS.find((vendor) => vendor.prefix.test(id)) ?? {
+      name: providerName(provider),
+      icon: "model-generic",
+    }
+  );
 }
 
 export interface LimitMeter {
@@ -593,7 +775,7 @@ const HOUR_MS = 60 * MINUTE_MS;
 
 const DAY_MS = 24 * HOUR_MS;
 
-export function formatResetsIn(at: number, now: number): string {
+function formatResetsIn(at: number, now: number): string {
   const left = at - now;
 
   if (left < MINUTE_MS) return "now";

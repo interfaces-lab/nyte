@@ -36,7 +36,7 @@ Build the static single-page app into `dist`:
 pnpm --dir packages/app build
 ```
 
-Production serves it at `https://app.nyte.sh`. The app signs in with your Nyte account and lists your linked hosts, such as the desktop app or the `nyte` CLI on another computer. The browser is only a client. The folders it opens and the edits it makes belong to that host. Phones and browsers are never hosts you can connect to. The [remote access guide](../docs/content/docs/remote-access.mdx) has the user steps.
+Production serves it at `https://app.nyte.sh`. The app signs in with your Nyte account and lists your linked hosts, such as the desktop app or the `nyte` CLI on another computer. The browser is only a client. The folders it opens and the edits it makes belong to that host. Phones and browsers are never hosts you can connect to. The [remote access guide](../../services/web/content/docs/remote-access.mdx) has the user steps.
 
 ### Configuration
 

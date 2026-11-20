@@ -66,7 +66,7 @@ describe("screen", () => {
     await using app = await mount(state, () => <Screen />);
     const frame = app.captureCharFrame();
 
-    expect(row(frame, "/cd")).toBeGreaterThan(row(frame, "╰"));
+    expect(row(frame, "/accounts")).toBeGreaterThan(row(frame, "╰"));
   });
 
   test("the highlighted completion row is a selection band; narrow menus drop the details", async () => {
@@ -95,11 +95,10 @@ describe("screen", () => {
     expect(highlighted).not.toContain("Choose a saved account");
   });
 
-  test("an empty menu says why: no command, no file, or a listing still loading", async () => {
+  test("an empty menu says why: no command or no file", async () => {
     for (const [draft, text] of [
       ["/zzz", "no matching commands"],
       ["see @zzz", "no matching files or folders"],
-      ["/cd ", "loading directories…"],
     ] as const) {
       await using app = await mount(play(ready(idle), typed(draft)).state, () => <Screen />);
 

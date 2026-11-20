@@ -8,10 +8,10 @@ import type { ReactElement } from "react";
 import type { Activation } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { keys, queryClient } from "../data/query-client.ts";
-import { useHostState } from "../data/host.ts";
+import { commitHostWorkspace } from "../data/workspaces.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
-import type { HostBridge, OpenWorkspaceOutcome, TrustConsent } from "../contract/bridge.ts";
+import type { HostBridge, OpenWorkspaceOutcome } from "../contract/bridge.ts";
 
 const styles = create({
   popup: {
@@ -36,13 +36,9 @@ const styles = create({
 
 interface TrustPrompt {
   readonly path: string;
-  readonly origin: "open" | "action";
-  readonly consent?: TrustConsent;
 }
 
 let prompt: TrustPrompt | undefined;
-
-const declined = new Set<string>();
 
 const listeners = new Set<() => void>();
 
@@ -64,20 +60,8 @@ function setPrompt(next: TrustPrompt | undefined): void {
   for (const listener of listeners) listener();
 }
 
-export function requestTrust(path: string): void {
-  if (declined.has(path)) return;
-  toast.close("workspace-open");
-
-  if (prompt?.path !== path) setPrompt({ path, origin: "action" });
-}
-
 export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   switch (outcome.kind) {
-    case "needs_trust":
-      toast.close("workspace-open");
-      setPrompt({ path: outcome.path, origin: "open", consent: outcome.consent });
-
-      return;
     case "failed":
       setPrompt(undefined);
       toast.add({
@@ -90,8 +74,10 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
 
       return;
     case "opened":
+      commitHostWorkspace(outcome.workspace);
+      void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
       toast.close("workspace-open");
-      setPrompt(outcome.needsTrust ? { path: outcome.workspace.path, origin: "open" } : undefined);
+      setPrompt(outcome.needsTrust ? { path: outcome.workspace.path } : undefined);
 
       return;
     case "cancelled":
@@ -151,100 +137,67 @@ export function observeActivation(activation: Activation): void {
   }
 }
 
-function declineTrust(path: string): void {
-  declined.add(path);
+function declineTrust(): void {
   setPrompt(undefined);
-}
-
-function reviewTrust(prompt: TrustPrompt): void {
-  setPrompt(undefined);
-  void nyte.host.openWorkspace({ path: prompt.path }).then((outcome) => {
-    if (outcome.kind === "needs_trust" && outcome.consent !== undefined)
-      setPrompt({ path: outcome.path, origin: prompt.origin, consent: outcome.consent });
-    else handleOpenOutcome(outcome);
-  });
 }
 
 function grantTrust(
   trust: NonNullable<HostBridge["trustWorkspace"]>,
   prompt: TrustPrompt,
 ): Promise<boolean> {
-  const { path, consent } = prompt;
-  declined.delete(path);
   setPrompt(undefined);
 
-  return trust(consent === undefined ? { path } : { path, consent })
-    .catch((cause: unknown): OpenWorkspaceOutcome => ({
-      kind: "failed",
-      message: cause instanceof Error ? cause.message : String(cause),
-    }))
-    .then((outcome) => {
-      handleOpenOutcome(outcome);
-      void queryClient.invalidateQueries({ queryKey: keys.workspaces });
+  return trust({ path: prompt.path }).then((outcome) => {
+    handleOpenOutcome(outcome);
+    void queryClient.invalidateQueries({ queryKey: keys.workspaces });
 
-      return outcome.kind !== "failed";
-    });
+    return outcome.kind !== "failed";
+  });
 }
 
-export function folderPicker(): (() => void) | undefined {
+export function folderPicker(
+  handle: (outcome: OpenWorkspaceOutcome) => void = handleOpenOutcome,
+): (() => void) | undefined {
   const pick = nyte.host.pickWorkspace;
 
-  return pick === undefined ? undefined : () => void pick().then(handleOpenOutcome);
+  return pick === undefined ? undefined : () => void pick().then(handle);
 }
 
 export function WorkspaceDialogHost(): ReactElement | null {
   const current = useSyncExternalStore(subscribe, snapshot);
   const trust = nyte.host.trustWorkspace;
   const router = useRouter();
-  const host = useHostState();
 
   if (current === undefined) return null;
-  const { path, origin, consent } = current;
-  const binding = host.data.binding;
-  const unseen = binding !== undefined && consent?.hostId !== binding.hostId;
+  const path = current.path;
 
   const grant = (grantWith: NonNullable<typeof trust>): void => {
     void grantTrust(grantWith, current).then((granted) => {
-      if (granted && origin === "open")
-        void router.navigate({ to: "/", search: {}, replace: true });
+      if (granted) void router.navigate({ to: "/", search: {}, replace: true });
     });
   };
 
   return (
-    <Dialog.Root key={path} defaultOpen onOpenChange={(open) => !open && declineTrust(path)}>
+    <Dialog.Root key={path} defaultOpen onOpenChange={(open) => !open && declineTrust()}>
       <Dialog.Popup xstyle={styles.popup}>
         <Dialog.Title xstyle={styles.title}>
           {trust === undefined ? "This folder is not trusted" : "Trust Folder"}
         </Dialog.Title>
         <div {...props(styles.path)}>{path}</div>
-        {consent !== undefined && !unseen && (
-          <>
-            <div {...props(styles.path)}>Host {consent.hostId}</div>
-            <div {...props(styles.path)}>Folder identity {consent.identity}</div>
-          </>
-        )}
         <Dialog.Description>
           {trust === undefined
             ? "This folder has its own skills, plugins or MCP servers. Trust it on the machine running the server to load them."
-            : binding === undefined
-              ? "This folder has its own skills, plugins or MCP servers. Trusting it loads them and lets Nyte run code and change files here."
-              : "This folder has its own skills, plugins or MCP servers. Trusting it loads them and lets Nyte run code and change files there, on this host."}
+            : "This folder has its own skills, plugins or MCP servers. Trusting it loads them and lets Nyte run code and change files here."}
         </Dialog.Description>
         <Dialog.Footer>
           {trust === undefined ? (
-            <Button onClick={() => declineTrust(path)}>Close</Button>
+            <Button onClick={() => declineTrust()}>Close</Button>
           ) : (
             <>
-              <Button onClick={() => declineTrust(path)}>Cancel</Button>
-              {unseen ? (
-                <Button variant="solid" tone="primary" onClick={() => reviewTrust(current)}>
-                  Review Folder
-                </Button>
-              ) : (
-                <Button variant="solid" tone="primary" onClick={() => grant(trust)}>
-                  Trust Folder
-                </Button>
-              )}
+              <Button onClick={() => declineTrust()}>Cancel</Button>
+              <Button variant="solid" tone="primary" onClick={() => grant(trust)}>
+                Trust Folder
+              </Button>
             </>
           )}
         </Dialog.Footer>

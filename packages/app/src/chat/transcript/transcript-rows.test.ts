@@ -1,8 +1,15 @@
 import { expect, test } from "vitest";
 import type { Message, SessionView } from "@nyte-ai/sdk";
+import type { SessionActivity } from "../../data/session-activity.ts";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { COMPLETED, USAGE, endedTurn, settledTool } from "../../../test/view-fixtures.ts";
-import { transcriptProjector, transcriptRows } from "./transcript-rows.ts";
+import {
+  stickySpans,
+  stuckPrompt,
+  transcriptProjector,
+  transcriptRows,
+} from "./transcript-rows.ts";
+import type { RowLayout, StickyPrompt } from "./transcript-rows.ts";
 
 const turn = asId<"turn">("t");
 
@@ -38,8 +45,9 @@ const body = [answer("a3"), answer("a4")];
 function view(
   messages: readonly Message[],
   leadingPrompt: SessionView["leadingPrompt"],
-): SessionView {
+): SessionView & { readonly activity: SessionActivity } {
   return {
+    activity: { kind: "idle" },
     revision: asId<"revision">("r1"),
     seq: asSeq(1),
     activation: { kind: "active" },
@@ -138,6 +146,7 @@ const rowsFor = (turns: Parameters<typeof transcriptRows>[0]["turns"], running =
     running,
     held: false,
     retrying: undefined,
+    live: { planning: false, newest: undefined, thought: undefined, awaiting: undefined },
   });
 
 test("a finished turn's final reply carries how long the turn worked, from its start to the later of the reply and its last work", () => {
@@ -233,6 +242,7 @@ test("a turn's last step group stays active between its run's steps and leaves t
       running: true,
       held: false,
       retrying: entry.retrying,
+      live: { planning: false, newest: undefined, thought: undefined, awaiting: undefined },
     });
 
     expect({
@@ -261,13 +271,13 @@ test("reasoning that settles while its run waits on the next response keeps its 
       phase: "responding",
       stopping: false,
     },
-  } satisfies SessionView;
+  } satisfies SessionView & { readonly activity: SessionActivity };
 
   const settled = {
     ...streaming,
     seq: asSeq(2),
     messages: [prompt, thinking],
-  } satisfies SessionView;
+  } satisfies SessionView & { readonly activity: SessionActivity };
 
   const projector = transcriptProjector({ thinking: true });
 
@@ -277,4 +287,172 @@ test("reasoning that settles while its run waits on the next response keeps its 
   expect(projector.row({ value: settled, error: undefined }, "step:th")).toMatchObject({
     running: true,
   });
+});
+
+test("the live row plans while the run is idle, names the live thought only where thinking is hidden, and a streamed thought renames it in place", () => {
+  const working = {
+    ...view([prompt], null),
+    turns: [
+      endedTurn([], { id: turn, prompt: prompt.id, state: { kind: "working", activity: null } })
+        .info,
+    ],
+    execution: {
+      kind: "live",
+      run: {
+        id: asId<"run">("run"),
+        head: asId<"head">("main"),
+        startedAt: 1,
+        attempt: 1,
+        origin: { kind: "input", message: prompt.id },
+      },
+      phase: "responding",
+      stopping: false,
+    },
+  } satisfies SessionView & { readonly activity: SessionActivity };
+
+  const thought = (markdown: string): Message => ({
+    ...thinking,
+    state: { markdown, merged: 1, signature: null },
+    status: { kind: "live", run: null },
+  });
+
+  const thinkingView = {
+    ...working,
+    activity: { kind: "thinking" },
+    messages: [prompt, thought("**Checking the lease**\n\nThe lease")],
+  } satisfies SessionView & { readonly activity: SessionActivity };
+
+  const renamed = {
+    ...thinkingView,
+    seq: asSeq(3),
+    messages: [prompt, thought("**Checking the lease**\n\nThe lease\n\n**Reading the helper**")],
+  } satisfies SessionView & { readonly activity: SessionActivity };
+
+  const quiet = transcriptProjector({ thinking: false });
+  const full = transcriptProjector({ thinking: true });
+
+  const live = (projector: typeof quiet, value: typeof working) =>
+    projector.row({ value, error: undefined }, "row:live");
+
+  expect(live(quiet, working)).toMatchObject({
+    state: "planning",
+    planning: true,
+    newest: prompt.id,
+    thought: undefined,
+  });
+
+  expect(live(quiet, thinkingView)).toMatchObject({
+    planning: false,
+    thought: "Checking the lease",
+  });
+
+  const changedRows = (from: typeof working, to: typeof working) => {
+    const before = { value: from, error: undefined };
+    const layouts = quiet.rows(before);
+    const rows = layouts.map((row) => quiet.row(before, row.key));
+    const after = { value: to, error: undefined };
+
+    return [
+      quiet.rows(after) === layouts,
+      layouts
+        .filter((row, index) => quiet.row(after, row.key) !== rows[index])
+        .map((row) => row.key),
+    ];
+  };
+
+  const longer = {
+    ...thinkingView,
+    seq: asSeq(2),
+    messages: [prompt, thought("**Checking the lease**\n\nThe lease length")],
+  } satisfies SessionView & { readonly activity: SessionActivity };
+
+  expect(changedRows(thinkingView, longer)).toEqual([true, []]);
+  expect(changedRows(longer, renamed)).toEqual([true, ["row:live"]]);
+  expect(live(quiet, renamed)).toMatchObject({ thought: "Reading the helper" });
+  expect(live(full, renamed)).toMatchObject({ planning: false, thought: undefined });
+});
+
+function layout(key: string, group: string | null, sticky = false): RowLayout {
+  return { key, group, leads: false, sticky };
+}
+
+type Pairs = readonly (readonly [number, number])[];
+
+test.each<[string, readonly RowLayout[], readonly number[], Pairs, Pairs]>([
+  [
+    "rules 16-17: each turn's prompt spans its turn",
+    [layout("p1", "t1", true), layout("a1", "t1"), layout("p2", "t2", true), layout("a2", "t2")],
+    [0, 0, 2, 2],
+    [
+      [0, 1],
+      [2, 3],
+    ],
+    [],
+  ],
+  [
+    "rule 17: a prompt that joined a running turn ends the earlier prompt's span and spans the rest",
+    [
+      layout("p1", "t1", true),
+      layout("a1", "t1"),
+      layout("s1", "t1", true),
+      layout("live", "t1"),
+      layout("summary", null),
+    ],
+    [0, 0, 2, 2, -1],
+    [
+      [0, 1],
+      [2, 3],
+    ],
+    [[0, 2]],
+  ],
+  [
+    "rule 16: rows outside a turn hold no prompt, and a pending prompt outside turns never spans",
+    [layout("a0", null), layout("p1", "t1", true), layout("queued", null, true)],
+    [-1, 1, -1],
+    [[1, 1]],
+    [],
+  ],
+  [
+    "rule 16: a turn whose prompt isn't sticky holds nothing",
+    [layout("report", "t1"), layout("a1", "t1")],
+    [-1, -1],
+    [],
+    [],
+  ],
+])("%s", (_name, rows, above, ends, handovers) => {
+  const spans = stickySpans(rows);
+
+  const sorted = (pairs: ReadonlyMap<number, number>) =>
+    [...pairs].toSorted(([first], [second]) => first - second);
+
+  expect([spans.above, sorted(spans.ends), sorted(spans.handovers)]).toEqual([
+    above,
+    ends,
+    handovers,
+  ]);
+});
+
+const JOINED = new Map([[0, 2]]);
+
+function prompts(earlier: number, joining: number, height = 50): readonly StickyPrompt[] {
+  return [
+    { index: 0, top: earlier, height },
+    { index: 2, top: joining, height },
+  ];
+}
+
+test.each<[string, readonly StickyPrompt[], ReadonlyMap<number, number>, number | undefined]>([
+  ["rule 16: the prompt at the top is stuck", prompts(0, 158), JOINED, 0],
+  ["rule 17: the joining prompt at the top takes over", prompts(-74, 0), JOINED, 2],
+  [
+    "rule 17: while the joining prompt pushes the earlier one off, the earlier one stays stuck",
+    prompts(-34, 30),
+    JOINED,
+    0,
+  ],
+  ["rule 17: a prompt pushed off by its turn's end is not", prompts(-34, 30), new Map(), undefined],
+  ["rule 17: once both have scrolled past, none is", prompts(-200, -80), JOINED, undefined],
+  ["rule 18: a prompt as tall as the view never sticks", prompts(0, 158, 700), JOINED, undefined],
+])("%s", (_name, shown, handovers, stuck) => {
+  expect(stuckPrompt(shown, 700, handovers)).toBe(stuck);
 });

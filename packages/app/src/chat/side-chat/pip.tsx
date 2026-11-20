@@ -6,7 +6,6 @@ import { flushSync } from "react-dom";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { layer, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { occludes } from "../../components/overlay-occlusion.ts";
 import { conversation, tray } from "../../theme/schema.stylex.ts";
 
 export type Corner = `${"top" | "bottom"}-${"start" | "end"}`;
@@ -137,14 +136,14 @@ export function Pip({
     const element = card.current;
     const area = element?.parentElement?.getBoundingClientRect();
 
+    if (current?.pointer !== event.pointerId) return;
     drag.current = null;
 
-    if (current?.pointer !== event.pointerId || !moved.current) return;
+    if (!moved.current) return;
+
+    if (event.type === "pointercancel") moved.current = false;
 
     if (element == null || area === undefined) return;
-    setTimeout(() => {
-      moved.current = false;
-    });
     const rect = element.getBoundingClientRect();
     const velocity = throwVelocity(current);
     const throwX = rect.left + rect.width / 2 + velocity.x * THROW_MS;
@@ -169,11 +168,7 @@ export function Pip({
   return (
     <div {...props(styles.layer)}>
       <motion.div
-        ref={(element: HTMLDivElement | null) => {
-          card.current = element;
-
-          return occludes(element);
-        }}
+        ref={card}
         role="dialog"
         aria-label={label}
         className={look.className}
@@ -185,6 +180,7 @@ export function Pip({
         }}
         transition={spring}
         onPointerDown={(event) => {
+          moved.current = false;
           const target = event.target;
           const handle = target instanceof Element ? target.closest("[data-pip-grip]") : null;
           const element = card.current;
@@ -197,7 +193,6 @@ export function Pip({
           handle.setPointerCapture(event.pointerId);
           x.stop();
           y.stop();
-          moved.current = false;
           drag.current = {
             pointer: event.pointerId,
             origin: { x: event.clientX - x.get(), y: event.clientY - y.get() },
@@ -233,6 +228,7 @@ export function Pip({
             event.preventDefault();
         }}
         onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+          moved.current = false;
           const next = cornerToward(corner, event.key);
           const target = event.target;
 

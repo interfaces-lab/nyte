@@ -193,7 +193,6 @@ const result = await build({
 
 if (!result.success) throw new AggregateError(result.logs, `Failed to build ${manifest.name}`);
 
-// React's production build has no jsxDEV, so a development transform crashes every renderer.
 const developmentJsx = result.outputs
   .filter((output) => output.path.endsWith(".js"))
   .filter((output) => readFileSync(output.path, "utf8").includes("jsxDEV"))

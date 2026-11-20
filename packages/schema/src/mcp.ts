@@ -120,11 +120,9 @@ const StringMap = Type.Record(Type.String(), Type.String());
 
 const OPTIONS = {
   enabled: Type.Optional(Type.Boolean()),
-  /** Seconds each request may take; progress notifications restart it. Default 60. */
   timeout: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
   description: Type.Optional(Type.String()),
   exposure: Type.Optional(McpExposureNameType),
-  /** Exposure per tool name; `*` matches any characters, exact names win, then the first matching pattern. */
   toolExposure: Type.Optional(Type.Record(Type.String(), McpExposureNameType)),
 };
 

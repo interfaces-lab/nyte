@@ -138,6 +138,67 @@ Read the spans back:
 
 `test/scenarios.test.ts` runs U and D end to end on a SQLite store in a temp folder and checks the hop order. Set `NYTE_WATERFALL_DIR` to save each waterfall as JSON.
 
+## Wire size
+
+`pnpm --dir packages/bench bench:wire` measures what a host puts on the network for six steps, through the real client: `sdk.connect` and `openHost` from `@nyte-ai/sdk/client`, opened the way the app opens them, behind a relay that counts every byte on the client's TCP connections.
+
+| Step | What it does |
+| --- | --- |
+| S1 | One streamed reply: 400 characters of thinking and 4,000 of text, in deltas of 10 characters 5 ms apart |
+| S2 | One tool turn: a shell call that returns 4,096 bytes and runs for 300 ms, then 1,000 characters of text |
+| S3 | A fresh client opens a chat of 100 exchanges; `S3.all` then pages its whole history |
+| S4 | A fresh client lists 200 chats; `S4.title` renames one |
+| S5 | One client, one chat open, idle for a minute |
+| S6 | The socket drops and the client resumes |
+
+Each step reports both directions: WebSocket messages and payload bytes, HTTP bodies, the bytes on the socket, and the payload by frame kind. `--remote` renames the host in each request so the listener takes the client for one off loopback and compresses for it; the on-socket column is then what a phone or a tunnelled client pays. `--json <path>` saves a run, `--dump <path>` writes every message as a line of JSON, and `--compare <path>` prints each number beside a saved run and fails when a step's server-to-client bytes grew by more than 10%. `--idle-ms` shortens S5.
+
+`wire/loopback.json` and `wire/remote.json` are the saved runs, and `pnpm --dir packages/bench bench:wire:gate` (`--gate`) compares against the first. A streamed step lands a few percent apart between runs, because the host gathers its pushes on timers.
+
+Server to client, in bytes. The reference is [t3code](https://github.com/pingdotgg/t3code) at `73e49aa6`, measured on its real server and web client with the same scripted deltas; its figures are compressed payload, which leaves out the frame and HTTP headers that Nyte's on-socket column includes.
+
+| Step | Loopback payload, before | Now | Off loopback on socket, before | Now | t3code, compressed | Target |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| S1 | 83,799 in 458 messages | 27,895 in 86 | 6,863 | 2,168 | 4,185 | Under t3code while still streaming tokens, which t3code does not |
+| S2 | 45,016 in 126 | 25,477 in 31 | 3,172 | 1,763 | 4,189 | Under t3code |
+| S3 | 74,986 | 75,245 | 19,821 | 20,404 | 22,718 | Under t3code's cold load |
+| S3.all | 236,678 | 236,937 | 182,053 | 40,677 | 37,586 | Within 10% of t3code; random ids are what is left |
+| S4 | 64,971 | 53,750 | not measured | 15,355 | 13,570 for 200 rows | Within 10% of t3code; now 13% over |
+| S4.title | 979 | 979 | 229 | 231 | 513 | Under t3code |
+| S5 | 32 | 140 | 56 | 92 | 66 | Under t3code; now over, by the probe below |
+| S6 | 2,687 | 1,038 in 5 | 1,883 | 995 | 234 for the session alone | Open: the order now crosses only where it moved; the welcome and the answer's empty tables are left |
+
+Three of these moved for a reason other than size work. The "before" S2 ran a command that returned at once, which hid what a real one costs: its output tail as a progress frame and more moves of the session's row. S2 now runs for 300 ms, so its "Now" is not comparable with its "before". S3 and S4 carry one more request, 519 bytes on the socket: a client that has not pinned its host asks for the host's identity as it connects, which a pinned client always did. And S5's idle minute holds two probes each way, 172 bytes up and 108 down, which is how a client finds a link that died without a close.
+
+What is left, largest first: the host view's first frame, which crosses base64 inside SSE (7 KB of S3 and S4), session rows of about 870 bytes for a 40-character title (S4), and in S6 the welcome (249 bytes) and a resume's answer that names all nine tables when none changed (483).
+
+## Snapshot cost
+
+`pnpm --dir packages/bench bench:snapshots` measures what a tool call's workspace snapshots cost the host. It runs a real host with the local provider over two folders that aren't git repos: 200 files, and 100,000 files (`--files`) holding three nested repos and a `node_modules`. In each folder it makes `write` calls, which name their file, and `bash` calls, which don't. Each row is the host process's CPU, wall time and snapshot store growth for one call, from send to settled.
+
+`bench:snapshots:gate` (`--gate`) fails when a call in the large folder costs more than 3× the CPU of the same call in the small one, when it adds more than 64 KiB to the snapshot store, or when a change the host should have recorded is missing. The comparison is within one run, so the gate needs no saved baseline. In the large folder, `bash` changes aren't recorded: the folder is past the 5,000-entry limit for finding changes no tool named.
+
+| Folder | Tool | Before: CPU per call | Before: store per call | Now: CPU per call | Now: store per call |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 200 files | write | 17.7 ms | 17,847 B | 10.7 ms | 171 B |
+| 200 files | bash | 19.2 ms | 18,698 B | 18.5 ms | 150 B |
+| 100,000 files | write | 1,419 ms | 5,180,829 B | 7.1 ms | 158 B |
+| 100,000 files | bash | 1,426 ms | 5,180,652 B | 7.4 ms | 0 B |
+
+Medians of 8 runs after 2 warmups. Before, every capture walked the folder up to 50,000 entries and wrote a full manifest.
+
+## Streaming patches
+
+`pnpm --dir packages/bench bench:stream` measures host CPU per streamed text patch on `openHost` over `memoryStore()` and `fakeModels`, in a temp home: K sessions stream at once over H prior messages, with or without one socket client per session. `--profile <prefix>` writes a CPU profile and its measured windows per row.
+
+```sh
+pnpm --dir packages/bench bench:stream --delta-ms 0
+```
+
+- Compare runs with `--delta-ms 0`, the saturated loop. The default paced mode isn't reproducible between invocations.
+- The socket's append check (`part.markdown.startsWith(previous.markdown)`) is O(reply length) per patch per subscriber; after the ws write, it is the next limiter.
+- The profile's samples don't line up with the hrtime windows: `Profiler.start` resolves late. Fit the offset, by maximising the `publishPatch` samples inside windows, before filtering samples.
+
 ## Development
 
 ```sh

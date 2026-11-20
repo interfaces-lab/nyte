@@ -130,7 +130,6 @@ app.whenReady().then(async () => {
       return;
     }
     window.webContents.debugger.attach("1.3");
-    // Hidden test windows need focus emulation to dispatch native focus/blur events.
     await window.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
     await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
       features: [
@@ -156,6 +155,14 @@ app.whenReady().then(async () => {
     await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererMouseClick" });
     await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererCapture" });
     await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererKey" });
+    await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererCompose" });
+    window.webContents.debugger.on("message", async (_event, method, params) => {
+      if (method !== "Runtime.bindingCalled" || params.name !== "rendererCompose") return;
+      const { steps, commit } = JSON.parse(params.payload);
+      for (const step of steps) await window.webContents.debugger.sendCommand("Input.imeSetComposition", { text: step, selectionStart: step.length, selectionEnd: step.length });
+      await window.webContents.debugger.sendCommand("Input.insertText", { text: commit });
+      await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-composed"))');
+    });
     window.webContents.debugger.on("message", async (_event, method, params) => {
       if (method !== "Runtime.bindingCalled" || params.name !== "rendererKey") return;
       const { key, code, keyCode, text, modifiers } = JSON.parse(params.payload);
@@ -174,8 +181,9 @@ app.whenReady().then(async () => {
     });
     window.webContents.debugger.on("message", async (_event, method, params) => {
       if (method !== "Runtime.bindingCalled" || params.name !== "rendererMouseClick") return;
-      const { x, y, shift } = JSON.parse(params.payload);
-      const point = { x, y, button: "left", clickCount: 1, modifiers: shift ? 8 : 0 };
+      const { x, y, shift, modifiers } = JSON.parse(params.payload);
+      const point = { x, y, button: "left", clickCount: 1, modifiers: modifiers ?? (shift ? 8 : 0) };
+      if (modifiers !== undefined) await window.webContents.debugger.sendCommand("Input.dispatchMouseEvent", { x, y, type: "mouseMoved", modifiers });
       await window.webContents.debugger.sendCommand("Input.dispatchMouseEvent", { ...point, type: "mousePressed" });
       await window.webContents.debugger.sendCommand("Input.dispatchMouseEvent", { ...point, type: "mouseReleased" });
       await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-mouse-clicked"))');

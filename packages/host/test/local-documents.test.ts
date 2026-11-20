@@ -5,7 +5,7 @@ import { SdkError } from "@nyte-ai/schema";
 import type { DocumentsApi } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { sha256 } from "../src/hash.ts";
-import { localDocuments } from "../src/local/documents.ts";
+import { localDocuments } from "../src/local/files/documents.ts";
 
 const folders: string[] = [];
 

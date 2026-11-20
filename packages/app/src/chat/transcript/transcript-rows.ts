@@ -1,4 +1,4 @@
-import type { Message, SessionView } from "@nyte-ai/sdk";
+import type { Message, MessageId, SessionId, SessionView } from "@nyte-ai/sdk";
 import {
   showsAnswer,
   showsReport,
@@ -12,6 +12,8 @@ import type {
   UserMessage,
 } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../../preferences/index.ts";
+import { awaitedChild } from "../../data/session-activity.ts";
+import type { SessionActivity } from "../../data/session-activity.ts";
 import type { WatchStore } from "../../data/watch-store.ts";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { CHANGES_VISIBLE_FILES } from "../../diff/change-tree.ts";
@@ -24,6 +26,7 @@ import type {
   TranscriptSlot,
 } from "./transcript-presentation.ts";
 import type { Reply } from "./transcript-unread.ts";
+import { reasoningHeading } from "./reasoning-heading.ts";
 
 export interface RowLayout {
   readonly key: string;
@@ -33,6 +36,71 @@ export interface RowLayout {
 }
 
 const OUTSIDE = { group: null, leads: true, sticky: false } as const;
+
+export interface StickySpans {
+  readonly above: readonly number[];
+  readonly ends: ReadonlyMap<number, number>;
+  readonly handovers: ReadonlyMap<number, number>;
+}
+
+export function stickySpans(rows: readonly RowLayout[]): StickySpans {
+  const above: number[] = [];
+  const ends = new Map<number, number>();
+  const handovers = new Map<number, number>();
+  let sticky = -1;
+
+  for (const [index, row] of rows.entries()) {
+    if (row.group === null || row.group !== rows[index - 1]?.group) sticky = -1;
+
+    if (row.sticky && row.group !== null) {
+      if (sticky >= 0) handovers.set(sticky, index);
+      sticky = index;
+    }
+
+    above.push(sticky);
+  }
+
+  let end = rows.length - 1;
+
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+
+    if (row === undefined) continue;
+
+    if (row.group === null || row.group !== rows[index + 1]?.group) end = index;
+
+    if (!row.sticky || row.group === null) continue;
+    ends.set(index, end);
+    end = index - 1;
+  }
+
+  return { above, ends, handovers };
+}
+
+export interface StickyPrompt {
+  readonly index: number;
+  readonly top: number;
+  readonly height: number;
+}
+
+const STICKY_EPSILON = 2;
+
+export function stuckPrompt(
+  prompts: readonly StickyPrompt[],
+  viewHeight: number,
+  handovers: StickySpans["handovers"],
+): number | undefined {
+  const eligible = prompts.filter((prompt) => prompt.height < viewHeight);
+  const atTop = eligible.findLast((prompt) => Math.abs(prompt.top) <= STICKY_EPSILON);
+
+  if (atTop !== undefined) return atTop.index;
+
+  return eligible.find((prompt) => {
+    const joining = prompts.find((other) => other.index === handovers.get(prompt.index));
+
+    return prompt.top < 0 && joining !== undefined && joining.top > STICKY_EPSILON;
+  })?.index;
+}
 
 type Failure = Parameters<typeof failureNotice>[0];
 
@@ -60,6 +128,8 @@ type ResponseRow = { readonly kind: "response"; readonly messages: readonly Text
 
 type EarlierRow = RowLayout & { readonly kind: "earlier" };
 
+export const EARLIER_ROW = "earlier:";
+
 export type PromptRow = RowLayout & {
   readonly kind: "prompt";
   readonly message: UserMessage;
@@ -74,7 +144,7 @@ export type TranscriptRow =
   | EarlierRow
   | PromptRow
   | (RowLayout & { readonly kind: "retry"; readonly message: string })
-  | (RowLayout & { readonly kind: "live"; readonly state: LiveRowState })
+  | (RowLayout & { readonly kind: "live" } & LiveRowFacts)
   | (RowLayout & {
       readonly kind: "changes";
       readonly state: "pending" | "ready";
@@ -82,6 +152,17 @@ export type TranscriptRow =
     });
 
 export type LiveRowState = "idle" | "planning" | "grouped";
+
+export interface LivePlanning {
+  readonly planning: boolean;
+  readonly newest: MessageId | undefined;
+  readonly thought: string | undefined;
+  readonly awaiting: SessionId | undefined;
+}
+
+export interface LiveRowFacts extends LivePlanning {
+  readonly state: LiveRowState;
+}
 
 export type DividerRow = RowLayout & { readonly kind: "divider" };
 
@@ -176,7 +257,7 @@ function turnRows(
       if (turn.clipped && index === 0)
         rows.push({
           kind: "earlier",
-          key: `earlier:${turn.info.id}`,
+          key: `${EARLIER_ROW}${turn.info.id}`,
           ...at(),
           sticky: false,
         });
@@ -300,6 +381,7 @@ export function transcriptRows({
   running,
   held,
   retrying,
+  live,
 }: {
   readonly loading: boolean;
   readonly failed: boolean;
@@ -309,6 +391,7 @@ export function transcriptRows({
   readonly running: boolean;
   readonly held: boolean;
   readonly retrying: string | undefined;
+  readonly live: LivePlanning;
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
 
@@ -358,15 +441,21 @@ export function transcriptRows({
   if (retrying !== undefined)
     rows.push({ kind: "retry", key: "row:retry", ...OUTSIDE, message: retrying });
 
+  const state: LiveRowState = !working
+    ? "idle"
+    : rows.some((row) => row.kind === "step" && row.running)
+      ? "grouped"
+      : "planning";
+
   rows.push({
     kind: "live",
     key: "row:live",
     ...OUTSIDE,
-    state: !working
-      ? "idle"
-      : rows.some((row) => row.kind === "step" && row.running)
-        ? "grouped"
-        : "planning",
+    state,
+    planning: live.planning,
+    newest: live.newest,
+    thought: state === "grouped" ? undefined : live.thought,
+    awaiting: live.awaiting,
   });
 
   if (owner !== undefined)
@@ -381,7 +470,7 @@ export function transcriptRows({
   return rows;
 }
 
-type ProjectedView = HeadView & { readonly seq: number };
+type ProjectedView = HeadView & { readonly seq: number; readonly activity: SessionActivity };
 
 type SessionState = ReturnType<WatchStore<ProjectedView>["getState"]>;
 
@@ -466,6 +555,7 @@ function project(
     running: messages.running,
     held: messages.held,
     retrying: runState(view).retrying,
+    live: livePlanning(view, thinking),
   }).map((row) => {
     const known = previous?.rows.get(row.key);
 
@@ -575,7 +665,44 @@ function withMessage(row: TranscriptRow, slot: TranscriptSlot): TranscriptRow | 
   }
 }
 
-function streamed(previous: Projection, state: SessionState): Projection | undefined {
+function livePlanning(view: ProjectedView | undefined, thinking: boolean): LivePlanning {
+  return {
+    planning: view?.execution.kind === "live" && view.activity.kind === "idle",
+    newest: view?.messages.at(-1)?.id,
+    thought:
+      thinking || view?.activity.kind !== "thinking" ? undefined : thoughtLabel(view.messages),
+    awaiting: awaitedChild(view?.activity),
+  };
+}
+
+function thoughtLabel(messages: readonly Message[]): string {
+  const thought = messages.findLast(showsThinking);
+
+  return (
+    (thought === undefined ? undefined : reasoningHeading(thought.state.markdown).title) ??
+    "Thinking"
+  );
+}
+
+function withPlanning(
+  row: Extract<TranscriptRow, { readonly kind: "live" }>,
+  live: LivePlanning,
+): Extract<TranscriptRow, { readonly kind: "live" }> {
+  const thought = row.state === "grouped" ? undefined : live.thought;
+
+  return row.planning === live.planning &&
+    row.newest === live.newest &&
+    row.thought === thought &&
+    row.awaiting === live.awaiting
+    ? row
+    : { ...row, planning: live.planning, newest: live.newest, thought, awaiting: live.awaiting };
+}
+
+function streamed(
+  previous: Projection,
+  state: SessionState,
+  thinking: boolean,
+): Projection | undefined {
   const before = previous.state.value;
   const after = state.value;
 
@@ -626,6 +753,14 @@ function streamed(previous: Projection, state: SessionState): Projection | undef
     changed.set(key, updated);
   }
 
+  const live = previous.rows.get("row:live");
+
+  if (live?.kind === "live") {
+    const planned = withPlanning(live, livePlanning(after, thinking));
+
+    if (planned !== live) changed.set(live.key, planned);
+  }
+
   for (const [key, row] of changed) previous.rows.set(key, row);
 
   return { ...previous, state };
@@ -641,7 +776,7 @@ export function transcriptProjector({
   const sync = (state: SessionState): Projection => {
     if (projection?.state === state) return projection;
     projection =
-      (projection === undefined ? undefined : streamed(projection, state)) ??
+      (projection === undefined ? undefined : streamed(projection, state, thinking)) ??
       project(state, projection, thinking);
 
     return projection;

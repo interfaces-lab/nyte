@@ -4,10 +4,8 @@ import { errorClass, jsonStatus, shellCommand } from "./errors.ts";
 import type { CliError, NextStep, Reason } from "./errors.ts";
 import type { Presentation } from "./mode.ts";
 
-/** The status gutter. Column 0 holds the glyph or a space, content starts at column 2. Plain presentation replaces glyphs with words. */
 export type Gutter = "none" | "done" | "warn" | "fail" | "prompt";
 
-/** A label/value row: the label in a 16-character column, the value from column 18. A value that doesn't fit beside a long label moves to the next line, indented to 18. */
 export interface Row {
   readonly gutter?: Gutter;
   readonly label: string;
@@ -53,16 +51,10 @@ const LABEL_WIDTH = 16;
 
 const VALUE_COLUMN = 18;
 
-/** ANSI style for one span when the stream takes color; the reset closes it, so spans never nest. */
 export function paint(presentation: Presentation, style: Style, text: string): string {
   return presentation.color ? `\x1b[${SGR[style]}m${text}\x1b[0m` : text;
 }
 
-/**
- * Pure text for the human surfaces. Callers pass the presentation of the stream the text goes to.
- * Bold marks the primary outcome only; values, IDs and paths stay normal foreground, never faint.
- * Green, yellow and red go on the done, warn and fail glyphs only.
- */
 export function formatRows(rows: readonly Row[], presentation: Presentation): string[] {
   return rows.flatMap((row) => {
     const gutter = row.gutter ?? "none";
@@ -81,7 +73,6 @@ export function formatRows(rows: readonly Row[], presentation: Presentation): st
   });
 }
 
-/** One status line: `✓ Removed github` rich, `Removed github` plain; `! <text>` rich, `Warning: <text>` plain. */
 export function formatStatus(gutter: Gutter, text: string, presentation: Presentation): string {
   const style = GUTTERS[gutter];
 
@@ -90,11 +81,6 @@ export function formatStatus(gutter: Gutter, text: string, presentation: Present
   return `${glyph(gutter, presentation)} ${gutter === "done" ? paint(presentation, "bold", text) : text}`;
 }
 
-/**
- * A table for stdout: the Title Case header, then one line per row. Rich: each column but the last
- * padded to its widest cell plus 2, and with `width` the last column, a description, shortened
- * with `…` to fit it, keeping at least 10 characters. Plain: tab-separated, no padding, nothing truncated.
- */
 export function formatTable(
   header: readonly string[],
   rows: readonly (readonly string[])[],
@@ -123,11 +109,6 @@ export function formatTable(
   );
 }
 
-/**
- * Remote text (a server's stderr, a name from the host) as data: every control character, newline,
- * tab and ESC included, becomes a visible `\xNN`, so it can't move the cursor, set the title or
- * split a table row. Split multi-line text on `\n` first.
- */
 export function printable(text: string): string {
   return text.replaceAll(
     /\p{Cc}/gu,
@@ -135,22 +116,10 @@ export function printable(text: string): string {
   );
 }
 
-/** A complete runnable command on its own line, indented 4, cyan when colored. */
 export function formatCommand(argv: readonly string[], presentation: Presentation): string {
   return `    ${paint(presentation, "cyan", shellCommand(argv))}`;
 }
 
-/**
- * ```text
- * ✗ <message>
- *   <Label>         <value>
- *
- *   <next label>:
- *     <command>
- * ```
- * Plain presentation starts with `Error: ` instead of the glyph. A cancel isn't a failure, so its
- * headline (`Canceled.`, `Stopped waiting.`) has no glyph. At most 2 next steps.
- */
 export function formatError(error: CliError, presentation: Presentation): string {
   return [
     formatStatus(
@@ -165,7 +134,6 @@ export function formatError(error: CliError, presentation: Presentation): string
   ].join("\n");
 }
 
-/** `{"status","reason","message","next":[{"command","argv","when"?}],"data"?}` on one line; `next` and `data` only when they apply. */
 export function formatErrorJson(error: CliError): string {
   const document: ErrorDocument = {
     status: jsonStatus(error.reason),
@@ -182,7 +150,6 @@ export function formatErrorJson(error: CliError): string {
   return JSON.stringify(document);
 }
 
-/** A result's or an error document's `next`: `[{"command","argv","when"}]`, the command derived from `argv`. */
 export function formatNextJson(steps: readonly NextStep[]): JsonNextStep[] {
   return steps.map((step) => ({
     command: shellCommand(step.argv),

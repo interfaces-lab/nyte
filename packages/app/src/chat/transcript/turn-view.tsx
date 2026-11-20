@@ -1,9 +1,6 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { create, props } from "@stylexjs/stylex";
-import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
 import { BubbleContent } from "@nyte-ai/ui/bubble";
@@ -13,47 +10,33 @@ import { useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react"
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { flushSync } from "react-dom";
-import type { CommitId, Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
-import {
-  failureNotice,
-  showsAnswer,
-  showsThinking,
-  showsTool,
-} from "@nyte-ai/plugin/client/presentation";
+import type { Message as ViewMessage, UserContent } from "@nyte-ai/sdk";
+import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../../canvas/client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
-import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
+import type { ModelMode, ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
-import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../../diff/change-tree.ts";
-import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Button } from "@nyte-ai/ui/button";
-import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { usePluginCatalog } from "../../data/plugins.ts";
 import { Prose } from "../markdown/prose.tsx";
-import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { SubagentGroupView, SubagentReportLine } from "../tools/subagent-call.tsx";
+import { ResponseView } from "./reply-view.tsx";
 import { AnswerLine } from "./answer-line.tsx";
-import type { ComposerDocumentState, ComposerSubmission } from "../composer/composer-document.ts";
+import type { ComposerSubmission } from "../composer/composer-document.ts";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { attachComposerFiles } from "../composer/composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
-import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import { useChatFolder } from "../chat-folder.ts";
-import {
-  composerContentEmpty,
-  composerMessageContent,
-  uploadComposerContent,
-} from "../composer/composer-send.ts";
+import { composerMessageContent } from "../composer/composer-plan.ts";
+import { uploadComposerContent } from "../composer/composer-send.ts";
 import { composerSource } from "../composer/composer-suggestions.tsx";
-import { BlobImage, UserMessageText, messageFiles, messageImages } from "./message-content.tsx";
-import type { MessageFile } from "./message-content.tsx";
+import { BlobImage, UserMessageText, messageImages } from "./message-content.tsx";
 import { contentDraftText } from "../../references/message-references.ts";
-import { forkChat } from "../../data/session-actions.ts";
 import { ModelPicker } from "../composer/model-picker.tsx";
 import type { ModelPickerChange } from "../composer/model-picker.tsx";
 import {
@@ -65,17 +48,17 @@ import {
 import { StatusMarker } from "./row-surfaces.tsx";
 import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
-import { StepGroupView } from "./step-group.tsx";
+import { StepEntryView, StepGroupFactsView } from "./step-group.tsx";
+import { stepRowView, userRowView } from "./transcript-row-views.ts";
+import type { UserRowView } from "./transcript-row-views.ts";
+import { liveTurnStyles } from "./live-turn.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { replyAge, userDisplayText, workedFor } from "./transcript-presentation.ts";
-import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
-import { stepGroupStyles } from "./step-group.stylex.ts";
-import { conversation } from "../../theme/schema.stylex.ts";
-import { useNowMinute } from "../../lib/use-now-minute.ts";
+import { userDisplayText } from "./transcript-presentation.ts";
 import type { PromptRow, TurnItemRow } from "./transcript-rows.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../../data/catalog.ts";
-import { ChangeStats } from "../../components/change-stats.tsx";
+import { beginEdit, decideSave, dismissible, nextEdit } from "./user-edit.ts";
+import type { UserEditEvent, UserEditState } from "./user-edit.ts";
 
 function UserMessagePreview({
   expandable,
@@ -89,19 +72,19 @@ function UserMessagePreview({
   const [overflowing, setOverflowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the message before paint for the expand control
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the message before paint for the expand control; the observer's first report arrives after the frame's own layout, so the read forces none
   useLayoutEffect(() => {
     const content = contentRef.current;
 
     if (content === null) return undefined;
 
-    const measure = (): void => {
+    const observer = new ResizeObserver(() => {
       const lineHeight = Number.parseFloat(getComputedStyle(content).lineHeight);
-      setOverflowing(content.scrollHeight > lineHeight * USER_MESSAGE_PREVIEW_LINES);
-    };
+      flushSync(() =>
+        setOverflowing(content.scrollHeight > lineHeight * USER_MESSAGE_PREVIEW_LINES),
+      );
+    });
 
-    measure();
-    const observer = new ResizeObserver(measure);
     observer.observe(content);
 
     return () => observer.disconnect();
@@ -154,22 +137,18 @@ function UserMessageImages({ content }: { content: UserContent }): ReactElement 
 export interface BranchModelChoice {
   readonly model: DesktopModelOption | undefined;
   readonly thinkingLevel: ModelThinkingLevel | undefined;
-  readonly fast: boolean;
+  readonly modes: readonly ModelMode[];
 }
 
 export interface BranchModelPicker extends BranchModelChoice {
   readonly catalog: DesktopCatalog | undefined;
 }
 
-interface UserEditState extends BranchModelChoice {
-  readonly document: ComposerDocumentState;
-  readonly attachments: readonly ComposerImageAttachment[];
-  readonly kept: readonly MessageFile[];
-  readonly attachmentReads: number;
-  readonly attachmentError: string | undefined;
-  readonly saving: boolean;
-  readonly error: string | undefined;
-}
+type EditUserMessage = (
+  message: UserMessage,
+  content: UserContent,
+  choice: BranchModelChoice,
+) => Promise<void>;
 
 export function UserMessageView({
   content,
@@ -190,13 +169,7 @@ export function UserMessageView({
   const editGeneration = useRef(0);
   const original = contentDraftText(content);
 
-  const canDismissEdit =
-    edit !== undefined &&
-    !edit.saving &&
-    edit.attachmentReads === 0 &&
-    edit.document.text === original &&
-    edit.attachments.length === 0 &&
-    edit.kept.length === messageFiles(content).length;
+  const canDismissEdit = edit !== undefined && dismissible(edit, content, branchModel);
 
   const keepWhileEditing = (element: HTMLDivElement | null): (() => void) | undefined =>
     element === null ? undefined : transcript.keep(element);
@@ -207,24 +180,7 @@ export function UserMessageView({
   const begin = (): void => {
     if (rowRef.current !== null) transcript.hold(rowRef.current);
     editGeneration.current += 1;
-    flushSync(() =>
-      setEdit({
-        document: {
-          text: original,
-          selectionStart: original.length,
-          selectionEnd: original.length,
-        },
-        attachments: [],
-        kept: messageFiles(content),
-        attachmentReads: 0,
-        attachmentError: undefined,
-        saving: false,
-        error: undefined,
-        model: branchModel?.model,
-        thinkingLevel: branchModel?.thinkingLevel,
-        fast: branchModel?.fast === true,
-      }),
-    );
+    flushSync(() => setEdit(beginEdit(content, branchModel)));
     editorRef.current?.focus({ preventScroll: true });
   };
 
@@ -233,19 +189,8 @@ export function UserMessageView({
     editButtonRef.current?.focus({ preventScroll: true });
   };
 
-  const reveal = (): void => {
-    const row = rowRef.current;
-    const messages = row?.closest<HTMLElement>('[role="region"]');
-
-    if (row === null || messages === null || messages === undefined) return;
-    const box = row.getBoundingClientRect();
-    const view = messages.getBoundingClientRect();
-
-    if (box.bottom <= view.top || box.top >= view.bottom) row.scrollIntoView({ block: "nearest" });
-  };
-
-  const patchEdit = (patch: (current: UserEditState) => UserEditState): void => {
-    setEdit((current) => (current === undefined ? current : patch(current)));
+  const patchEdit = (event: UserEditEvent): void => {
+    setEdit((current) => (current === undefined ? current : nextEdit(current, event)));
   };
 
   const addFiles = async (
@@ -254,51 +199,42 @@ export function UserMessageView({
   ): Promise<string | undefined> => {
     const generation = editGeneration.current;
 
-    const patchSameEdit = (patch: (current: UserEditState) => UserEditState): void => {
-      if (generation === editGeneration.current) patchEdit(patch);
+    const patchSameEdit = (event: UserEditEvent): void => {
+      if (generation === editGeneration.current) patchEdit(event);
     };
 
-    patchSameEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
+    patchSameEdit({ kind: "reading", delta: 1 });
 
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
         signal?.throwIfAborted();
-        patchSameEdit((current) => ({
-          ...current,
-          attachments: [...current.attachments, ...result.attachments],
-          attachmentError: result.error,
-        }));
+        patchSameEdit({ kind: "attached", attachments: result.attachments, error: result.error });
 
         return result.error;
       })
-      .finally(() =>
-        patchSameEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 })),
-      );
+      .finally(() => patchSameEdit({ kind: "reading", delta: -1 }));
   };
 
   const save = async (submission: ComposerSubmission): Promise<void> => {
-    if (edit === undefined || edit.saving || onEdit === undefined) return;
+    if (edit === undefined || onEdit === undefined) return;
     const draft = composerMessageContent(submission.parts, edit.attachments, edit.kept);
+    const decision = decideSave(edit, draft);
 
-    if (composerContentEmpty(draft)) {
-      setEdit({ ...edit, error: "A message cannot be empty." });
+    if (decision.kind === "busy") return;
+    setEdit(decision.edit);
 
-      return;
-    }
-
-    setEdit({ ...edit, saving: true, error: undefined });
+    if (decision.kind === "empty") return;
     const messages = rowRef.current?.closest<HTMLElement>('[role="region"]');
-    const choice = { model: edit.model, thinkingLevel: edit.thinkingLevel, fast: edit.fast };
 
     const failure = await uploadComposerContent(draft)
-      .then((next) => onEdit(next, choice))
+      .then((next) => onEdit(next, decision.choice))
       .then(
         () => undefined,
         (cause: unknown) => errorMessage(cause),
       );
 
     if (failure !== undefined) {
-      patchEdit((current) => ({ ...current, saving: false, error: failure }));
+      patchEdit({ kind: "failed", error: failure });
 
       return;
     }
@@ -313,16 +249,9 @@ export function UserMessageView({
         catalog={branchModel.catalog}
         current={edit.model}
         thinkingLevel={edit.thinkingLevel}
-        fast={edit.fast}
+        modes={edit.modes}
         disabled={edit.saving}
-        onChange={(change: ModelPickerChange) =>
-          setEdit({
-            ...edit,
-            model: change.option,
-            thinkingLevel: change.thinkingLevel,
-            fast: change.fast,
-          })
-        }
+        onChange={(change: ModelPickerChange) => patchEdit({ kind: "model", change })}
       />
     );
 
@@ -384,8 +313,9 @@ export function UserMessageView({
               surface="follow-up"
               document={edit.document}
               onDocumentChange={(document) => {
-                if (document.text !== edit.document.text) reveal();
-                patchEdit((current) => ({ ...current, document, error: undefined }));
+                if (document.text !== edit.document.text && rowRef.current !== null)
+                  transcript.reveal(rowRef.current);
+                patchEdit({ kind: "document", document });
               }}
               onSubmit={save}
               placeholder="Edit message"
@@ -395,22 +325,11 @@ export function UserMessageView({
               hasConversationContext
               attachments={edit.attachments}
               keptFiles={edit.kept}
-              onKeptFileRemove={(file) =>
-                patchEdit((current) => ({
-                  ...current,
-                  kept: current.kept.filter((kept) => kept !== file),
-                }))
-              }
+              onKeptFileRemove={(file) => patchEdit({ kind: "removed-kept", file })}
               attachmentBusy={edit.attachmentReads !== 0}
               attachmentError={edit.attachmentError}
               onFilesSelected={addFiles}
-              onAttachmentRemove={(id) =>
-                patchEdit((current) => ({
-                  ...current,
-                  attachments: current.attachments.filter((attachment) => attachment.id !== id),
-                  attachmentError: undefined,
-                }))
-              }
+              onAttachmentRemove={(id) => patchEdit({ kind: "removed-attachment", id })}
               model={modelPicker}
               inputRef={(handle) => {
                 editorRef.current = handle;
@@ -438,25 +357,42 @@ function DismissOnOutsideClick({
 
     if (row === null) return;
 
-    const listener = (event: MouseEvent): void => {
-      if (event.defaultPrevented || event.button !== 0 || event.composedPath().includes(row))
-        return;
-      const target = event.target;
+    let pressStartedInPopup = false;
 
+    const press = (event: PointerEvent): void => {
+      pressStartedInPopup = insidePopup(event.target);
+    };
+
+    const listener = (event: MouseEvent): void => {
       if (
-        target instanceof Element &&
-        target.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]')
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        pressStartedInPopup ||
+        insidePopup(event.target) ||
+        event.composedPath().includes(row)
       )
         return;
       dismiss();
     };
 
+    row.ownerDocument.addEventListener("pointerdown", press, true);
     row.ownerDocument.addEventListener("click", listener);
 
-    return () => row.ownerDocument.removeEventListener("click", listener);
+    return () => {
+      row.ownerDocument.removeEventListener("pointerdown", press, true);
+      row.ownerDocument.removeEventListener("click", listener);
+    };
   });
 
   return null;
+}
+
+function insidePopup(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]') !==
+      null
+  );
 }
 
 function HistoryDisclosure({
@@ -474,95 +410,6 @@ function HistoryDisclosure({
       </Collapsible.Trigger>
       <Collapsible.Panel xstyle={turnStyles.historyBody}>{children}</Collapsible.Panel>
     </Collapsible.Root>
-  );
-}
-
-export function ChangesCard({
-  files,
-  onOpenChanges,
-}: {
-  readonly files: SessionView["changes"];
-  readonly onOpenChanges: (path: string | null) => void;
-}): ReactElement {
-  const [expanded, setExpanded] = useState(false);
-  const title = filesChangedLabel(files.length);
-  const collapsed = !expanded && files.length > CHANGES_VISIBLE_FILES;
-  const shown = collapsed ? files.slice(0, CHANGES_VISIBLE_FILES - 1) : files;
-
-  return (
-    <section aria-label={title} {...props(turnStyles.changesCard)}>
-      <div {...props(turnStyles.changesHeader)}>
-        <span {...props(turnStyles.changesTitle)}>{title}</span>
-        <Button
-          variant="plain"
-          size="sm"
-          onClick={() => onOpenChanges(null)}
-          xstyle={turnStyles.changesReview}
-        >
-          Review
-        </Button>
-      </div>
-      <ul {...props(turnStyles.changesList)}>
-        {shown.map((file) => (
-          <Row
-            key={file.path}
-            render={<li />}
-            interactive
-            data-change-stats-control=""
-            xstyle={turnStyles.changesFile}
-          >
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Row.Primary
-                    aria-label={`Open ${file.path} in Changes`}
-                    onClick={() => onOpenChanges(file.path)}
-                  >
-                    <Row.Leading xstyle={turnStyles.changesFileIcon}>
-                      <FileTypeIcon path={file.path} />
-                    </Row.Leading>
-                    <Row.Label>{file.path.split("/").at(-1) ?? file.path}</Row.Label>
-                    <ChangeStats added={file.added} removed={file.removed} />
-                  </Row.Primary>
-                }
-              />
-              <TooltipContent side="top">{file.path}</TooltipContent>
-            </Tooltip>
-          </Row>
-        ))}
-        {collapsed && (
-          <Row render={<li />} interactive xstyle={turnStyles.changesFile}>
-            <Row.Primary aria-expanded={false} onClick={() => setExpanded(true)}>
-              <Row.Leading xstyle={turnStyles.changesFileIcon}>
-                <Icon name="more-horizontal" size="sm" />
-              </Row.Leading>
-              <Row.Label>{`Show ${String(files.length - shown.length)} more`}</Row.Label>
-            </Row.Primary>
-          </Row>
-        )}
-      </ul>
-    </section>
-  );
-}
-
-export function ChangesFooter({
-  state,
-  files,
-}: {
-  readonly state: "pending" | "ready";
-  readonly files: SessionView["changes"];
-}): ReactElement {
-  const opener = useReferenceOpener();
-
-  return (
-    <div {...props(turnStyles.changesFooter(CHANGES_VISIBLE_FILES))}>
-      {state === "ready" && files.length > 0 && (
-        <ChangesCard
-          files={files}
-          onOpenChanges={(path) => opener?.({ kind: "changes", path })?.()}
-        />
-      )}
-    </div>
   );
 }
 
@@ -599,233 +446,113 @@ function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
 
 function TurnPartView({
   message,
-  pending,
   cwd,
   density,
-  onEditUser,
-  branchModel,
 }: {
   message: ViewMessage;
-  pending?: boolean;
   cwd: string | undefined;
   density: ToolCallDensity;
-  onEditUser?: (
-    message: UserMessage,
-    content: UserContent,
-    choice: BranchModelChoice,
-  ) => Promise<void>;
-  branchModel?: BranchModelPicker;
 }): ReactElement | null {
-  if (message.kind === "user") {
-    const { source } = message;
-
-    if (source.kind === "child" || source.kind === "job")
-      return <SubagentReportLine source={source} content={message.content} held={false} />;
-
-    if (showsAnswer(message)) return <AnswerLine message={message} held={false} />;
-
-    return (
-      <UserMessageView
-        content={message.source.kind === "action" ? message.source.label : message.content}
-        pending={pending}
-        onEdit={
-          onEditUser === undefined || message.source.kind === "action"
-            ? undefined
-            : (content, choice) => onEditUser(message, content, choice)
-        }
-        branchModel={branchModel}
-      />
-    );
-  }
-
   if (showsThinking(message))
-    return (
-      <ThinkingLine text={message.state.markdown} streaming={message.status.kind === "live"} />
-    );
+    return <ThinkingLine message={message} text={message.state.markdown} />;
 
   if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
 
   return <NoteView message={message} />;
 }
 
-const replyStyles = create({
-  reply: {
-    display: "flex",
-    flexDirection: "column",
-    gap: conversation.rowGap,
-    minWidth: 0,
-    "--_reply-time-opacity": {
-      default: 0,
-      ":hover": { [media.hover]: 1 },
-      ":focus-within": 1,
-    },
-  },
-  latest: { "--_reply-time-opacity": 1 },
-  actions: { display: "flex", alignItems: "center", gap: space.s1 },
-  time: {
-    color: role.contentTertiary,
-    opacity: "var(--_reply-time-opacity)",
-    transitionProperty: "opacity",
-    transitionDuration: {
-      default: motion.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOut,
-  },
-});
+function userRow(
+  view: UserRowView,
+  onEditUser: EditUserMessage | undefined,
+  branchModel: BranchModelPicker | undefined,
+): ReactElement {
+  switch (view.kind) {
+    case "report": {
+      const line = (
+        <SubagentReportLine source={view.source} content={view.content} held={view.held} />
+      );
 
-function ResponseView({
-  row,
-}: {
-  row: Extract<TurnItemRow, { kind: "response" }>;
-}): ReactElement | null {
-  const markdown = row.messages.map((message) => message.state.markdown.trim()).join("\n\n");
-  const streaming = row.messages.some((message) => message.status.kind === "live");
-  const first = row.messages[0];
+      return view.wrapped ? <div {...props(liveTurnStyles.root)}>{line}</div> : line;
+    }
 
-  if (markdown === "" || first === undefined) return null;
+    case "answer": {
+      const line = <AnswerLine message={view.message} held={view.held} />;
 
-  const worked = row.ended && row.workedMs !== undefined ? workedFor(row.workedMs) : undefined;
+      return view.wrapped ? <div {...props(liveTurnStyles.root)}>{line}</div> : line;
+    }
 
-  const commit = row.messages
-    .flatMap((message) => (message.status.kind === "settled" ? [message.status.commit] : []))
-    .at(-1);
+    case "user": {
+      const message = view.message;
 
-  return (
-    <div {...props(replyStyles.reply, row.ended && row.latest && replyStyles.latest)}>
-      {worked !== undefined && <span {...props(stepGroupStyles.status)}>{worked}</span>}
-      <Prose markdown={markdown} streaming={streaming} />
-      {row.ended && (
-        <ReplyActions markdown={markdown} at={first.at} worked={worked} commit={commit} />
-      )}
-    </div>
-  );
-}
-
-const SENT_AT = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-
-function ReplyActions({
-  markdown,
-  at,
-  worked,
-  commit,
-}: {
-  markdown: string;
-  at: number;
-  worked: string | undefined;
-  commit: CommitId | undefined;
-}): ReactElement {
-  const sessionId = useTranscriptScope()?.sessionId;
-  const confirmation = useCopyConfirmation();
-  const now = useNowMinute();
-  const sent = new Date(at);
-  const full = SENT_AT.format(sent);
-
-  return (
-    <div {...props(text.sm, replyStyles.actions)}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="xs"
-              iconOnly
-              icon={confirmation.copied ? "checkmark" : "copy"}
-              data-copied={confirmation.copied || undefined}
-              aria-label="Copy reply"
-              onClick={() => confirmation.copy(markdown)}
-            />
+      return (
+        <UserMessageView
+          content={view.content}
+          pending={view.pending}
+          onEdit={
+            onEditUser === undefined || !view.editable
+              ? undefined
+              : (content, choice) => onEditUser(message, content, choice)
           }
+          branchModel={branchModel}
         />
-        <TooltipContent>{confirmation.copied ? "Copied" : "Copy reply"}</TooltipContent>
-      </Tooltip>
-      {sessionId !== undefined && commit !== undefined && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="xs"
-                iconOnly
-                icon="fork"
-                aria-label="Fork chat from here"
-                onClick={() => void forkChat(sessionId, commit)}
-              />
-            }
-          />
-          <TooltipContent>Fork chat from here</TooltipContent>
-        </Tooltip>
-      )}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <time dateTime={sent.toISOString()} {...props(replyStyles.time)}>
-              <span aria-hidden="true">{replyAge(at, now)}</span>
-              <span {...props(srOnly)}>Message sent {full}</span>
-            </time>
-          }
-        />
-        <TooltipContent>
-          {full}
-          {worked !== undefined && (
-            <>
-              <br />
-              {worked}
-            </>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </div>
-  );
+      );
+    }
+
+    default: {
+      const _exhaustive: never = view;
+
+      return _exhaustive;
+    }
+  }
 }
 
 export function TurnItemView({
   row,
-  running,
   density,
   cwd,
   onEditUser,
   branchModel,
 }: {
   row: TurnItemRow | PromptRow;
-  running: boolean;
   density: ToolCallDensity;
   cwd: string | undefined;
-  onEditUser?: (
-    message: UserMessage,
-    content: UserContent,
-    choice: BranchModelChoice,
-  ) => Promise<void>;
+  onEditUser?: EditUserMessage;
   branchModel?: BranchModelPicker;
 }): ReactElement | null {
   switch (row.kind) {
     case "prompt":
-      return (
-        <TurnPartView message={row.message} pending={row.pending} cwd={cwd} density={density} />
+    case "part": {
+      const user = userRowView(row);
+
+      return user === undefined ? (
+        <TurnPartView message={row.message} cwd={cwd} density={density} />
+      ) : (
+        userRow(user, onEditUser, branchModel)
       );
-    case "part":
-      return (
-        <TurnPartView
-          message={row.message}
-          cwd={cwd}
-          density={density}
-          onEditUser={onEditUser}
-          branchModel={branchModel}
-        />
-      );
+    }
+
     case "step": {
-      const [first] = row.messages;
+      const step = stepRowView(row);
 
-      if (!running && row.messages.length === 1 && first !== undefined && showsTool(first))
-        return <TurnPartView message={first} cwd={cwd} density={density} />;
+      if (step.kind === "entry")
+        return (
+          <StepEntryView
+            entry={step.entry}
+            cwd={cwd}
+            density={density}
+            thinkingOnly={false}
+            titled={false}
+            live={false}
+          />
+        );
 
       return (
-        <StepGroupView
-          messages={row.messages}
+        <StepGroupFactsView
+          facts={step.facts}
           cwd={cwd}
           added={row.added}
           removed={row.removed}
-          running={running}
+          running={row.running}
           density={density}
         />
       );

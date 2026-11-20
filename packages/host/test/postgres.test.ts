@@ -1,15 +1,19 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Pool } from "pg";
 import { envelope } from "@nyte-ai/core/store";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { postgresStore } from "../src/index.ts";
 import type { PostgresClient, PostgresPool } from "../src/index.ts";
 import { storeConformance, storeMigrationConformance } from "./store-conformance.ts";
 
 true satisfies Pool extends PostgresPool ? true : false;
 
+const template = new PGlite();
+
+afterAll(() => template.close());
+
 function pglitePool(): PostgresPool & { readonly lent: () => number } {
-  const database = new PGlite();
+  const database = template.waitReady.then(() => template.clone());
   let queue: Promise<void> = Promise.resolve();
   let lent = 0;
 
@@ -28,7 +32,8 @@ function pglitePool(): PostgresPool & { readonly lent: () => number } {
 
         return {
           async query(text, values) {
-            const { rows } = await database.query<Record<string, unknown>>(
+            const ready = await database;
+            const { rows } = await ready.query<Record<string, unknown>>(
               text,
               values === undefined ? undefined : [...values],
             );
@@ -43,7 +48,7 @@ function pglitePool(): PostgresPool & { readonly lent: () => number } {
         };
       });
     },
-    end: () => database.close(),
+    end: async () => (await database).close(),
   };
 }
 

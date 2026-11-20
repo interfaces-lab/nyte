@@ -3,15 +3,19 @@ import { titlebarStyles } from "./titlebar.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { createLink } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { PanelToggleIcon, SplitPreviewIcon } from "@nyte-ai/ui/icon";
-import type { SplitSide } from "@nyte-ai/ui/icon";
+import type { IconName, SplitSide } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
+import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
+import { switchApp } from "../commands/apps.ts";
+import type { DesktopApp } from "../contract/desktop-app.ts";
+import { DESKTOP_APP_LABELS } from "../contract/desktop-window.ts";
 import {
   hideFromPanes,
   useCanSplitPane,
@@ -19,11 +23,15 @@ import {
   usePaneLayout,
 } from "../panes/pane-context.tsx";
 import { activeSelection, chatPanes, sameSelection } from "../panes/pane-layout.ts";
-import { nyte } from "../contract/nyte.ts";
+import { nyte, offeredApps, windowApp } from "../contract/nyte.ts";
 import { chatDirectory, chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
 import { sessionActions } from "../data/session-rows.ts";
 import { useWorkbenchView, workbench } from "../workbench/store.ts";
+import { EDITOR_SLOT, tabSlot, workbenchNarrow, workbenchShowsChat } from "../workbench/model.ts";
+import { shownWorkbenchTab } from "../workbench/selectors.ts";
+import { toggleExplorer } from "../workbench/commands.ts";
+import { ChatHistory } from "./chat-history.tsx";
 import { attachSidebarWidth, shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { attachActiveWorkbenchWidth } from "../workbench/width.ts";
 import { sessionIsRunning } from "../sidebar/sidebar-view.ts";
@@ -111,8 +119,7 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
           markRead: (sessionId) => chatWindow.markRead([sessionId]),
           openBeside: (sessionId) => {
             shellActions.showWorkspace();
-            const controller = windowTabs.controller();
-            controller.drop(sessionId, controller.getSnapshot().focus[0], "right");
+            windowTabs.dispatch({ kind: "open-beside", sessionId });
           },
           archive: (session) => {
             if (!session.archived && sessionIsRunning(session, chatDirectory())) {
@@ -182,13 +189,26 @@ export function Titlebar(): ReactElement {
   const workspaceVisible = !settingsOpen && page === undefined;
   const workbenchOpen = workspaceVisible && view.expanded;
   const maximized = view.layout.kind === "maximized";
+  const workbenchCovers = workbenchOpen && maximized;
   const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
+  const focused = useSyncExternalStore(watchWindowFocus, () => document.hasFocus());
+  const code = windowApp() === "code";
+  const shownTab = shownWorkbenchTab(view, scope, capabilities);
+
+  const explorerOpen =
+    shownTab !== null && tabSlot(shownTab) === EDITOR_SLOT && view.sidebars.includes(EDITOR_SLOT);
+
+  const leftOpen = code ? explorerOpen : sidebarVisible;
+  const leftLabel = code ? "Explorer" : "Sidebar";
 
   const sidebarSlot = (
     <span
       ref={attachSidebarWidth}
-      {...props(titlebarStyles.sidebarSlot, !sidebarVisible && titlebarStyles.sidebarSlotHidden)}
+      {...props(
+        titlebarStyles.sidebarSlot,
+        (code || !sidebarVisible) && titlebarStyles.sidebarSlotHidden,
+      )}
     >
       <span {...props(titlebarStyles.actionTrack)}>
         <Tooltip>
@@ -197,26 +217,165 @@ export function Titlebar(): ReactElement {
               <Toggle
                 iconOnly
                 indicator="glyph"
-                aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-                pressed={sidebarVisible}
+                aria-label={`${leftOpen ? "Hide" : "Show"} ${leftLabel.toLowerCase()}`}
+                pressed={leftOpen}
                 aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
-                onPressedChange={sidebarControl.toggleSidebar}
+                onPressedChange={
+                  code ? () => toggleExplorer(viewKey) : sidebarControl.toggleSidebar
+                }
                 title={undefined}
               >
-                <PanelToggleIcon side="left" visible={sidebarVisible} />
+                <PanelToggleIcon side="left" visible={leftOpen} />
               </Toggle>
             }
           />
           <TooltipContent shortcut={clientActionKeys(clientActions.sidebar, mac)}>
-            {sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+            {`${leftOpen ? "Hide" : "Show"} ${leftLabel}`}
           </TooltipContent>
         </Tooltip>
       </span>
+      {nyte.host.switchApp !== undefined && (
+        <span
+          {...props(
+            titlebarStyles.appSlot,
+            sidebarVisible && !code && titlebarStyles.appSlotDocked,
+          )}
+        >
+          <AppSwitcher mac={mac} />
+        </span>
+      )}
     </span>
   );
 
+  const trailing = (
+    <>
+      {(workspaceVisible || (strip && !settingsOpen)) && onePane && !workbenchCovers && (
+        <span role="group" aria-label="Split Chat" {...props(titlebarStyles.splitGroup)}>
+          {(["right", "down"] as const).map((side) => (
+            <SplitChatButton
+              key={side}
+              side={side}
+              mac={mac}
+              disabled={!canSplit || !workspaceVisible}
+              onSplit={() => panes.split(side)}
+            />
+          ))}
+        </span>
+      )}
+      {workbenchOpen && !workbenchNarrow(view.layout) && (
+        <span {...props(titlebarStyles.control)}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  iconOnly
+                  indicator="glyph"
+                  icon={maximized ? "minimize" : "expand"}
+                  aria-label={maximized ? "Restore split view" : "Expand workbench"}
+                  pressed={!maximized}
+                  onPressedChange={() => workbench.dispatch(viewKey, { kind: "toggle-maximized" })}
+                  title={undefined}
+                />
+              }
+            />
+            <TooltipContent>{maximized ? "Restore Split View" : "Expand Workbench"}</TooltipContent>
+          </Tooltip>
+        </span>
+      )}
+      {workspaceVisible && (
+        <span {...props(titlebarStyles.control)}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  iconOnly
+                  indicator="glyph"
+                  id="workbench-toggle"
+                  aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
+                  pressed={workbenchOpen}
+                  aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
+                  onPressedChange={() => workbench.dispatch(viewKey, { kind: "toggle" })}
+                  title={undefined}
+                >
+                  <PanelToggleIcon side="right" visible={workbenchOpen} />
+                </Toggle>
+              }
+            />
+            <TooltipContent shortcut={clientActionKeys(clientActions.workbench, mac)}>
+              {workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"}
+            </TooltipContent>
+          </Tooltip>
+        </span>
+      )}
+      <span {...props(titlebarStyles.control)}>
+        <NeedsYou />
+      </span>
+    </>
+  );
+
+  if (code) {
+    const chatOpen = view.layout.kind === "split" || workbenchShowsChat(view.layout);
+
+    return (
+      <header {...props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive)}>
+        {sidebarSlot}
+        <div {...props(titlebarStyles.contentArea)}>
+          <span {...props(titlebarStyles.center)}>
+            {workspaceVisible && (
+              <WorkbenchTabStrip
+                key={viewKey}
+                viewKey={viewKey}
+                view={view}
+                scope={scope}
+                capabilities={capabilities}
+                sessionId={selection.kind === "session" ? selection.sessionId : undefined}
+              />
+            )}
+          </span>
+          <span {...props(titlebarStyles.trailing)}>
+            {workspaceVisible && (
+              <>
+                <span {...props(titlebarStyles.control)}>
+                  <ChatHistory mac={mac} />
+                </span>
+                <span {...props(titlebarStyles.control)}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Toggle
+                          iconOnly
+                          indicator="glyph"
+                          id="workbench-toggle"
+                          aria-label={chatOpen ? "Hide chat" : "Show chat"}
+                          pressed={chatOpen}
+                          aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
+                          onPressedChange={() =>
+                            workbench.dispatch(viewKey, { kind: "toggle-maximized" })
+                          }
+                          title={undefined}
+                        >
+                          <PanelToggleIcon side="right" visible={chatOpen} />
+                        </Toggle>
+                      }
+                    />
+                    <TooltipContent shortcut={clientActionKeys(clientActions.workbench, mac)}>
+                      {chatOpen ? "Hide Chat" : "Show Chat"}
+                    </TooltipContent>
+                  </Tooltip>
+                </span>
+              </>
+            )}
+            <span {...props(titlebarStyles.control)}>
+              <NeedsYou />
+            </span>
+          </span>
+        </div>
+      </header>
+    );
+  }
+
   return (
-    <header {...props(titlebarStyles.bar)}>
+    <header {...props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive)}>
       {sidebarSlot}
       <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)}>
         <span {...props(titlebarStyles.center)}>
@@ -229,27 +388,8 @@ export function Titlebar(): ReactElement {
               )}
             </span>
           )}
-          {(workspaceVisible || (strip && !settingsOpen)) &&
-            onePane &&
-            !(workbenchOpen && maximized) && (
-              <span role="group" aria-label="Split Chat" {...props(titlebarStyles.splitGroup)}>
-                {(["right", "down"] as const).map((side) => (
-                  <SplitChatButton
-                    key={side}
-                    side={side}
-                    mac={mac}
-                    disabled={!canSplit || !workspaceVisible}
-                    onSplit={() => panes.split(side)}
-                  />
-                ))}
-              </span>
-            )}
         </span>
-        <span {...props(titlebarStyles.trailing, !workspaceVisible && titlebarStyles.trailingLast)}>
-          <span {...props(titlebarStyles.control)}>
-            <NeedsYou />
-          </span>
-        </span>
+        {!workspaceVisible && <span {...props(titlebarStyles.trailing)}>{trailing}</span>}
         {workspaceVisible && (
           <div
             ref={attachActiveWorkbenchWidth}
@@ -260,62 +400,79 @@ export function Titlebar(): ReactElement {
             )}
           >
             {workbenchOpen && (
-              <>
-                <WorkbenchTabStrip
-                  key={viewKey}
-                  viewKey={viewKey}
-                  view={view}
-                  scope={scope}
-                  capabilities={capabilities}
-                  sessionId={selection.kind === "session" ? selection.sessionId : undefined}
-                />
-                <span {...props(titlebarStyles.control)}>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          iconOnly
-                          icon={maximized ? "minimize" : "expand"}
-                          aria-label={maximized ? "Restore split view" : "Expand workbench"}
-                          onClick={() => workbench.dispatch(viewKey, { kind: "toggle-maximized" })}
-                          title={undefined}
-                        />
-                      }
-                    />
-                    <TooltipContent>
-                      {maximized ? "Restore Split View" : "Expand Workbench"}
-                    </TooltipContent>
-                  </Tooltip>
-                </span>
-              </>
+              <WorkbenchTabStrip
+                key={viewKey}
+                viewKey={viewKey}
+                view={view}
+                scope={scope}
+                capabilities={capabilities}
+                sessionId={selection.kind === "session" ? selection.sessionId : undefined}
+              />
             )}
-            <span {...props(titlebarStyles.control)}>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Toggle
-                      iconOnly
-                      indicator="glyph"
-                      id="workbench-toggle"
-                      aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
-                      pressed={workbenchOpen}
-                      aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
-                      onPressedChange={() => workbench.dispatch(viewKey, { kind: "toggle" })}
-                      title={undefined}
-                    >
-                      <PanelToggleIcon side="right" visible={workbenchOpen} />
-                    </Toggle>
-                  }
-                />
-                <TooltipContent shortcut={clientActionKeys(clientActions.workbench, mac)}>
-                  {workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"}
-                </TooltipContent>
-              </Tooltip>
-            </span>
+            {trailing}
           </div>
         )}
       </div>
     </header>
+  );
+}
+
+const APP_ICONS = {
+  nyte: "moon",
+  code: "code-brackets",
+  studio: "bezier-pointer",
+} as const satisfies Record<DesktopApp, IconName>;
+
+const APP_ACTIONS = {
+  nyte: clientActions.openNyte,
+  code: clientActions.openCode,
+  studio: clientActions.openStudio,
+} as const satisfies Record<DesktopApp, (typeof clientActions)[keyof typeof clientActions]>;
+
+function watchWindowFocus(notice: () => void): () => void {
+  window.addEventListener("focus", notice);
+  window.addEventListener("blur", notice);
+
+  return () => {
+    window.removeEventListener("focus", notice);
+    window.removeEventListener("blur", notice);
+  };
+}
+
+function AppSwitcher(input: { readonly mac: boolean }): ReactElement {
+  return (
+    <span {...props(titlebarStyles.control)}>
+      <ToggleGroup
+        aria-label="Apps"
+        value={[windowApp()]}
+        onValueChange={(value) => {
+          const next = offeredApps().find((app) => app === value[0]);
+
+          if (next !== undefined) switchApp(next);
+        }}
+      >
+        {offeredApps().map((app) => (
+          <Tooltip key={app}>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  value={app}
+                  iconOnly
+                  size="sm"
+                  icon={APP_ICONS[app]}
+                  aria-label={DESKTOP_APP_LABELS[app]}
+                  aria-keyshortcuts={clientActionAriaShortcut(APP_ACTIONS[app], input.mac)}
+                  title={undefined}
+                />
+              }
+            />
+            <TooltipContent shortcut={clientActionKeys(APP_ACTIONS[app], input.mac)}>
+              {DESKTOP_APP_LABELS[app]}
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </ToggleGroup>
+    </span>
   );
 }
 

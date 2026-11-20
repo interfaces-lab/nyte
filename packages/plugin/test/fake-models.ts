@@ -9,6 +9,7 @@ import type { Kernel } from "@nyte-ai/core/testing";
 import { asId } from "@nyte-ai/schema";
 import { composeServer } from "@nyte-ai/core/testing";
 import type { Api, AssistantMessage, Model, TranscriptContext } from "@nyte-ai/schema/model";
+import { vi } from "vitest";
 
 export type Block =
   | { readonly type: "text"; readonly text: string }
@@ -133,6 +134,7 @@ export function open(
     readonly store?: Store;
     readonly execution?: ComposeOptions["execution"];
     readonly poll?: number;
+    readonly secrets?: ComposeOptions["secrets"];
   },
 ): Promise<ServedHost & { readonly kernel: Kernel }> {
   const browser = options?.browser;
@@ -141,6 +143,7 @@ export function open(
     store: options?.store ?? memoryStore(),
     execution: options?.execution,
     poll: options?.poll,
+    secrets: options?.secrets,
     models: fake.models,
     plugins: [
       {
@@ -164,20 +167,51 @@ export function open(
   });
 }
 
+export async function startChat(
+  host: ServedHost,
+  fake: FakeModels,
+  chat: "main" | "side" | "subagent",
+  replies: readonly Reply[],
+): Promise<Awaited<ReturnType<ServedHost["sessions"]["start"]>> & { readonly first: number }> {
+  if (chat === "main") {
+    const first = fake.requests.length;
+    fake.reply(...replies);
+
+    return { ...(await host.sessions.start({ content: "Go." })), first };
+  }
+
+  const parent = await startChat(host, fake, chat === "side" ? "main" : "side", [
+    { content: [{ type: "text", text: "Done." }] },
+  ]);
+
+  const ended = await parent.receipt.settled();
+
+  if (ended.kind !== "completed") throw new Error(`The ${chat} chat's parent ended ${ended.kind}.`);
+
+  const first = fake.requests.length;
+  const input = { content: "Go.", parent: parent.session.id };
+  fake.reply(...replies);
+
+  return {
+    ...(await host.sessions.start(chat === "side" ? { ...input, side: true } : input)),
+    first,
+  };
+}
+
 export async function until<T>(
   read: () => Promise<T | undefined> | T | undefined,
   timeout = 3000,
 ): Promise<T> {
-  const deadline = Date.now() + timeout;
+  return await vi.waitFor(
+    async () => {
+      const value = await read();
 
-  for (;;) {
-    const value = await read();
+      if (value === undefined) throw new Error("Timed out waiting for a condition.");
 
-    if (value !== undefined) return value;
-
-    if (Date.now() > deadline) throw new Error("Timed out waiting for a condition.");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
+      return value;
+    },
+    { timeout, interval: 5 },
+  );
 }
 
 function streamReply(

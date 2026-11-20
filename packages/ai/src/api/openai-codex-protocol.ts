@@ -36,6 +36,7 @@ import {
   type ResponsesTool,
 } from "./openai-responses-convert.ts";
 import type { ResponsesServiceTier } from "./openai-responses-events.ts";
+import { DAYBREAK_ACCESS_PROGRAM } from "./openai-responses-stream.ts";
 import type { OpenAIResponsesStreamOptions } from "./openai-responses-stream.ts";
 
 export interface OpenAICodexResponsesOptions extends StreamOptions {
@@ -59,6 +60,7 @@ export interface RequestBody {
   temperature?: number;
   reasoning?: { effort?: string; summary?: string };
   service_tier?: ResponseCreateParamsStreaming["service_tier"];
+  access_programs?: ResponseCreateParamsStreaming["access_programs"];
   text?: { verbosity?: string };
   include?: string[];
   prompt_cache_key?: string;
@@ -178,6 +180,8 @@ export function buildRequestBody(
   if (options?.serviceTier !== undefined) {
     body.service_tier = options.serviceTier;
   }
+
+  if (options?.daybreak === true) body.access_programs = { cyber: DAYBREAK_ACCESS_PROGRAM };
 
   if (toolPlacement.immediate.length > 0) {
     body.tools = convertResponsesTools(toolPlacement.immediate, {

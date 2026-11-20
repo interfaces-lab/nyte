@@ -47,7 +47,7 @@ afterEach(() => {
 
 test("the last run's snapshot of this host seeds a new window's placeholders", () => {
   stored.set(KEY, snapshot("local"));
-  seedFirstFrame("local");
+  seedFirstFrame("local", undefined);
 
   assert.deepEqual(queryClient.getQueryData(keys.modelCatalog("initial")), catalog);
   assert.equal(queryClient.getQueryState(keys.modelCatalog("initial"))?.dataUpdatedAt, 0);
@@ -63,7 +63,7 @@ for (const [name, value] of [
 ] as const) {
   test(`${name} snapshot seeds nothing and is forgotten`, () => {
     stored.set(KEY, value);
-    seedFirstFrame("local");
+    seedFirstFrame("local", undefined);
 
     assert.equal(queryClient.getQueryData(keys.modelCatalog("initial")), undefined);
     assert.equal(stored.has(KEY), false);
@@ -72,7 +72,7 @@ for (const [name, value] of [
 
 test("a connection to another host than the one recorded drops the seed", async () => {
   stored.set(KEY, snapshot("local"));
-  seedFirstFrame("local");
+  seedFirstFrame("local", undefined);
   recordFirstFrame("local", asId<"host">("host-2"));
   await Promise.resolve();
 
@@ -80,4 +80,16 @@ test("a connection to another host than the one recorded drops the seed", async 
   assert.equal(queryClient.getQueryData(keys.modelCatalog("initial")), undefined);
   assert.equal(queryClient.getQueryData(keys.firstFrameRoots), undefined);
   assert.equal(queryClient.getQueryData(keys.firstFrameWorkspaces), undefined);
+});
+
+test("a window Finder opened starts on its folder, as its own choice, with or without a snapshot", () => {
+  const workspace = { id: asId<"workspace">("w1"), path: "/finder", name: "finder" };
+
+  for (const snapshotted of [false, true]) {
+    if (snapshotted) stored.set(KEY, snapshot("local"));
+    seedFirstFrame("local", workspace);
+
+    assert.deepEqual(queryClient.getQueryData(keys.host), { workspace });
+    assert.notEqual(queryClient.getQueryState(keys.host)?.dataUpdatedAt, 0);
+  }
 });

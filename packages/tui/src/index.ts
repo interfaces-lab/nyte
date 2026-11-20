@@ -119,6 +119,24 @@ const HANDLERS: Record<CommandName, Handler> = {
       }),
     };
   },
+  action: async (args, context) => {
+    const command = await import("./action-command.ts");
+    const socket = await import("./host-socket.ts");
+
+    return {
+      kind: "exit",
+      code: await command.actionCommand({
+        args,
+        connect: (hostUrl) =>
+          socket.connectHostSocket({
+            source: hostUrl === undefined ? { kind: "local" } : attachedSource(hostUrl),
+            name: "nyte action",
+          }),
+        output: context.output,
+        width: process.stdout.columns ?? 80,
+      }),
+    };
+  },
   api: async (args, context) => {
     const command = await import("./api-command.ts");
     const socket = await import("./host-socket.ts");
@@ -257,13 +275,12 @@ async function openHost(
   source: HostSource = { kind: "local" },
 ): Promise<Connection> {
   const local = await import("./local-host.ts");
-  const host = await local.connectHost(source, (phase) => context.output.progress(phase));
+  const host = await local.connectHost(source, "cli", (phase) => context.output.progress(phase));
   context.invocation.defer(() => host.close());
 
   return host.connection;
 }
 
-/** `--host-url` attaches to that host with the token in `NYTE_HOST_TOKEN`, which leaves the environment so nothing this process starts inherits it. */
 function hostSource(flags: RunFlags): HostSource {
   return flags.hostUrl === undefined ? { kind: "local" } : attachedSource(flags.hostUrl);
 }
@@ -280,7 +297,6 @@ function attachedSource(url: string): HostSource {
   return { kind: "attached", endpoint: { url, token } };
 }
 
-/** The TUI, or one prompt with `-p`. Every argv mistake fails here, before any host work. */
 async function chat(args: readonly string[], context: Context): Promise<CommandEnd> {
   const misplaced = misplacedCommand(
     args,
@@ -339,7 +355,6 @@ async function chat(args: readonly string[], context: Context): Promise<CommandE
   );
 }
 
-/** One prompt. Everything the flags name is checked before the first change: trust, model settings or the send. */
 async function print(
   flags: RunFlags,
   prompt: string,
@@ -355,15 +370,12 @@ async function print(
 
   stopIfCanceled();
   const localHost = await import("./local-host.ts");
-  const liveHost = await import("./live-host.ts");
   const setup = await import("./run.ts");
   const models = await import("./lib/catalog.ts");
   const printing = await import("./print.ts");
-  const local = await localHost.connectHost(source, (phase) => out.progress(phase));
+  const local = await localHost.connectHost(source, "cli", (phase) => out.progress(phase));
   context.invocation.defer(() => local.close());
   const host = local.connection;
-  const live = liveHost.openLiveHost(local.endpoint, "cli");
-  context.invocation.defer(() => live.release());
   stopIfCanceled();
   const catalog = await host.models.list();
 
@@ -421,7 +433,7 @@ async function print(
 
   await printing.printRun({
     session: started.session,
-    live,
+    connection: host,
     receipt: started.receipt,
     json: flags.json,
     quiet: flags.quiet,

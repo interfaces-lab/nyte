@@ -73,7 +73,6 @@ export const SLASH_COMMANDS = [
     aliases: ["sessions", "continue"],
   },
   { name: "new", description: "Start a new chat", kind: "action" },
-  { name: "cd", description: "Change this chat's working directory", kind: "action" },
   { name: "compact", description: "Summarize the chat to free up context", kind: "action" },
   { name: "usage", description: "Show token usage and cost", kind: "action" },
   { name: "accounts", description: "Choose a saved account", kind: "action" },
@@ -136,7 +135,6 @@ export function availableSlashCommands(
   return claimed;
 }
 
-/** Slash commands in canonical order: by name. */
 export type SlashIndex = readonly SlashCommand[];
 
 export function slashIndex(commands: readonly SlashCommand[]): SlashIndex {
@@ -273,7 +271,7 @@ export function acceptSlashCommand(
 ): SlashAcceptance {
   if (rest !== "") return { action: "complete", token: `/${command.name}` };
 
-  if (via === "tab" || command.kind === "prompt" || command.name === "cd") {
+  if (via === "tab" || command.kind === "prompt") {
     return { action: "complete", token: `/${command.name} ` };
   }
 

@@ -7,7 +7,7 @@ import { landing } from "../src/engine/admission.ts";
 import { stopRun } from "../src/engine/fence.ts";
 import { move } from "../src/engine/move.ts";
 import { ALL_AUTHORITY, LOCAL } from "../src/index.ts";
-import { callRef, headRef, memoryStore, partRef } from "../src/store.ts";
+import { callRef, headRef, leaseRef, memoryStore, partRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type {
   ConnectionContext,
@@ -35,7 +35,7 @@ function writer(ran: string[]): ToolDefinition<{ readonly text: string }> {
     description: "Writes.",
     parameters: standard(Type.Object({ text: Type.String() })),
     class: () => ({ kind: "custom", label: "Writing" }),
-    replay: "never",
+    rerun: "never",
     execute: async (args) => {
       ran.push(args.text);
 
@@ -183,7 +183,7 @@ describe("ADV A-3", () => {
         description: "Naps.",
         parameters: standard(Type.Object({})),
         class: () => ({ kind: "custom", label: "nap" }),
-        replay: "safe",
+        rerun: "safe",
         execute: async (_args, invocation) => {
           const woke = await invocation.wait({ kind: "timer", until: at });
 
@@ -197,6 +197,8 @@ describe("ADV A-3", () => {
           activations += 1;
 
           if (activations === 2) await gate.promise;
+
+          return {};
         },
       };
 
@@ -239,10 +241,12 @@ describe("ADV A-3", () => {
       };
 
       await until(async () =>
-        (await session.view()).execution.kind === "waiting" ? true : undefined,
+        (await session.view()).execution.kind === "waiting" &&
+        (await host.kernel.store.refs.get(leaseRef(session.id, main))) === null
+          ? true
+          : undefined,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
       armed = reloadAt === "claim";
       await host.kernel.waits.tick(at);
 
@@ -378,7 +382,7 @@ describe("ADV F-3", () => {
     const edit = await session.send("Edited.", {
       replace: original.message,
       expect: old?.revision,
-      abandoned: { summarize: {} },
+      abandoned: { kind: "summarize" },
     });
 
     await entered.promise;

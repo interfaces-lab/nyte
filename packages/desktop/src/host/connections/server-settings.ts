@@ -10,6 +10,7 @@ const serverFile = Compile(
     {
       url: Type.String({ minLength: 1 }),
       hostId: Type.String({ minLength: 1 }),
+      publicKey: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
       token: Type.String({ minLength: 1 }),
     },
     { additionalProperties: false },
@@ -19,6 +20,7 @@ const serverFile = Compile(
 export interface SavedServer {
   readonly url: string;
   readonly hostId: HostId;
+  readonly publicKey: string | null;
   readonly token: string;
 }
 
@@ -33,7 +35,7 @@ export class ServerSettingsStore {
     try {
       const saved = serverFile.Parse(JSON.parse(await readFile(this.path, "utf8")));
 
-      return { ...saved, hostId: asId(saved.hostId) };
+      return { ...saved, hostId: asId(saved.hostId), publicKey: saved.publicKey ?? null };
     } catch {
       return undefined;
     }

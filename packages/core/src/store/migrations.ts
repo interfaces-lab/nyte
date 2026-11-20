@@ -26,8 +26,13 @@ import {
   trustRef,
   trustTarget,
 } from "./refs.ts";
-import { headBackground } from "./head-background.ts";
-import { orderedSessionIndex, sessionIndex, sessionSeqs } from "./session-index-steps.ts";
+import { headBackground } from "./head-background-migration.ts";
+import {
+  orderedSessionIndex,
+  sessionIndex,
+  sessionIndexFilters,
+  sessionSeqs,
+} from "./session-index-steps.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
 import { projectCoordinators } from "./project-migration.ts";
 
@@ -85,7 +90,6 @@ export interface StoredObject {
   readonly body: string;
 }
 
-/** A ref the migration creates at the object `target` with `body`, written unless the store holds it, unless the ref exists. */
 interface Creation {
   readonly name: string;
   readonly target: ObjectId;
@@ -97,7 +101,6 @@ export interface LoggedRow {
   readonly event: string;
 }
 
-/** A session's logged events, in seq order. */
 interface SessionLog {
   readonly session: string;
   readonly events: readonly LoggedRow[];
@@ -727,6 +730,12 @@ const sessionCatalogs: SchemaStep = {
   },
 };
 
+const reportReceipts: SchemaStep = {
+  kind: "schema",
+  name: "2026-11-13-report-receipts",
+  sql: { sqlite: [], postgres: [] },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -757,6 +766,8 @@ const STORE_STEPS: readonly StoreStep[] = [
   sessionSeqs,
   sessionCatalogs,
   projectCoordinators,
+  sessionIndexFilters,
+  reportReceipts,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
@@ -815,7 +826,10 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
       repoints: moved,
       creates: [...created, ...recovered],
       relogs: relogged,
-      reindexSessions: steps.includes(sessionIndex) || steps.includes(orderedSessionIndex),
+      reindexSessions:
+        steps.includes(sessionIndex) ||
+        steps.includes(orderedSessionIndex) ||
+        steps.includes(sessionIndexFilters),
       indexed: steps.flatMap((step) =>
         step.kind === "schema" ? (step.indexed?.[target.dialect] ?? []) : [],
       ),

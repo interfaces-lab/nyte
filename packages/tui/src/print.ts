@@ -1,28 +1,25 @@
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { OpenQuestion } from "@nyte-ai/plugin/question/schema";
 import type { Failure, RunEnd, SendReceipt, Session, SessionId } from "@nyte-ai/sdk";
-import type { HostConnection } from "@nyte-ai/sdk/client";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { CliError } from "./cli/errors.ts";
 import type { NextStep } from "./cli/errors.ts";
 import { formatCommand, formatNextJson, printable } from "./cli/format.ts";
 import type { Output } from "./cli/output.ts";
 import { sessionRecovery } from "./flags.ts";
-import { chatViews, openChat } from "./live-host.ts";
+import { chatViews } from "./live-host.ts";
 
 interface PrintOptions {
   readonly session: Session;
-  readonly live: HostConnection;
-  /** The prompt's receipt: its start or send already admitted it. */
+  readonly connection: ClientConnection;
   readonly receipt: SendReceipt;
   readonly json: boolean;
-  /** Skip tool lines; the answer alone is what a pipe wants. */
   readonly quiet: boolean;
   readonly output: Output;
   readonly signal: AbortSignal;
 }
 
-/** `--json` stdout, one record per line. Only a completed run ends with a `result`; any other ending writes one error document on stderr instead. */
 type PrintRecord =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "tool"; readonly name: string }
@@ -35,22 +32,16 @@ type PrintRecord =
 
 type StopOutcome = Awaited<ReturnType<SendReceipt["stop"]>>;
 
-/** How long a cancel waits for the host to confirm the run stopped. The invocation's shutdown deadline bounds the rest. */
 const STOP_CONFIRM_MS = 500;
 
-/** How following a run ended. */
 type RunEnding =
   | { readonly kind: "completed" }
   | { readonly kind: "failed"; readonly failure: Failure }
-  /** Another client stopped it. */
   | { readonly kind: "stopped" }
-  /** A signal stopped waiting, and this process asked the host to stop the run. */
   | { readonly kind: "canceled"; readonly stop: StopOutcome }
   | { readonly kind: "asked"; readonly questions: OpenQuestion["questions"] }
-  /** This process lost track of the run, which may still be running. */
   | { readonly kind: "lost"; readonly cause: string };
 
-/** The headline's cause for each failure class. The provider's own message goes in a detail row, never here. */
 const FAILURE_CAUSES: Readonly<Record<Failure["class"], string>> = {
   rate_limit: "The provider limited the request rate.",
   auth: "The provider didn't accept the credential.",
@@ -63,11 +54,6 @@ const FAILURE_CAUSES: Readonly<Record<Failure["class"], string>> = {
   runner: "Nyte's runner failed.",
 };
 
-/**
- * Streams the run's answer to stdout and tool names to stderr until the run ends. A completed run
- * writes its result: the `result` record with `--json`, else a receipt on stderr. Every other
- * ending throws a `CliError` that carries the session.
- */
 export async function printRun(options: PrintOptions): Promise<void> {
   const ending = await follow(options);
   const id = options.session.id;
@@ -130,9 +116,7 @@ async function follow(options: PrintOptions): Promise<RunEnding> {
     options.signal.addEventListener("abort", () => resolve("canceled"), { once: true });
   });
 
-  const views = chatViews(options.live, openChat(options.live, options.session.id), null)[
-    Symbol.asyncIterator
-  ]();
+  const views = chatViews(options.connection.chat(options.session.id))[Symbol.asyncIterator]();
 
   // oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- read through a call: inline, the early return keeps `signal.aborted` narrowed to false across the awaits
   const aborted = (): boolean => options.signal.aborted;
@@ -313,7 +297,6 @@ function runError(
   }
 }
 
-/** Asks the host to stop the run, then waits briefly so the report says whether it stopped. */
 async function stopRun(receipt: SendReceipt): Promise<StopOutcome> {
   const stop = await receipt.stop();
 
@@ -325,7 +308,6 @@ async function stopRun(receipt: SendReceipt): Promise<StopOutcome> {
   );
 }
 
-/** What the host said when this process stopped waiting: `remote` is the run's state, as `data.remote` says it. */
 function stopReport(stop: StopOutcome) {
   if (stop.kind === "requested")
     return { remote: "stopping", message: "Stopped waiting. The host is stopping the run." };
@@ -345,7 +327,6 @@ function stopReport(stop: StopOutcome) {
   }
 }
 
-/** Model text on a terminal: controls show as `\xNN` instead of acting, but its lines and tabs stay. */
 function shownOnTerminal(text: string): string {
   return text
     .split("\n")

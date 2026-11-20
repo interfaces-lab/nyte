@@ -51,13 +51,15 @@ const LENGTH_TOKEN_HEADER = /@(clipboard|excerpt)\/([0-9]+):/gu;
 
 const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
 
-const FILE_URL_PATTERN = /@file:\/\/[^\s<>"]+/gu;
+const FILE_URL_PATTERN = /@file:\/\/(?:[^\s<>"()]|\([^\s<>"()]*\)?)+/gu;
+
+const LINE_FRAGMENT = /#L([0-9]+)-([0-9]+)$/u;
 
 const DRAFT_TOKEN_PATTERN = new RegExp(
   [
     FILE_URL_PATTERN.source,
     SKILL_LINK_PATTERN.source,
-    `(?<=^|\\s)${CONVERSATION_MENTION_TEXT}(?=\\s|$)`,
+    `(?<=^|[\\s(])${CONVERSATION_MENTION_TEXT}(?=[\\s)]|$)`,
   ].join("|"),
   "gu",
 );
@@ -125,7 +127,9 @@ export function clipboardReferenceFromPaste(text: string): ClipboardReference | 
 export function referenceText(reference: MessageReference): string {
   switch (reference.kind) {
     case "file":
-      return `@${reference.file.url}`;
+      return reference.lines === undefined
+        ? `@${reference.file.url}`
+        : `@${reference.file.url}#L${String(reference.lines.start)}-${String(reference.lines.end)}`;
     case "skill":
       return `[$${reference.name}](${reference.path})`;
     case "mention":
@@ -156,8 +160,16 @@ function lineCount(text: string): string {
   return `${String(lines)} ${lines === 1 ? "line" : "lines"}`;
 }
 
+function fileName(path: string): string {
+  return path.split("/").at(-1) ?? path;
+}
+
 function selectorTail(selector: string): string {
   return selector.split(/\s*>\s*|\s+/u).at(-1) ?? selector;
+}
+
+function areaLabel(region: { readonly width: number; readonly height: number }): string {
+  return `Area ${String(Math.round(region.width))} × ${String(Math.round(region.height))}`;
 }
 
 function excerptLabel(reference: ExcerptReference): string {
@@ -165,13 +177,15 @@ function excerptLabel(reference: ExcerptReference): string {
 
   switch (source.kind) {
     case "diff":
-      return `${source.path.split("/").at(-1) ?? source.path}${linesSuffix(source)}`;
+      return `${fileName(source.path)}${linesSuffix(source)}`;
     case "terminal":
       return source.command ?? `Terminal (${lineCount(reference.text)})`;
     case "browser":
-      return selectorTail(source.selector);
+      return source.region === undefined ? selectorTail(source.selector) : areaLabel(source.region);
     case "chat":
       return source.title;
+    case "design":
+      return source.frame ?? fileName(source.path);
     default: {
       const exhaustive: never = source;
 
@@ -189,9 +203,13 @@ function excerptTitle(reference: ExcerptReference): string {
     case "terminal":
       return source.command === undefined ? "Terminal output" : `Output of ${source.command}`;
     case "browser":
-      return `${source.selector} on ${source.url}`;
+      return source.region === undefined
+        ? `${source.selector} on ${source.url}`
+        : `${areaLabel(source.region)} at ${source.selector} on ${source.url}`;
     case "chat":
       return `Side chat: ${source.title}`;
+    case "design":
+      return source.frame === null ? source.path : `${source.frame} in ${source.path}`;
     default: {
       const exhaustive: never = source;
 
@@ -356,10 +374,15 @@ function draftReference(
   const groups = match.groups ?? {};
 
   if (token.startsWith("@file://")) {
-    const url = token.slice(1);
+    const range = LINE_FRAGMENT.exec(token);
+    const url = token.slice(1, range?.index);
     const file = options.files?.get(url) ?? fileFromUrl(url);
 
-    return file === undefined ? undefined : { kind: "file", file };
+    if (file === undefined) return undefined;
+
+    if (range === null) return { kind: "file", file };
+
+    return { kind: "file", file, lines: { start: Number(range[1]), end: Number(range[2]) } };
   }
 
   if (groups["name"] !== undefined) {

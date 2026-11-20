@@ -62,7 +62,7 @@
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "typebox": "^1.4.6"
+    "typebox": "^1.4.7"
   },
   "devDependencies": {
     "@nyte-ai/bench": "workspace:*",

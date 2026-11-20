@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { asId } from "@nyte-ai/schema";
-import type { Connection, Job, JobView, OutputFrame, WorkspaceInfo } from "@nyte-ai/sdk";
+import type { Job, JobView, OutputFrame, WorkspaceInfo } from "@nyte-ai/sdk";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { attachTerminalOutput, getTerminal, terminalActions } from "./terminal-store.ts";
 import { openJobTerminal } from "../commands.ts";
@@ -8,6 +8,7 @@ import { workbenchViewKey } from "../paths.ts";
 import type { WorkbenchPersistence } from "../persistence.ts";
 import { createWorkbenchStore, workbench } from "../store.ts";
 import type { TerminalOutput } from "./terminal-store.ts";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { installConnection } from "../../data/connection.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 import { sessionRow } from "../../../test/view-fixtures.ts";
@@ -88,7 +89,6 @@ const folder: WorkspaceInfo = {
   trusted: true,
   projectSources: [],
   addedBy: asId("tester"),
-  sessions: 0,
   writers: [],
   isolation: null,
 };
@@ -106,7 +106,7 @@ const scriptedSet = scriptedConnection({
 
 const scripted = scriptedSet.connection;
 
-const connection: Connection = {
+const connection: ClientConnection = {
   ...scripted,
   workspace: (id) => ({
     ...scripted.workspace(id),
@@ -124,15 +124,19 @@ const connection: Connection = {
   }),
 };
 
-installConnection(connection, scriptedSet.live);
+installConnection(connection);
 
 function sink() {
   const decoder = new TextDecoder();
   let contents = "";
+  let disposed = false;
 
   return {
     get contents() {
       return contents;
+    },
+    get disposed() {
+      return disposed;
     },
     reset() {
       contents = "";
@@ -142,8 +146,10 @@ function sink() {
     },
     update(_tab: Parameters<TerminalOutput["update"]>[0]) {},
     visible: () => false,
-    dispose() {},
-  } satisfies TerminalOutput & { readonly contents: string };
+    dispose() {
+      disposed = true;
+    },
+  } satisfies TerminalOutput & { readonly contents: string; readonly disposed: boolean };
 }
 
 function command(id: string, change: Partial<JobView> = {}): JobView {
@@ -307,6 +313,27 @@ describe("shell terminals", () => {
     expect(started).toHaveLength(2);
     assert.equal(old.stopped, 1);
     assert.equal(getTerminal(id)?.state.kind, "running");
+    await terminalActions.close(id);
+  });
+
+  test("a restarted shell draws into the renderer the tab already has", async () => {
+    next = fakeJob("lost");
+    const old = next;
+    const id = tabId();
+    await terminalActions.create({ id, workspacePath: "/workspace" });
+    const output = sink();
+    attachTerminalOutput(id, output);
+    old.print("old shell");
+    old.exit(1);
+    await vi.waitFor(() => assert.equal(getTerminal(id)?.state.kind, "exited"));
+
+    const restarted = fakeJob("new");
+    next = restarted;
+    await terminalActions.restart({ id, workspacePath: "/workspace" });
+    restarted.print("new shell");
+
+    await vi.waitFor(() => assert.equal(output.contents, "new shell"));
+    assert.equal(output.disposed, false);
     await terminalActions.close(id);
   });
 

@@ -1,10 +1,13 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OutputFrame } from "@nyte-ai/schema";
-import type { Job } from "@nyte-ai/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { dev } from "@nyte-ai/core";
+import type { Job, OsProcess } from "@nyte-ai/core";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { localExec } from "../src/index.ts";
+import { identifyProcess, localMachine } from "../src/local/process/machine.ts";
 
 const folders: string[] = [];
 
@@ -20,6 +23,21 @@ async function folder(): Promise<string> {
 }
 
 const decoder = new TextDecoder();
+
+const SHELL_FREE_PROCESS_TREE = `
+const grandchild = \`
+process.on("SIGTERM", () => {
+  require("node:fs").writeFileSync(process.argv[1], "SIGTERM");
+  process.exit(0);
+});
+console.log("ready");
+setInterval(() => undefined, 1000);
+\`;
+require("node:child_process").spawn(process.execPath, ["-e", grandchild, process.argv[1]], {
+  stdio: ["ignore", "inherit", "inherit"],
+});
+setInterval(() => undefined, 1000);
+`;
 
 const windows = process.platform === "win32";
 
@@ -89,19 +107,17 @@ describe("localExec over pipes", () => {
     expect((await read(job)).text).toBe("typed line\n");
   });
 
-  it("stops the process group and reports terminated", async () => {
-    const exec = localExec(await folder());
-
-    const job = await exec(
-      windows ? 'node -e "setTimeout(() => {}, 30000)"' : "sleep 30 & sleep 30; wait",
-    );
-    const started = Date.now();
+  it.skipIf(windows)("stops the process group with SIGTERM and reports terminated", async () => {
+    const root = await folder();
+    const received = join(root, "received");
+    const job = await localExec(root)([process.execPath, "-e", SHELL_FREE_PROCESS_TREE, received]);
+    await job.output()[Symbol.asyncIterator]().next();
 
     expect(await job.stop()).toEqual({
       kind: "settled",
       outcome: { kind: "exited", code: null, reason: "terminated" },
     });
-    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(await readFile(received, "utf8")).toBe("SIGTERM");
     expect(await job.stop()).toMatchObject({ kind: "settled" });
   });
 
@@ -137,13 +153,14 @@ describe("localExec over pipes", () => {
 
   it("rejects an aborted settled wait without stopping the process", async () => {
     const job = await localExec(await folder())(
-      "node -e \"setTimeout(() => console.log('done'), 300)\"",
+      "node -e \"process.stdin.once('data', () => process.stdin.destroy())\"",
     );
     const controller = new AbortController();
     const waiting = job.settled({ signal: controller.signal });
     controller.abort();
 
     await expect(waiting).rejects.toMatchObject({ code: "unavailable" });
+    await job.write(new TextEncoder().encode("go\n"));
     expect(await job.settled()).toMatchObject({ code: 0 });
   });
 
@@ -161,7 +178,13 @@ describe("localExec over pipes", () => {
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 0 });
   });
 
-  it("keeps a protocol pipe whole for a slow reader, its stderr tagged apart", async () => {
+  it("keeps a protocol pipe whole for a reader that stalls until the job pauses it, its stderr tagged apart", async () => {
+    const paused = Promise.withResolvers<void>();
+    dev.on((line) => {
+      if (line.startsWith("DEV:jobs output paused ")) paused.resolve();
+    });
+    onTestFinished(() => dev.off());
+
     const job = await localExec(await folder())(
       [
         process.execPath,
@@ -183,7 +206,7 @@ describe("localExec over pipes", () => {
       if (frame.stream === "stderr") stderr += decoder.decode(frame.data);
       else {
         stdout += decoder.decode(frame.data);
-        await new Promise((resolve) => setTimeout(resolve, 1));
+        await paused.promise;
       }
     }
 
@@ -197,7 +220,9 @@ describe("localExec over pipes", () => {
   it("detaches readers on close and on the environment's signal, leaving the process running", async () => {
     const environment = new AbortController();
     const exec = localExec(await folder(), { signal: environment.signal });
-    const job = await exec("node -e \"setTimeout(() => console.log('late'), 400)\"");
+    const job = await exec(
+      "node -e \"process.stdin.once('data', () => { console.log('late'); process.stdin.destroy(); })\"",
+    );
     const first = job.output()[Symbol.asyncIterator]();
     const pending = first.next();
     await job.close();
@@ -208,10 +233,144 @@ describe("localExec over pipes", () => {
     environment.abort();
 
     expect(await waiting).toEqual({ done: true, value: undefined });
+    await job.write(new TextEncoder().encode("go\n"));
     expect(await job.settled()).toEqual({ kind: "exited", code: 0, reason: "exited" });
     expect((await read(job)).text).toBe("late\n");
   });
 });
+
+describe.skipIf(windows)("the local machine", () => {
+  const groups: number[] = [];
+
+  afterEach(() => {
+    for (const group of groups.splice(0)) {
+      try {
+        process.kill(-group, "SIGKILL");
+      } catch {}
+    }
+  });
+
+  const running = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  async function started(script: string): Promise<OsProcess> {
+    const child = spawn("/bin/sh", ["-c", script], { detached: true, stdio: "ignore" });
+    await new Promise((resolve) => child.once("spawn", resolve));
+    const pid = child.pid ?? 0;
+    groups.push(pid);
+    const os = await identifyProcess(pid);
+    expect(os).toMatchObject({ pid, group: pid });
+
+    return os ?? { boot: "", pid, group: pid, started: "" };
+  }
+
+  it("records the process group a job's command leads and ends it there", async () => {
+    const job = await localExec(await folder())("sleep 30");
+    const os = job.os;
+    expect(os).toMatchObject({ group: os?.pid });
+    groups.push(os?.group ?? 0);
+
+    expect(await localMachine.end(os ?? { boot: "", pid: 0, group: 0, started: "" })).toBe("ended");
+    expect({ leader: running(os?.pid ?? 0), group: running(-(os?.group ?? 0)) }).toEqual({
+      leader: false,
+      group: false,
+    });
+    expect(await job.settled()).toMatchObject({ kind: "exited", code: null });
+  });
+
+  it.each([
+    {
+      name: "a process with the recorded pid and another start",
+      change: (os: OsProcess) => ({ ...os, started: `${os.started}0` }),
+      answer: "gone",
+    },
+    {
+      name: "a process recorded on another boot",
+      change: (os: OsProcess) => ({ ...os, boot: `${os.boot}0` }),
+      answer: "unknown",
+    },
+    {
+      name: "a record naming pid 1",
+      change: (os: OsProcess) => ({ ...os, pid: 1, group: 1 }),
+      answer: "unknown",
+    },
+    {
+      name: "a record naming this host's own group",
+      change: (os: OsProcess) => ({ ...os, group: own?.group ?? os.group }),
+      answer: "unknown",
+    },
+  ])("signals nothing for $name", async (row) => {
+    const os = await started("sleep 30");
+
+    expect(await localMachine.end(row.change(os))).toBe(row.answer);
+    expect(running(os.pid)).toBe(true);
+  });
+
+  it.each([
+    { name: "running while it runs", change: (os: OsProcess) => os, answer: "running" },
+    {
+      name: "gone for its pid with another start",
+      change: (os: OsProcess) => ({ ...os, started: `${os.started}0` }),
+      answer: "gone",
+    },
+    {
+      name: "unknown for a start read another way",
+      change: (os: OsProcess) => ({ ...os, started: `other:${os.started}` }),
+      answer: "unknown",
+    },
+    {
+      name: "unknown on another boot",
+      change: (os: OsProcess) => ({ ...os, boot: `${os.boot}0` }),
+      answer: "unknown",
+    },
+    {
+      name: "unknown for pid 1",
+      change: (os: OsProcess) => ({ ...os, pid: 1, group: 1 }),
+      answer: "unknown",
+    },
+  ])("tells a process $name", async (row) => {
+    const os = await started("sleep 30");
+
+    expect(await localMachine.state(row.change(os))).toBe(row.answer);
+  });
+
+  it("tells a process gone once it exited, and this host's own process running", async () => {
+    const finished = await started("sleep 0.2");
+    await vi.waitFor(() => expect(running(finished.pid)).toBe(false), { timeout: 5_000 });
+    const self = await localMachine.self();
+
+    expect({
+      finished: await localMachine.state(finished),
+      self: self === null ? null : await localMachine.state(self),
+    }).toEqual({ finished: "gone", self: "running" });
+  });
+
+  it("signals nothing when the leader exited and its group still runs, and answers gone once nothing does", async () => {
+    const orphaned = await started("sleep 30 & sleep 0.3");
+    await vi.waitFor(() => expect(running(orphaned.pid)).toBe(false), { timeout: 5_000 });
+
+    expect({ leader: running(orphaned.pid), group: running(-orphaned.group) }).toEqual({
+      leader: false,
+      group: true,
+    });
+    expect(await localMachine.end(orphaned)).toBe("unknown");
+    expect(running(-orphaned.group)).toBe(true);
+
+    const finished = await started("sleep 0.2");
+    await vi.waitFor(() => expect(running(finished.pid)).toBe(false), { timeout: 5_000 });
+
+    expect(await localMachine.end(finished)).toBe("gone");
+  });
+});
+
+const own = await identifyProcess(process.pid);
 
 describe("localExec where the pty module does not load (§41a)", () => {
   it("answers a pty job unavailable when the loader throws or returns no pty module, and still runs pipes", async () => {
@@ -354,9 +513,8 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
       expect(await job.idle()).toBe(true);
       await job.write(new TextEncoder().encode("printf 'nyte$ '; sleep 30\r"));
       await until(() => text.includes("\r\nnyte$ "));
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      expect(await job.idle()).toBe(false);
+      await vi.waitFor(async () => expect(await job.idle()).toBe(false), { timeout: 5_000 });
     } finally {
       await job.stop();
     }
@@ -370,10 +528,17 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
 
     const reader = job.output()[Symbol.asyncIterator]();
     await reader.next();
-    await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(await job.idle()).toBe(false);
-    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    for (let text = ""; !text.includes("\u001b]133;C");) {
+      const next = await reader.next();
+
+      if (next.done === true) break;
+
+      if (next.value.kind === "bytes") text += decoder.decode(next.value.data);
+    }
+
     expect(await job.idle()).toBe(false);
     await job.stop();
   }, 10_000);

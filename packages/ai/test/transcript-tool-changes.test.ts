@@ -166,7 +166,7 @@ describe("transcript system messages", () => {
     const request = await captureRequest(anthropicMessagesApi(), anthropicNativeModel, context);
     const payload = anthropicPayload(request.body);
 
-    expect(request.url).toBe(`${modelBase.baseUrl}/v1/messages?beta=true`);
+    expect(request.url).toBe(`${modelBase.baseUrl}/v1/messages`);
     expect(request.headers.get("anthropic-beta")).toContain(MID_CONVERSATION_TOOL_CHANGES_BETA);
     expect(payload.system?.map((block) => block.text)).toEqual([
       "base prompt\n\n<rules>\nold rules\n</rules>\n\n<docs>\nread docs\n</docs>",

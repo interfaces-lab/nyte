@@ -26,8 +26,29 @@ function child(view: SessionView, id = "c1"): Task {
   return { kind: "agent", id: asId(id), info, view };
 }
 
+function waitingOnAsk(info: SessionInfo): SessionInfo {
+  return {
+    ...info,
+    heads: info.heads.map((head) => ({
+      ...head,
+      execution: {
+        kind: "waiting",
+        run: {
+          id: asId("run-c"),
+          head: head.name,
+          startedAt: 0,
+          attempt: 1,
+          origin: { kind: "input", message: asId("m") },
+        },
+        on: { kind: "run", session: asId("grandchild"), run: asId("run-g") },
+      },
+      background: { working: 0, waiting: 1 },
+    })),
+  };
+}
+
 describe("blocked", () => {
-  test("one ordered rule: switching, no session, directory, authentication, editor", () => {
+  test("one ordered rule: switching, no session, authentication, editor", () => {
     expect(blockedBy(blank())).toEqual({ kind: "no-session" });
 
     const state = ready(idle);
@@ -37,9 +58,6 @@ describe("blocked", () => {
       blockedBy(play(state, { kind: "switch-session", session: "new", announce: false }).state),
     ).toEqual({
       kind: "switching",
-    });
-    expect(blockedBy(play(state, { kind: "change-directory", path: "/x" }).state)).toEqual({
-      kind: "changing-directory",
     });
     expect(blockedBy(play(state, { kind: "open-editor" }).state)).toEqual({ kind: "editor" });
     expect(
@@ -352,6 +370,42 @@ describe("footer and status", () => {
       attention: false,
     });
     expect(deriveScreen(ready(idle), null).tasksLine).toBeNull();
+  });
+
+  test("the tasks line and the terminal ask for attention when a chat waits on a subagent's ask it hasn't read", () => {
+    const delegating = buildView((v) => v.turn("c", (t) => t.user("go")).live("run-c"));
+
+    const listed = play(ready(working), {
+      kind: "tasks",
+      session: S1,
+      tasks: [
+        {
+          kind: "agent",
+          id: asId("c1"),
+          info: waitingOnAsk({ ...followed(delegating, "c1").info, parent: S1 }),
+          view: delegating,
+        },
+      ],
+    }).state;
+
+    expect(deriveScreen(listed, null).tasksLine).toEqual({
+      text: "Needs attention in the background",
+      attention: true,
+    });
+
+    const own = followed(working);
+
+    const parked = play(listed, {
+      kind: "session-info",
+      session: own.id,
+      info: waitingOnAsk(own.info),
+    }).state;
+
+    expect(deriveScreen(parked, null).program).toMatchObject({
+      state: "blocked",
+      kind: "question",
+      msg: "Needs your answer",
+    });
   });
 });
 

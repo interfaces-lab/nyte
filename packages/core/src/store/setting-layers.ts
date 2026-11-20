@@ -1,6 +1,6 @@
 import { isJsonObject } from "@nyte-ai/schema";
 import type { Json, SessionId } from "@nyte-ai/schema";
-import type { SettingDefinition } from "../contract/plugin.ts";
+import type { ResolvedSetting } from "../contract/plugin.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { check } from "../util/json-schema.ts";
 import { kvRef } from "./refs.ts";
@@ -8,16 +8,16 @@ import { MAIN, readKv, readSession } from "./session.ts";
 
 interface Layer {
   readonly value: Json;
-  readonly from: "host" | "session";
+  readonly from: "host" | "chat";
 }
 
 export async function readSettingLayers(
   store: StoreConnection,
-  definition: Pick<SettingDefinition, "id" | "scope" | "secret">,
+  definition: Pick<ResolvedSetting, "id" | "scope" | "secret">,
   session: SessionId | null,
 ): Promise<readonly Layer[]> {
   const [own, stored] = await Promise.all([
-    definition.scope === "session" && session !== null
+    definition.scope === "chat" && session !== null
       ? sessionValue(store, session, definition.id)
       : undefined,
     readKv(store, kvRef("host", "settings", definition.id)),
@@ -26,14 +26,14 @@ export async function readSettingLayers(
   const host = stored !== undefined && definition.secret ? redactSecretEntries(stored) : stored;
 
   return [
-    ...(own === undefined ? [] : [{ value: own, from: "session" } as const]),
+    ...(own === undefined ? [] : [{ value: own, from: "chat" } as const]),
     ...(host === undefined ? [] : [{ value: host, from: "host" } as const]),
   ];
 }
 
 export async function readSetting<T>(
   store: StoreConnection,
-  definition: SettingDefinition<T>,
+  definition: ResolvedSetting<T>,
   session: SessionId | null,
 ): Promise<T> {
   for (const layer of await readSettingLayers(store, definition, session)) {
@@ -58,6 +58,8 @@ async function sessionValue(
 
 function redactSecretEntries(stored: Json): Json {
   if (!isJsonObject(stored)) return stored;
+
+  if (stored.secret === true) return { secret: true };
 
   return Object.fromEntries(
     Object.entries(stored).map((entry) => [

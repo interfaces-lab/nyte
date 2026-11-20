@@ -1,4 +1,3 @@
-import type { chartsRuntime } from "../settings/usage-charts.deferred.ts";
 import type { codeRuntime } from "../chat/markdown/code.deferred.tsx";
 import type { imageViewerRuntime } from "../chat/images/image-viewer.deferred.tsx";
 import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
@@ -38,10 +37,6 @@ export const deferredEntries = {
     module: new URL("../workbench/editor/pdf/pdf.deferred.ts", import.meta.url).href,
     packages: ["pdfjs-dist/"],
   },
-  charts: {
-    module: new URL("../settings/usage-charts.deferred.ts", import.meta.url).href,
-    packages: ["@nivo/", "d3-shape/", "@react-spring/"],
-  },
   previews: {
     module: new URL("../settings/previews/previews.deferred.tsx", import.meta.url).href,
     packages: [],
@@ -60,7 +55,6 @@ export interface DeferredRuntimes {
   workbench: typeof workbenchRuntime;
   ghostty: typeof ghosttyRuntime;
   pdf: typeof pdfRuntime;
-  charts: typeof chartsRuntime;
   previews: typeof previewsRuntime;
   needsYou: typeof needsYouRuntime;
 }

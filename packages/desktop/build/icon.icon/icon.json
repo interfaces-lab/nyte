@@ -1,0 +1,95 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.83187,0.87612,0.98509,1.00000",
+          "srgb:0.66777,0.74049,0.92487,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.13725,0.16471,0.26667,1.00000",
+          "srgb:0.04706,0.06275,0.12549,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name-specializations": [
+            {
+              "value": "moon.svg"
+            },
+            {
+              "appearance": "dark",
+              "value": "moon-night.svg"
+            }
+          ],
+          "name": "Moon",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.7
+      },
+      "specular": true,
+      "translucency-specializations": [
+        {
+          "value": {
+            "enabled": true,
+            "value": 0.4
+          }
+        },
+        {
+          "appearance": "dark",
+          "value": {
+            "enabled": true,
+            "value": 0.4
+          }
+        }
+      ]
+    },
+    {
+      "layers": [
+        {
+          "image-name": "shade.png",
+          "name": "Shade",
+          "glass": false
+        },
+        {
+          "image-name": "light.svg",
+          "name": "Light",
+          "glass": true,
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:1.00000,0.97707,0.84840,1.00000"
+              }
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.7
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": ["watchOS"],
+    "squares": "shared"
+  }
+}

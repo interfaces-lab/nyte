@@ -93,7 +93,7 @@ describe("tree", () => {
         kind: "move",
         session: S1,
         position: { kind: "commit", id: asId("c3") },
-        options: { running: "refuse", abandoned: "keep", expect: asId("rev-7") },
+        options: { running: "refuse", abandoned: { kind: "keep" }, expect: asId("rev-7") },
         handback: null,
       },
     ]);
@@ -147,7 +147,7 @@ describe("tree", () => {
         position: { kind: "commit", id: asId("c4") },
         options: {
           running: "refuse",
-          abandoned: { summarize: { instructions: "the failing test" } },
+          abandoned: { kind: "summarize", instructions: "the failing test" },
           expect: asId("rev-7"),
         },
         handback: null,

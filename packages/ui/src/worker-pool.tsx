@@ -10,8 +10,7 @@ import type {
 import PierreDiffWorkerUrl from "@pierre/diffs/worker/worker-portable.js?url";
 import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { codeThemes } from "./code-themes.ts";
-import { role } from "./styles/vars.stylex.ts";
+import { codeThemes, editorThemes } from "./code-themes.ts";
 
 const POOL_SIZE = Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
 
@@ -113,18 +112,31 @@ class OnDemandWorker extends EventTarget implements Worker {
 
 const POOL_IDLE_MS = 30_000;
 
+const MAIN_THREAD_MAX_CHARACTERS = 100_000;
+
 const poolOptions = {
   workerFactory: () => new OnDemandWorker(),
   poolSize: POOL_SIZE,
   totalASTLRUCacheSize: 240,
+  mainThreadMaxCharacters: MAIN_THREAD_MAX_CHARACTERS,
 } satisfies WorkerPoolOptions;
 
 registerCustomTheme("nyte-light", async () => codeThemes.light, "zed");
 
 registerCustomTheme("nyte-dark", async () => codeThemes.dark, "zed");
 
+registerCustomTheme("nyte-editor-light", async () => editorThemes.light, "zed");
+
+registerCustomTheme("nyte-editor-dark", async () => editorThemes.dark, "zed");
+
 export const PIERRE_HIGHLIGHTER_OPTIONS = {
   theme: { light: "nyte-light", dark: "nyte-dark" },
+  preferredHighlighter: "highlights",
+} as const;
+
+/** For surfaces outside the worker pool that never draw diff tints: the editor and its peeks. */
+export const PIERRE_EDITOR_HIGHLIGHTER_OPTIONS = {
+  theme: { light: "nyte-editor-light", dark: "nyte-editor-dark" },
   preferredHighlighter: "highlights",
 } as const;
 
@@ -141,9 +153,10 @@ export const PIERRE_TREE_CSS = `
     --trees-action-lane-width-override: 44px;
   }
 }
-
-[data-type="item"][data-item-selected="true"] {
-  box-shadow: inset 0 0 0 1px ${role.strokeTertiary};
+@media (hover: hover) and (pointer: fine) {
+  [data-type="item"]:not(:hover, :focus-visible, [data-item-selected="true"], [data-item-focused="true"], [data-item-context-hover="true"]) [data-item-action-affordance] {
+    visibility: hidden;
+  }
 }
 `;
 

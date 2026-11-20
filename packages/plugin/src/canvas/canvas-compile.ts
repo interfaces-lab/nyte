@@ -484,7 +484,6 @@ function failed(errors: readonly CompileError[]): CompileOutcome {
   return { kind: "failed", errors };
 }
 
-/** Whether a parse error sits past the source's last character, where an unclosed bracket or brace leaves the parser. */
 function endsEarly(source: string, line: number | null, column: number | null): boolean {
   if (line === null || column === null) return false;
   const lines = source.split("\n");

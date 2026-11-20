@@ -1,4 +1,4 @@
-import { parseDiffFromFile } from "@nyte-ai/ui/diffs";
+import { parseDiffFromFile, parsePatchFiles } from "@nyte-ai/ui/diffs";
 import type { CodeViewHandle } from "@nyte-ai/ui/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
@@ -15,7 +15,8 @@ import { nyte } from "../../contract/nyte.ts";
 import { gitFor } from "../../data/vcs.ts";
 import { useWatch } from "../../data/watch-store.ts";
 import { gitStatusWatch } from "../../data/watches.ts";
-import { changeBarCss, lineChanges } from "./line-changes.ts";
+import { useChatChanges } from "./chat-changes.ts";
+import { lineChanges, textBefore } from "./line-changes.ts";
 import type { LineChange } from "./line-changes.ts";
 
 export function useLineChanges(input: {
@@ -23,8 +24,9 @@ export function useLineChanges(input: {
   readonly path: string;
   readonly relative: string;
   readonly contents: string;
+  readonly saved: string;
   readonly enabled: boolean;
-  readonly line: number;
+  readonly caretLine: () => number;
   readonly reveal: (line: number) => void;
   readonly viewer: RefObject<CodeViewHandle<undefined, undefined> | null>;
 }) {
@@ -43,34 +45,42 @@ export function useLineChanges(input: {
     staleTime: Infinity,
   });
 
-  const base = committed.data?.old;
+  const patches = useChatChanges(status?.kind === "none" ? workspace : undefined, (edits) =>
+    edits
+      ?.find((edit) => edit.path === input.relative || edit.path === input.path)
+      ?.patches.map((made) => made.patch),
+  );
+
+  const committedSide = committed.data?.old;
+
+  const chatBase = useChatBase(head === undefined ? patches : undefined, input.saved);
+
+  const base =
+    head !== undefined
+      ? committedSide?.kind === "text"
+        ? committedSide.text
+        : committedSide?.kind === "absent"
+          ? ""
+          : undefined
+      : chatBase;
+
+  const basis = head !== undefined ? head : patches;
   const compared = useDeferredValue(input.contents);
 
   const [opened, setOpened] = useState<{
-    readonly head: typeof head;
+    readonly basis: typeof basis;
     readonly contents: string;
     readonly index: number;
   }>();
 
-  const comparison =
-    input.enabled && head !== undefined && (base?.kind === "text" || base?.kind === "absent")
-      ? {
-          contents: compared,
-          changes: lineChanges(
-            parseDiffFromFile(
-              { name: input.path, contents: base.kind === "text" ? base.text : "" },
-              { name: input.path, contents: compared },
-            ),
-          ),
-        }
-      : undefined;
+  const comparison = useComparison(input.path, input.enabled ? base : undefined, compared);
 
   const exact = comparison?.contents === input.contents ? comparison : undefined;
 
   const peekIndex =
     exact !== undefined &&
     opened !== undefined &&
-    opened.head === head &&
+    opened.basis === basis &&
     opened.contents === exact.contents
       ? opened.index
       : undefined;
@@ -104,20 +114,26 @@ export function useLineChanges(input: {
     const from =
       peekIndex ??
       (delta === 1
-        ? changes.findIndex((change) => change.start > input.line) - 1
-        : changes.findLastIndex((change) => change.start < input.line) + 1);
+        ? changes.findIndex((change) => change.start > input.caretLine()) - 1
+        : changes.findLastIndex((change) => change.start < input.caretLine()) + 1);
 
     const next = (from + delta + changes.length) % changes.length;
-    setOpened({ head, contents: exact.contents, index: next });
+    setOpened({ basis, contents: exact.contents, index: next });
     input.reveal(Math.max(1, changes[next]?.start ?? 1));
   };
 
   return {
-    css: changeBarCss(comparison?.changes ?? []),
+    changes: comparison?.changes,
+    peekLine: below,
     peek:
       peeked === undefined || peekIndex === undefined || exact === undefined
         ? undefined
-        : { change: peeked, index: peekIndex, count: exact.changes.length },
+        : {
+            change: peeked,
+            index: peekIndex,
+            count: exact.changes.length,
+            label: head === undefined ? "Chat Edits" : "Uncommitted",
+          },
     step,
     close: (): void => {
       setOpened(undefined);
@@ -127,9 +143,55 @@ export function useLineChanges(input: {
       if (exact === undefined) return;
       const index = findChangeAt(exact.changes, line);
 
-      setOpened(index === -1 ? undefined : { head, contents: exact.contents, index });
+      setOpened(index === -1 ? undefined : { basis, contents: exact.contents, index });
     },
   };
+}
+
+function useChatBase(patches: readonly string[] | undefined, saved: string): string | undefined {
+  const [undo] = useState(() => lastResult(undoEdits));
+
+  return patches === undefined ? undefined : undo(patches, saved);
+}
+
+function useComparison(path: string, base: string | undefined, compared: string) {
+  const [compare] = useState(() =>
+    lastResult((name: string, before: string, after: string) => ({
+      contents: after,
+      changes: lineChanges(
+        parseDiffFromFile({ name, contents: before }, { name, contents: after }),
+      ),
+    })),
+  );
+
+  return base === undefined ? undefined : compare(path, base, compared);
+}
+
+function lastResult<Arguments extends readonly unknown[], Result>(
+  run: (...input: Arguments) => Result,
+): (...input: Arguments) => Result {
+  let last: { readonly input: Arguments; readonly result: Result } | undefined;
+
+  return (...input) => {
+    if (
+      last !== undefined &&
+      last.input.length === input.length &&
+      last.input.every((value, index) => value === input[index])
+    )
+      return last.result;
+    const result = run(...input);
+    last = { input, result };
+
+    return result;
+  };
+}
+
+function undoEdits(patches: readonly string[], text: string): string {
+  const newest = patches[0];
+  const diff = newest === undefined ? undefined : parsePatchFiles(newest)[0]?.files[0];
+  const before = diff === undefined ? undefined : textBefore(diff, text);
+
+  return before === undefined ? text : undoEdits(patches.slice(1), before);
 }
 
 function findChangeAt(changes: readonly LineChange[], line: number): number {
@@ -151,6 +213,7 @@ export function ChangePeek({
   change,
   index,
   count,
+  label,
   onStep,
   onRevert,
   onClose,
@@ -158,6 +221,7 @@ export function ChangePeek({
   readonly change: LineChange;
   readonly index: number;
   readonly count: number;
+  readonly label: string;
   readonly onStep: (delta: 1 | -1) => void;
   readonly onRevert: () => void;
   readonly onClose: () => void;
@@ -176,7 +240,7 @@ export function ChangePeek({
     >
       <div {...props(styles.header)}>
         <span {...props(text.sm, styles.title)}>
-          Uncommitted{" "}
+          {label}{" "}
           <span {...props(styles.count)}>
             · {index + 1} of {count}
           </span>

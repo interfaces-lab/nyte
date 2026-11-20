@@ -19,12 +19,15 @@ import {
   windowContentReady,
   windowTabRoute,
 } from "@nyte-ai/app";
+import { windowOpening } from "@nyte-ai/app/contract/desktop-window.ts";
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "./account/provider.tsx";
 
-startWindowTabs(window.nyte.window);
+const opening = windowOpening(window.nyte.window);
 
-seedFirstFrame("local");
+startWindowTabs(opening.window);
+
+seedFirstFrame("local", opening.workspace);
 
 export const router = createAppRouter({
   history: createMemoryHistory({ initialEntries: [windowTabRoute()] }),
@@ -48,7 +51,9 @@ firstFrame.observe({ entryTypes: ["mark"] });
 
 void shellReady.promise
   .then(windowContentReady)
-  .then(() => requestAnimationFrame(() => setTimeout(() => window.nyte.windowPainted(), 0)));
+  .then(() =>
+    requestAnimationFrame(() => requestAnimationFrame(() => window.nyte.windowPainted())),
+  );
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {
@@ -87,7 +92,6 @@ startRendererStartup({
   mountShell,
   connect: () =>
     connectLocalHost().then((connection) => recordFirstFrame("local", connection.hostId)),
-  storeOpening: () => window.nyte.host.storeOpening(),
   showError: (retry) => {
     root.render(<StartupFailure message="Couldn’t open your workspace." onRetry={retry} />);
     requestAnimationFrame(() => window.nyte.windowPainted());

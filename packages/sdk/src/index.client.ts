@@ -1,47 +1,48 @@
-import { connect } from "./connect.ts";
+export { connect } from "./connect.ts";
 
-export { createSendJournal } from "./journal.ts";
+export type { ClientConnectOptions, ClientConnection } from "./connect.ts";
 
-export { openHost } from "./host-connection.ts";
+export { createSendJournal } from "./send/journal.ts";
 
-export { ticketSocket } from "./ticket-socket.ts";
+export type { JournalStorage, RefusedSend, RefusedSends } from "./send/journal.ts";
 
-export { mediaLink } from "./media-link.ts";
+export { ticketSocket } from "./live/ticket-socket.ts";
 
-export { headView } from "./head-view.ts";
+export { mediaLink } from "./live/media-link.ts";
 
-export type { HeadView } from "./head-view.ts";
+export { headView } from "./view/head-view.ts";
 
-export { streamText, withStreamedText } from "./streamed-text.ts";
+export type { HeadView } from "./view/head-view.ts";
 
-export type { StreamedPart, StreamedText } from "./streamed-text.ts";
+export { streamText, withStreamedText } from "./view/streamed-text.ts";
 
-export { unsentSends } from "./unsent.ts";
-
-export type { UnsentSends } from "./unsent.ts";
+export type { StreamedPart, StreamedText } from "./view/streamed-text.ts";
 
 export type {
   ActionHandler,
   Health,
-  HostConnection,
-  HostCredentials,
-  HostOptions,
   OpenSocket,
   Requester,
   SocketRequest,
   TextUpdate,
-} from "./host-connection.ts";
+} from "./live/host-connection.ts";
 
-export type { ClientsStore } from "./live-clients.ts";
+export type { HostCredentials } from "./connection/connect.ts";
 
-export type { SessionsStore, SessionsSnapshot, SessionsWindow } from "./live-sessions.ts";
+export type { ClientsStore } from "./live/clients.ts";
 
-export type { HeadRows, HeadSnapshot, HeadStore } from "./live-head.ts";
+export type { SessionsStore, SessionsSnapshot, SessionsWindow } from "./live/sessions.ts";
 
-export type { PartSnapshot, PartStore } from "./live-part.ts";
+export type { HeadRows, HeadSnapshot, HeadStore } from "./live/head.ts";
 
-export type { Freshness, Live } from "./live.ts";
+export type { Chat, ChatDelivered, ChatOptions, ChatSend, ChatSnapshot } from "./live/chat.ts";
+
+export type { PartSnapshot, PartStore } from "./live/part.ts";
+
+export type { Freshness, Live } from "./live/store.ts";
+
+export { languageDocument } from "./view/language-document.ts";
+
+export type { LanguageDocument } from "./view/language-document.ts";
 
 export * from "./surface.ts";
-
-export const sdk = { connect };

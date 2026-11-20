@@ -4,13 +4,14 @@ import { basename, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { app } from "electron";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { processAlive, readHostFile } from "@nyte-ai/service/host-endpoint";
 import {
   bundledHostAgentJob,
   developmentHostAgentJob,
   hostAgentPlist,
 } from "../shared/host-agent-job.ts";
+import { PACKAGED_BUILDS } from "../shared/desktop-builds.ts";
+import type { PackagedBuild } from "../shared/desktop-builds.ts";
 
 const execute = promisify(execFile);
 
@@ -18,7 +19,6 @@ export type AgentRegistration = Electron.LoginItemSettings["status"];
 
 export interface ServingHost {
   readonly pid: number;
-  /** The job this app registered, not a host another install or `nyte host` serves. */
   readonly own: boolean;
 }
 
@@ -29,15 +29,13 @@ export interface HostAgent {
   pid(): Promise<number | null>;
   serving(): Promise<ServingHost | null>;
   restart(): Promise<void>;
-  /** Stops the job and keeps it stopped until `start`, which every launch of the app calls. */
   stop(): Promise<void>;
 }
 
 export interface HostAgentOptions {
-  readonly appId: string;
+  readonly build: PackagedBuild | null;
   readonly home: string;
   readonly nyteHome: string;
-  readonly packaged: boolean;
   readonly appPath: string;
   readonly executable: string;
   readonly entry: string;
@@ -47,10 +45,9 @@ export interface HostAgentOptions {
 export function hostAgent(options: HostAgentOptions): HostAgent {
   if (process.platform !== "darwin") return detachedHost(options);
 
-  return options.packaged ? loginItemAgent(options) : developmentAgent(options);
+  return options.build === null ? developmentAgent(options) : loginItemAgent(options);
 }
 
-/** When `ps` says the process started, or null where there is no `ps` or no such process. */
 export async function processStarted(pid: number): Promise<number | null> {
   const printed = await execute("ps", ["-o", "lstart=", "-p", String(pid)], {
     env: { ...process.env, LC_ALL: "C" },
@@ -61,19 +58,9 @@ export async function processStarted(pid: number): Promise<number | null> {
   return Number.isNaN(started) ? null : started;
 }
 
-export function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-
-    return true;
-  } catch (cause) {
-    return cause instanceof Error && "code" in cause && cause.code === "EPERM";
-  }
-}
-
 function loginItemAgent(options: HostAgentOptions): HostAgent {
   const job = bundledHostAgentJob({
-    appId: options.appId,
+    appId: appId(options),
     executable: basename(options.executable),
   });
 
@@ -99,8 +86,8 @@ function loginItemAgent(options: HostAgentOptions): HostAgent {
 }
 
 function developmentAgent(options: HostAgentOptions): HostAgent {
-  const label = options.label ?? `${options.appId}.dev.host`;
-  const path = join(options.home, "Library", "LaunchAgents", `${label}.plist`);
+  const label = options.label ?? `${appId(options)}.dev.host`;
+  const path = join(options.nyteHome, `${label}.plist`);
 
   const job = developmentHostAgentJob({
     label,
@@ -123,7 +110,6 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
     const written = await readFile(path, "utf8").catch(() => null);
 
     if (written === plist && (await loaded())) return "enabled";
-    await mkdir(join(options.home, "Library", "LaunchAgents"), { recursive: true });
     await mkdir(join(options.nyteHome, "logs"), { recursive: true, mode: 0o700 });
     await writeFile(path, plist);
     await execute("launchctl", ["bootout", target(label)]).catch(() => undefined);
@@ -166,29 +152,23 @@ async function servingHost(nyteHome: string, label: string): Promise<ServingHost
   return pid === null ? null : { pid, own: pid === (await launchdPid(label)) };
 }
 
-const RunningHostType = Type.Object({ pid: Type.Integer() });
-
 async function servedPid(nyteHome: string): Promise<number | null> {
-  const text = await readFile(join(nyteHome, "host.json"), "utf8").catch(() => null);
-  const parsed: unknown = text === null ? null : JSON.parse(text);
+  const host = await readHostFile(join(nyteHome, "host.json"));
 
-  return Value.Check(RunningHostType, parsed) && processAlive(parsed.pid) ? parsed.pid : null;
+  return host !== null && processAlive(host.pid) ? host.pid : null;
 }
 
 function detachedHost(options: HostAgentOptions): HostAgent {
-  const label = options.label ?? `${options.appId}.host`;
+  const label = options.label ?? `${appId(options)}.host`;
   const pid = (): Promise<number | null> => servedPid(options.nyteHome);
 
-  const start = async (): Promise<AgentRegistration> => {
-    if (process.platform === "win32") return "not-found";
-
-    if ((await pid()) !== null) return "enabled";
+  const launch = (): void =>
     spawn(
       options.executable,
       [
         options.entry,
         "--log",
-        ...(options.packaged ? [] : ["--tailnet", developmentTailnet(options)]),
+        ...(options.build === null ? ["--tailnet", developmentTailnet(options)] : []),
       ],
       {
         detached: true,
@@ -201,6 +181,12 @@ function detachedHost(options: HostAgentOptions): HostAgent {
         },
       },
     ).unref();
+
+  const start = async (): Promise<AgentRegistration> => {
+    if (process.platform === "win32") return "not-found";
+
+    if ((await pid()) !== null) return "enabled";
+    launch();
 
     return "enabled";
   };
@@ -220,11 +206,12 @@ function detachedHost(options: HostAgentOptions): HostAgent {
     async serving() {
       const running = await pid();
 
-      return running === null ? null : { pid: running, own: true };
+      return running === null ? null : { pid: running, own: false };
     },
     async restart() {
       await stop();
-      await start();
+
+      if (process.platform !== "win32") launch();
     },
     stop,
   };
@@ -233,6 +220,10 @@ function detachedHost(options: HostAgentOptions): HostAgent {
 async function stopped(pid: () => Promise<number | null>): Promise<void> {
   for (let attempt = 0; attempt < 50 && (await pid()) !== null; attempt++)
     await new Promise((resolve) => setTimeout(resolve, 100));
+}
+
+function appId(options: HostAgentOptions): string {
+  return (options.build ?? PACKAGED_BUILDS.production).appId;
 }
 
 function developmentTailnet(options: HostAgentOptions): string {

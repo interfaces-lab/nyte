@@ -59,17 +59,12 @@ describe("openai-codex websocket streaming", () => {
       const encoded = new TextEncoder().encode(JSON.stringify(completed("resp_1")));
       const payload = new ArrayBuffer(encoded.byteLength);
       new Uint8Array(payload).set(encoded);
+      const decoded = Promise.withResolvers<ArrayBuffer>();
       queueMicrotask(() => {
-        socket.dispatch("message", {
-          data: {
-            arrayBuffer: () =>
-              new Promise<ArrayBuffer>((resolve) => {
-                setTimeout(() => resolve(payload), 0);
-              }),
-          },
-        });
+        socket.dispatch("message", { data: { arrayBuffer: () => decoded.promise } });
         socket.readyState = 3;
         socket.dispatch("close", { code: 1006, reason: "Connection ended", wasClean: false });
+        decoded.resolve(payload);
       });
     });
     vi.stubGlobal(

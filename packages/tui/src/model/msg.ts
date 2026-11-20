@@ -58,7 +58,10 @@ export type Intent =
   | {
       readonly kind: "reorder";
       readonly message: MessageId;
-      readonly to: "earlier" | "later" | { readonly before: MessageId | null };
+      readonly to:
+        | { readonly kind: "earlier" }
+        | { readonly kind: "later" }
+        | { readonly kind: "before"; readonly message: MessageId | null };
     }
   | { readonly kind: "stop-run" }
   | { readonly kind: "run-shell"; readonly command: string; readonly include: boolean }
@@ -94,7 +97,6 @@ export type Intent =
       readonly session: SessionId | "new";
       readonly announce: boolean;
     }
-  | { readonly kind: "change-directory"; readonly path: string }
   | { readonly kind: "reload" }
   | { readonly kind: "compact"; readonly instructions: string | null }
   | { readonly kind: "update"; readonly target: string | null }
@@ -117,13 +119,15 @@ export type Intent =
       readonly kind: "apply-setting";
       readonly id: string;
       readonly label: string;
-      readonly scope: "host" | "session";
+      readonly scope: "host" | "chat";
       readonly value: Json;
     }
   | {
       readonly kind: "move-to";
       readonly commit: CommitId;
-      readonly abandoned: "keep" | { readonly summarize: { readonly instructions: string | null } };
+      readonly abandoned:
+        | { readonly kind: "keep" }
+        | { readonly kind: "summarize"; readonly instructions: string | null };
       readonly expect?: Revision;
     }
   | { readonly kind: "prefill"; readonly text: string }
@@ -212,7 +216,8 @@ export type Outcome =
   | { readonly kind: "sent"; readonly submission: string; readonly message: MessageId }
   | {
       readonly kind: "send-refused";
-      readonly submission: string;
+      readonly submission: string | null;
+      readonly session: SessionId;
       readonly reason: string;
       readonly snapshot: DraftSnapshot;
     }
@@ -276,11 +281,6 @@ export type Outcome =
       readonly marker: string;
       readonly path: string;
       readonly body: string | null;
-    }
-  | {
-      readonly kind: "directory-listed";
-      readonly path: string;
-      readonly entries: readonly string[];
     }
   | {
       readonly kind: "command-completed";

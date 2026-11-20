@@ -6,7 +6,7 @@ import { LOCAL } from "../src/index.ts";
 import { headRef, memoryStore } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Head, Host, StoreConnection } from "../src/index.ts";
-import { commit } from "../src/fold/commit.ts";
+import { commit } from "../src/watch/commit.ts";
 import { readRefExpectation, toCommitObjectId, put, readTip } from "../src/store/session.ts";
 import { label, main, recording, setup, usage } from "../src/harness.ts";
 import type { Script } from "../src/harness.ts";
@@ -218,7 +218,7 @@ describe("heads", () => {
     ).toEqual(["One.", "Two."]);
 
     const summary = await (
-      await session.move({ kind: "commit", id: two.id }, { abandoned: { summarize: {} } })
+      await session.move({ kind: "commit", id: two.id }, { abandoned: { kind: "summarize" } })
     ).settled();
 
     assert(summary.kind === "moved");

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import type { Connection } from "@nyte-ai/sdk";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import type { Simulation } from "@nyte-ai/bench";
 import type { LocalEndpoint } from "@nyte-ai/service";
 import { CodeRenderable } from "@opentui/core";
@@ -21,7 +21,6 @@ import type { SettingsPort, ShellPort } from "../../src/effects/ports.ts";
 import { watchTerminal } from "../../src/lifecycle.ts";
 import { keyStrokes } from "../../src/lib/constants.ts";
 import type { ChatCommand } from "../../src/lib/constants.ts";
-import { openLiveHost } from "../../src/live-host.ts";
 import { openTestHost } from "../fixture/host.ts";
 import type { TestHost } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
@@ -35,7 +34,6 @@ export interface TuiOptions {
   readonly size?: { readonly width: number; readonly height: number };
   readonly renderer?: Omit<TestRendererOptions, "width" | "height" | "clock" | "kittyKeyboard">;
   readonly fixture?: TestHost;
-  readonly host?: Connection;
   readonly endpoint?: LocalEndpoint;
   readonly opened?: boolean;
   readonly target?: BootOptions["target"];
@@ -95,17 +93,22 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
   if (options.typed !== undefined) await setup.mockInput.typeText(options.typed);
   const hungUp = new AbortController();
   const unwatchTerminal = watchTerminal(setup.renderer.stdin, [], () => hungUp.abort());
-  const connection = options.host ?? fixture.host;
-
-  const live =
-    options.endpoint === undefined ? fixture.live : openLiveHost(options.endpoint, "tui");
+  const connection =
+    options.endpoint === undefined
+      ? fixture.client
+      : await connect({
+          url: options.endpoint.url,
+          credentials: { kind: "token", token: options.endpoint.token },
+          client: { kind: "tui", name: "nyte", version: "0.0.0" },
+          journal: createSendJournal(),
+        });
 
   const mounting: AppOptions = {
     renderer: setup.renderer,
     keymap: createKeymap(setup.renderer),
     hungUp: hungUp.signal,
-    host: opening.promise.then(() => ({ connection, live, folder: null })),
-    ...(options.host === undefined
+    host: opening.promise.then(() => ({ connection, folder: null })),
+    ...(options.endpoint === undefined
       ? {
           plugins: async () => ({
             ...fakes.plugins,
@@ -167,7 +170,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
       unwatchTerminal();
       await setup.dispose();
 
-      if (live !== fixture.live) live.release();
+      if (connection !== fixture.client) await connection.close();
 
       if (options.fixture === undefined) await fixture.close();
       rmSync(home, { recursive: true, force: true });

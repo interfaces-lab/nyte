@@ -11,7 +11,7 @@ import { asId } from "@nyte-ai/schema";
 import "../theme/tokens.stylex.ts";
 import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { endedTurn, sessionRow, sessionView } from "../../test/view-fixtures.ts";
-import { tabPanes } from "../../test/panes.ts";
+import { runPane, selectSession, tabPanes } from "../../test/panes.ts";
 import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { createAppRouter } from "../shell/routes.tsx";
@@ -103,9 +103,9 @@ interface Step {
   readonly commits: Readonly<Record<(typeof COUNTED)[number], number>>;
 }
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -114,7 +114,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
 }
 
@@ -138,9 +138,9 @@ async function readTo(scroller: HTMLElement, offset: number): Promise<void> {
   const steering = window.setInterval(wheel, 50);
   scroller.scrollTop = offset;
   await landed;
-  await painted();
+  await nextFrame();
   window.clearInterval(steering);
-  await painted();
+  await nextFrame();
 }
 
 function topRow(scroller: HTMLElement): string | null {
@@ -164,10 +164,10 @@ async function checkLayout(): Promise<string> {
   queryClient.setQueryData(keys.mentionFiles(undefined), []);
 
   const panes = tabPanes();
-  panes.selectSession(LEFT);
-  panes.split("right");
-  panes.selectSession(RIGHT);
-  const store = panes.store;
+  selectSession(panes, LEFT);
+  runPane(panes, { kind: "split", direction: "right" });
+  selectSession(panes, RIGHT);
+  const store = panes.layout;
   const [left, right] = chatPanes(store.getSnapshot());
 
   if (left === undefined || right === undefined) throw new Error("Expected two chat panes");
@@ -183,7 +183,7 @@ async function checkLayout(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <LayoutView store={store} renderTab={renderPaneContent} />
               </SessionDndProvider>
@@ -204,7 +204,7 @@ async function checkLayout(): Promise<string> {
         ),
       "both transcripts",
     );
-    await painted();
+    await nextFrame();
 
     const scroller = transcript(tabBody(container, left.tab));
 
@@ -226,8 +226,8 @@ async function checkLayout(): Promise<string> {
     ): Promise<Step> => {
       window.nyteWorkCounts = {};
       store.dispatch(...actions);
-      await painted();
-      await painted();
+      await nextFrame();
+      await nextFrame();
       const counts = window.nyteWorkCounts;
 
       const now = [left.tab, right.tab].flatMap((tab) => {
@@ -265,8 +265,6 @@ async function checkLayout(): Promise<string> {
           sizes: [0.35, 0.65],
         },
       ]),
-      await step("zoom", [{ kind: "zoom", pane: right.pane }]),
-      await step("unzoom", [{ kind: "zoom", pane: null }]),
       await step("move", [
         {
           kind: "move",

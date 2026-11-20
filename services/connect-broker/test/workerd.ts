@@ -1,0 +1,547 @@
+import { fileURLToPath } from "node:url";
+import {
+  BROKER_ROUTES,
+  ENROLLMENT_LIFETIME_SECONDS,
+  EnrollEnvelope,
+  EnrollmentClaims,
+  LinkResponse,
+  TOKEN_TYPES,
+} from "@nyte-ai/connect";
+import type { BrokerKeys } from "@nyte-ai/connect";
+import {
+  RELAY_CHUNK_BYTES,
+  RELAY_WINDOW_BYTES,
+  decodeChunk,
+  encodeChunks,
+  hasNullBody,
+  parseRelayFrame,
+} from "@nyte-ai/connect/relay";
+import type { DesktopFrame, RelayFrame, RelayResponseHeaders } from "@nyte-ai/connect/relay";
+import {
+  brokerKey,
+  createProof,
+  generateMachineKey,
+  keyThumbprint,
+  toPublicJwk,
+  signClaims,
+  verifyClaims,
+} from "@nyte-ai/connect/signing";
+import type { PrivateJwk } from "@nyte-ai/connect/signing";
+import { SignJWT, exportSPKI, generateKeyPair } from "jose";
+import { Value } from "typebox/value";
+import { createTestHarness } from "wrangler";
+import type { TestHarness } from "wrangler";
+import type { D1Database, D1Value } from "../src/d1.ts";
+import { FakeClerkApi, SESSION_TOKEN_HEADER } from "./clerk-fake.ts";
+
+export const WORKERD_ORIGIN = "https://connect.test.example";
+export const WORKERD_ISSUER = "https://clerk.test.example";
+export const WORKERD_AUTHORIZED_PARTY = "https://app.test.example";
+
+const TABLES = [
+  "link_transactions",
+  "environments",
+  "owners",
+  "denied_sessions",
+  "proof_replays",
+  "rate_limits",
+] as const;
+
+const random = (bytes = 24) =>
+  Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString("base64url");
+
+export type OpenFrame = Extract<RelayFrame, { t: "open" }>;
+
+export interface RelayedRequest {
+  readonly ch: string;
+  readonly method: OpenFrame["method"];
+  readonly path: string;
+  readonly headers: OpenFrame["headers"];
+  readonly body: Uint8Array;
+}
+
+export interface RelayedResponse {
+  readonly status: number;
+  readonly headers?: RelayResponseHeaders;
+  readonly body?: string | Uint8Array;
+}
+
+export type RelayHandler = (request: RelayedRequest) => Promise<RelayedResponse>;
+
+interface ServedChannel {
+  readonly open: OpenFrame;
+  readonly chunks: Uint8Array[];
+  credit: number;
+  creditArrived: (() => void) | undefined;
+  reset: boolean;
+}
+
+export class RelayDesktop {
+  readonly socket: WebSocket;
+  readonly closed: Promise<{ readonly code: number; readonly reason: string }>;
+  readonly received: RelayFrame[] = [];
+  handler: RelayHandler | undefined;
+  private readonly unread: RelayFrame[] = [];
+  private readonly waiters: (() => void)[] = [];
+  private readonly served = new Map<string, ServedChannel>();
+
+  constructor(url: URL) {
+    this.socket = new WebSocket(url);
+    this.closed = new Promise((resolve) => {
+      this.socket.addEventListener("close", (event) =>
+        resolve({ code: event.code, reason: event.reason }),
+      );
+    });
+    this.socket.addEventListener("message", (event) => {
+      const frame = parseRelayFrame(event.data);
+
+      if (frame === undefined) throw new Error("The relay sent a frame outside the contract");
+      this.received.push(frame);
+
+      if (!this.serve(frame)) this.unread.push(frame);
+
+      for (const wake of this.waiters.splice(0)) wake();
+    });
+  }
+
+  opened(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket.addEventListener("open", () => resolve(), { once: true });
+      this.socket.addEventListener("error", () => reject(new Error("The relay refused")), {
+        once: true,
+      });
+    });
+  }
+
+  async next<T extends RelayFrame["t"]>(
+    t: T,
+    match: (frame: Extract<RelayFrame, { t: T }>) => boolean = () => true,
+  ): Promise<Extract<RelayFrame, { t: T }>> {
+    for (;;) {
+      for (const [index, frame] of this.unread.entries())
+        if (taggedAs(frame, t) && match(frame)) {
+          this.unread.splice(index, 1);
+
+          return frame;
+        }
+
+      await new Promise<void>((resolve) => this.waiters.push(resolve));
+    }
+  }
+
+  pending<T extends RelayFrame["t"]>(t: T): Extract<RelayFrame, { t: T }>[] {
+    return this.unread.filter((frame) => taggedAs(frame, t));
+  }
+
+  send(frame: DesktopFrame): void {
+    this.socket.send(JSON.stringify(frame));
+  }
+
+  close(): void {
+    this.socket.close();
+  }
+
+  private serve(frame: RelayFrame): boolean {
+    const handler = this.handler;
+
+    if (frame.t === "open") {
+      if (handler === undefined) return false;
+      this.served.set(frame.ch, {
+        open: frame,
+        chunks: [],
+        credit: RELAY_WINDOW_BYTES,
+        creditArrived: undefined,
+        reset: false,
+      });
+
+      return true;
+    }
+
+    if (frame.t === "ready" || frame.t === "pong") return false;
+    const channel = this.served.get(frame.ch);
+
+    if (channel === undefined) return false;
+
+    switch (frame.t) {
+      case "data": {
+        const bytes = decodeChunk(frame.data);
+
+        if (bytes !== undefined) {
+          channel.chunks.push(bytes);
+          this.send({ t: "credit", ch: frame.ch, bytes: bytes.byteLength });
+        }
+        break;
+      }
+      case "end":
+        if (handler !== undefined) void this.answer(handler, channel);
+        break;
+      case "credit":
+        channel.credit += frame.bytes;
+        channel.creditArrived?.();
+        break;
+      case "reset":
+        channel.reset = true;
+        channel.creditArrived?.();
+        this.served.delete(frame.ch);
+        break;
+      case "socket":
+      case "message":
+      case "close":
+        return false;
+      default: {
+        const _exhaustive: never = frame;
+        return _exhaustive;
+      }
+    }
+
+    return true;
+  }
+
+  private async answer(handler: RelayHandler, channel: ServedChannel): Promise<void> {
+    const { ch, method, path, headers } = channel.open;
+    const response = await handler({
+      ch,
+      method,
+      path,
+      headers,
+      body: Buffer.concat(channel.chunks),
+    });
+    const body =
+      typeof response.body === "string"
+        ? new TextEncoder().encode(response.body)
+        : (response.body ?? new Uint8Array());
+
+    this.send({ t: "head", ch, status: response.status, headers: response.headers ?? {} });
+
+    if (!hasNullBody(response.status))
+      for (const data of encodeChunks(body)) {
+        const size = decodeChunk(data)?.byteLength ?? RELAY_CHUNK_BYTES;
+
+        while (channel.credit < size && !channel.reset)
+          await new Promise<void>((resolve) => {
+            channel.creditArrived = resolve;
+          });
+
+        if (channel.reset) return;
+        channel.credit -= size;
+        this.send({ t: "data", ch, data });
+      }
+
+    this.send({ t: "end", ch });
+    this.served.delete(ch);
+  }
+}
+
+function taggedAs<T extends RelayFrame["t"]>(
+  frame: RelayFrame,
+  t: T,
+): frame is Extract<RelayFrame, { t: T }> {
+  return frame.t === t;
+}
+
+export function enrollmentHandler(input: {
+  readonly key: PrivateJwk;
+  readonly environmentId: string;
+  readonly origin: string;
+  readonly brokerKeys: BrokerKeys;
+  readonly fallback?: RelayHandler;
+  readonly grants?: EnrollmentClaims[];
+}): RelayHandler {
+  return async (request) => {
+    if (request.path !== "/_nyte/connect/enroll")
+      return input.fallback === undefined ? { status: 404 } : input.fallback(request);
+    const envelope: unknown = JSON.parse(new TextDecoder().decode(request.body));
+
+    if (!Value.Check(EnrollEnvelope, envelope)) return { status: 400 };
+    const key = brokerKey(input.brokerKeys, envelope.authorization);
+
+    if (key === undefined) return { status: 401 };
+    const grant = await verifyClaims({
+      token: envelope.authorization,
+      key,
+      typ: TOKEN_TYPES.enrollment,
+      issuer: input.origin,
+      audience: input.environmentId,
+      schema: EnrollmentClaims,
+      lifetime: ENROLLMENT_LIFETIME_SECONDS,
+    });
+
+    input.grants?.push(grant);
+    const iat = Math.floor(Date.now() / 1000);
+    const receipt = await signClaims({
+      key: input.key,
+      typ: TOKEN_TYPES.receipt,
+      claims: {
+        iss: input.environmentId,
+        aud: input.origin,
+        iat,
+        exp: iat + ENROLLMENT_LIFETIME_SECONDS,
+        req: grant.jti,
+        nonce: grant.nonce,
+        deviceId: grant.deviceId,
+        digest: grant.digest,
+      },
+    });
+
+    return {
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ receipt }),
+    };
+  };
+}
+
+export interface WorkerdBroker {
+  readonly origin: string;
+  readonly local: URL;
+  readonly brokerKeys: BrokerKeys;
+  readonly clerk: FakeClerkApi;
+  localUrl(url: string | URL): URL;
+  fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
+  sessionToken(input: {
+    readonly userId: string;
+    readonly sessionId?: string;
+    readonly claims?: Record<string, unknown>;
+    readonly lifetimeSeconds?: number;
+  }): Promise<string>;
+  query(sql: string, ...bindings: D1Value[]): Promise<unknown[]>;
+  relayQuery(environmentId: string, sql: string, ...bindings: D1Value[]): Promise<unknown[]>;
+  evictRelay(
+    environmentId: string,
+    options?: { readonly webSockets?: "hibernate" | "close" },
+  ): Promise<void>;
+  logs(): ReturnType<TestHarness["getLogs"]>;
+  link(input: {
+    readonly userId: string;
+    readonly key?: PrivateJwk;
+    readonly name?: string;
+  }): Promise<{
+    readonly environmentId: string;
+    readonly key: PrivateJwk;
+    readonly link: LinkResponse;
+  }>;
+  attach(input: {
+    readonly environmentId: string;
+    readonly key: PrivateJwk;
+  }): Promise<RelayDesktop>;
+  reset(): Promise<void>;
+  close(): Promise<void>;
+}
+
+export async function startWorkerdBroker(
+  options: { readonly origin?: string } = {},
+): Promise<WorkerdBroker> {
+  const origin = options.origin ?? WORKERD_ORIGIN;
+  const clerkKeys = await generateKeyPair("RS256", { modulusLength: 2048, extractable: true });
+  const signingKey = { ...(await generateMachineKey()), kid: "broker-test-1" };
+  const clerkSecretKey = `sk_test_${random()}`;
+  const clerk = new FakeClerkApi(clerkSecretKey);
+  const brokerKeys: BrokerKeys = {
+    keys: [{ kty: "OKP", crv: "Ed25519", x: signingKey.x, kid: signingKey.kid }],
+  };
+  const server = createTestHarness({
+    root: fileURLToPath(new URL(".", import.meta.url)),
+    workers: [
+      {
+        configPath: "./workerd.jsonc",
+        secrets: {
+          CONNECT_ORIGIN: origin,
+          CONNECT_WEB_ORIGINS: "https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179",
+          CLERK_ISSUER: WORKERD_ISSUER,
+          CLERK_AUTHORIZED_PARTIES: `${WORKERD_AUTHORIZED_PARTY},https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179`,
+          CLERK_JWT_KEY: await exportSPKI(clerkKeys.publicKey),
+          CLERK_SECRET_KEY: clerkSecretKey,
+          CLERK_WEBHOOK_SIGNING_SECRET: `whsec_${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64")}`,
+          BROKER_SIGNING_KEYS: JSON.stringify([signingKey]),
+        },
+      },
+    ],
+  });
+  const { url: local } = await server.listen();
+  const worker = server.getWorker();
+
+  await worker.applyD1Migrations("DB");
+  const { DB: db } = await server.getWorker<{ DB: D1Database }>().getEnv();
+  const original = globalThis.fetch;
+  const localUrl = (url: string | URL): URL => {
+    const parsed = new URL(url);
+    const mapped = new URL(`${parsed.pathname}${parsed.search}`, local);
+
+    if (parsed.protocol === "wss:" || parsed.protocol === "ws:") mapped.protocol = "ws:";
+
+    return mapped;
+  };
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+
+    if (url.origin === "https://api.clerk.com")
+      return clerk.handle(url, input instanceof Request ? input : (init ?? {}));
+
+    if (url.origin === origin) return broker.fetch(input, init);
+
+    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return original(input, init);
+
+    throw new TypeError(`Unexpected egress to ${url.origin}`);
+  };
+
+  const broker: WorkerdBroker = {
+    origin,
+    local,
+    brokerKeys,
+    clerk,
+    localUrl,
+    async fetch(input, init) {
+      const body = init?.body;
+
+      if (body instanceof Blob || body instanceof FormData)
+        return broker.fetch(new Request(input, init));
+      const url = new URL(input instanceof Request ? input.url : input);
+
+      if (url.origin !== origin) return original(input, init);
+      const response = await worker.fetch(
+        url.href,
+        input instanceof Request
+          ? {
+              method: input.method,
+              headers: [...input.headers],
+              body: input.body,
+              signal: input.signal,
+              duplex: "half",
+            }
+          : {
+              method: init?.method,
+              headers: [...new Headers(init?.headers)],
+              body: ArrayBuffer.isView(body)
+                ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+                : body,
+              signal: init?.signal,
+              duplex: "half",
+            },
+      );
+
+      const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+
+      response.body?.pipeTo(writable).catch(() => undefined);
+
+      return new Response(response.body === null ? null : readable, {
+        status: response.status,
+        headers: [...response.headers],
+      });
+    },
+
+    async sessionToken(input) {
+      const iat = Math.floor(Date.now() / 1000);
+
+      return new SignJWT({
+        iss: WORKERD_ISSUER,
+        sub: input.userId,
+        sid: input.sessionId ?? `sess_${input.userId}`,
+        aud: origin,
+        sts: "active",
+        v: 2,
+        iat,
+        nbf: iat - 5,
+        exp: iat + (input.lifetimeSeconds ?? 60),
+        ...input.claims,
+      })
+        .setProtectedHeader(SESSION_TOKEN_HEADER)
+        .sign(clerkKeys.privateKey);
+    },
+
+    async query(sql, ...bindings) {
+      return (
+        await db
+          .prepare(sql)
+          .bind(...bindings)
+          .all()
+      ).results;
+    },
+
+    async relayQuery(environmentId, sql, ...bindings) {
+      const storage = await worker.getDurableObjectStorage("RELAY", { name: environmentId });
+
+      return storage.exec(sql, ...bindings);
+    },
+
+    async evictRelay(environmentId, options = {}) {
+      await worker.evictDurableObject("RELAY", {
+        name: environmentId,
+        webSockets: options.webSockets ?? "hibernate",
+      });
+    },
+
+    logs: () => server.getLogs(),
+
+    async link(input) {
+      if (!clerk.users.has(input.userId))
+        clerk.users.set(input.userId, {
+          banned: false,
+          locked: false,
+          updated_at: 1,
+          email: `${input.userId}@example.com`,
+        });
+      const key = input.key ?? (await generateMachineKey());
+      const body = JSON.stringify({
+        publicKey: toPublicJwk(key),
+        name: input.name ?? "Studio Mac",
+      });
+      const response = await broker.fetch(`${origin}${BROKER_ROUTES.environments}`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${await broker.sessionToken({ userId: input.userId })}`,
+          "content-type": "application/json",
+          "nyte-proof": await createProof({
+            key,
+            issuer: await keyThumbprint(toPublicJwk(key)),
+            audience: origin,
+            method: "POST",
+            path: BROKER_ROUTES.environments,
+            body,
+          }),
+        },
+        body,
+      });
+      const link: unknown = await response.json();
+
+      if (response.status !== 201 || !Value.Check(LinkResponse, link))
+        throw new Error(`Linking failed with ${response.status}`);
+
+      return { environmentId: link.environment.id, key, link };
+    },
+
+    async attach(input) {
+      const desktop = new RelayDesktop(
+        localUrl(`${origin}${BROKER_ROUTES.relay(input.environmentId)}`),
+      );
+
+      await desktop.opened();
+      desktop.send({
+        t: "auth",
+        proof: await createProof({
+          key: input.key,
+          issuer: input.environmentId,
+          audience: origin,
+          method: "GET",
+          path: BROKER_ROUTES.relay(input.environmentId),
+          body: "",
+        }),
+      });
+      await desktop.next("ready");
+
+      return desktop;
+    },
+
+    async reset() {
+      await db.batch(TABLES.map((table) => db.prepare(`DELETE FROM ${table}`)));
+      clerk.reset();
+      server.clearLogs();
+    },
+
+    async close() {
+      globalThis.fetch = original;
+      await server.close();
+    },
+  };
+
+  return broker;
+}

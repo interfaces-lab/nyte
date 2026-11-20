@@ -208,10 +208,6 @@ export function Transcript(props: TranscriptProps): JSX.Element {
             box = node;
             node.content.on("resize", contentResized);
             node.viewport.on("resize", report);
-            onCleanup(() => {
-              node.content.off("resize", contentResized);
-              node.viewport.off("resize", report);
-            });
           }}
           stickyScroll
           stickyStart="bottom"

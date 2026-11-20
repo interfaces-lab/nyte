@@ -28,7 +28,6 @@ export function desktopSettings(view: Pick<HostView, "settings">): DesktopSettin
     alertsFailed: read("alertsFailed"),
     alertsDone: read("alertsDone"),
     remindMinutes: read("remindMinutes"),
-    notifyViewedChat: read("notifyViewedChat"),
     notifySubagents: read("notifySubagents"),
     terminalNotifications: read("terminalNotifications"),
   };

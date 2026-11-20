@@ -2,8 +2,8 @@ import { asId, SdkError } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
 import type { Connection } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { connect } from "../src/connect.ts";
-import { createSendJournal } from "../src/journal.ts";
+import { connect } from "../src/connection/connect.ts";
+import { createSendJournal } from "../src/send/journal.ts";
 import { BASE, TOKEN_SECRET, readOperation, served } from "./served.ts";
 import type { Served } from "./served.ts";
 

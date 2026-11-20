@@ -2,10 +2,6 @@ import { create } from "@stylexjs/stylex";
 
 const media = { hover: "@media (hover: hover) and (pointer: fine)" } as const;
 
-/**
- * Every value here is deliberate. `design-scale.test.ts` asserts the exact set
- * of lines the rules report, so edit the test when you edit this file.
- */
 const ink = "var(--nyte-content-primary)";
 
 export const fixtureStyles = create({
@@ -23,9 +19,7 @@ export const fixtureStyles = create({
   sizes: { width: 28, minHeight: 24 },
   hairline: { width: 1, height: 1.5 },
   offGridSize: { width: 15, minHeight: 61 },
-  // Not a length: a stacking order, a count, and a ratio are not on the grid.
   notLengths: { zIndex: 9, flexGrow: 3, opacity: 0.5, lineHeight: 15 },
-  // A style may be named after a property without governing what is inside it.
   gap: { zIndex: 7, fontSize: 13 },
   rawWeight: { fontWeight: 600 },
   stringWeight: { fontWeight: { default: "500", ":focus": 400 } },
@@ -71,7 +65,6 @@ export const fixtureStyles = create({
   logicalCentred: { insetInlineStart: "50%", transform: "translateX(-50%)" },
 });
 
-// The bare `create` import is the more common form in the renderer.
 export const bareStyles = create({
   bare: { gap: 7 },
   blockBody: (inset: number) => {
@@ -89,14 +82,11 @@ const role = {
 
 const when = { ancestor: (selector: string) => `:where(${selector}) &` };
 
-// Button's disabled state, read through its constant.
 const disabledState = "[data-disabled]:not([aria-busy='true'])";
 
-// The tool line's dimmed ink before the stairs, mixed outside create().
 const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
 
 export const inkStyles = create({
-  // The step group's thinking text before the stairs.
   thinking: { minWidth: 0, color: role.contentSecondary, opacity: 0.5 },
   fadedPseudo: { "::after": { color: role.contentTertiary, opacity: { default: "60%" } } },
   fadedText: { color: `color-mix(in srgb, ${role.contentPrimary} 60%, transparent)` },
@@ -105,7 +95,6 @@ export const inkStyles = create({
   fadeOut: { color: role.contentPrimary, opacity: { default: 1, "[data-ending-style]": 0 } },
   fadedImage: { opacity: 0.5 },
   fadedVariable: { color: role.contentSecondary, opacity: "var(--_fade, 1)" },
-  // A disabled control fades whole; the contrast floors exempt it.
   fadedDisabled: { color: role.contentPrimary, opacity: { default: 1, "[data-disabled]": 0.5 } },
   tabDisabled: { color: role.contentSecondary, opacity: 0.5 },
   fadedHover: { color: role.contentPrimary, ":hover": { [media.hover]: { opacity: 0.5 } } },
@@ -114,7 +103,6 @@ export const inkStyles = create({
   offBlock: { ":disabled": { color: role.contentPrimary, opacity: 0.5 } },
   inkWhenOff: { opacity: 0.5, ":disabled": { color: role.contentPrimary } },
   accentWash: { backgroundColor: `color-mix(in oklab, ${role.contentAccent} 10%, transparent)` },
-  // The download filename that failed, before the stairs.
   failed: { color: role.contentDisabled },
   idleRing: { boxShadow: `inset 0 0 0 1px ${role.contentDisabled}` },
   control: {
@@ -142,10 +130,6 @@ export const inkStyles = create({
   }),
 });
 
-/**
- * Known holes, asserted as silent so a future fix is a visible test change:
- * a value the compiler resolves rather than the linter, and a plain object.
- */
 const SPACING = 7;
 
 export const unreadable = create({ indirect: { gap: SPACING } });

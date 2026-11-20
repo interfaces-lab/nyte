@@ -385,9 +385,6 @@ const scheme = (mode, names) =>
     .map((name) => `    ${colorKey(name)}: "${formatHex(resolve(declared[name], mode, [name]))}",`)
     .join("\n");
 
-const notice =
-  "Generated from the @nyte-ai/ui colour tokens. Run pnpm --filter @nyte-ai/ui sync:tokens.";
-
 const neutralOutput = `export const platformColors = {\n  light: {\n${scheme("light", colorNames)}\n  },\n  dark: {\n${scheme("dark", colorNames)}\n  },\n} as const;\n`;
 
 const hues = [
@@ -441,8 +438,8 @@ const rampsOutput = `export const platformRamps = {\n${hues
   .join("\n")}\n} as const;\n`;
 
 const outputs = [
-  [outputPath, `// ${notice}\n${neutralOutput}\n${scopesOutput}`],
-  [rampsPath, `// ${notice}\n${rampsOutput}`],
+  [outputPath, `${neutralOutput}\n${scopesOutput}`],
+  [rampsPath, rampsOutput],
 ];
 
 for (const [path, generated] of outputs) {

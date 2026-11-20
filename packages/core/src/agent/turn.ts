@@ -38,22 +38,23 @@ import { awaitMcpServers } from "../env/mcp.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { modelInfo, withLimits } from "../extend/models.ts";
 import { refreshPromptFiles } from "../extend/resources.ts";
-import { commit } from "../fold/commit.ts";
-import { withFold } from "../fold/reads.ts";
+import { commit } from "../watch/commit.ts";
+import { withFold } from "../watch/reads.ts";
 import { callRef, kvRef, partRef, runRef } from "../store/refs.ts";
 import { attempt, load, put, readKv, STALE } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { agentLoop, INTERRUPTED } from "./agent-loop.ts";
 import type {
   FailedResponse,
-  LoopConfig,
-  LoopEvent,
+  LoopRequest,
+  LoopResponse,
   ModelToolCall,
   Prepared,
   PreparedRequest,
+  SettledResponse,
 } from "./agent-loop.ts";
 import { compact, failLeftoverCompactions, readProviderCheckpoint } from "./compaction.ts";
-import { ABORTED, adopt, keepOpen, savedOpen, settledParts } from "./open-parts.ts";
+import { ABORTED, adopt, keepOpen, savedOpen, settledParts, THOUGHTS } from "./open-parts.ts";
 import type { OpenPart } from "./open-parts.ts";
 import {
   calculateUsage,
@@ -108,8 +109,6 @@ const ANSWER: Placement = { kind: "transcript", role: "answer" };
 
 const STEP: Placement = { kind: "transcript", role: "step" };
 
-const THOUGHTS = "\n\n";
-
 const STOPPED: RunEnd = { kind: "stopped" };
 
 const CALLER: ConnectionContext = {
@@ -162,259 +161,47 @@ async function turn(
   given: RunView,
   boundary: () => Promise<readonly LandedInput[]>,
 ): Promise<RunEnd | { readonly kind: "parked" }> {
-  const { kernel, models, session, head, signal } = context;
+  const { kernel, session, signal } = context;
   const run = given.id;
   let state = await resumed(context, given);
   await boundary();
-  let charged = { total: ZERO_USAGE, requests: 0 };
+  let charged = ZERO_USAGE;
   let callIds = new Map<ModelToolCall, CallId>();
 
-  const config: LoopConfig<TurnRequest> = {
-    attempt: state.attempt,
-    retry: RETRY_POLICY,
-    outage: OUTAGE_POLICY,
-    ready: (waiting) => unpaused(kernel, waiting),
-
-    async prepareRequest(asked) {
-      await refreshPromptFiles(kernel, session);
-      const runtime = kernel.plugins.runtime(session);
-      context.holds.push({ runtime, release: runtime.hold() });
-
-      const ended = startSpan("turn.start", followedTrace(session), {
-        session,
-        attempt: asked.attempt,
-      });
-
-      try {
-        await runtime.ready;
-        await awaitMcpServers(kernel, runtime, session, signal);
-        const configuration = await resolveHeadConfiguration(kernel, session, head);
-        const configured = modelInfo(models, configuration.model, runtime);
-
-        if (configured === null)
-          return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
-        const input = { session, head, run: state.run, configuration };
-
-        const body = () => requestBody(kernel, models, runtime, input);
-
-        const compacting = (
-          built: Awaited<ReturnType<typeof body>>,
-          reason: "threshold" | "overflow",
-        ) =>
-          compact(kernel, models, runtime, {
-            ...input,
-            transcript: built.transcript,
-            info: configured,
-            reason,
-            signal,
-          });
-
-        let built = await body();
-
-        if (asked.overflow !== null) {
-          const recovered = await compacting(built, "overflow");
-
-          if (recovered.kind === "failed") return recovered;
-
-          if (recovered.kind === "skipped") return { kind: "failed", failure: asked.overflow };
-          built = await body();
-        }
-
-        if (estimateTranscriptTokens(built.transcript) > configured.compactAt) {
-          const compacted = await compacting(built, "threshold");
-
-          if (compacted.kind === "compacted") built = await body();
-        }
-
-        const request = await runtime.hooks.transform(
-          "before_request",
-          {
-            model: configuration.model,
-            thinking: configuration.thinking,
-            step: "assistant",
-            attempt: asked.attempt,
-            options: { sampling: {}, headers: {} },
-          },
-          context.where,
-          signal,
-        );
-
-        const model = models.getModel(request.model.provider, request.model.id);
-        const info = modelInfo(models, request.model, runtime);
-
-        if (model === undefined || info === null)
-          return failedRequest(
-            `No model ${request.model.provider}/${request.model.id} is in the catalog.`,
-          );
-
-        return {
-          kind: "request",
-          request,
-          model,
-          info,
-          context: providerContext(
-            built.transcript,
-            built.source,
-            await readProviderCheckpoint(kernel, session, head, model),
-          ),
-          at: Date.now(),
-          usage: (message) => calculateUsage(message, model),
-          runtime,
-        };
-      } catch (error) {
-        return failedRequest(error instanceof Error ? error.message : String(error));
-      } finally {
-        ended();
-      }
-    },
-
-    async stream(prepared) {
-      for (const held of context.holds.splice(0, context.holds.length - 1)) held.release();
-
-      await changeRun(context, run, async (record) =>
-        record.phase === "responding" && record.retrying === null
-          ? null
-          : {
-              record: { ...record, phase: "responding", retrying: null },
-              events: [{ head, kind: "run", run, change: "phase", phase: "responding" }],
-            },
-      );
-
-      const thinkingLevel = prepared.request.thinking;
-      state.model = prepared.info.ref;
-
-      const streamed = startSpan("model.stream", followedTrace(session), {
-        session,
-        model: prepared.model.id,
-      });
-
-      const events = models.streamSimple(prepared.model, prepared.context, {
-        signal: AbortSignal.any([signal, kernel.executionState.streams.signal]),
-        reasoning: thinkingLevel === "off" ? undefined : thinkingLevel,
-        samplingParams: { ...prepared.request.options.sampling },
-        headers: { ...prepared.request.options.headers },
-        maxTokens: prepared.info.maxOutput,
-        sessionId: session,
-      });
-
-      return {
-        events,
-        settled: withLimits(kernel, models, prepared.model.provider, async () => {
-          try {
-            await events.result();
-          } finally {
-            streamed();
-          }
-        }),
-      };
-    },
-    tools: {
-      execute(call, called) {
-        const id = callIds.get(call);
-
-        if (id === undefined)
-          throw new SdkError("internal", `Call ${call.id} ran before its response settled.`);
-
-        return traced("tool.run", followedTrace(session), { session, tool: call.name }, () =>
-          executeCall(kernel, {
-            runtime: context.holds.at(-1)?.runtime ?? kernel.plugins.runtime(session),
-            session,
-            head,
-            run,
-            call: id,
-            name: call.name,
-            args: isJson(call.arguments) ? call.arguments : {},
-            argumentsError: call.argumentsError,
-            model: state.model,
-            context: CALLER,
-            signal: called,
-          }),
-        );
+  const end = await agentLoop<TurnRequest>(
+    {
+      attempt: state.attempt,
+      retry: RETRY_POLICY,
+      outage: OUTAGE_POLICY,
+      ready: (waiting) => unpaused(kernel, waiting),
+      prepareRequest: (asked) => prepareRequest(context, state, asked),
+      stream: (prepared) => streamResponse(context, state, prepared),
+      async blockStarted(kind, index) {
+        dev("turn", "message_start", { session, run, attempt: state.attempt });
+        await opened(context, state, kind, index);
       },
+      blockUpdated: (event) => updated(context, state, event),
+      async retrying(retried) {
+        dev("turn", "turn_retry", { session, run, attempt: state.attempt });
+        state = await retry(context, state, retried.failure, retried.until, retried.response);
+      },
+      async settleResponse(response) {
+        dev("turn", "message_end", { session, run, attempt: state.attempt });
+        const settled = await settleResponse(context, state, response);
+        charged = settled.charged;
+        callIds = settled.callIds;
+      },
+      tools: { execute: (call, called) => executeTool(context, state, callIds, call, called) },
+      boundary: () => boundary(),
     },
+    signal,
+  );
 
-    async settleResponse({ message, calls, usage, prepared }) {
-      observe(context, prepared, usage);
-      closeThoughts(state);
-
-      await changeRun(context, run, async (record) => {
-        const next = charge(record, usage, true);
-        const executing = calls.length > 0 && record.phase !== "executing";
-        charged = { total: next.usage ?? usage, requests: next.requests };
-        callIds = assignCallIds(run, next.requests, message, calls);
-
-        const intents = record.stopping
-          ? []
-          : await Promise.all(
-              [...callIds].map(async ([call, id], position): Promise<RefUpdate> => {
-                const intent: ToolIntent = {
-                  name: call.name,
-                  args: isJson(call.arguments) ? call.arguments : {},
-                  principal: CALLER.principal,
-                  model: prepared.info.ref,
-                  position,
-                  ...(call.argumentsError !== undefined && { argumentsError: call.argumentsError }),
-                };
-
-                return {
-                  name: callRef(session, id),
-                  target: await put(
-                    kernel.store,
-                    "call",
-                    intendedCall({ call: id, run, head, intent }),
-                  ),
-                  expect: "absent",
-                };
-              }),
-            );
-
-        return {
-          record: { ...next, response: usage, phase: executing ? "executing" : next.phase },
-          events: [
-            requestEvent(head, "assistant", usage, prepared.info),
-            ...(executing
-              ? [{ head, kind: "run", run, change: "phase", phase: "executing" } as const]
-              : []),
-          ],
-          updates: [...(await settledParts(context, state.opened)), ...intents],
-        };
-      });
-
-      state.opened.length = 0;
-      state.parts.clear();
-      state.starts.clear();
-      state.merging = null;
-    },
-    boundary: () => boundary(),
-  };
-
-  const land = async (event: LoopEvent<TurnRequest>): Promise<void> => {
-    switch (event.type) {
-      case "message_start":
-        return opened(context, state, event.kind, event.index);
-      case "message_update":
-        return updated(context, state, event.event);
-      case "turn_retry":
-        state = await retry(context, state, event.failure, event.until, event.response);
-
-        return;
-      default:
-        return;
-    }
-  };
-
-  const loop = agentLoop(config, signal);
-
-  for await (const event of loop) {
-    dev("turn", event.type, { session, run, attempt: state.attempt });
-    await land(event);
-  }
-
-  const end = await loop.result();
+  dev("turn", "loop_end", { session, run, attempt: state.attempt });
 
   switch (end.reason) {
     case "done":
-      return { kind: "completed", usage: charged.total };
+      return { kind: "completed", usage: charged };
     case "parked":
       return { kind: "parked" };
     case "stopped": {
@@ -441,6 +228,245 @@ async function turn(
 
       return { kind: "failed", failure: end.failure };
   }
+}
+
+async function prepareRequest(
+  context: Turn,
+  state: AttemptState,
+  asked: LoopRequest,
+): Promise<Prepared<TurnRequest>> {
+  const { kernel, models, session, head, signal } = context;
+  await refreshPromptFiles(kernel, session);
+  const runtime = kernel.plugins.runtime(session);
+  context.holds.push({ runtime, release: runtime.hold() });
+
+  const ended = startSpan("turn.start", followedTrace(session), {
+    session,
+    attempt: asked.attempt,
+  });
+
+  try {
+    await runtime.ready;
+    await awaitMcpServers(kernel, runtime, session, signal);
+    const configuration = await resolveHeadConfiguration(kernel, session, head);
+    const configured = modelInfo(models, configuration.model, runtime);
+
+    if (configured === null)
+      return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
+    const input = { session, head, run: state.run, configuration };
+
+    const body = () => requestBody(kernel, models, runtime, input);
+
+    const compacting = (
+      built: Awaited<ReturnType<typeof body>>,
+      reason: "threshold" | "overflow",
+    ) =>
+      compact(kernel, models, runtime, {
+        ...input,
+        transcript: built.transcript,
+        info: configured,
+        reason,
+        signal,
+      });
+
+    let built = await body();
+
+    if (asked.overflow !== null) {
+      const recovered = await compacting(built, "overflow");
+
+      if (recovered.kind === "failed") return recovered;
+
+      if (recovered.kind === "skipped") return { kind: "failed", failure: asked.overflow };
+      built = await body();
+    }
+
+    if (estimateTranscriptTokens(built.transcript) > configured.compactAt) {
+      const compacted = await compacting(built, "threshold");
+
+      if (compacted.kind === "compacted") built = await body();
+    }
+
+    const request = await runtime.hooks.transform(
+      "before_request",
+      {
+        model: configuration.model,
+        thinking: configuration.thinking,
+        step: "assistant",
+        attempt: asked.attempt,
+        options: { sampling: {}, headers: {} },
+      },
+      context.where,
+      signal,
+    );
+
+    const model = models.getModel(request.model.provider, request.model.id);
+    const info = modelInfo(models, request.model, runtime);
+
+    if (model === undefined || info === null)
+      return failedRequest(
+        `No model ${request.model.provider}/${request.model.id} is in the catalog.`,
+      );
+
+    return {
+      kind: "request",
+      request,
+      model,
+      info,
+      context: providerContext(
+        built.transcript,
+        built.source,
+        await readProviderCheckpoint(kernel, session, head, model),
+      ),
+      at: Date.now(),
+      usage: (message) => calculateUsage(message, model),
+      runtime,
+    };
+  } catch (error) {
+    return failedRequest(error instanceof Error ? error.message : String(error));
+  } finally {
+    ended();
+  }
+}
+
+async function streamResponse(
+  context: Turn,
+  state: AttemptState,
+  prepared: TurnRequest,
+): Promise<LoopResponse> {
+  const { kernel, models, session, head, signal } = context;
+  const run = state.run.id;
+
+  for (const held of context.holds.splice(0, context.holds.length - 1)) held.release();
+
+  await changeRun(context, run, async (record) =>
+    record.phase === "responding" && record.retrying === null
+      ? null
+      : {
+          record: { ...record, phase: "responding", retrying: null },
+          events: [{ head, kind: "run", run, change: "phase", phase: "responding" }],
+        },
+  );
+
+  const thinkingLevel = prepared.request.thinking;
+  state.model = prepared.info.ref;
+
+  const streamed = startSpan("model.stream", followedTrace(session), {
+    session,
+    model: prepared.model.id,
+  });
+
+  const events = models.streamSimple(prepared.model, prepared.context, {
+    signal: AbortSignal.any([signal, kernel.executionState.streams.signal]),
+    reasoning: thinkingLevel === "off" ? undefined : thinkingLevel,
+    samplingParams: { ...prepared.request.options.sampling },
+    headers: { ...prepared.request.options.headers },
+    maxTokens: prepared.info.maxOutput,
+    sessionId: session,
+  });
+
+  return {
+    events,
+    settled: withLimits(kernel, models, prepared.model.provider, async () => {
+      try {
+        await events.result();
+      } finally {
+        streamed();
+      }
+    }),
+  };
+}
+
+async function settleResponse(
+  context: Turn,
+  state: AttemptState,
+  response: SettledResponse<TurnRequest>,
+): Promise<{ readonly charged: Usage; readonly callIds: Map<ModelToolCall, CallId> }> {
+  const { kernel, session, head } = context;
+  const run = state.run.id;
+  let charged = ZERO_USAGE;
+  let callIds = new Map<ModelToolCall, CallId>();
+  observe(context, response.prepared, response.usage);
+  closeThoughts(state);
+
+  await changeRun(context, run, async (record) => {
+    const next = charge(record, response.usage, true);
+    const executing = response.calls.length > 0 && record.phase !== "executing";
+    charged = next.usage ?? response.usage;
+    callIds = assignCallIds(run, next.requests, response.message, response.calls);
+
+    const intents = record.stopping
+      ? []
+      : await Promise.all(
+          [...callIds].map(async ([call, id], position): Promise<RefUpdate> => {
+            const intent: ToolIntent = {
+              name: call.name,
+              args: isJson(call.arguments) ? call.arguments : {},
+              principal: CALLER.principal,
+              model: response.prepared.info.ref,
+              position,
+              ...(call.argumentsError !== undefined && { argumentsError: call.argumentsError }),
+            };
+
+            return {
+              name: callRef(session, id),
+              target: await put(
+                kernel.store,
+                "call",
+                intendedCall({ call: id, run, head, intent }),
+              ),
+              expect: "absent",
+            };
+          }),
+        );
+
+    return {
+      record: { ...next, response: response.usage, phase: executing ? "executing" : next.phase },
+      events: [
+        requestEvent(head, "assistant", response.usage, response.prepared.info),
+        ...(executing
+          ? [{ head, kind: "run", run, change: "phase", phase: "executing" } as const]
+          : []),
+      ],
+      updates: [...(await settledParts(context, state.opened)), ...intents],
+    };
+  });
+
+  state.opened.length = 0;
+  state.parts.clear();
+  state.starts.clear();
+  state.merging = null;
+
+  return { charged, callIds };
+}
+
+function executeTool(
+  context: Turn,
+  state: AttemptState,
+  callIds: ReadonlyMap<ModelToolCall, CallId>,
+  call: ModelToolCall,
+  signal: AbortSignal,
+): ReturnType<typeof executeCall> {
+  const { kernel, session, head } = context;
+  const id = callIds.get(call);
+
+  if (id === undefined)
+    throw new SdkError("internal", `Call ${call.id} ran before its response settled.`);
+
+  return traced("tool.run", followedTrace(session), { session, tool: call.name }, () =>
+    executeCall(kernel, {
+      runtime: context.holds.at(-1)?.runtime ?? kernel.plugins.runtime(session),
+      session,
+      head,
+      run: state.run.id,
+      call: id,
+      name: call.name,
+      args: isJson(call.arguments) ? call.arguments : {},
+      argumentsError: call.argumentsError,
+      model: state.model,
+      context: CALLER,
+      signal,
+    }),
+  );
 }
 
 async function opened(
@@ -479,11 +505,7 @@ async function opened(
   state.starts.set(index, merging.markdown.length);
 }
 
-async function updated(
-  context: Turn,
-  state: AttemptState,
-  event: AssistantMessageEvent,
-): Promise<void> {
+function updated(context: Turn, state: AttemptState, event: AssistantMessageEvent): void {
   if (context.kernel.runs.fenced(state.run.id)) return;
 
   switch (event.type) {

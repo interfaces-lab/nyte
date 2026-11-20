@@ -7,6 +7,7 @@ import type { OpenQuestion } from "@nyte-ai/plugin/question/schema";
 import { showsText } from "@nyte-ai/plugin/client/presentation";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { ProjectId, ProjectInfo, SessionId } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Input } from "@nyte-ai/ui/input";
@@ -16,7 +17,9 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { toast } from "@nyte-ai/ui/toast";
 import { useChatTasks, useChats } from "../chats/index.ts";
-import { composerMessageContent, sendComposerMessage } from "../chat/composer/composer-send.ts";
+import { composerMessageContent } from "../chat/composer/composer-plan.ts";
+import { endedDraft } from "../chat/composer/composer-draft.ts";
+import { deliver } from "../chat/composer/composer-send.ts";
 import type { ChatDirectory, ChildTask } from "../chats/index.ts";
 import { Prose } from "../chat/markdown/prose.tsx";
 import { answerQuestion } from "../chat/trays/questions-state.ts";
@@ -26,6 +29,7 @@ import { errorMessage } from "../contract/errors.ts";
 import { chatStore } from "../data/chat-store.ts";
 import type { ChatView } from "../data/chat-store.ts";
 import { connected } from "../data/connection.ts";
+import { DEFAULT_SESSION_VIEW_STATE } from "../panes/session-view-state.ts";
 import { useWorkspaceCatalog } from "../data/plugins.ts";
 import { useProject } from "../data/projects.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
@@ -313,15 +317,37 @@ function CoordinatorReply({ id }: { readonly id: SessionId }): ReactElement {
 
   const send = useMutation({
     mutationFn: async (message: string) => {
-      const connection = await connected();
+      const sending = await deliver(
+        await connected(),
+        id,
+        {
+          kind: "message",
+          content: composerMessageContent([{ kind: "text", text: message }], []),
+          delivery: "queue",
+        },
+        asId<"receipt">(crypto.randomUUID()),
+      );
 
-      return sendComposerMessage(connection.session(id), {
-        kind: "message",
-        content: composerMessageContent([{ kind: "text", text: message }], []),
-        delivery: "queue",
+      return { message, ended: sending.ended };
+    },
+    onSuccess: (sent) => {
+      setDraft("");
+      void sent.ended.then((end) => {
+        if (end.kind !== "refused") return;
+        toast.add({ type: "error", title: end.message });
+        setDraft(
+          (current) =>
+            endedDraft(
+              {
+                ...DEFAULT_SESSION_VIEW_STATE.draft,
+                composer: { ...DEFAULT_SESSION_VIEW_STATE.draft.composer, draft: current },
+              },
+              end,
+              { text: sent.message, attachments: [] },
+            ).composer.draft,
+        );
       });
     },
-    onSuccess: () => setDraft(""),
     onError: (cause) => toast.add({ type: "error", title: errorMessage(cause) }),
   });
 

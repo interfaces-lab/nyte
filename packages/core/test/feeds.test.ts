@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import { tree } from "../src/api/head.ts";
 import { landing } from "../src/engine/admission.ts";
 import { emptyFold, fold } from "../src/fold/fold.ts";
-import { readView } from "../src/fold/window.ts";
-import { pollStore } from "../src/fold/watch.ts";
+import { readView } from "../src/watch/window.ts";
+import { pollStore } from "../src/watch/watch.ts";
 import { LOCAL } from "../src/index.ts";
 import {
   decodeCommitRecord,
@@ -16,7 +16,7 @@ import {
 } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { StoreConnection } from "../src/index.ts";
-import { commit } from "../src/fold/commit.ts";
+import { commit } from "../src/watch/commit.ts";
 import { put, readTip } from "../src/store/session.ts";
 import { configuration, main, setup, until, usage } from "../src/harness.ts";
 
@@ -64,9 +64,13 @@ describe("the store is the truth", () => {
 
     await a.host.session(session.id).heads.create(asId("side"));
     const unpoll = pollStore(a.kernel);
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    const view = await a.host.session(session.id).head(main).view();
     const stored = await store.refs.get(headRef(session.id, main));
+
+    const view = await until(async () => {
+      const shown = await a.host.session(session.id).head(main).view();
+
+      return shown.revision === stored?.revision ? shown : undefined;
+    });
 
     expect(
       view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : [])),

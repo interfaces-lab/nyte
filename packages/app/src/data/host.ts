@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { operationsDigest } from "@nyte-ai/sdk";
 import type { Health } from "@nyte-ai/sdk/client";
-import { currentLive, subscribeLive } from "./connection.ts";
+import { installedLive } from "./connection.ts";
 import { keys } from "./query-client.ts";
 import type { HostProcess, HostState, UpdateState } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
@@ -10,15 +10,12 @@ import { hostWatch } from "./watches.ts";
 import { useWatchSelect } from "./watch-store.ts";
 import { queryClient } from "./query-client.ts";
 
-export const readHost = () => nyte.host.state();
-
 const OPENING_HOST_STATE: HostState = { workspace: undefined };
 
 export function useHostState() {
-  const { data } = useQuery({
+  const { data } = useQuery<HostState>({
     queryKey: keys.host,
     queryFn: skipToken,
-    initialData: OPENING_HOST_STATE,
   });
 
   return { data: data ?? OPENING_HOST_STATE };
@@ -31,12 +28,15 @@ export function useUpdateState() {
   });
 }
 
+export const hostProcessQuery = {
+  queryKey: keys.hostProcess,
+  queryFn: async (): Promise<HostProcess> =>
+    (await nyte.host.hostProcess?.state()) ?? { kind: "offline" },
+  staleTime: Infinity,
+};
+
 export function useHostProcess() {
-  return useQuery({
-    queryKey: keys.hostProcess,
-    queryFn: async (): Promise<HostProcess> =>
-      (await nyte.host.hostProcess?.state()) ?? { kind: "offline" },
-  });
+  return useQuery(hostProcessQuery);
 }
 
 export function setUpdateStateForDemo(state: UpdateState): void {
@@ -61,41 +61,21 @@ export function useRemoteAccessState(active: boolean) {
   });
 }
 
-function subscribeHealth(notice: () => void): () => void {
-  let stop = currentLive()?.health.subscribe(notice);
-
-  const leave = subscribeLive(() => {
-    stop?.();
-    stop = currentLive()?.health.subscribe(notice);
-    notice();
-  });
-
-  return () => {
-    stop?.();
-    leave();
-  };
-}
-
-const readHealth = (): Health | undefined => currentLive()?.health.snapshot();
+const health = installedLive((current) => current.health);
 
 export function useHostHealth(): Health | undefined {
-  return useSyncExternalStore(subscribeHealth, readHealth, readHealth);
+  return useSyncExternalStore(health.subscribe, health.read, health.read);
 }
 
-export function useHostRelease(): { readonly version: string } | undefined {
+export function useHostBuildMismatch(): { readonly operations: string } | undefined {
   const operations = useWatchSelect(hostWatch("host"), (state) => state.value?.operations);
-  const version = useWatchSelect(hostWatch("host"), (state) => state.value?.version);
 
   const own = useQuery({
     queryKey: keys.clientOperations,
     queryFn: operationsDigest,
   }).data;
 
-  return operations !== undefined &&
-    operations !== null &&
-    own !== undefined &&
-    operations !== own &&
-    version !== undefined
-    ? { version }
+  return operations !== undefined && operations !== null && own !== undefined && operations !== own
+    ? { operations }
     : undefined;
 }

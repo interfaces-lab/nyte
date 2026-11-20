@@ -1,0 +1,250 @@
+---
+title: Add a command and a setting
+description: Give users a slash command, and a setting they can change in the desktop app or the terminal.
+---
+
+A command is something the user types after `/` in a chat. A setting is a value the user picks once
+and your plugin reads when it runs. This plugin adds both: `/standup` drafts a stand-up update, and a
+setting decides how long it is.
+
+```ts title="standup.ts"
+import type { Command, Plugin, SettingDefinition } from "@nyte-ai/plugin/core";
+
+const length = {
+  id: "standup.length",
+  title: "Stand-up length",
+  type: "text",
+  choices: [
+    { value: "short", title: "Three bullets" },
+    { value: "detailed", title: "A paragraph per task" },
+  ],
+} satisfies SettingDefinition;
+
+const standup: Command = {
+  name: "standup",
+  title: "Write a stand-up",
+  description: "Drafts a stand-up update from this chat; text after the name adds a focus.",
+  takesText: true,
+  async run(text, { api }) {
+    const chosen = await api.registries.settings.value(length.id);
+    const shape = chosen === "detailed" ? "one paragraph per task" : "three bullets";
+    const focus = text === "" ? "" : ` Focus on ${text}.`;
+
+    return { prompt: `Write my stand-up update from this chat as ${shape}.${focus}` };
+  },
+};
+
+export default {
+  id: "standup",
+  contribute: { commands: [standup], settings: [length] },
+} satisfies Plugin;
+```
+
+Typing `/standup the auth work` sends "Write my stand-up update from this chat as three bullets.
+Focus on the auth work." as a message in the chat.
+
+## Commands [#commands]
+
+`name` is what the user types. Use lowercase letters, digits and `-`, and make it specific: other
+plugins share the same `/` menu. The host refuses a name the clients keep for themselves:
+
+`accounts`, `compact`, `continue`, `edit`, `help`, `login`, `logout`, `mcp`, `new`, `plugins`,
+`pr`, `quit`, `reload`, `resume`, `sessions`, `settings`, `sidechat`, `skills`, `tasks`, `tree`,
+`trust`, `update`, `usage`.
+
+`run` gets the text typed after the name, trimmed, or `""` when there is none. What it returns
+decides what happens next:
+
+| `run` returns           | Result                                                                 |
+| ----------------------- | ---------------------------------------------------------------------- |
+| A string                | The client shows the string to the user                                |
+| `{ prompt }`            | The host sends `prompt` to the chat as the user's message              |
+| `{ workspace, output }` | The host moves the chat to `workspace`, then the client shows `output` |
+| Nothing                 | Nothing more                                                           |
+
+If `run` throws, the client shows the error's message.
+
+The second argument holds `api`, the plugin's [API](/docs/plugins/reference#plugin-api) for this
+chat, a `signal`, and `caller`, the id of the user who ran the command.
+
+### Taking text [#takes-text]
+
+With `takesText: true`, picking the command from the menu waits for the user to type after the name.
+Without it, picking the command runs it at once.
+
+`complete(prefix)` suggests that text as the user types. Each suggestion's `value` replaces
+everything typed after the name. A command with `complete` always takes text.
+
+```ts
+const deploy: Command = {
+  name: "deploy",
+  title: "Deploy",
+  description: "Deploys to an environment.",
+  complete: (prefix) =>
+    ["staging", "production"]
+      .filter((target) => target.startsWith(prefix.trim()))
+      .map((target) => ({ value: target, label: target })),
+  run: (text) => `Deploying to ${text}.`,
+};
+```
+
+SDK code runs a command with `session.command(name, text)` and asks for suggestions with
+`session.completeCommand(name, prefix)`.
+
+## Settings [#settings]
+
+A setting needs three fields: an `id`, a `title` users see, and a `type`.
+
+```ts
+const endpoint = {
+  id: "telemetry.endpoint",
+  title: "OTLP traces endpoint",
+  type: "text",
+} satisfies SettingDefinition;
+```
+
+### Types [#types]
+
+`type` names the value a setting holds and the field the desktop app draws for it:
+
+| `type`      | Value                | Default | Field                               |
+| ----------- | -------------------- | ------- | ----------------------------------- |
+| `"text"`    | A string             | `""`    | A text field with Save              |
+| `"number"`  | A number             | `0`     | A number field with Save            |
+| `"integer"` | A whole number       | `0`     | A number field with Save            |
+| `"switch"`  | `true` or `false`    | `false` | A switch                            |
+| `"secret"`  | A [secret](#secrets) | `null`  | A masked field with Save and Remove |
+
+`default` replaces the default in the table. A `secret` has none.
+
+### Choices [#choices]
+
+With `choices`, a `text`, `number` or `integer` setting shows as a menu. Each choice is
+`{ value, title, note? }`, and `note` is a short note beside the chosen one. The default is the
+first choice unless `default` names another.
+
+### Other fields [#other-fields]
+
+| Field         | What it does                                                             |
+| ------------- | ------------------------------------------------------------------------ |
+| `description` | One sentence shown under the field                                       |
+| `placeholder` | What an empty text, number or secret field shows                         |
+| `scope`       | `"host"` (the default): one value for every chat. `"chat"`: one per chat |
+
+A setting starts with host scope, so its value applies whether or not a chat is open. Give it
+`"chat"` only when each chat needs its own value; a chat then starts from the default.
+
+### Where a setting shows [#where]
+
+A setting's `page` says where the desktop app shows it in **Settings**:
+
+| `page`                           | Where the setting shows                                             |
+| -------------------------------- | ------------------------------------------------------------------- |
+| Left out                         | Under **General**, in a group named for the plugin                  |
+| A preset page, such as `"usage"` | On that page, after the app's own settings                          |
+| Any other text                   | On a page of its own with that title, added to the Settings sidebar |
+
+```ts
+const budget = {
+  id: "spend.budget",
+  title: "Monthly budget",
+  type: "number",
+  page: "usage",
+} satisfies SettingDefinition;
+```
+
+The preset pages are `server`, `profile`, `general`, `notifications`, `appearance`, `themes`,
+`usage`, `agent`, `editor`, `terminal`, `variables`, `source-control`, `browser`, `developer` and
+`providers`. Your editor offers them, and `page` still accepts any other text.
+
+- A preset name is matched exactly. `"Usage"` is not `"usage"`: it makes a page titled Usage.
+- Settings from different plugins that give the same custom text share one page.
+- A client that doesn't show a preset page shows its settings under General.
+- Only a host setting with a field is placed. A per-chat setting, or one without a field, shows
+  under **Customize > Plugins** only.
+- The settings of plugins that ship with the app show where the app already draws them, unless
+  they name a `page`.
+- The terminal lists settings that have `choices` under `/settings`.
+
+### Secrets [#secrets]
+
+A `secret` setting keeps a value the host seals and never sends back to a client:
+
+```ts title="exa-key.ts"
+import type { SettingDefinition } from "@nyte-ai/plugin/core";
+
+const key = {
+  id: "exa.key",
+  title: "Exa API key",
+  description: "Sent with each search.",
+  placeholder: "Paste a key",
+  type: "secret",
+} satisfies SettingDefinition;
+```
+
+- The plugin reads `{ secret: true, value }`, or `null` when nothing is saved.
+- A client reads `{ secret: true }` once a value is saved, and never the value.
+- Writing `{ secret: true, value }` replaces the value. Writing `{ secret: true }` keeps it. Writing
+  `null` removes it.
+- A secret setting has host scope, and the host needs a secret key to store it.
+
+### A value of another shape [#schema]
+
+A setting whose value fits no `type` gives a `schema` and a `default` in its place:
+
+```ts
+import { standard } from "@nyte-ai/schema";
+import { Type } from "typebox";
+
+const paths = {
+  id: "skills.paths",
+  title: "Skill paths",
+  schema: standard(Type.Array(Type.String())),
+  default: [],
+} satisfies SettingDefinition<readonly string[]>;
+```
+
+The desktop app draws a field for it only when the schema is a string, a number, an integer or a
+boolean. Any other setting has no field and changes through `settings.apply`.
+
+### Reading a setting [#read]
+
+In plugin code, `api.registries.settings.value(id)` reads the current value of a setting your plugin
+declared. `watch(id)` yields the value now and again after each change.
+
+```ts
+for await (const value of api.registries.settings.watch("standup.length")) {
+  console.log("Stand-up length is now", value);
+}
+```
+
+Both return `unknown`. Check the value before you use it.
+
+`api.registries.settings.set(id, value)` changes a setting your plugin declared. It checks the value
+against the schema and throws when it doesn't match.
+
+SDK code changes a host setting with `connection.settings.apply(id, value)`, which returns `applied`,
+`invalid` with issues, or `unknown`.
+
+## Secrets [#secrets]
+
+Don't keep API keys in a setting. Store them with `api.storage.secrets`, which encrypts them with the
+host's key:
+
+```ts
+const setKey: Command = {
+  name: "tracker-key",
+  title: "Set the tracker API key",
+  description: "Saves your issue tracker's API key; with no key, removes it.",
+  takesText: true,
+  async run(text, { api }) {
+    if (text === "") await api.storage.secrets.delete("tracker");
+    else await api.storage.secrets.set("tracker", text);
+
+    return text === "" ? "Key removed." : "Key saved.";
+  },
+};
+```
+
+Read it back with `api.storage.secrets.get("tracker")`. A host without a secrets key throws when you
+store one. See [storage](/docs/plugins/reference#storage).

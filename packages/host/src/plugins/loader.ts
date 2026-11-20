@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import nodeModule from "node:module";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SdkError } from "@nyte-ai/schema";
 import type { ValidationIssue } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Plugin, PluginDirectory } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
-import { readErrorCode } from "../local/tree.ts";
+import { readErrorCode } from "../fs-errors.ts";
 
 const EXTENSIONS = [".ts", ".mts", ".js", ".mjs"];
 
@@ -28,7 +28,6 @@ export interface ImportedPlugin {
 /** Imports the plugin entry at an absolute real `path` so that every local file of its graph evaluates again; `files` hashes them. */
 export type PluginImport = (path: string) => Promise<ImportedPlugin>;
 
-/** Loads plugin files (`createPluginLoader`), answering the same plugin object for an entry whose import graph has not changed. */
 export interface PluginLoader {
   /** The host's `loadPlugins` (`composeHost({ loadPlugins })`), which `plugins.replace` and `plugins.check` load their files through (§40b, §47m): each path, resolved to its real path, must lie inside one of `dirs()` (else `SdkError("denied")`), and a path with no file is `SdkError("invalid")`; every file that does not import or export a core plugin is reported, together, as one `SdkError("invalid")` with an issue per file naming it. The plugins come back in path order. */
   load(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
@@ -38,7 +37,6 @@ export interface PluginLoader {
   close(): void;
 }
 
-/** Returns a `PluginLoader` over the plugin directories `dirs()` answers, importing each plugin entry through `import` (`nodePluginImport` when omitted, which `close()` then disposes). Importing a plugin file is one of the two dynamic loads the rewrite allows (§41a), host-only, because a plugin file is code the owner placed there and its path is known only at run time; Node strips `.ts` types natively (erasable syntax only). The loader remembers each entry that loaded a plugin by real path with its `ImportedPlugin.files`: while every recorded file still reads to the bytes its hash was taken of, the entry answers the same plugin object without importing again, so a caller can skip reloading an unchanged plugin; when a recorded file changes or disappears, the entry is imported fresh. A failure is never remembered, and it forgets the plugin the entry loaded before (whose file record the importer may have released): a failing entry is imported again on every load, and reverting it to bytes that loaded before gives a new plugin object, since a fix can lie where its local files cannot show it (a package installed into `node_modules`, a helper created under an extension its import left out). Concurrent loads of one entry share one in-flight import and answer the same outcome. The default export must be a core plugin (an object with a string `id`, and, where present, `contribute` and `hooks` objects, an `activate` function and an `environment` with a string `kind` and `inspect` and `attach` functions). */
 export function createPluginLoader(input: {
   readonly dirs: () => Promise<readonly string[]>;
   readonly import?: PluginImport;
@@ -90,7 +88,6 @@ export async function pluginFilesIn(dir: string): Promise<readonly string[]> {
   ).flat();
 }
 
-/** Node's `PluginImport`, the default of `createPluginLoader`. It imports an entry's file URL with a `nyte-plugin` query unique to that import, and registers one `module.registerHooks` pair of hooks: `resolve` copies a parent's `nyte-plugin` value onto what a relative or absolute specifier (`./`, `../`, `/`, `file:`) of it resolves to when that is a `file:` URL outside `node_modules`, so the plugin's local graph evaluates again under the new value while packages, linked ones included, and `#imports` stay the host's cached copies; `load` records, under the import's value, the sha256 of the `source` it hands Node for each such file (the raw file bytes, also for `.ts` before type stripping; the file read in the hook where `source` is null). `files` is that live record, seeded with the entry's bytes read before the import: it keeps growing with the local files the module imports later, until the entry is imported again, its import fails, or `dispose` runs, which each release it. Where `registerHooks` is missing (Bun, unless the host is given its own importer) only the entry is imported fresh and `files` is the entry. `dispose` deregisters the hooks. */
 export function nodePluginImport(): { readonly import: PluginImport; dispose(): void } {
   const records = new Map<string, Map<string, string>>();
   const tokens = new Map<string, string>();
@@ -354,5 +351,5 @@ function fitsCorePlugin(value: unknown): value is Plugin<"core"> {
 function inside(root: string, path: string): boolean {
   const within = relative(root, path);
 
-  return within !== "" && !within.startsWith("..") && !isAbsolute(within);
+  return within !== "" && within !== ".." && !within.startsWith(`..${sep}`) && !isAbsolute(within);
 }

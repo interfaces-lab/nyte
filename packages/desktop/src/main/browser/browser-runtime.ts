@@ -1,4 +1,4 @@
-import type { WebContents } from "electron";
+import type { NativeImage, Rectangle, WebContents } from "electron";
 import type {
   BrowserActionFailure,
   BrowserActionResult,
@@ -71,7 +71,6 @@ function snapshotScript(generation: number, maxNodes: number, subtreeRef?: strin
   var ACTIONABLE = new Set(["link","button","textbox","searchbox","checkbox","radio","combobox","listbox","option","switch","slider","spinbutton","tab","menuitem"]);
   function clean(s) { return (s || "").replace(/\\s+/g, " ").trim(); }
   var SENS_AUTOCOMPLETE = new Set(["one-time-code","current-password","new-password"]);
-  // A "show password" toggle flips type to text, so autocomplete decides too.
   function sensitive(el) {
     if ((el.type || "").toLowerCase() === "password") return true;
     return SENS_AUTOCOMPLETE.has((el.getAttribute("autocomplete") || "").trim().toLowerCase());
@@ -120,7 +119,6 @@ function snapshotScript(generation: number, maxNodes: number, subtreeRef?: strin
   function walk(el) {
     if (SKIP.has(el.tagName) || !vis(el)) return;
     var r = role(el), n = nm(el);
-    // An unnamed node the model cannot act on is noise repeated on every report.
     if (!n && !ACTIONABLE.has(r)) { for (var c of el.children) walk(c); return; }
     if (nodes.length >= M) return;
     var rect = el.getBoundingClientRect();
@@ -369,6 +367,16 @@ const CONSOLE_RING_SIZE = 200;
 
 const CAPTURE_SCALE = 0.5;
 
+const CAPTURE_BUDGET_MS = 3_000;
+
+const CAPTURE_RETRY_MS = 100;
+
+const CAPTURE_ATTEMPT_MS = 1_000;
+
+const HOST_FOCUS_MS = 500;
+
+const FOCUS_ARRIVAL_MS = 500;
+
 const CLOSED = { kind: "failed", failure: { kind: "closed" } } as const;
 
 export interface SurfaceRuntime {
@@ -376,7 +384,6 @@ export interface SurfaceRuntime {
   documentToken: string | undefined;
   lastSnapshot: SnapshotResult | undefined;
   consoleBuffer: BrowserConsoleEntry[];
-  debuggerAttached: boolean;
   blocked: number;
   error: { readonly code: number; readonly description: string } | undefined;
 }
@@ -387,7 +394,6 @@ export function createSurfaceRuntime(): SurfaceRuntime {
     documentToken: undefined,
     lastSnapshot: undefined,
     consoleBuffer: [],
-    debuggerAttached: false,
     blocked: 0,
     error: undefined,
   };
@@ -410,16 +416,12 @@ export function attachConsoleCapture(contents: WebContents, runtime: SurfaceRunt
   });
 }
 
-function ensureDebugger(contents: WebContents, runtime: SurfaceRuntime): void {
-  if (runtime.debuggerAttached) return;
-
-  if (contents.isDestroyed()) return;
+function ensureDebugger(contents: WebContents): void {
+  if (contents.isDestroyed() || contents.debugger.isAttached()) return;
 
   try {
     contents.debugger.attach("1.3");
   } catch {}
-
-  runtime.debuggerAttached = contents.debugger.isAttached();
 }
 
 function emptyState(contents: WebContents, runtime: SurfaceRuntime, gen: number): BrowserPageState {
@@ -489,6 +491,64 @@ async function cdpKey(
     windowsVirtualKeyCode: descriptor.keyCode,
     nativeVirtualKeyCode: descriptor.keyCode,
     modifiers: modifiers ?? 0,
+  });
+}
+
+const SAVE_HOST_FOCUS = `(() => {
+  const state = (globalThis.__nyteAgentKeyboard ??= { saved: null, holds: 0 });
+  if (state.holds++ === 0) state.saved = document.activeElement;
+})()`;
+
+function restoreHostFocus(guest: number, taken: boolean): string {
+  return `(async (id, taken) => {
+  const state = globalThis.__nyteAgentKeyboard;
+  if (state === undefined || --state.holds > 0) return;
+  delete globalThis.__nyteAgentKeyboard;
+  const element = [...document.querySelectorAll("webview")].find((candidate) => {
+    try { return candidate.getWebContentsId() === id; } catch { return false; }
+  });
+  if (taken && element !== undefined && document.activeElement !== element)
+    await new Promise((resolve) => {
+      element.addEventListener("focus", resolve, { once: true, signal: AbortSignal.timeout(${FOCUS_ARRIVAL_MS}) });
+      setTimeout(resolve, ${FOCUS_ARRIVAL_MS});
+    });
+  const saved = state.saved;
+  const active = document.activeElement;
+  if (active === saved) return;
+  if (saved instanceof HTMLElement && saved !== document.body && saved.isConnected) saved.focus({ preventScroll: true });
+  else if (active instanceof HTMLElement) active.blur();
+})(${guest}, ${taken})`;
+}
+
+async function keepingKeyboard<T>(contents: WebContents, act: () => Promise<T>): Promise<T> {
+  const host = contents.hostWebContents;
+
+  if (host === null || host.isDestroyed() || contents.focusedFrame !== null) return act();
+  await settledWithin(host.executeJavaScript(SAVE_HOST_FOCUS), HOST_FOCUS_MS);
+
+  try {
+    return await act();
+  } finally {
+    const taken = !contents.isDestroyed() && contents.focusedFrame !== null;
+
+    if (!host.isDestroyed())
+      await settledWithin(
+        host.executeJavaScript(restoreHostFocus(contents.id, taken)),
+        HOST_FOCUS_MS + FOCUS_ARRIVAL_MS,
+      );
+  }
+}
+
+function settledWithin(work: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+
+    const done = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+
+    work.then(done, done);
   });
 }
 
@@ -590,7 +650,7 @@ export async function performClick(
   if (contents.isDestroyed()) return CLOSED;
 
   if (!windowShown) return { kind: "failed", failure: { kind: "no_window" } };
-  ensureDebugger(contents, runtime);
+  ensureDebugger(contents);
 
   const check = await checkElement(contents, runtime, ref);
 
@@ -600,7 +660,10 @@ export async function performClick(
 
   const cx = check.rect.x + check.rect.width / 2;
   const cy = check.rect.y + check.rect.height / 2;
-  await cdpClick(contents, cx, cy, cdpMouseButton(button), double ? 2 : 1);
+
+  await keepingKeyboard(contents, () =>
+    cdpClick(contents, cx, cy, cdpMouseButton(button), double ? 2 : 1),
+  );
   await sleep(100, signal);
 
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
@@ -619,7 +682,7 @@ export async function performType(
   if (contents.isDestroyed()) return CLOSED;
 
   if (!windowShown) return { kind: "failed", failure: { kind: "no_window" } };
-  ensureDebugger(contents, runtime);
+  ensureDebugger(contents);
 
   const check = await checkElement(contents, runtime, ref);
 
@@ -632,24 +695,24 @@ export async function performType(
   if (decoded === undefined) return { kind: "failed", failure: { kind: "unknown_ref", ref } };
 
   const focusCode = focusScript(decoded.index, clear);
-
-  const focusResult = await runPageScript(contents, focusCode);
-
-  if (focusResult !== undefined && (focusResult.cmd !== "focus" || focusResult.kind !== "ok")) {
-    return { kind: "failed", failure: { kind: "detached", ref } };
-  }
-
   const cx = check.rect.x + check.rect.width / 2;
   const cy = check.rect.y + check.rect.height / 2;
-  await cdpClick(contents, cx, cy, "left", 1);
-  await contents.debugger.sendCommand("Input.insertText", { text });
 
-  if (submit) {
-    const enterKey = resolveKey("Enter");
+  const typed = await keepingKeyboard(contents, async () => {
+    const focusResult = await runPageScript(contents, focusCode);
+
+    if (focusResult !== undefined && (focusResult.cmd !== "focus" || focusResult.kind !== "ok"))
+      return false;
+    await cdpClick(contents, cx, cy, "left", 1);
+    await contents.debugger.sendCommand("Input.insertText", { text });
+    const enterKey = submit ? resolveKey("Enter") : undefined;
 
     if (enterKey !== undefined) await cdpKey(contents, enterKey);
-  }
 
+    return true;
+  });
+
+  if (!typed) return { kind: "failed", failure: { kind: "detached", ref } };
   await sleep(100, signal);
 
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
@@ -666,27 +729,28 @@ export async function performPress(
   if (contents.isDestroyed()) return CLOSED;
 
   if (!windowShown) return { kind: "failed", failure: { kind: "no_window" } };
-  ensureDebugger(contents, runtime);
+  ensureDebugger(contents);
 
-  if (ref !== undefined) {
-    const check = await checkElement(contents, runtime, ref);
+  const check = ref === undefined ? undefined : await checkElement(contents, runtime, ref);
 
-    if (check.kind === "failed") return check;
+  if (check?.kind === "failed") return check;
 
-    if (signal?.aborted) return CLOSED;
-    const cx = check.rect.x + check.rect.width / 2;
-    const cy = check.rect.y + check.rect.height / 2;
-    await cdpClick(contents, cx, cy, "left", 1);
-  }
-
+  if (signal?.aborted) return CLOSED;
   const parsed = parseKeyExpression(keyExpression);
+  const descriptor = parsed === undefined ? undefined : resolveKey(parsed.key);
 
-  if (parsed !== undefined) {
-    const descriptor = resolveKey(parsed.key);
+  await keepingKeyboard(contents, async () => {
+    if (check !== undefined)
+      await cdpClick(
+        contents,
+        check.rect.x + check.rect.width / 2,
+        check.rect.y + check.rect.height / 2,
+        "left",
+        1,
+      );
 
-    if (descriptor !== undefined) await cdpKey(contents, descriptor, parsed.modifiers);
-  }
-
+    if (descriptor !== undefined) await cdpKey(contents, descriptor, parsed?.modifiers);
+  });
   await sleep(100, signal);
 
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
@@ -702,7 +766,7 @@ export async function performScroll(
   if (contents.isDestroyed()) return CLOSED;
 
   if (!windowShown) return { kind: "failed", failure: { kind: "no_window" } };
-  ensureDebugger(contents, runtime);
+  ensureDebugger(contents);
 
   let targetX = 400;
   let targetY = 300;
@@ -814,7 +878,7 @@ export async function performEvaluate(
   ref: string | undefined,
 ): Promise<BrowserEvaluateResult> {
   if (contents.isDestroyed()) return { kind: "threw", message: "Page is closed" };
-  ensureDebugger(contents, runtime);
+  ensureDebugger(contents);
 
   let wrapped = expression;
 
@@ -850,20 +914,52 @@ export async function performEvaluate(
 }
 
 export async function performCapture(contents: WebContents): Promise<Uint8Array | undefined> {
-  if (contents.isDestroyed()) return undefined;
+  const image = await capturePageRetrying(contents);
 
-  try {
-    const image = await contents.capturePage(undefined, { stayHidden: true });
+  if (image === undefined) return undefined;
+  const size = image.getSize();
+  const w = Math.max(1, Math.round(size.width * CAPTURE_SCALE));
+  const h = Math.max(1, Math.round(size.height * CAPTURE_SCALE));
 
-    if (image.isEmpty()) return undefined;
-    const size = image.getSize();
-    const w = Math.max(1, Math.round(size.width * CAPTURE_SCALE));
-    const h = Math.max(1, Math.round(size.height * CAPTURE_SCALE));
+  return new Uint8Array(image.resize({ width: w, height: h }).toPNG());
+}
 
-    return new Uint8Array(image.resize({ width: w, height: h }).toPNG());
-  } catch {
-    return undefined;
+export async function capturePageRetrying(
+  contents: WebContents,
+  rect?: Rectangle,
+): Promise<NativeImage | undefined> {
+  const deadline = performance.now() + CAPTURE_BUDGET_MS;
+
+  while (!contents.isDestroyed()) {
+    const image = await capturePageWithin(contents, rect);
+
+    if (image !== undefined && !image.isEmpty()) return image;
+
+    if (performance.now() + CAPTURE_RETRY_MS >= deadline) return undefined;
+    await sleep(CAPTURE_RETRY_MS);
   }
+
+  return undefined;
+}
+
+function capturePageWithin(
+  contents: WebContents,
+  rect: Rectangle | undefined,
+): Promise<NativeImage | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), CAPTURE_ATTEMPT_MS);
+
+    contents.capturePage(rect, { stayHidden: true }).then(
+      (image) => {
+        clearTimeout(timer);
+        resolve(image);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(undefined);
+      },
+    );
+  });
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

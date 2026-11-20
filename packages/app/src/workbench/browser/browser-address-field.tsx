@@ -7,10 +7,9 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useImperativeHandle, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, ReactElement, ReactNode, Ref } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import type { BrowserHistoryEntry } from "../../contract/bridge.ts";
 import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
-import { occludes } from "../../components/overlay-occlusion.ts";
 import { browserSuggestions } from "./browser-suggestions.ts";
 import type { BrowserCompletion, BrowserSuggestion } from "./browser-suggestions.ts";
 
@@ -24,10 +23,13 @@ const styles = create({
     marginInline: space.s1,
   },
   wrap: { flex: 1, paddingInline: space.s2 },
+  anchor: (name: string) => ({ anchorName: name }),
+  anchored: (name: string) => ({ positionAnchor: name }),
   list: {
-    position: "absolute",
-    insetInline: 0,
-    top: "100%",
+    position: "fixed",
+    insetBlockStart: "anchor(end)",
+    insetInlineStart: "anchor(start)",
+    insetInlineEnd: "anchor(end)",
     zIndex: layer.menu,
     display: "flex",
     flexDirection: "column",
@@ -114,6 +116,7 @@ export function AddressField({
 }): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
+  const anchorName = `--nyte-address-${listId.replaceAll(/[^\w-]/g, "")}`;
   const [open, setOpen] = useState(false);
   const [edited, setEdited] = useState(false);
   const [complete, setComplete] = useState(false);
@@ -278,7 +281,7 @@ export function AddressField({
   };
 
   return (
-    <form {...props(styles.form)} onSubmit={submit}>
+    <form {...props(styles.form, styles.anchor(anchorName))} onSubmit={submit}>
       <InputGroup xstyle={styles.wrap}>
         {children}
         <Input
@@ -325,37 +328,38 @@ export function AddressField({
           onKeyDown={keyDown}
         />
       </InputGroup>
-      {shown && (
-        <div
-          ref={occludes}
-          id={listId}
-          role="listbox"
-          aria-label="Suggestions"
-          data-slot="browser-suggestions"
-          {...props(floatingSurfaceStyles.popup, styles.list)}
-        >
-          {rows.map((row, index) => (
-            <div
-              key={`${row.kind} ${row.url}`}
-              id={`${listId}-${index}`}
-              role="option"
-              aria-selected={index === active}
-              title={row.url}
-              {...props(text.base, styles.option)}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => go(row.url)}
-            >
-              <span {...props(styles.icon)}>
-                <Icon name={ICONS[row.kind]} size="sm" />
-              </span>
-              <span {...props(styles.label)}>{optionLabel(row)}</span>
-              {(row.kind === "history" || row.kind === "bookmark") && row.label !== "" && (
-                <span {...props(text.sm, styles.detail)}>{displayAddress(row.url)}</span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      {shown &&
+        createPortal(
+          <div
+            id={listId}
+            role="listbox"
+            aria-label="Suggestions"
+            data-slot="browser-suggestions"
+            {...props(floatingSurfaceStyles.popup, styles.list, styles.anchored(anchorName))}
+          >
+            {rows.map((row, index) => (
+              <div
+                key={`${row.kind} ${row.url}`}
+                id={`${listId}-${index}`}
+                role="option"
+                aria-selected={index === active}
+                title={row.url}
+                {...props(text.base, styles.option)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => go(row.url)}
+              >
+                <span {...props(styles.icon)}>
+                  <Icon name={ICONS[row.kind]} size="sm" />
+                </span>
+                <span {...props(styles.label)}>{optionLabel(row)}</span>
+                {(row.kind === "history" || row.kind === "bookmark") && row.label !== "" && (
+                  <span {...props(text.sm, styles.detail)}>{displayAddress(row.url)}</span>
+                )}
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )}
     </form>
   );
 }

@@ -13,8 +13,8 @@ import { LOCAL } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { ReceiptRecord } from "../contract/records.ts";
 import type { Receipt, SendReceipt } from "../contract/session.ts";
-import { commit } from "../fold/commit.ts";
-import { withFold } from "../fold/reads.ts";
+import { commit } from "../watch/commit.ts";
+import { withFold } from "../watch/reads.ts";
 import { inboxRef, receiptRef } from "../store/refs.ts";
 import {
   attempt,
@@ -109,7 +109,11 @@ export async function known(
 
   if (found === null) return false;
 
-  if (found.record.kind !== kind || found.record.digest !== digest)
+  if (
+    found.record.kind !== kind ||
+    found.record.kind === "report" ||
+    found.record.digest !== digest
+  )
     throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
 
   return true;

@@ -1,10 +1,20 @@
 import { asId } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
 import { decodeInput } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it } from "vitest";
-import { createSendJournal } from "../src/journal.ts";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { createSendJournal } from "../src/send/journal.ts";
 import { readOperation } from "./served.ts";
-import { client, closeOpened, open, queued, settledChat, text, users } from "./connection.ts";
+import {
+  client,
+  closeOpened,
+  liveClient,
+  open,
+  queued,
+  settledChat,
+  text,
+  users,
+  viewWhen,
+} from "./connection.ts";
 
 afterEach(closeOpened);
 
@@ -573,18 +583,153 @@ it("leaves a send the host admitted but never answered to the clipped prompt tha
   expect(landed.leadingPrompt?.id).toBe(clipped.leadingPrompt?.id);
 });
 
-async function viewWhen(
-  read: () => Promise<SessionView>,
-  done: (view: SessionView) => boolean,
-): Promise<SessionView> {
-  const deadline = Date.now() + 5_000;
+type Posts = "answers" | "refuses" | "lose the link" | "fail for a day" | "fail while removed";
 
-  for (;;) {
-    const view = await read();
+describe("a chat's send resolves once the journal holds the message, before the host answers", () => {
+  it.each<[Posts, "sent" | "unsent" | "removed" | "rejected", number]>([
+    ["answers", "sent", 1],
+    ["refuses", "rejected", 0],
+    ["lose the link", "unsent", 1],
+    ["fail for a day", "unsent", 1],
+    ["fail while removed", "removed", 0],
+  ])("when the posts %s, delivered ends %s and the journal keeps %i", chatSend);
+});
 
-    if (done(view)) return view;
+async function chatSend(posts: Posts, delivered: string, journaled: number): Promise<void> {
+  const host = await open();
+  const journal = createSendJournal();
+  const connection = await liveClient(host, journal);
+  const session = await settledChat(host, connection);
+  host.fake.reply(text("Answered."));
+  const gate = Promise.withResolvers<void>();
+  const failed = Promise.withResolvers<void>();
+  let posted = 0;
 
-    if (Date.now() > deadline) throw new Error("No view was accepted within 5000 ms.");
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  host.intercept(async (request, next) => {
+    if (readOperation(request) !== "head.send") return next(request);
+    await gate.promise;
+    posted += 1;
+
+    if (posts === "answers" || posts === "refuses") return next(request);
+
+    if (posts === "fail for a day" && posted === 1) vi.setSystemTime(Date.now() + 86_400_001);
+    failed.resolve();
+
+    throw new TypeError("fetch failed");
+  });
+
+  vi.useFakeTimers({ toFake: ["Date"] });
+
+  try {
+    const chat = connection.chat(posts === "refuses" ? asId<"session">("missing") : session.id);
+    const sending = await chat.send("Journaled.", { delivery: "queue" });
+
+    expect([posted, (await journal.load()).map((entry) => entry.id)]).toEqual([0, [sending.id]]);
+    gate.resolve();
+
+    if (posts === "lose the link") await failed.promise.then(() => connection.close());
+
+    if (posts === "fail while removed")
+      await failed.promise.then(() => chat.remove(asId<"message">(sending.id)));
+    const ended = await sending.delivered.then((end) => end.kind).catch(() => "rejected");
+
+    expect([ended, (await journal.load()).length]).toEqual([delivered, journaled]);
+  } finally {
+    vi.useRealTimers();
   }
+}
+
+interface Removal {
+  readonly name: string;
+  readonly inFlight: boolean;
+}
+
+const removals: readonly Removal[] = [
+  {
+    name: "a message removed between posts while the host is away is never sent",
+    inFlight: false,
+  },
+  {
+    name: "a message removed while its post is on the way is withdrawn when the host admits it",
+    inFlight: true,
+  },
+];
+
+describe("removing a message the host has not answered", () => {
+  for (const row of removals) it(row.name, () => removeUnsent(row));
+});
+
+async function removeUnsent(row: Removal): Promise<void> {
+  const host = await open();
+  const journal = createSendJournal();
+  const connection = await client(host, journal);
+  const session = await settledChat(host, connection);
+  const halfway = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  const arrived = Promise.withResolvers<void>();
+  const admit = Promise.withResolvers<void>();
+  const receipt = asId<"receipt">(crypto.randomUUID());
+  const message = asId<"message">(receipt);
+  let down = true;
+  let posts = 0;
+
+  host.fake.reply({
+    content: [{ type: "text", text: "abcdefgh" }],
+    tokens: 4,
+    async tap(streamed) {
+      if (streamed !== 1) return;
+      halfway.resolve();
+      await resume.promise;
+    },
+  });
+
+  const first = await session.send("First.");
+  await halfway.promise;
+
+  host.intercept(async (request, next) => {
+    if (readOperation(request) !== "head.send") return next(request);
+    posts += 1;
+    arrived.resolve();
+
+    if (row.inFlight) await admit.promise;
+    else if (down) throw new TypeError("fetch failed");
+
+    return next(request);
+  });
+
+  const sending = session.send("Removed.", { id: receipt, delivery: "queue" });
+  await arrived.promise;
+
+  if (!row.inFlight)
+    await viewWhen(
+      () => session.view(),
+      (view) =>
+        view.queue.some(
+          (shown) =>
+            shown.id === message && shown.status.kind === "unsent" && shown.status.attempts >= 1,
+        ),
+    );
+
+  const refused = expect(sending).rejects.toMatchObject({ code: "unknown" });
+  expect(await session.receipt(receipt).stop()).toEqual({ kind: "missing" });
+  const removed = posts;
+  expect(queued(await session.view())).toEqual([]);
+  down = false;
+  admit.resolve();
+  await refused;
+  resume.resolve();
+  await first.settled();
+
+  const settled = await viewWhen(
+    () => session.view(),
+    (view) => view.execution.kind === "idle",
+  );
+
+  expect([...users(settled), ...queued(settled)]).toEqual(["Hi.", "First."]);
+  expect([...users(await host.view(session.id)), ...queued(await host.view(session.id))]).toEqual([
+    "Hi.",
+    "First.",
+  ]);
+  expect(posts).toBe(removed);
+  expect(await journal.load()).toEqual([]);
 }

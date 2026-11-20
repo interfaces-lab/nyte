@@ -1,9 +1,14 @@
-import type { WorkspaceId } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/schema";
+import type { SessionId, WorkspaceId } from "@nyte-ai/schema";
 import type { PluginDirectory, PluginFile } from "../contract/host.ts";
 import type { Kernel, PluginFailure, PluginRuntime } from "../contract/kernel.ts";
 import type { Plugin } from "../contract/plugin.ts";
+import type { AssignedPlugin } from "../contract/records.ts";
 import { readWorkspace } from "../env/environment.ts";
 import { projectTrust } from "../env/trust.ts";
+import { sessionRef } from "../store/refs.ts";
+import { attempt, put, requireSession, STALE } from "../store/session.ts";
+import { commit } from "../watch/commit.ts";
 
 export const PLUGIN_FOLDER = ".nyte/plugins";
 
@@ -23,6 +28,7 @@ async function projectPluginFolder(kernel: Kernel, workspace: WorkspaceId): Prom
 
 export async function sessionPlugins(
   kernel: Kernel,
+  session: SessionId,
   runtime: PluginRuntime,
   workspace: WorkspaceId,
 ): Promise<readonly Plugin<"core">[]> {
@@ -30,18 +36,71 @@ export async function sessionPlugins(
 
   if (assigned === null) return newChatPlugins(kernel, workspace);
 
-  return [...kernel.plugins.builtins, ...(await loadPlugins(kernel, assigned))];
+  return [...kernel.plugins.builtins, ...(await loadAssigned(kernel, session, assigned))];
+}
+
+/** Loads a session's assigned plugins: a file from its path, an id from the objects this process was handed for the session, then from the host's own plugins. */
+export async function loadAssigned(
+  kernel: Kernel,
+  session: SessionId,
+  assigned: readonly AssignedPlugin[],
+): Promise<readonly Plugin<"core">[]> {
+  const known = [...(kernel.plugins.state.inline.get(session) ?? []), ...kernel.plugins.host];
+
+  return loadPlugins(
+    kernel,
+    assigned.map((entry) => {
+      if ("path" in entry) return entry;
+      const plugin = known.find((candidate) => candidate.id === entry.id);
+
+      if (plugin === undefined)
+        throw new SdkError("unavailable", `No plugin named ${entry.id} is loaded on this host.`);
+
+      return plugin;
+    }),
+  );
+}
+
+/** Writes a session's plugins into its record, so whichever process activates the session next loads them, and keeps the objects among them for this process. */
+export async function assignPlugins(
+  kernel: Kernel,
+  session: SessionId,
+  requested: readonly (Plugin<"core"> | PluginFile)[],
+): Promise<void> {
+  const plugins = requested.map((plugin): AssignedPlugin =>
+    "id" in plugin ? { id: plugin.id } : { path: plugin.path },
+  );
+
+  await attempt(`Assigning plugins to ${session}`, async () => {
+    const current = await requireSession(kernel.store, session);
+
+    const outcome = await commit(kernel, [
+      {
+        name: sessionRef(session),
+        target: await put(kernel.store, "session", { ...current.record, plugins }),
+        expect: current.ref.revision,
+      },
+    ]);
+
+    return outcome.kind === "set" ? true : STALE;
+  });
+
+  const inline = requested.flatMap((plugin) => ("id" in plugin ? [plugin] : []));
+
+  if (inline.length === 0) kernel.plugins.state.inline.delete(session);
+  else kernel.plugins.state.inline.set(session, inline);
 }
 
 export async function loadPlugins(
   kernel: Kernel,
   plugins: readonly (Plugin<"core"> | PluginFile)[],
 ): Promise<readonly Plugin<"core">[]> {
-  const each = await Promise.all(
-    plugins.map(async (plugin) => ("id" in plugin ? [plugin] : kernel.plugins.load([plugin.path]))),
-  );
+  const files = plugins.flatMap((plugin) => ("id" in plugin ? [] : [plugin.path]));
+  const loaded = files.length === 0 ? [] : await kernel.plugins.load(files);
 
-  return each.flat();
+  return plugins.flatMap((plugin) =>
+    "id" in plugin ? [plugin] : (loaded[files.indexOf(plugin.path)] ?? []),
+  );
 }
 
 export async function newChatPlugins(

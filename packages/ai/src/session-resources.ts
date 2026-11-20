@@ -52,3 +52,25 @@ export function acquireSessionResources(sessionId: string): () => void {
     cleanupSessionResources(sessionId);
   };
 }
+
+/**
+ * Keeps `binding` as the session's in `bindings` and holds the session's resources until `signal`
+ * aborts. A binding that replaced it by then stays.
+ */
+export function bindSession<Binding>(
+  bindings: Map<string, Binding>,
+  sessionId: string,
+  binding: Binding,
+  signal: AbortSignal,
+): void {
+  const release = acquireSessionResources(sessionId);
+  bindings.set(sessionId, binding);
+
+  const unbind = (): void => {
+    if (bindings.get(sessionId) === binding) bindings.delete(sessionId);
+    release();
+  };
+
+  if (signal.aborted) unbind();
+  else signal.addEventListener("abort", unbind, { once: true });
+}

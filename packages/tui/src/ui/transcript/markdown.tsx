@@ -1,11 +1,3 @@
-/**
- * Markdown as the transcript draws it: top-level blocks with the kit's
- * SyntaxStyle (normal or subtle), mermaid fences split out as their own
- * diagram blocks. Segments are keyed by position, so a streaming delta
- * updates one `<markdown>` in place instead of remounting it. A new
- * SyntaxStyle does remount it: OpenTUI restyles a list in place but skips
- * unchanged items, which would keep drawing with the destroyed old style.
- */
 import type { SyntaxStyle } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createMemo, Index, Match, Show, Switch } from "solid-js";
@@ -58,7 +50,6 @@ function readFence(line: string): { readonly marker: string; readonly mermaid: b
   };
 }
 
-/** Splits `markdown` into its prose and its closed mermaid fences, scanning it whole. */
 export function splitMermaid(markdown: string): readonly Segment[] {
   const segments: Segment[] = [];
   let textStart = 0;
@@ -159,7 +150,6 @@ export function Markdown(props: {
                         syntaxStyle={style}
                         fg={props.subtle ? kit.theme().dim : kit.theme().foreground}
                         streaming={props.streaming && index === segments().length - 1}
-                        internalBlockMode="top-level"
                         tableOptions={{ selectable: true, cellPaddingX: 1 }}
                       />
                     )}

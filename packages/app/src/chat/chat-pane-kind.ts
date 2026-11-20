@@ -10,8 +10,6 @@ export interface ChatFields {
 export const chatKind: PaneKind<ChatFields> = {
   identity: (fields) =>
     fields.selection.kind === "session" ? fields.selection.sessionId : undefined,
-  replaceable: () => true,
-  mount: "while-active",
   restore: (stored) =>
     Value.Check(paneSelectionSchema, stored) ? { selection: stored } : undefined,
   persist: (fields) => fields.selection,

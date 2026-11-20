@@ -3,10 +3,12 @@ export { SettingsNavigation } from "./navigation.tsx";
 export {
   firstSettingsSection,
   showsSettingsSection,
+  namesCustomSection,
   settingsSectionGroups,
+  type OpenSection,
   type SettingsSection,
-} from "./pages.ts";
+} from "./sections.ts";
 
-export { closeSettings, rememberWorkspaceHref } from "./return.ts";
+export { closeSettings, routeSettings } from "./return.ts";
 
 export { SettingsSurface } from "./surface.tsx";

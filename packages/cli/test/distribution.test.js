@@ -162,7 +162,7 @@ releaseTest(
       const installed = execFileSync(
         "sh",
         [
-          join(repo, "packages/docs/public/install"),
+          join(repo, "services/web/public/install"),
           "--version",
           metadata.version,
           "--no-modify-path",
@@ -197,7 +197,7 @@ releaseTest(
       const rejected = spawnSync(
         "sh",
         [
-          join(repo, "packages/docs/public/install"),
+          join(repo, "services/web/public/install"),
           "--version",
           metadata.version,
           "--no-modify-path",
@@ -256,7 +256,7 @@ esac
     run: (...args) =>
       spawnSync(
         "sh",
-        [join(repo, "packages/docs/public/install"), "--version", metadata.version, ...args],
+        [join(repo, "services/web/public/install"), "--version", metadata.version, ...args],
         {
           env: {
             ...process.env,

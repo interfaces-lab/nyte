@@ -87,8 +87,6 @@ export function blockedReason(blocked: Blocked): string {
     case "no-session":
     case "switching":
       return "Opening the chat. Your draft is saved here.";
-    case "changing-directory":
-      return "Switching workspace. Your draft is saved here.";
     case "authenticating":
       return "Finish signing in or out first. Esc cancels.";
     case "editor":

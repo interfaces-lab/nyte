@@ -64,7 +64,6 @@ export type {
 
 export type ToolChoice = "auto" | "none";
 
-/** Token budgets for each thinking level (token-based providers only) */
 export interface ThinkingBudgets {
   minimal?: number;
   low?: number;
@@ -137,6 +136,8 @@ export type AccountLimitsFetchOptions = Pick<
 export interface ProviderRequestOptions<TModel = Model<Api>> {
   signal?: AbortSignal;
   fast?: boolean;
+  /** Asks OpenAI for Daybreak's reduced cyber refusals; the account must be approved for it. */
+  daybreak?: boolean;
   apiKey?: string;
   /**
    * Optional fetch implementation for provider HTTP requests.
@@ -144,13 +145,7 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
    * This does not affect WebSocket transports.
    */
   fetch?: FetchFunction;
-  /**
-   * Provider-scoped environment values. These take precedence over process.env for
-   * provider configuration such as regional settings, endpoint placeholders, and
-   * proxy variables.
-   */
   env?: ProviderEnv;
-  /** Inspects the provider request body just before it is sent. */
   onPayload?: (payload: unknown, model: TModel) => void | Promise<void>;
   onResponse?: (response: ProviderResponse, model: TModel) => void | Promise<void>;
   onAccountLimits?: (limits: AccountLimits, model: TModel) => void | Promise<void>;
@@ -195,21 +190,12 @@ export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
    */
   samplingParams?: Record<string, unknown>;
   maxTokens?: number;
-  /**
-   * Preferred transport for providers that support multiple transports.
-   * Providers that do not support this option ignore it.
-   */
   transport?: Transport;
   /**
    * Prompt cache retention preference. Providers map this to their supported values.
    * Default: "long".
    */
   cacheRetention?: CacheRetention;
-  /**
-   * Optional session identifier for providers that support session-based caching.
-   * Providers can use this to enable prompt caching, request routing, or other
-   * session-aware features. Ignored by providers that don't support it.
-   */
   sessionId?: string;
   /**
    * WebSocket connect timeout in milliseconds for providers that support
@@ -266,7 +252,6 @@ export interface SimpleStreamOptions extends StreamOptions {
   reasoning?: ThinkingLevel;
   /** Ask a capable provider to return a durable handle and continue the request asynchronously. */
   deferred?: boolean | { window?: "15m" | "1h" | "24h" };
-  /** Custom token budgets for thinking levels (token-based providers only) */
   thinkingBudgets?: ThinkingBudgets;
 }
 

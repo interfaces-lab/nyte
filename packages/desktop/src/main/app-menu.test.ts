@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
 import type { MenuItemConstructorOptions } from "electron";
 import type { AppInfo, AppMenuCommand, BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
-import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import {
   acceleratorMatches,
   applicationMenuTemplate,
@@ -36,7 +35,8 @@ test("a menu action that reopens a window waits for its IPC subscriber", () => {
 
   const settings = {
     kind: "action",
-    action: clientActions.settings.id,
+    action: "settings.open",
+    input: {},
   } satisfies AppMenuCommand;
 
   delivery.dispatch(settings);
@@ -61,13 +61,14 @@ test("live commands arrive immediately, but reloaded windows wait again", () => 
 
   const settings = {
     kind: "action",
-    action: clientActions.settings.id,
+    action: "settings.open",
+    input: {},
   } satisfies AppMenuCommand;
 
   delivery.ready();
   delivery.dispatch(about);
   expect(received).toEqual([about]);
-  delivery.reset();
+  delivery.windowEnded();
   delivery.dispatch(about);
   delivery.dispatch(settings);
   expect(received).toEqual([about]);
@@ -100,7 +101,7 @@ test("off macOS the primary W closes a tab and closing the window takes Shift", 
 
   if (click === undefined) throw new Error("The primary W item has no click handler");
   click();
-  expect(dispatched).toEqual([{ kind: "action", action: "close-tab" }]);
+  expect(dispatched).toEqual([{ kind: "action", action: "tab.close", input: {} }]);
   expect(all.filter((item) => item.role === "close").map((item) => item.accelerator)).toEqual([
     "Shift+CommandOrControl+W",
   ]);

@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { join } from "node:path";
 import process from "node:process";
 import { parentPort } from "node:worker_threads";
+import { HOST_HEADER } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 
@@ -21,7 +22,9 @@ const home = process.env["NYTE_HOME"];
 
 if (home === undefined) throw new Error("count-host.ts needs NYTE_HOME.");
 
-const server = createServer((_request, response) => response.end("{}"));
+const server = createServer((_request, response) =>
+  response.writeHead(200, { [HOST_HEADER]: "count-host" }).end("{}"),
+);
 
 parent.on("message", (received: unknown) => {
   if (!messages.Check(received)) throw new Error("count-host.ts got an unknown message.");

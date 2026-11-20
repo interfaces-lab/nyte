@@ -4,18 +4,10 @@ import type {
   AlertState,
   DesktopSettings,
 } from "@nyte-ai/app/contract/desktop-settings.ts";
-import { describeRunEnd } from "@nyte-ai/plugin/client/notifications";
-import { mainHead } from "@nyte-ai/plugin/client/presentation";
+import { alertNews, alertsOnChat, headAttention } from "@nyte-ai/plugin/client/presentation";
+import type { HeadAttention } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-
-type Status = {
-  readonly key: string;
-  readonly unread: boolean;
-} & Alerting;
-
-type Alerting =
-  | { readonly alert: undefined }
-  | { readonly alert: AlertState; readonly body: string };
+import type { HostWindow, WindowEnd } from "./host-window.ts";
 
 interface Tracked {
   readonly key: string;
@@ -48,6 +40,87 @@ export interface AttentionPlan {
 
 export type AttentionSettings = AlertSettings & Pick<DesktopSettings, "notifySubagents">;
 
+export interface ReminderChanges {
+  readonly stop: readonly string[];
+  readonly start: readonly (AttentionReminder & { readonly signature: string })[];
+}
+
+export type WindowAttention =
+  | { readonly kind: "ready"; readonly viewed: string | null }
+  | { readonly kind: "loading"; readonly opening: SessionId };
+
+export type AttentionWindows = ReadonlyMap<HostWindow, WindowAttention>;
+
+export type WindowAttentionEvent =
+  | { readonly kind: "viewing"; readonly window: HostWindow; readonly viewed: string | null }
+  | { readonly kind: "ended"; readonly window: HostWindow; readonly end: WindowEnd }
+  | { readonly kind: "clicked"; readonly window: HostWindow; readonly session: SessionId }
+  | { readonly kind: "focused"; readonly window: HostWindow };
+
+export interface WindowAttentionStep {
+  readonly windows: AttentionWindows;
+  readonly reveal: HostWindow | undefined;
+  readonly open: { readonly window: HostWindow; readonly session: SessionId } | undefined;
+}
+
+export function findViewer(windows: AttentionWindows, session: SessionId): HostWindow | undefined {
+  return [...windows].findLast(
+    (entry) => entry[1].kind === "ready" && entry[1].viewed === session,
+  )?.[0];
+}
+
+export function stepWindowAttention(
+  windows: AttentionWindows,
+  event: WindowAttentionEvent,
+): WindowAttentionStep {
+  const before = windows.get(event.window);
+  const ready = before?.kind === "ready";
+  const next = new Map(windows);
+
+  if (event.kind === "viewing") next.set(event.window, { kind: "ready", viewed: event.viewed });
+
+  if (event.kind === "ended" && (event.end === "closed" || ready)) next.delete(event.window);
+
+  if (event.kind === "clicked" && !ready)
+    next.set(event.window, { kind: "loading", opening: event.session });
+
+  if (event.kind === "focused" && before !== undefined) {
+    next.delete(event.window);
+    next.set(event.window, before);
+  }
+
+  const opening =
+    event.kind === "viewing" && before?.kind === "loading"
+      ? before.opening
+      : event.kind === "clicked" && ready
+        ? event.session
+        : undefined;
+
+  return {
+    windows: next,
+    reveal: event.kind === "clicked" ? event.window : undefined,
+    open: opening === undefined ? undefined : { window: event.window, session: opening },
+  };
+}
+
+export function reconcileReminders(
+  held: ReadonlyMap<string, { readonly signature: string }>,
+  wanted: readonly AttentionReminder[],
+  every: number,
+): ReminderChanges {
+  const signed = wanted.map((reminder) => ({
+    ...reminder,
+    signature: JSON.stringify([every, reminder.delivery]),
+  }));
+
+  const signatures = new Map(signed.map((reminder) => [reminder.id, reminder.signature]));
+
+  return {
+    stop: [...held.keys()].filter((id) => signatures.get(id) !== held.get(id)?.signature),
+    start: signed.filter((reminder) => held.get(reminder.id)?.signature !== reminder.signature),
+  };
+}
+
 export function planAttention(input: {
   readonly previous: AttentionSeen | undefined;
   readonly rows: readonly SessionInfo[];
@@ -55,48 +128,69 @@ export function planAttention(input: {
   readonly since: number;
 }): AttentionPlan {
   const { previous, settings } = input;
+  const attended = input.rows.map((session) => ({ session, status: headAttention(session) }));
 
-  const rows = input.rows.map((session) => {
-    const status = readStatus(session);
+  const asking = new Set(
+    attended.flatMap((entry) =>
+      !entry.session.archived && entry.status.alert.state === "waiting" ? [entry.session.id] : [],
+    ),
+  );
+
+  const rows = attended.map((entry) => {
+    const session = entry.session;
+    const status = entry.status;
     const before = previous?.get(session.id);
 
-    const moved =
+    const changed =
       previous !== undefined &&
-      (before === undefined ? session.createdAt >= input.since : before.key !== status.key);
+      (before === undefined ? session.createdAt >= input.since : before.key !== status.alert.key);
 
     return {
       session,
       status,
-      moved,
-      fresh: moved || (before?.fresh === true && before.key === status.key),
-      counted: !session.archived && (settings.notifySubagents || session.parent === null),
+      moved: changed && (before === undefined || alertNews(before.key, status.alert)),
+      fresh: changed || (before?.fresh === true && before.key === status.alert.key),
+      counted:
+        !session.archived &&
+        alertsOnChat(
+          session,
+          status.alert,
+          session.parent !== null && asking.has(session.parent),
+          settings.notifySubagents,
+        ),
     };
   });
 
   return {
-    seen: new Map(rows.map((row) => [row.session.id, { key: row.status.key, fresh: row.fresh }])),
+    seen: new Map(
+      rows.map((row) => [row.session.id, { key: row.status.alert.key, fresh: row.fresh }]),
+    ),
     deliveries: rows.flatMap((row) => {
-      if (!row.moved || !row.counted || row.status.alert === undefined) return [];
-      const delivery = deliver(row.session, row.status, settings);
+      const alert = row.status.alert;
+
+      if (!row.moved || !row.counted || alert.state === undefined) return [];
+      const delivery = deliver(row.session, alert, settings);
 
       return delivery.notify || delivery.bounce ? [delivery] : [];
     }),
     badge: rows.filter(
       (row) =>
         row.counted &&
-        row.status.alert !== undefined &&
-        (row.status.alert === "waiting" || row.status.unread) &&
-        effectiveChannels(row.status.alert, settings).includes("badge"),
+        row.status.alert.state !== undefined &&
+        (row.status.alert.state === "waiting" || row.status.settledUnread) &&
+        effectiveChannels(row.status.alert.state, settings).includes("badge"),
     ).length,
     reminders: rows.flatMap((row) => {
-      if (!row.fresh || !row.counted || row.status.alert !== "waiting") return [];
+      const alert = row.status.alert;
+
+      if (!row.fresh || !row.counted || alert.state !== "waiting") return [];
 
       return effectiveChannels("waiting", settings).includes("remind")
         ? [
             {
-              id: `${row.session.id}:${row.status.key}`,
+              id: `${row.session.id}:${alert.key}`,
               delivery: {
-                ...deliver(row.session, row.status, settings),
+                ...deliver(row.session, alert, settings),
                 body: "Still needs your answer",
                 bounce: false,
               },
@@ -109,65 +203,18 @@ export function planAttention(input: {
 
 function deliver(
   session: SessionInfo,
-  status: { readonly alert: AlertState; readonly body: string },
+  alert: Extract<HeadAttention["alert"], { readonly state: AlertState }>,
   settings: AlertSettings,
 ): AttentionDelivery {
-  const reach = effectiveChannels(status.alert, settings);
+  const reach = effectiveChannels(alert.state, settings);
 
   return {
     session: session.id,
-    state: status.alert,
+    state: alert.state,
     title: session.name ?? "New chat",
-    body: status.body,
+    body: alert.body,
     notify: reach.includes("notification"),
     sound: reach.includes("sound"),
     bounce: reach.includes("bounce"),
   };
-}
-
-function readStatus(session: SessionInfo): Status {
-  const head = mainHead(session);
-  const unread = head?.unread ?? false;
-  const execution = head?.execution;
-
-  if (execution === undefined) return { key: "none", unread, alert: undefined };
-
-  switch (execution.kind) {
-    case "waiting":
-      return execution.on.kind === "part"
-        ? {
-            key: `waiting:${execution.on.part}`,
-            unread,
-            alert: "waiting",
-            body: "Needs your answer",
-          }
-        : { key: `working:${execution.run.id}`, unread, alert: undefined };
-    case "live":
-    case "retrying":
-      return { key: `working:${execution.run.id}`, unread, alert: undefined };
-    case "idle": {
-      const last = execution.lastRun;
-
-      if (last === null) return { key: "none", unread, alert: undefined };
-
-      if (
-        session.project !== undefined &&
-        session.parent === null &&
-        (head?.background.working ?? 0) > 0
-      )
-        return { key: `ended:${last.id}:agents`, unread, alert: undefined };
-      const key = `ended:${last.id}`;
-      const body = describeRunEnd(last.end);
-
-      if (body === undefined) return { key, unread, alert: undefined };
-
-      return { key, unread, alert: last.end.kind === "completed" ? "done" : "failed", body };
-    }
-
-    default: {
-      const _exhaustive: never = execution;
-
-      return _exhaustive;
-    }
-  }
 }

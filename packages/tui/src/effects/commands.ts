@@ -1,6 +1,4 @@
-import { homedir } from "node:os";
-import { resolve } from "node:path";
-import type { CommandOutcome, WorkspaceCommandOutcome, WorkspaceId } from "@nyte-ai/sdk";
+import type { CommandOutcome, SessionId, WorkspaceCommandOutcome, WorkspaceId } from "@nyte-ai/sdk";
 import type { Effect } from "../model/effect.ts";
 import { followedSession, rowStatus } from "../model/state.ts";
 import type { Notice, Selection } from "../model/state.ts";
@@ -201,7 +199,7 @@ export async function applySetting(
   const { ports } = context;
 
   const outcome =
-    effect.scope === "session"
+    effect.scope === "chat"
       ? await ports.host.session(effect.session).applySetting(effect.id, effect.value)
       : await ports.host.applySetting(effect.id, effect.value);
 
@@ -229,8 +227,31 @@ export async function runCommand(
   const workspace = await blankWorkspace(chat, context);
   const outcome = await ports.host.workspace(workspace).command(effect.name, effect.argument);
 
-  if (outcome.kind === "prompt") await startWithPrompt(chat, workspace, outcome.content, context);
-  else settleCommand(outcome, effect, context);
+  switch (outcome.kind) {
+    case "prompt":
+      await startWithPrompt(chat, workspace, outcome.content, context);
+
+      return;
+    case "moved":
+      await moveBlank(chat.id, outcome, context);
+
+      return;
+    default:
+      settleCommand(outcome, effect, context);
+  }
+}
+
+async function moveBlank(
+  blank: SessionId,
+  moved: Extract<WorkspaceCommandOutcome, { readonly kind: "moved" }>,
+  context: HandlerContext,
+): Promise<void> {
+  const current = context.read().facts.chat;
+
+  if (current?.kind !== "blank" || current.id !== blank) return;
+  await openBlank({ ...current, folder: { kind: "folder", id: moved.workspace } }, context);
+
+  if (moved.output !== null) context.dispatch({ kind: "inform", tone: "ok", text: moved.output });
 }
 
 export async function completeCommand(
@@ -251,7 +272,7 @@ export async function completeCommand(
 }
 
 function settleCommand(
-  outcome: Exclude<CommandOutcome | WorkspaceCommandOutcome, { readonly kind: "prompt" }>,
+  outcome: Exclude<CommandOutcome | WorkspaceCommandOutcome, { readonly kind: "prompt" | "moved" }>,
   effect: Of<"run-command">,
   { dispatch }: HandlerContext,
 ): void {
@@ -289,52 +310,19 @@ export async function stopTask(effect: Of<"stop-task">, context: HandlerContext)
     context.dispatch({ kind: "inform", tone: "warning", text: "That task already ended." });
 }
 
-export async function changeDirectory(
-  effect: Of<"change-directory">,
-  context: HandlerContext,
-): Promise<void> {
-  const { dispatch, ports, read } = context;
-  const cwd = read().facts.workspace.cwd;
-  const path = resolveDirectory(effect.path, cwd);
+export async function chatMoved(effect: Of<"chat-moved">, context: HandlerContext): Promise<void> {
+  const folder = context.ports.host.workspace(effect.workspace);
+  const cwd = await folder.cwd();
+  const chat = context.read().facts.chat;
 
-  const finish = (notice: Notice): void => {
-    dispatch({ kind: "op-finished", op: "cd", notice });
-  };
-
-  if (path === cwd) {
-    finish(stampNotice(context, "info", `Already in ${path}`));
-
+  if (
+    cwd === null ||
+    chat?.kind !== "session" ||
+    chat.id !== effect.session ||
+    chat.info.workspace !== effect.workspace
+  )
     return;
-  }
-
-  try {
-    const { chat } = read().facts;
-
-    if (chat?.kind === "blank" && chat.id === effect.session) {
-      await openBlank(
-        { ...chat, folder: { kind: "folder", id: await ports.host.openFolder(path) } },
-        context,
-      );
-      finish(stampNotice(context, "ok", `Working directory: ${path}`));
-
-      return;
-    }
-
-    const port = ports.host.session(effect.session);
-    const outcome = await port.changeDirectory(path);
-
-    if (outcome.kind === "refused") {
-      finish(stampNotice(context, "error", `error: ${outcome.reason}`));
-
-      return;
-    }
-
-    dispatch({ kind: "session-info", session: effect.session, info: await port.info() });
-    await refreshWorkspace(context, outcome.cwd, { mentions: port, signal: context.signal });
-    finish(stampNotice(context, "ok", `Working directory: ${outcome.cwd}`));
-  } catch (error) {
-    finish(errorNotice(context, error));
-  }
+  await refreshWorkspace(context, cwd, { mentions: folder, signal: context.signal });
 }
 
 export async function refreshWorkspaceFacts(
@@ -387,14 +375,6 @@ export async function compact(effect: Of<"compact">, context: HandlerContext): P
 
   if (outcome === "nothing")
     context.dispatch({ kind: "inform", tone: "info", text: "Nothing to compact" });
-}
-
-function resolveDirectory(argument: string, cwd: string): string {
-  if (argument === "~") return homedir();
-
-  if (argument.startsWith("~/")) return resolve(homedir(), argument.slice(2));
-
-  return resolve(cwd, argument);
 }
 
 export function stampNotice(context: HandlerContext, tone: Notice["tone"], text: string): Notice {

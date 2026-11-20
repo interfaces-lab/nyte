@@ -14,7 +14,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { openExternal } from "../../lib/open-external.ts";
 import { tray } from "../../theme/schema.stylex.ts";
-import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
+import { Tray, trayParts } from "./tray.tsx";
 import { useDismissSecret, useSaveSecret, useSecretRequest } from "./secrets-state.ts";
 import type { SecretRequest } from "./secrets-state.ts";
 
@@ -257,17 +257,14 @@ function SecretCard({
 export function SecretTray({
   sessionId,
   disabled,
-  viewport,
 }: {
   readonly sessionId: SessionId;
   readonly disabled: boolean;
-  readonly viewport: HTMLElement | null;
 }): ReactElement {
   const target = useSecretRequest(sessionId);
-  const { ref } = useTrayRoot(viewport);
 
   return (
-    <div ref={ref} {...props(trayParts.root)}>
+    <div {...props(trayParts.root)}>
       <Tray open={target !== undefined} label="Secret">
         {target !== undefined && (
           <SecretCard

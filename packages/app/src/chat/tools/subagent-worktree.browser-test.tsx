@@ -37,7 +37,6 @@ function workspace(change: Partial<WorkspaceInfo>): WorkspaceInfo {
     trusted: true,
     projectSources: [],
     addedBy: asId("local"),
-    sessions: 1,
     writers: [],
     isolation: null,
     ...change,
@@ -76,14 +75,12 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
     if (value !== null && value !== undefined) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await nextFrame();
   }
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function capture(name: string): Promise<void> {
@@ -117,7 +114,7 @@ export async function run(): Promise<string> {
   ]);
 
   const listing = sessionList("all").subscribe(() => undefined);
-  await sessionList("all").first();
+  await sessionList("all").until(() => true);
 
   const root = createRoot(stage, {
     onUncaughtError: (error) => {
@@ -136,20 +133,19 @@ export async function run(): Promise<string> {
     () => document.querySelector("[data-side='bottom'], [role='dialog']"),
     "the preview card",
   );
-  await painted();
 
-  const details = [...card.querySelectorAll("span[title]")].map((row) => ({
-    title: row.getAttribute("title"),
-    text: row.textContent,
-  }));
-  const place = details.find((row) => row.title?.endsWith("fix-login-3f2a1b9c") === true);
+  const place = await until(
+    () => card.querySelector("span[title$='fix-login-3f2a1b9c']"),
+    "the subagent's place",
+  );
 
-  if (place?.text !== BRANCH)
-    failures.push(`the subagent's place reads ${place?.text ?? "nothing"}, not its branch`);
+  if (place.textContent !== BRANCH)
+    failures.push(`the subagent's place reads ${place.textContent}, not its branch`);
 
+  await nextFrame();
   await capture("worktree-citation-light");
   applyDisplayMode("dark");
-  await painted();
+  await nextFrame();
   await capture("worktree-citation-dark");
   applyDisplayMode("light");
 

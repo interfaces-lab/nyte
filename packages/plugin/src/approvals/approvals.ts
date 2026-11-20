@@ -9,7 +9,7 @@ import type {
   SettingDefinition,
   ToolDefinition,
 } from "@nyte-ai/core";
-import { ApprovalPolicyType, SdkError } from "@nyte-ai/schema";
+import { ApprovalPolicyType, asId, SdkError } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
 import {
   APPROVAL_POLICIES,
@@ -20,6 +20,7 @@ import {
 } from "./schema.ts";
 import type { ApprovalDecision, ApprovalPolicy, ApprovalState } from "./schema.ts";
 import type { Plugin } from "@nyte-ai/plugin/core";
+import { readsOnly } from "../side-chat.ts";
 
 type Actions = typeof approvalContract.actions;
 
@@ -31,12 +32,17 @@ type Handlers = {
 };
 
 export interface ApprovalTool extends RuntimeCall {
-  readonly approval?: ToolDefinition["approval"];
+  readonly asks?: ToolDefinition["asks"];
 }
 
 const DENIED = "The user denied this tool call. Ask them how to proceed instead of retrying it.";
 
 const UNANSWERED = "The approval request closed before the user answered.";
+
+const READ_ONLY =
+  "This chat belongs to a side chat, which is read-only: it can't edit files, run commands or use tools that change things. Tell the user they can do this from the main chat.";
+
+const PROBE = asId<"call">("side-chat-probe");
 
 const POLICIES = ApprovalPolicyType.anyOf.map((literal) => literal.const);
 
@@ -47,14 +53,13 @@ const POLICIES = ApprovalPolicyType.anyOf.map((literal) => literal.const);
  * @category plugins
  * @since 0.1.0
  */
-export const permissions: SettingDefinition<ApprovalPolicy> = {
+export const permissions = {
   id: PERMISSIONS,
-  label: "Permissions",
+  title: "Permissions",
   schema: approvalPolicy,
   choices: APPROVAL_POLICIES,
   default: "full",
-  scope: "host",
-};
+} satisfies SettingDefinition<ApprovalPolicy>;
 
 const GUARDED = new Set([".claude", ".git", ".nyte"]);
 
@@ -71,12 +76,34 @@ function workspacePath(cwd: string, path: string): string | null {
   return target.startsWith(`${root}/`) ? target.slice(root.length + 1) : null;
 }
 
+function changes(tool: ApprovalTool): boolean {
+  const kind = tool.class.kind;
+
+  return (
+    (tool.asks ?? "policy") === "policy" &&
+    kind !== "read" &&
+    kind !== "list" &&
+    kind !== "delegate"
+  );
+}
+
+export function mayChange(definition: ToolDefinition): boolean {
+  try {
+    return changes({
+      name: definition.name,
+      class: definition.class({}, { call: PROBE }),
+      asks: definition.asks,
+    });
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Why `policy` stops `tool` for the user in a workspace at `cwd`, or null
- * when the call runs without asking. Reads, listings, delegation and tools
- * whose `approval` is not `policy` never ask (a subagent's own calls ask in
- * its session); under `auto-edit` an edit in the workspace runs unless it is
- * under `.claude`, `.git` or `.nyte`.
+ * when the call runs without asking: only a call that `changes` asks, and
+ * under `auto-edit` an edit in the workspace runs unless it is under
+ * `.claude`, `.git` or `.nyte`.
  *
  * @category plugins
  * @since 0.1.0
@@ -88,10 +115,7 @@ export function approvalReason(
 ): ApprovalState["reason"] | null {
   const subject = tool.class;
 
-  if (policy === "full" || (tool.approval ?? "policy") !== "policy") return null;
-
-  if (subject.kind === "read" || subject.kind === "list" || subject.kind === "delegate")
-    return null;
+  if (policy === "full" || !changes(tool)) return null;
 
   if (subject.kind === "shell") return "shell";
 
@@ -107,7 +131,7 @@ export function approvalReason(
 }
 
 async function readPolicy(api: PluginApi<"core">): Promise<ApprovalPolicy> {
-  const value = await api.contribute.settings.value(PERMISSIONS);
+  const value = await api.registries.settings.value(PERMISSIONS);
   const ceiling = (await api.session.info()).mcp?.ceiling;
   const checked = approvalPolicy["~standard"].validate(value);
 
@@ -195,6 +219,9 @@ async function approveRuntimeCall(
   context: { readonly api: PluginApi<"core">; readonly signal: AbortSignal },
 ): Promise<RuntimeVerdict> {
   const { api, signal } = context;
+
+  if (changes(call) && (await readsOnly(api.session, api.host)))
+    return { kind: "deny", reason: READ_ONLY };
   const reason = await pendingReason(api, call);
 
   if (reason === null) return { kind: "allow" };
@@ -211,32 +238,33 @@ async function approveRuntimeCall(
   }
 }
 
-/**
- * Gates tool calls on the session's `permissions` policy, keying grants on
- * each tool's own name. A call in Nyte's loop that asks parks its
- * before_tool hook on an approval part, so the request outlives a host
- * restart and any client watching the session can answer it; a denial
- * reaches the model as the rejected call's reason. A call another agent
- * runtime asks to run comes through `approve` and waits on the same part
- * while its runtime runs; its mirror call (`approval: "runtime"`) is not
- * asked about again. Only a principal with owner authority can allow.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "approvals",
   contribute: { parts: [approval], settings: [permissions] },
   approve: approveRuntimeCall,
   hooks: {
+    offer_tools: async (tools, context) => {
+      if (!(await readsOnly(context.api.session, context.api.host))) return tools;
+
+      const changing = new Set(
+        context.api.registries.tools
+          .list()
+          .filter(mayChange)
+          .map((definition) => definition.name),
+      );
+
+      return tools.filter((info) => !changing.has(info.name));
+    },
     before_tool: async (call, context) => {
       const { api } = context;
 
-      const definition = api.contribute.tools.list().find((tool) => tool.name === call.name);
+      const definition = api.registries.tools.list().find((tool) => tool.name === call.name);
+      const tool = { name: call.name, class: call.class, asks: definition?.asks };
 
-      const reason = await context.memo("reason", () =>
-        pendingReason(api, { name: call.name, class: call.class, approval: definition?.approval }),
-      );
+      if (changes(tool) && (await readsOnly(api.session, api.host)))
+        return { action: "reject", reason: READ_ONLY };
+
+      const reason = await context.memo("reason", () => pendingReason(api, tool));
 
       if (reason === null) return { action: "continue" };
 

@@ -1,7 +1,7 @@
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { asId } from "@nyte-ai/schema";
-import type { BackgroundItem, JobView, SessionId, WorkspaceInfo } from "@nyte-ai/sdk";
+import type { BackgroundItem, JobView, SessionId, WorkspaceId, WorkspaceInfo } from "@nyte-ai/sdk";
 import { QueryObserver } from "@tanstack/react-query";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { derivedStore } from "../data/derived-store.ts";
@@ -21,7 +21,7 @@ import { describeChats } from "./directory.ts";
 import type { Chat, ChatDirectory } from "./directory.ts";
 import { childTask, describeTask, matchesKey } from "./tasks.ts";
 import type { ChildTask, Task, TaskKey } from "./tasks.ts";
-import { waitingBelow } from "./waiting.ts";
+import { waitingWalk } from "./waiting-walk.ts";
 import type { WaitingChat } from "./waiting.ts";
 
 export type { Chat, ChatDirectory } from "./directory.ts";
@@ -37,7 +37,6 @@ export type ChatResult =
   | { readonly kind: "missing" }
   | { readonly kind: "ready"; readonly chat: Chat };
 
-/** Asking for a chat the lists don't carry yet, such as one just started, reads it on its own. */
 export function useChat(id: SessionId): ChatResult {
   return useSyncExternalStore(
     (notice) => subscribeChat(id, notice),
@@ -62,6 +61,9 @@ export function useChats<S>(
 export function chatTitle(chat: Chat | undefined): string {
   return chat?.title ?? "Chat";
 }
+
+/** The title of a chat not started yet: its tab and its sidebar row both read it. */
+export const NEW_CHAT_TITLE = "New chat";
 
 const NO_ITEMS: readonly BackgroundItem[] = [];
 
@@ -112,21 +114,12 @@ export function useChildTasks(parent: SessionId): readonly ChildTask[] {
   );
 }
 
-/** The component owns the walk for its session and starts a new one when the session changes. */
 export function useWaitingDescendants(session: SessionId): readonly WaitingChat[] {
-  const [owned, setOwned] = useState(() => ({ session, store: waitingBelow(session) }));
-  const current = owned.session === session ? owned : { session, store: waitingBelow(session) };
+  const walk = waitingWalk(session);
 
-  if (current !== owned) setOwned(current);
-
-  return useSyncExternalStore(
-    current.store.subscribe,
-    current.store.getSnapshot,
-    current.store.getSnapshot,
-  );
+  return useSyncExternalStore(walk.subscribe, walk.getSnapshot, walk.getSnapshot);
 }
 
-/** Includes every child of `parent`, however many chats the host's lists carry. */
 function useChildChats<S>(
   parent: SessionId | undefined,
   select: (chats: ChatDirectory) => S,
@@ -177,7 +170,6 @@ function sameTasks(previous: readonly ChildTask[], next: readonly ChildTask[]): 
   );
 }
 
-/** The folder a chat runs in, whatever folder the window has open; undefined for Home, an unreachable folder, or while the lists load. */
 export function useChatWorkspace(id: SessionId): SelectedWorkspace | undefined {
   return useChats(
     (chats) => {
@@ -192,13 +184,12 @@ export function useChatWorkspace(id: SessionId): SelectedWorkspace | undefined {
   );
 }
 
-/** Null for Home, undefined until the folder list loads. */
 export function chatFolderPath(id: SessionId): string | null | undefined {
   const location = chatDirectory().get(id)?.location;
 
-  if (location === undefined || location.kind === "loading") return undefined;
+  if (location === undefined || location.kind !== "folder") return undefined;
 
-  return location.kind === "folder" && location.available ? location.path : null;
+  return location.available ? location.path : null;
 }
 
 const LOADING: ChatResult = { kind: "loading" };
@@ -236,13 +227,44 @@ function subscribeChildChats(parent: SessionId, notice: () => void): () => void 
   };
 }
 
+const readWorkspaces = queryDataReader<readonly WorkspaceInfo[]>(keys.workspaces);
+
+const refetchedFor = new Set<WorkspaceId>();
+
+function fetchUnknownWorkspaces(): void {
+  const workspaces = readWorkspaces();
+
+  if (workspaces === undefined) return;
+  const listed = new Set(workspaces.map((workspace) => workspace.id));
+
+  const unknown = [...sessionRows().rows.values()].filter(
+    (row) => !listed.has(row.workspace) && !refetchedFor.has(row.workspace),
+  );
+
+  if (unknown.length === 0) return;
+
+  for (const row of unknown) refetchedFor.add(row.workspace);
+  void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
+}
+
 const directory = derivedStore(
   {
     rows: { read: sessionRows, subscribe: subscribeSessionRows },
     workspaces: {
-      read: queryDataReader<readonly WorkspaceInfo[]>(keys.workspaces),
-      subscribe: (notice: () => void) =>
-        new QueryObserver(queryClient, workspacesQuery).subscribe(notice),
+      read: readWorkspaces,
+      subscribe(notice: () => void) {
+        const leave = [
+          new QueryObserver(queryClient, workspacesQuery).subscribe(() => {
+            notice();
+            fetchUnknownWorkspaces();
+          }),
+          subscribeSessionRows(fetchUnknownWorkspaces),
+        ];
+
+        return () => {
+          for (const unsubscribe of leave) unsubscribe();
+        };
+      },
     },
     projects: {
       read: () => hostWatch("host").getState().value?.projects,

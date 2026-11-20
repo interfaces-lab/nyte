@@ -1,1 +1,4 @@
-pnpm-*
+# pnpm
+/migrate-from-nextjs
+/react-start
+# pnpm end

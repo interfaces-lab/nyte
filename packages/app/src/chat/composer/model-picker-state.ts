@@ -1,32 +1,75 @@
-import type { ModelRef, ProviderUsage } from "@nyte-ai/sdk";
-import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
-import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
+import type { ModelRef, ProviderUsage, Thinking } from "@nyte-ai/sdk";
+import { availableModes, modelWithModes, selectedModes } from "@nyte-ai/schema";
+import type { ModelMode, ModelThinkingLevel } from "@nyte-ai/schema/model";
+import { MODEL_MODES, MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../../data/catalog.ts";
 import type { IconName } from "@nyte-ai/ui/icon";
 
 export function selectedModelOption(
   options: readonly DesktopModelOption[],
   model: ModelRef | undefined,
-): { readonly option: DesktopModelOption; readonly fast: boolean } | undefined {
+): { readonly option: DesktopModelOption; readonly modes: readonly ModelMode[] } | undefined {
   if (model === undefined) return undefined;
 
   for (const option of options) {
-    if (option.provider !== model.provider) continue;
+    const modes = selectedModes(option.info, model);
 
-    if (option.id === model.id) return { option, fast: false };
-
-    if (option.fastMode.kind === "available" && option.fastMode.id === model.id)
-      return { option, fast: true };
+    if (modes !== null) return { option, modes };
   }
 
   return undefined;
 }
 
-export function modelRefFor(option: DesktopModelOption, fast: boolean) {
+export interface SessionModel {
+  readonly option: DesktopModelOption | undefined;
+  readonly modes: readonly ModelMode[];
+  readonly thinking: Thinking | undefined;
+  readonly steers: boolean;
+}
+
+export function sessionModel(
+  catalog: Pick<DesktopCatalog, "models"> | undefined,
+  choice:
+    | { readonly model: ModelRef | undefined; readonly thinking: Thinking | undefined }
+    | undefined,
+): SessionModel {
+  const selected = selectedModelOption(catalog?.models ?? [], choice?.model);
+
   return {
-    provider: option.provider,
-    id: fast && option.fastMode.kind === "available" ? option.fastMode.id : option.id,
+    option: selected?.option,
+    modes: selected?.modes ?? [],
+    thinking: choice?.thinking,
+    steers: selected?.option.capabilities.steer !== false,
   };
+}
+
+export function draftModel(
+  choice: { readonly model: ModelRef } | undefined,
+  project: { readonly models: { readonly coordinator: ModelRef | null } } | undefined,
+  defaults: { readonly model: ModelRef } | undefined,
+): ModelRef | undefined {
+  return choice?.model ?? project?.models.coordinator ?? defaults?.model;
+}
+
+export function modelRefFor(option: DesktopModelOption, modes: readonly ModelMode[]): ModelRef {
+  return modelWithModes(option.info, modes);
+}
+
+export const MODE_LABELS: Readonly<Record<ModelMode, string>> = {
+  fast: "Fast",
+  daybreak: "Daybreak",
+};
+
+/** The switches in `requested` that `option` offers, in `MODEL_MODES` order. */
+export function supportedModes(
+  option: DesktopModelOption,
+  requested: readonly ModelMode[],
+): readonly ModelMode[] {
+  return availableModes(option.info).filter((mode) => requested.includes(mode));
+}
+
+function modeLabels(modes: readonly ModelMode[]): string[] {
+  return MODEL_MODES.filter((mode) => modes.includes(mode)).map((mode) => MODE_LABELS[mode]);
 }
 
 export function modelDisplayName(
@@ -39,7 +82,7 @@ export function modelDisplayName(
 
   if (selected === undefined) return model.id;
 
-  return selected.fast ? `${selected.option.name} Fast` : selected.option.name;
+  return [selected.option.name, ...modeLabels(selected.modes)].join(" ");
 }
 
 const PROVIDER_ICONS = new Map<string, IconName>(
@@ -82,7 +125,6 @@ const ACP_AGENT_ICONS = new Map<string, IconName>(
   } satisfies Record<string, IconName>),
 );
 
-/** Providers whose entries are agents, shown by name and icon and switched on or off like one model. */
 export const AGENT_PROVIDERS: ReadonlySet<string> = new Set(["acp", "claude-code"]);
 
 export function providerIcon(providerId: string): IconName {
@@ -153,7 +195,7 @@ interface TriggerLabel {
 export function modelTriggerLabel(
   option: DesktopModelOption | undefined,
   activeReasoning: ModelThinkingLevel,
-  fastOn: boolean,
+  modes: readonly ModelMode[],
 ): TriggerLabel {
   if (option === undefined) return { name: "Choose a model", detail: undefined };
   const parts: string[] = [];
@@ -162,7 +204,7 @@ export function modelTriggerLabel(
     parts.push(THINKING_LABELS[activeReasoning]);
   }
 
-  if (fastOn) parts.push("Fast");
+  parts.push(...modeLabels(modes));
 
   return { name: option.name, detail: parts.length === 0 ? undefined : parts.join(" · ") };
 }

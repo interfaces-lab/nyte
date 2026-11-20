@@ -3,7 +3,7 @@ import { test } from "vitest";
 import type { PartStatus, ToolClass, ToolPartState } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { planningLabel } from "@nyte-ai/plugin/client/presentation";
-import { stepGroupLine } from "./step-group-presentation.ts";
+import { stepGroupFacts, stepGroupLine } from "./step-group-presentation.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
 type Outcome = Extract<ToolPartState, { readonly phase: "settled" }>["outcome"] | "running";
@@ -189,4 +189,135 @@ test("the live row plans after 200 ms and slows at 15 s", () => {
   assert.equal(planningLabel(200), "Planning next moves");
   assert.equal(planningLabel(14_999), "Planning next moves");
   assert.equal(planningLabel(15_000), "Taking longer than expected…");
+});
+
+function thoughtAt(markdown: string, at: number, endedAt: number | undefined): StepMessage {
+  const message = { ...thought(endedAt === undefined), at };
+  const state = { markdown, merged: 1, signature: null };
+
+  if (endedAt === undefined) return { ...message, state };
+
+  return { ...message, state, status: { kind: "settled", commit: asId<"commit">("c"), endedAt } };
+}
+
+test.each<{
+  readonly name: string;
+  readonly messages: readonly StepMessage[];
+  readonly running: boolean;
+  readonly facts: Omit<ReturnType<typeof stepGroupFacts>, "entries" | "openKey"> & {
+    readonly entries: number;
+  };
+}>([
+  {
+    name: "a settled thought is titled by its heading and timed from its start to its end",
+    messages: [thoughtAt("**Checking the lease**\n\nThe lease is fine.", 1_000, 3_500)],
+    running: false,
+    facts: {
+      entries: 1,
+      line: { kind: "summary", verb: "Checking the lease", detail: "3s" },
+      thinkingOnly: true,
+      titled: true,
+      hasContent: true,
+    },
+  },
+  {
+    name: "a settled thought under half a second shows no time",
+    messages: [thoughtAt("Weighing it", 1_000, 1_499)],
+    running: false,
+    facts: {
+      entries: 1,
+      line: { kind: "summary", verb: "Thought", detail: undefined },
+      thinkingOnly: true,
+      titled: true,
+      hasContent: true,
+    },
+  },
+  {
+    name: "a settled thought that is only a heading has nothing to open",
+    messages: [thoughtAt("**Only a heading**", 1_000, 3_500)],
+    running: false,
+    facts: {
+      entries: 1,
+      line: { kind: "summary", verb: "Only a heading", detail: "3s" },
+      thinkingOnly: true,
+      titled: true,
+      hasContent: false,
+    },
+  },
+  {
+    name: "a running thought, however old, is thinking and untitled",
+    messages: [thoughtAt("**Checking the lease**", -1_000_000_000, undefined)],
+    running: true,
+    facts: {
+      entries: 1,
+      line: { kind: "thinking" },
+      thinkingOnly: true,
+      titled: false,
+      hasContent: true,
+    },
+  },
+  {
+    name: "thoughts alone stay apart, and two settled thoughts are not titled",
+    messages: [thoughtAt("First", 1_000, 2_000), thoughtAt("Second", 2_000, 4_000)],
+    running: false,
+    facts: {
+      entries: 2,
+      line: { kind: "summary", verb: "Thought", detail: "3s" },
+      thinkingOnly: true,
+      titled: false,
+      hasContent: true,
+    },
+  },
+  {
+    name: "thoughts beside a call merge, and a blank thought is dropped",
+    messages: [
+      thoughtAt("First", 1_000, 2_000),
+      thoughtAt("Second", 2_000, 3_000),
+      thoughtAt(" ", 3_000, 3_000),
+      call({ kind: "read", path: "/w/a.ts" }, SUCCESS),
+    ],
+    running: false,
+    facts: {
+      entries: 2,
+      line: { kind: "summary", verb: "Explored", detail: "a.ts" },
+      thinkingOnly: false,
+      titled: false,
+      hasContent: true,
+    },
+  },
+  {
+    name: "a running group's line ignores its age",
+    messages: [call({ kind: "read", path: "/w/a.ts" }, "running")],
+    running: true,
+    facts: {
+      entries: 1,
+      line: { kind: "summary", verb: "Exploring", detail: "a.ts" },
+      thinkingOnly: false,
+      titled: false,
+      hasContent: true,
+    },
+  },
+  {
+    name: "an empty group has nothing to open",
+    messages: [],
+    running: false,
+    facts: {
+      entries: 0,
+      line: { kind: "summary", verb: "Thought", detail: undefined },
+      thinkingOnly: true,
+      titled: false,
+      hasContent: false,
+    },
+  },
+])("$name", (row) => {
+  const facts = stepGroupFacts(row.messages, row.running);
+
+  assert.deepEqual(
+    { ...facts, entries: facts.entries.length, openKey: undefined },
+    {
+      ...row.facts,
+      openKey: undefined,
+    },
+  );
+  assert.equal(facts.openKey, row.messages[0]?.id);
 });

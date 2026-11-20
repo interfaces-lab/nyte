@@ -5,6 +5,8 @@ import type { Static } from "typebox";
 import { Type } from "typebox";
 import type { PaneId } from "./layout.ts";
 import type { WindowDrafts } from "../chat/composer/drafts.ts";
+import { NO_SENDING, persistedDraft, restorable } from "../chat/composer/composer-draft.ts";
+import type { SessionDraft } from "../chat/composer/composer-draft.ts";
 
 const KEPT_SESSION_VIEWS = 64;
 
@@ -21,7 +23,6 @@ export interface ComposerViewState {
   readonly attachments: readonly ComposerImageAttachment[];
   readonly selectionStart: number;
   readonly selectionEnd: number;
-  readonly focused: boolean;
 }
 
 export type ScrollViewState =
@@ -29,7 +30,7 @@ export type ScrollViewState =
   | { readonly kind: "anchor"; readonly key: string; readonly offset: number };
 
 export interface SessionViewState {
-  readonly composer: ComposerViewState;
+  readonly draft: SessionDraft;
   readonly scroll: Partial<Record<PaneId, ScrollViewState>>;
   readonly stepGroups: ReadonlyMap<string, boolean>;
 }
@@ -43,6 +44,14 @@ export interface BlankViewState {
   readonly composer: ComposerViewState;
   readonly choice: DraftChoice | undefined;
   readonly project?: ProjectId;
+  /** The folder picked for this draft, or null for Home. */
+  readonly folder?: string | null;
+}
+
+export interface DraftStart {
+  readonly project?: ProjectId;
+  readonly folder?: string | null;
+  readonly composer?: ComposerViewState;
 }
 
 export type DraftStatus =
@@ -62,6 +71,7 @@ export interface ChatDraft extends BlankViewState {
   readonly id: string;
   readonly updatedAt: number;
   readonly status: DraftStatus;
+  readonly omitted: number;
 }
 
 export const EDITING: DraftStatus = { kind: "editing" };
@@ -71,11 +81,16 @@ export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
   attachments: [],
   selectionStart: 0,
   selectionEnd: 0,
-  focused: false,
 };
 
 export const DEFAULT_SESSION_VIEW_STATE: SessionViewState = {
-  composer: DEFAULT_COMPOSER_VIEW_STATE,
+  draft: {
+    composer: DEFAULT_COMPOSER_VIEW_STATE,
+    edit: null,
+    notice: null,
+    sending: NO_SENDING,
+    omitted: 0,
+  },
   scroll: {},
   stepGroups: new Map(),
 };
@@ -84,8 +99,17 @@ export function composerHasContent(composer: ComposerViewState): boolean {
   return composer.draft.trim() !== "" || composer.attachments.length > 0;
 }
 
-export function draftHasContent(draft: BlankViewState): boolean {
-  return composerHasContent(draft.composer);
+export function draftKept(draft: SessionDraft): boolean {
+  return (
+    composerHasContent(persistedDraft(draft)) ||
+    restorable(draft) !== null ||
+    draft.sending.length > 0 ||
+    draft.omitted > 0
+  );
+}
+
+export function draftHasContent(draft: ChatDraft): boolean {
+  return composerHasContent(draft.composer) || draft.omitted > 0;
 }
 
 export const composerSchema = Type.Object(
@@ -132,6 +156,14 @@ export class SessionViewStateStore {
 
   readonly listedDrafts = (): readonly ChatDraft[] => this.#window.listedDrafts();
 
+  subscribeDraft(sessionId: SessionId, listener: () => void): () => void {
+    return this.#window.subscribeKey(`session:${sessionId}`, listener);
+  }
+
+  persist(): void {
+    this.#window.persist();
+  }
+
   readSession(sessionId: SessionId): SessionViewState {
     return this.#window.sessions.get(sessionId) ?? DEFAULT_SESSION_VIEW_STATE;
   }
@@ -139,7 +171,7 @@ export class SessionViewStateStore {
   writeSession(sessionId: SessionId, state: SessionViewState): void {
     const sessions = this.#window.sessions;
     const known = sessions.get(sessionId);
-    const previous = known?.composer ?? DEFAULT_COMPOSER_VIEW_STATE;
+    const previous = known?.draft ?? DEFAULT_SESSION_VIEW_STATE.draft;
     sessions.delete(sessionId);
     sessions.set(sessionId, state);
 
@@ -147,18 +179,30 @@ export class SessionViewStateStore {
       for (const [id, kept] of sessions) {
         if (sessions.size <= KEPT_SESSION_VIEWS) break;
 
-        if (!composerHasContent(kept.composer)) sessions.delete(id);
+        if (draftKept(kept.draft)) continue;
+        sessions.delete(id);
+
+        if (kept.stepGroups.size > 0)
+          this.#window.saveSteps(id, DEFAULT_SESSION_VIEW_STATE.stepGroups);
       }
     }
 
-    if (storedChanged(previous, state.composer)) {
-      this.#window.save(
-        `session:${sessionId}`,
-        previous,
-        state.composer,
-        persistableComposer(state.composer),
-      );
-    }
+    if ((known ?? DEFAULT_SESSION_VIEW_STATE).stepGroups !== state.stepGroups)
+      this.#window.saveSteps(sessionId, state.stepGroups);
+
+    if (previous === state.draft) return;
+    const before = persistedDraft(previous);
+    const after = persistedDraft(state.draft);
+
+    if (
+      storedChanged(before, after) ||
+      restorable(previous) !== restorable(state.draft) ||
+      previous.sending !== state.draft.sending ||
+      previous.omitted !== state.draft.omitted
+    )
+      this.#window.saveSession(sessionId, previous, state.draft);
+
+    this.#window.notify(`session:${sessionId}`);
   }
 
   updateSession(
@@ -169,6 +213,13 @@ export class SessionViewStateStore {
     this.writeSession(sessionId, next);
 
     return next;
+  }
+
+  updateDraft(sessionId: SessionId, update: (draft: SessionDraft) => SessionDraft): SessionDraft {
+    return this.updateSession(sessionId, (current) => ({
+      ...current,
+      draft: update(current.draft),
+    })).draft;
   }
 
   readBlank(paneId: PaneId): ChatDraft {
@@ -188,26 +239,52 @@ export class SessionViewStateStore {
       id: current.id,
       updatedAt: changed ? Date.now() : current.updatedAt,
       status: current.status,
+      omitted: changed ? 0 : current.omitted,
     };
 
     drafts.active = next;
 
-    if (storedChanged(current.composer, next.composer)) this.#window.saveDraft(current, next);
+    if (
+      storedChanged(current.composer, next.composer) ||
+      current.choice !== next.choice ||
+      current.project !== next.project ||
+      current.folder !== next.folder
+    )
+      this.#window.saveDraft(current, next);
   }
 
   drafts(): readonly ChatDraft[] {
     return this.#window.drafts();
   }
 
-  startNewDraft(paneId: PaneId, project?: ProjectId): void {
+  startNewDraft(paneId: PaneId, start: DraftStart): void {
     const drafts = this.#window.pane(this.#tabId, paneId);
     const current = drafts.active;
     const kept = !draftHasContent(current);
+    const base = kept ? current : this.#window.createDraft();
+    const folder = start.folder === undefined ? base.folder : start.folder;
 
-    if (kept && current.project === project) return;
+    if (
+      kept &&
+      current.project === start.project &&
+      current.folder === folder &&
+      start.composer === undefined
+    )
+      return;
 
     if (!kept) drafts.parked.set(current.id, current);
-    drafts.active = { ...(kept ? current : this.#window.createDraft()), project };
+
+    const next = {
+      ...base,
+      project: start.project,
+      folder,
+      composer: start.composer ?? base.composer,
+      omitted: start.composer === undefined ? base.omitted : 0,
+    };
+
+    drafts.active = next;
+
+    if (start.composer !== undefined) this.#window.saveDraft(base, next);
     this.#window.emit();
   }
 

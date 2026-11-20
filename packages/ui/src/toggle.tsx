@@ -1,4 +1,5 @@
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
+import { create } from "@stylexjs/stylex";
 import { use } from "react";
 import type { ReactElement } from "react";
 
@@ -12,7 +13,14 @@ import {
 import { ControlGlyphs, Icon } from "./icon.tsx";
 import type { StyledProps } from "./style.ts";
 import { hairline } from "./styles/hairline.stylex.ts";
+import { role } from "./styles/vars.stylex.ts";
 import { ToggleGroupContext } from "./toggle-group.tsx";
+
+const styles = create({
+  segment: {
+    backgroundColor: { default: "transparent", "[data-pressed]": role.fillPrimary },
+  },
+});
 
 export function Toggle<Value extends string>({
   indicator = "fill",
@@ -45,7 +53,7 @@ export function Toggle<Value extends string>({
           pill,
           tone,
           grouped,
-          xstyle: [hairline.pressedRing, xstyle],
+          xstyle: [hairline.pressedRing, grouped && styles.segment, xstyle],
           className,
           style,
         },

@@ -38,6 +38,7 @@ import type {
 import type { KeyedSerial } from "@nyte-ai/schema/serial";
 import type { FoldCache, LogPublisher, SessionBus } from "./fold.ts";
 import type {
+  ClientsApi,
   Connection,
   ConnectionContext,
   ConnectionRegistry,
@@ -54,8 +55,10 @@ import type {
 } from "./host.ts";
 import type { PartDefinition, PartDefinitions, PartTable } from "./parts.ts";
 import type {
+  Additions,
   Agent,
   ContributionTable,
+  Derive,
   HookEntry,
   HookName,
   HookTable,
@@ -67,7 +70,7 @@ import type {
   SettingsRegistry,
 } from "./plugin.ts";
 import type { Presence } from "./presence.ts";
-import type { CallRecord, SessionRecord } from "./records.ts";
+import type { AssignedPlugin, CallRecord, SessionRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
 import type { ToolDefinition } from "./tools.ts";
@@ -154,7 +157,6 @@ export interface Kernel {
 
   readonly connections: ConnectionRegistry;
 
-  /** One request outside any run. With a session it runs that session's request hooks and charges the session; with `null` it runs no plugin hooks and charges nothing. */
   request<T>(
     session: SessionId | null,
     input: ModelRequestInput<T>,
@@ -165,6 +167,8 @@ export interface Kernel {
   readonly secretKey: Promise<CryptoKey> | null;
 
   readonly mcp: McpHub | null;
+
+  readonly clients: ClientsApi | null;
 
   readonly github: GitHubAccountApi | null;
 
@@ -196,7 +200,6 @@ export interface PluginHost {
 
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
 
-  /** Closes `session`'s runtime and takes it off the folder watches, which stop once no session is left on them. */
   close(session: SessionId): Promise<void>;
 
   api(owner: string, session: SessionId): PluginApi<"core">;
@@ -207,17 +210,13 @@ export interface PluginHost {
 
   load(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
 
-  /** Loads the plugin files in `dir` one by one, so a bad file is reported without dropping the others; the same plugin object while none of a file's graph changed. */
   directory(dir: string): Promise<PluginDirectory>;
 
-  /** The same build while none of the view's files changed; null on a host that reads no files. */
   readonly compileView: ((view: URL) => Promise<ViewBuild>) | null;
 }
 
 export interface SessionDirectory {
   activation(session: SessionId): Activation;
-
-  activations(): ReadonlyMap<SessionId, Activation>;
 
   setActivation(session: SessionId, activation: Activation): void;
 
@@ -233,7 +232,6 @@ interface Handles {
 }
 
 export interface ChildTable {
-  /** Follows `record` when it has a parent and takes `own`, read from the store after the {@link ChildTable.heard} count `since`, unless a run event for the child arrived on the bus after `since`: then it returns false and takes nothing. A `since` of 0 takes `own` only while this process has heard no run event for the child. */
   link(record: SessionRecord, own: BackgroundItem["state"] | null, since: number): boolean;
   heard(): number;
   forget(session: SessionId): void;
@@ -369,9 +367,11 @@ export interface PluginRuntime {
 
   readonly ready: Promise<void>;
 
-  load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
+  load(
+    plugins: readonly Plugin<"core">[],
+    assigned: readonly AssignedPlugin[] | null,
+  ): Promise<readonly PluginLoadOutcome[]>;
 
-  /** The plugins its last `load` was asked for, in order, whether or not each activated. */
   requested(): readonly Plugin<"core">[];
 
   outcomes(): readonly PluginLoadOutcome[];
@@ -385,9 +385,14 @@ export interface PluginRuntime {
 
   instance(id: string): PluginInstance | undefined;
 
-  assigned(): readonly (Plugin<"core"> | PluginFile)[] | null;
+  /** The session record's plugins as of this runtime's last load; null when the session has none assigned. */
+  assigned(): readonly AssignedPlugin[] | null;
 
   hold(): Disposer;
+
+  idleSince(): number | null;
+
+  touch(): void;
 
   close(): Promise<void>;
 }
@@ -395,6 +400,9 @@ export interface PluginRuntime {
 export interface PluginInstance {
   readonly plugin: Plugin<"core">;
   readonly api: PluginApi<"core">;
+
+  /** Adds items and hooks to every host the instance has joined, and to each it joins later. */
+  add(additions: Additions<"core">): void;
 
   join(host: InstanceHost): Disposer;
 }
@@ -406,7 +414,8 @@ export interface InstanceHost {
 }
 
 export interface PluginState {
-  readonly assigned: Map<SessionId, readonly (Plugin<"core"> | PluginFile)[]>;
+  /** The plugin objects this process was handed for a session, which its record names only by id. */
+  readonly inline: Map<SessionId, readonly Plugin<"core">[]>;
   readonly holds: Map<PartDefinition, { count: number; readonly dispose: Disposer }>;
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
   readonly publishing: Map<SessionId, Promise<void>>;
@@ -425,10 +434,17 @@ export type PluginFailure = {
 
 export type Attached = { readonly env: ExecutionEnv | null };
 
-export interface CoreRegistry<T, Handle = Disposer> extends Registry<T, "core", Handle> {
-  owned(owner: string, signal?: AbortSignal): Registry<T, "core", Handle>;
+export interface OwnedRegistry<T> extends Registry<T> {
+  add(entry: T | Derive<T, "core">): Disposer;
+}
+
+export interface CoreRegistry<T> extends Registry<T> {
+  owned(owner: string, signal?: AbortSignal): OwnedRegistry<T>;
 
   entries(): readonly { readonly item: T; readonly owner: string }[];
+
+  /** The entries before `when` left any out. */
+  drafted(): readonly { readonly item: T; readonly owner: string }[];
 
   declared(owner: string): readonly T[];
 
@@ -439,10 +455,9 @@ export interface CoreRegistry<T, Handle = Disposer> extends Registry<T, "core", 
 
 export type CoreRegistries = {
   readonly [K in keyof Registries<"core">]: CoreRegistry<
-    ContributionTable[K & keyof ContributionTable]["item"],
-    ContributionTable[K & keyof ContributionTable]["handle"]
+    ContributionTable[K & keyof ContributionTable]["item"]
   > &
-    (K extends "settings" ? Pick<SettingsRegistry<"core">, "value" | "watch"> : {});
+    (K extends "settings" ? Pick<SettingsRegistry, "value" | "set" | "watch"> : {});
 };
 
 export interface RegistrySet extends CoreRegistries {

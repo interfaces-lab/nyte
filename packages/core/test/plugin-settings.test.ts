@@ -1,7 +1,7 @@
 import { SdkError } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { kvRef } from "../src/store.ts";
-import type { Plugin, PluginApi, PluginStorage, Setting } from "../src/index.ts";
+import type { Plugin, PluginApi, PluginStorage } from "../src/index.ts";
 import { configuration, setup, workspace } from "../src/harness.ts";
 import { volume, theme, loaded } from "./plugin-support.ts";
 
@@ -25,11 +25,11 @@ describe("settings", () => {
         id: "theme",
         owner: "looks",
         scope: "host",
-        label: "Theme",
+        title: "Theme",
         schema: expect.objectContaining({ anyOf: expect.any(Array) }),
         choices: [
-          { value: "light", label: "Light" },
-          { value: "dark", label: "Dark", badge: "new" },
+          { value: "light", title: "Light" },
+          { value: "dark", title: "Dark", note: "new" },
         ],
         value: "dark",
         from: "host",
@@ -44,27 +44,31 @@ describe("settings", () => {
   });
 
   it("yields a setting's value, then each change, until its plugin deactivates", async () => {
-    let handle: Setting<unknown> | undefined;
+    let api: PluginApi<"core"> | undefined;
 
     const { host, session } = await loaded([
       {
         id: "mixer",
-        activate(api) {
-          handle = api.contribute.settings.add(volume);
+        contribute: { settings: [volume] },
+        activate(given) {
+          api = given;
+
+          return {};
         },
       },
     ]);
 
-    assert(handle !== undefined);
-    const values = handle.watch()[Symbol.asyncIterator]();
+    assert(api !== undefined);
+    const settings = api.registries.settings;
+    const values = settings.watch("volume")[Symbol.asyncIterator]();
 
     expect(await values.next()).toEqual({ done: false, value: 3 });
     expect(await host.settings.apply("volume", 7)).toEqual({ kind: "applied" });
     expect(await values.next()).toEqual({ done: false, value: 7 });
-    await handle.set(9);
+    await settings.set("volume", 9);
     expect(await values.next()).toEqual({ done: false, value: 9 });
-    expect(await handle.get()).toBe(9);
-    await expect(handle.set(-1)).rejects.toBeInstanceOf(SdkError);
+    expect(await settings.value("volume")).toBe(9);
+    await expect(settings.set("volume", -1)).rejects.toBeInstanceOf(SdkError);
     expect((await session.view()).catalog.settings).toEqual([
       expect.objectContaining({ id: "volume", value: 9, from: "host" }),
     ]);
@@ -83,19 +87,21 @@ describe("settings", () => {
         contribute: { settings: [volume] },
         activate(given) {
           api = given;
+
+          return {};
         },
       },
     ]);
 
     assert(api !== undefined);
-    const values = api.contribute.settings.watch("volume")[Symbol.asyncIterator]();
+    const values = api.registries.settings.watch("volume")[Symbol.asyncIterator]();
 
-    expect(await api.contribute.settings.value("volume")).toBe(3);
+    expect(await api.registries.settings.value("volume")).toBe(3);
     expect(await values.next()).toEqual({ done: false, value: 3 });
     expect(await host.settings.apply("volume", 5)).toEqual({ kind: "applied" });
     expect(await values.next()).toEqual({ done: false, value: 5 });
-    expect(await api.contribute.settings.value("volume")).toBe(5);
-    await expect(api.contribute.settings.value("theme")).rejects.toMatchObject({ code: "unknown" });
+    expect(await api.registries.settings.value("volume")).toBe(5);
+    await expect(api.registries.settings.value("theme")).rejects.toMatchObject({ code: "unknown" });
     await values.return?.();
   });
 
@@ -106,9 +112,12 @@ describe("settings", () => {
           id: "mixer",
           contribute: {
             commands: [{ name: "ping", title: "Ping", description: "", run: () => "pong" }],
+            settings: [{ ...volume, scope: "chat" }],
           },
           async activate(api) {
-            await api.contribute.settings.add({ ...volume, scope: "session" }).set(4);
+            await api.registries.settings.set("volume", 4);
+
+            return {};
           },
         },
       ],
@@ -122,20 +131,23 @@ describe("settings", () => {
 
     expect(await session.command("ping", "")).toEqual({ kind: "ran", output: "pong" });
     expect((await session.view()).catalog.settings).toEqual([
-      expect.objectContaining({ id: "volume", value: 4, from: "session" }),
+      expect.objectContaining({ id: "volume", value: 4, from: "chat" }),
     ]);
     expect((await host.sessions.start({ content: "Hi." })).session.id).not.toBe(session.id);
   });
 
   it("announces a client's configure of a session-scope setting to watchers and the catalog, and reads a plugin's own set back from the session's configuration", async () => {
-    let handle: Setting<unknown> | undefined;
+    let api: PluginApi<"core"> | undefined;
 
     const { session } = await loaded(
       [
         {
           id: "mixer",
-          activate(api) {
-            handle = api.contribute.settings.add({ ...volume, scope: "session" });
+          contribute: { settings: [{ ...volume, scope: "chat" }] },
+          activate(given) {
+            api = given;
+
+            return {};
           },
         },
       ],
@@ -147,8 +159,9 @@ describe("settings", () => {
       },
     );
 
-    assert(handle !== undefined);
-    const values = handle.watch()[Symbol.asyncIterator]();
+    assert(api !== undefined);
+    const settings = api.registries.settings;
+    const values = settings.watch("volume")[Symbol.asyncIterator]();
 
     expect(await values.next()).toEqual({ done: false, value: 3 });
     expect(await session.configure({ settings: { volume: 6 } })).toMatchObject({
@@ -156,15 +169,95 @@ describe("settings", () => {
     });
     expect(await values.next()).toEqual({ done: false, value: 6 });
     expect((await session.view()).catalog.settings).toEqual([
-      expect.objectContaining({ id: "volume", value: 6, from: "session" }),
+      expect.objectContaining({ id: "volume", value: 6, from: "chat" }),
     ]);
     await values.return?.();
-    await handle.set(5);
+    await settings.set("volume", 5);
 
-    expect(await handle.get()).toBe(5);
+    expect(await settings.value("volume")).toBe(5);
     expect((await session.view()).catalog.settings).toEqual([
-      expect.objectContaining({ id: "volume", value: 5, from: "session" }),
+      expect.objectContaining({ id: "volume", value: 5, from: "chat" }),
     ]);
+  });
+
+  it.each([
+    [{ id: "t", title: "T", type: "text" }, "", "string"],
+    [{ id: "n", title: "N", type: "number" }, 0, "number"],
+    [{ id: "i", title: "I", type: "integer" }, 0, "integer"],
+    [{ id: "s", title: "S", type: "switch" }, false, "boolean"],
+    [{ id: "d", title: "D", type: "text", default: "x" }, "x", "string"],
+    [
+      {
+        id: "c",
+        title: "C",
+        type: "text",
+        choices: [
+          { value: "a", title: "A" },
+          { value: "b", title: "B", note: "second" },
+        ],
+      },
+      "a",
+      "string",
+    ],
+  ] as const)(
+    "fills a typed setting %j with the default %j and a %s schema, at host scope",
+    async (definition, value, type) => {
+      const { kernel } = await loaded([{ id: "typed", contribute: { settings: [definition] } }]);
+
+      expect(kernel.host.current().settings).toMatchObject([
+        { id: definition.id, title: definition.title, scope: "host", value, schema: { type } },
+      ]);
+    },
+  );
+
+  it("seals a secret setting, sends clients only that one is saved, keeps it on a write without a value, and removes it on null", async () => {
+    let api: PluginApi<"core"> | undefined;
+
+    const { kernel, host } = await loaded(
+      [
+        {
+          id: "exa",
+          contribute: {
+            settings: [
+              {
+                id: "exa.key",
+                title: "Exa API key",
+                description: "Sent with each search.",
+                placeholder: "Paste a key",
+                type: "secret",
+              },
+            ],
+          },
+          activate(given) {
+            api = given;
+
+            return {};
+          },
+        },
+      ],
+      { secrets: { key: async () => new Uint8Array(32).fill(7) } },
+    );
+
+    assert(api !== undefined);
+    const own = api.registries.settings;
+    const shown = () => kernel.host.current().settings.find((setting) => setting.id === "exa.key");
+
+    expect(shown()).toMatchObject({
+      value: null,
+      secret: true,
+      description: "Sent with each search.",
+      placeholder: "Paste a key",
+    });
+    expect(await host.settings.apply("exa.key", { secret: true, value: "k-123" })).toEqual({
+      kind: "applied",
+    });
+    expect(shown()?.value).toEqual({ secret: true });
+    expect(await own.value("exa.key")).toEqual({ secret: true, value: "k-123" });
+    expect(await host.settings.apply("exa.key", { secret: true })).toEqual({ kind: "applied" });
+    expect(await own.value("exa.key")).toEqual({ secret: true, value: "k-123" });
+    expect(await host.settings.apply("exa.key", null)).toEqual({ kind: "applied" });
+    expect(shown()?.value).toBeNull();
+    expect(await own.value("exa.key")).toBeNull();
   });
 });
 
@@ -173,7 +266,14 @@ describe("plugin storage", () => {
     let storage: PluginStorage | undefined;
 
     const { kernel, host } = await loaded([
-      { id: "a", activate: (api) => void (storage = api.storage) },
+      {
+        id: "a",
+        activate(api) {
+          storage = api.storage;
+
+          return {};
+        },
+      },
     ]);
 
     const report = await host.plugins.check([{ id: "a/b" }, { id: "settingsx" }, { id: "ok" }]);
@@ -196,7 +296,11 @@ describe("plugin storage", () => {
 
     const keeper: Plugin<"core"> = {
       id: "keeper",
-      activate: (api) => void storages.push(api.storage),
+      activate(api) {
+        storages.push(api.storage);
+
+        return {};
+      },
     };
 
     const { kernel, host, session } = await loaded([keeper]);
@@ -238,7 +342,11 @@ describe("plugin storage", () => {
 
     const vault: Plugin<"core"> = {
       id: "vault",
-      activate: (api) => void (secrets = api.storage.secrets),
+      activate(api) {
+        secrets = api.storage.secrets;
+
+        return {};
+      },
     };
 
     const { kernel } = await loaded([vault], {

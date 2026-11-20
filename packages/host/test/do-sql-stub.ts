@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { DurableObjectSql, SqlValue } from "../src/durable-object.ts";
+import type { DurableObjectSql, SqlValue } from "../src/store/durable-object.ts";
 
 export function doSqlStub(): DurableObjectSql & { readonly database: DatabaseSync } {
   const database = new DatabaseSync(":memory:");

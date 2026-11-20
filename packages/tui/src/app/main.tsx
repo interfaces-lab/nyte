@@ -18,7 +18,6 @@ import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts
 import type { Ending } from "../lifecycle.ts";
 import { trustFolder } from "../run.ts";
 import { connectHost } from "../local-host.ts";
-import { openLiveHost } from "../live-host.ts";
 import type { HostSource } from "../local-host.ts";
 import type { FailureReport } from "../model/state.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
@@ -28,7 +27,7 @@ import { mountApp } from "./mount.tsx";
 import { holdTypeahead } from "./typeahead.ts";
 
 export async function runTui(flags: RunFlags, source: HostSource): Promise<number> {
-  const connecting = connectHost(source);
+  const connecting = connectHost(source, "tui");
   let connectFailure: unknown = null;
 
   connecting.catch((cause: unknown) => {
@@ -107,7 +106,6 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
 
     return {
       connection: local.connection,
-      live: openLiveHost(local.endpoint, "tui"),
       folder: cwd,
       contextFiles: flags.contextFiles,
     };
@@ -153,8 +151,6 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
     );
 
   await cleanup("Host", async () => {
-    const link = await host.catch(() => null);
-    link?.live.release();
     const local = await connecting.catch(() => null);
     await local?.close();
   });

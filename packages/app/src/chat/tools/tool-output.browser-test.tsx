@@ -101,7 +101,7 @@ const scripted = scriptedConnection({
   ]),
 });
 
-installConnection(scripted.connection, scripted.live);
+installConnection(scripted.connection);
 
 async function readsElidedRowWhole(host: HTMLElement): Promise<void> {
   const root = createRoot(host);
@@ -109,7 +109,7 @@ async function readsElidedRowWhole(host: HTMLElement): Promise<void> {
   try {
     flushSync(() =>
       root.render(
-        <PaneControllerProvider controller={tabPanes()}>
+        <PaneControllerProvider panes={tabPanes()}>
           <TranscriptProvider paneId={PRIMARY} sessionId={SESSION}>
             <ToolCallView message={elided} cwd="/repo" density="compact" />
           </TranscriptProvider>

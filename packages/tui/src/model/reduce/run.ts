@@ -114,14 +114,9 @@ export const runHandlers = {
     const options: MoveOptions = {
       running: "refuse",
       abandoned:
-        msg.abandoned === "keep"
-          ? "keep"
-          : {
-              summarize:
-                msg.abandoned.summarize.instructions === null
-                  ? {}
-                  : { instructions: msg.abandoned.summarize.instructions },
-            },
+        msg.abandoned.kind === "summarize" && msg.abandoned.instructions !== null
+          ? { kind: "summarize", instructions: msg.abandoned.instructions }
+          : { kind: msg.abandoned.kind },
       expect: msg.expect,
     };
 

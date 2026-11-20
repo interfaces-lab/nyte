@@ -8,13 +8,13 @@ import type {
 } from "@nyte-ai/schema";
 import type { SettingsApi } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import type { Setting, SettingDefinition } from "../contract/plugin.ts";
+import type { Setting, ResolvedSetting } from "../contract/plugin.ts";
 import { collectContributions } from "../engine/contributions.ts";
 import { WORKSPACE_TRUST } from "../env/trust.ts";
-import { dropScans, trustChanged } from "../env/workspaces.ts";
-import { commit } from "../fold/commit.ts";
+import { dropScans, readTrust, trustChanged } from "../env/workspaces.ts";
+import { commit } from "../watch/commit.ts";
 import { headRef, kvRef, sessionRef } from "../store/refs.ts";
-import { sealText } from "../store/secrets.ts";
+import { openText, sealText } from "../store/secrets.ts";
 import {
   attempt,
   EMPTY_REVISION,
@@ -48,7 +48,7 @@ export function createSettingsApi(kernel: Kernel): SettingsApi {
 
 export function settingHandle<T>(
   kernel: Kernel,
-  definition: SettingDefinition<T>,
+  definition: ResolvedSetting<T>,
   input: {
     readonly owner: string;
     readonly session: SessionId | null;
@@ -58,7 +58,10 @@ export function settingHandle<T>(
   const { session, signal } = input;
   const { id } = definition;
 
-  const get = (): Promise<T> => readSetting(kernel.store, definition, session);
+  const get = (): Promise<T> =>
+    definition.secret === true
+      ? readOpenedSetting(kernel, definition)
+      : readSetting(kernel.store, definition, session);
 
   return {
     get,
@@ -128,7 +131,7 @@ export async function publishSettings(kernel: Kernel): Promise<void> {
 
 async function storeHostValue(
   kernel: Kernel,
-  definition: Pick<SettingDefinition, "id" | "secret">,
+  definition: Pick<ResolvedSetting, "id" | "secret">,
   value: Json,
 ): Promise<void> {
   const id = definition.id;
@@ -138,10 +141,12 @@ async function storeHostValue(
     ? await sealSecretEntries(kernel, value, await readKv(kernel.store, name))
     : value;
 
+  const trust = id === WORKSPACE_TRUST ? await readTrust(kernel) : null;
+
   await commit(kernel, [{ name, target: await put(kernel.store, "kv", stored) }]);
   changed(kernel, id, null);
 
-  if (id === WORKSPACE_TRUST) void trustChanged(kernel).catch(() => undefined);
+  if (trust !== null) void trustChanged(kernel, trust).catch(() => undefined);
 
   if (id === SKILL_PATHS) {
     dropScans(kernel);
@@ -156,6 +161,34 @@ async function storeHostValue(
   ]);
 }
 
+async function readOpenedSetting<T>(kernel: Kernel, definition: ResolvedSetting<T>): Promise<T> {
+  const stored = await readKv(kernel.store, kvRef("host", "settings", definition.id));
+
+  if (stored === undefined) return definition.default;
+
+  const opened =
+    !isJsonObject(stored) || stored.secret === true
+      ? await openSecretEntry(kernel, stored)
+      : Object.fromEntries(
+          await Promise.all(
+            Object.entries(stored).map(
+              async (entry) => [entry[0], await openSecretEntry(kernel, entry[1])] as const,
+            ),
+          ),
+        );
+
+  const checked = await check(definition.schema, opened);
+
+  return checked.kind === "valid" ? checked.value : definition.default;
+}
+
+async function openSecretEntry(kernel: Kernel, entry: Json): Promise<Json> {
+  if (!isJsonObject(entry) || entry.secret !== true) return entry;
+  const value = await openText(kernel, entry).catch(() => undefined);
+
+  return value === undefined ? { secret: true } : { secret: true, value };
+}
+
 async function sealSecretEntries(
   kernel: Kernel,
   written: Json,
@@ -163,28 +196,34 @@ async function sealSecretEntries(
 ): Promise<Json> {
   if (!isJsonObject(written)) return written;
 
+  if (written.secret === true) return sealSecretEntry(kernel, "This setting", written, stored);
+
   const kept = isJsonObject(stored) ? stored : {};
 
   const entries = await Promise.all(
-    Object.entries(written).map(async (entry): Promise<[string, Json]> => {
-      const key = entry[0];
-      const value = entry[1];
-
-      if (!isJsonObject(value) || value.secret !== true) return [key, value];
-
-      if (typeof value.value === "string")
-        return [key, { secret: true, ...(await sealText(kernel, value.value)) }];
-
-      const previous = kept[key];
-
-      if (isJsonObject(previous) && previous.secret === true && "ciphertext" in previous)
-        return [key, previous];
-
-      throw new SdkError("invalid", `${key} is secret but has no value to keep. Enter one.`);
-    }),
+    Object.entries(written).map(async (entry): Promise<[string, Json]> => [
+      entry[0],
+      await sealSecretEntry(kernel, entry[0], entry[1], kept[entry[0]]),
+    ]),
   );
 
   return Object.fromEntries(entries);
+}
+
+async function sealSecretEntry(
+  kernel: Kernel,
+  name: string,
+  written: Json,
+  stored: Json | undefined,
+): Promise<Json> {
+  if (!isJsonObject(written) || written.secret !== true) return written;
+
+  if (typeof written.value === "string")
+    return { secret: true, ...(await sealText(kernel, written.value)) };
+
+  if (isJsonObject(stored) && stored.secret === true && "ciphertext" in stored) return stored;
+
+  throw new SdkError("invalid", `${name} is secret but has no value to keep. Enter one.`);
 }
 
 async function settingsConfigured(
@@ -207,31 +246,30 @@ export async function configure(
   patch: ConfigurationPatch,
   activation = false,
 ): Promise<ConfigureOutcome> {
-  const found = await requireSession(kernel.store, session);
-  const entry = found.record.heads.find((current) => current.name === head);
-
-  if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
-  const runtime = kernel.plugins.runtime(session);
-
-  if (!activation) await runtime.ready;
-
-  const selected = await kernel.resolveConfiguration({
-    session,
-    head,
-    selected: entry.selected,
-    patch,
-    contributions: collectContributions(runtime),
-  });
-
-  if (selected.kind !== "exact") return selected;
-
-  await attempt(`Configuring ${head}`, async () => {
+  const selected = await attempt(`Configuring ${head}`, async () => {
     const current = await requireSession(kernel.store, session);
+    const entry = current.record.heads.find((other) => other.name === head);
+
+    if (entry === undefined)
+      throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
+    const runtime = kernel.plugins.runtime(session);
+
+    if (!activation) await runtime.ready;
+
+    const resolved = await kernel.resolveConfiguration({
+      session,
+      head,
+      selected: entry.selected,
+      patch,
+      contributions: collectContributions(runtime),
+    });
+
+    if (resolved.kind !== "exact") return resolved;
 
     const record = {
       ...current.record,
       heads: current.record.heads.map((other) =>
-        other.name === head ? { ...other, selected } : other,
+        other.name === head ? { ...other, selected: resolved } : other,
       ),
     };
 
@@ -240,12 +278,14 @@ export async function configure(
         name: sessionRef(session),
         target: await put(kernel.store, "session", record),
         expect: current.ref.revision,
-        events: [{ head, kind: "configured", selected, effective: selected }],
+        events: [{ head, kind: "configured", selected: resolved, effective: resolved }],
       },
     ]);
 
-    return outcome.kind === "set" ? true : STALE;
+    return outcome.kind === "set" ? resolved : STALE;
   });
+
+  if (selected.kind !== "exact") return selected;
 
   if (patch.settings !== undefined)
     await settingsConfigured(kernel, session, Object.keys(patch.settings));

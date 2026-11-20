@@ -12,22 +12,33 @@ import type { DesktopHostDependencies } from "../host/desktop-host.ts";
 import { CloudflareTunnelPlugin } from "../host/connections/cloudflare-tunnel.ts";
 import { hostAgent } from "./host-agent.ts";
 import type { AgentRegistration, HostAgent } from "./host-agent.ts";
-import type { HostConnection } from "@nyte-ai/sdk/client";
+import type { SessionId } from "@nyte-ai/sdk";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserAgent } from "../shared/browser-agent.ts";
-import { offerAppActions, openAppClient } from "../shared/host-client.ts";
-import { HostLink } from "./host-link.ts";
-import type { HostLinkState } from "./host-link.ts";
+import { appSocket, offerAppActions } from "../shared/host-client.ts";
+import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
+import type { DialSocket } from "../shared/host-port.ts";
+import { HostLink } from "../host/host-link.ts";
+import type { HostLinkState } from "../host/host-link.ts";
+import { socketDial, socketFetch } from "./host-socket.ts";
 import { followHostProcess } from "./host-process.ts";
 import type { HostProcessFollower } from "./host-process.ts";
+import type { PackagedBuild } from "../shared/desktop-builds.ts";
+
+export interface HostRoute {
+  readonly fetch: (request: Request) => Promise<Response>;
+  readonly dial: DialSocket;
+}
 
 export interface HostRuntime {
   readonly agent: HostAgent;
+  readonly route: HostRoute;
   readonly link: HostLink;
   readonly hostProcess: HostProcessFollower;
-  readonly client: HostConnection;
   readonly desktop: DesktopHost;
+  resume(): void;
   close(): Promise<void>;
 }
 
@@ -35,7 +46,7 @@ export type HostRuntimeOptions = Pick<
   DesktopHostDependencies,
   "emitHostEvent" | "keepAwake" | "settingsChanged" | "alert" | "badge" | "mediaOrigin"
 > & {
-  readonly appId: string;
+  readonly build: PackagedBuild | null;
   readonly home: string;
   readonly nyteHome: string;
   readonly connect: ConnectRuntime;
@@ -44,6 +55,7 @@ export type HostRuntimeOptions = Pick<
   readonly agent: BrowserAgent;
   readonly preview: CanvasPreviewer;
   previewSignal(): AbortSignal;
+  openChat(session: SessionId): void;
   readonly linkChanged?: (state: HostLinkState) => void;
   readonly hostProcessChanged?: (state: HostProcess) => void;
   readonly registrationChanged?: (registration: AgentRegistration) => void;
@@ -51,22 +63,34 @@ export type HostRuntimeOptions = Pick<
 
 export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
   const agent = hostAgent({
-    appId: options.appId,
+    build: options.build,
     home: options.home,
     nyteHome: options.nyteHome,
-    packaged: app.isPackaged,
     appPath: app.getAppPath(),
     executable: process.execPath,
     entry: fileURLToPath(options.hostEntry),
-    label: app.isPackaged ? undefined : process.env["NYTE_DESKTOP_HOST_LABEL"],
+    label: options.build === null ? process.env["NYTE_DESKTOP_HOST_LABEL"] : undefined,
   });
 
   const socket = join(options.nyteHome, "host.sock");
-
-  const link = new HostLink(socket, (state) => {
-    options.linkChanged?.(state);
-    hostProcess.linkChanged();
-  });
+  const route: HostRoute = { fetch: socketFetch(socket), dial: socketDial(socket) };
+  const link = new HostLink(
+    () =>
+      connect({
+        url: HOST_PORT_ORIGIN,
+        credentials: { kind: "custom", headers: () => ({}) },
+        client: { kind: "app", name: "Nyte", version: app.getVersion() },
+        journal: createSendJournal(),
+        transport: {
+          fetch: (url, init) => route.fetch(new Request(url, init)),
+          socket: appSocket(socket),
+        },
+      }),
+    (state) => {
+      options.linkChanged?.(state);
+      hostProcess.linkChanged();
+    },
+  );
 
   const hostProcess = followHostProcess({
     agent,
@@ -84,18 +108,19 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     (cause: unknown) => dialog.showErrorBox("Nyte couldn't start its host", describe(cause)),
   );
   link.start();
-  const client = openAppClient({ socket, version: app.getVersion() });
 
-  const withdraw = offerAppActions(client, {
-    agent: options.agent,
-    preview: options.preview,
-    signal: () => options.previewSignal(),
-  });
+  const withdraw = link.attach((connection) =>
+    offerAppActions(connection, {
+      agent: options.agent,
+      preview: options.preview,
+      signal: () => options.previewSignal(),
+      openChat: (session) => options.openChat(session),
+    }),
+  );
 
   const desktop = new DesktopHost({
     home: options.home,
-    open: () => link.connect(),
-    client,
+    link,
     usageScan: new UsageScanWorker(options.home, options.usageWorker),
     remoteAccessPlugins: {
       cloudflare: new CloudflareTunnelPlugin({ home: join(options.home, ".nyte") }),
@@ -111,23 +136,27 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
 
   return {
     agent,
+    route,
     link,
     hostProcess,
-    client,
     desktop,
+    resume() {
+      link.retry();
+      desktop.resume();
+      options.hostProcessChanged?.(hostProcess.state());
+    },
     async close() {
       withdraw();
       link.close();
       await hostProcess.close();
       await desktop.close();
-      client.release();
     },
   };
 }
 
-export function bridgeHostPort(link: HostLink): MessagePortMain {
+export function bridgeHostPort(route: HostRoute): MessagePortMain {
   const channel = new MessageChannelMain();
-  servePort(mainPortEnd(channel.port1), link.fetch, link.dial);
+  servePort(mainPortEnd(channel.port1), route.fetch, route.dial);
 
   return channel.port2;
 }

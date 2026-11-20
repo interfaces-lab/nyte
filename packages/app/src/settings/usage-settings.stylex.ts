@@ -1,201 +1,136 @@
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes } from "@stylexjs/stylex";
-import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { settings } from "../theme/schema.stylex.ts";
-
-const NARROW = "@container (max-width: 560px)";
 
 const figure = { fontVariantNumeric: "tabular-nums" } as const;
 
+const bonePulse = keyframes({
+  "0%, 100%": { opacity: 0.55 },
+  "50%": { opacity: 1 },
+});
+
 export const usageStyles = create({
-  page: { display: "flex", flexDirection: "column", gap: settings.sectionGap, minWidth: 0 },
-  overview: { display: "flex", flexWrap: "wrap", gap: space.s2 },
-  card: {
+  page: {
+    containerName: "usage",
+    containerType: "inline-size",
     display: "flex",
     flexDirection: "column",
+    gap: settings.sectionGap,
     minWidth: 0,
-    padding: space.s4,
-    borderRadius: radius.card,
-    backgroundColor: role.bgMutedTranslucent,
   },
-  spend: { flex: "2 1 320px", gap: space.s4 },
-  chart: { flexGrow: 1 },
-  superseded: {
-    opacity: 0.6,
-    transitionProperty: "opacity",
-    transitionDuration: motion.durationNormal,
-  },
-  limits: { flex: "1 1 280px", gap: space.s4 },
-
-  spendHead: {
+  stack: { display: "flex", flexDirection: "column", gap: settings.sectionGap, minWidth: 0 },
+  head: {
     display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: space.s3,
-  },
-  spendTitle: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
-  spendFacts: {
-    display: "flex",
-    flexDirection: "column",
     alignItems: "flex-end",
-    gap: space.s1,
-    paddingTop: space.s0_5,
-    textAlign: "end",
-  },
-  caption: {
-    margin: 0,
-    color: role.contentSecondary,
-  },
-  amount: {
-    ...figure,
-    color: role.contentPrimary,
-    fontSize: type.font3xl,
-    fontWeight: type.weightSemibold,
-    lineHeight: type.leading3xl,
-    letterSpacing: "-0.02em",
-  },
-  fact: {
-    ...figure,
-    color: role.contentTertiary,
-  },
-  change: { color: role.contentAccent },
-  quiet: { ...figure, color: role.contentTertiary },
-
-  limitsHead: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-  limitGrid: {
-    display: "grid",
-    gridTemplateColumns: "minmax(3.5rem, max-content) minmax(32px, 1fr) auto auto",
-    alignItems: "center",
-    columnGap: space.s2_5,
-    rowGap: space.s2,
-  },
-  limitRow: { display: "contents" },
-  limitSpan: { gridColumn: "1 / -1", margin: 0 },
-  accountHead: {
-    display: "flex",
-    alignItems: "center",
-    gridColumn: "1 / -1",
-    gap: space.s1_5,
-    minWidth: 0,
-  },
-  accountGap: { marginBlockStart: space.s2 },
-  accountIcon: { flexShrink: 0, color: role.contentSecondary },
-  accountName: { flexShrink: 0, color: role.contentPrimary, fontWeight: type.weightMedium },
-  accountLabel: {
-    minWidth: 0,
-    overflow: "hidden",
-    color: role.contentTertiary,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  limitLabel: {
-    overflow: "hidden",
-    color: role.contentSecondary,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  limitMeter: { minWidth: 0 },
-  limitValue: { ...figure, color: role.contentPrimary, textAlign: "end" },
-  limitReset: { ...figure, color: role.contentTertiary, textAlign: "end", whiteSpace: "nowrap" },
-  meterHot: { color: role.contentAccent },
-
-  breakdown: { display: "flex", flexDirection: "column", gap: space.s2, minWidth: 0 },
-  breakdownHead: {
-    display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
     flexWrap: "wrap",
-    gap: space.s2,
-    paddingInline: space.s2,
+    columnGap: space.s4,
+    rowGap: space.s2,
   },
-  table: {
+  headCopy: { flex: "1 1 240px", minWidth: 0 },
+  actions: { display: "flex", alignItems: "center", gap: space.s2 },
+  card: {
+    position: "relative",
     display: "flex",
     flexDirection: "column",
-    overflow: "clip",
+    minWidth: 0,
+    padding: settings.rowPaddingInline,
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
-  row: {
+  superseded: {
+    opacity: 0.55,
+    transitionProperty: "opacity",
+    transitionDuration: {
+      default: motion.durationNormal,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+  },
+  fresh: {
+    opacity: 1,
+    transitionProperty: "opacity",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+  },
+  tip: {
+    position: "absolute",
+    zIndex: 2,
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s1,
+    minWidth: 168,
+    paddingBlock: space.s2,
+    paddingInline: space.s2_5,
+    borderRadius: radius.control,
+    boxShadow: shadow.shadowMdOutline,
+    color: role.contentPrimary,
+    pointerEvents: "none",
+    whiteSpace: "nowrap",
+    ...figure,
+  },
+  tipHead: { display: "flex", justifyContent: "space-between", gap: space.s4 },
+  tipTitle: { color: role.contentPrimary, fontWeight: type.weightMedium },
+  tipQuiet: { color: role.contentTertiary },
+  tipRow: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: space.s4,
-    minHeight: settings.rowMinHeight,
-    paddingBlock: space.s2,
-    paddingInline: space.s3,
-    borderBottomWidth: { default: 1, ":last-child": 0 },
-    borderBottomStyle: "solid",
-    borderBottomColor: role.strokeQuaternary,
+    color: role.contentSecondary,
   },
-  headRow: { minHeight: 0 },
-  head: {
-    color: role.contentTertiary,
-    fontWeight: type.weightRegular,
-  },
-  headStrong: { color: role.contentPrimary },
-  nameCell: { display: "flex", alignItems: "center", gap: space.s2, flex: "1 1 0", minWidth: 0 },
-  dot: {
+  tipRowActive: { color: role.contentPrimary, fontWeight: type.weightMedium },
+  tipKey: { display: "flex", alignItems: "baseline", gap: space.s1_5, minWidth: 0 },
+  tipName: { maxWidth: 220, whiteSpace: "normal", overflowWrap: "anywhere" },
+  tipRule: { height: 1, marginBlock: space.s0_5, backgroundColor: role.strokeQuaternary },
+  swatch: {
     flexShrink: 0,
     width: 8,
     height: 8,
     borderRadius: 2,
-    backgroundColor: role.bgInteractiveStrong,
+    backgroundColor: role.fillPrimary,
   },
-  dotIdle: { backgroundColor: role.contentQuaternary },
-  name: { display: "flex", flexDirection: "column", minWidth: 0 },
-  rowLabel: {
-    color: role.contentPrimary,
-    overflowWrap: "anywhere",
-  },
-  rowMeta: {
-    color: role.contentTertiary,
-    overflowWrap: "anywhere",
-  },
-  number: {
-    ...figure,
-    flexShrink: 0,
-    color: role.contentPrimary,
-    textAlign: "end",
-    whiteSpace: "nowrap",
-  },
-  cache: { display: "flex", flexDirection: "column", alignItems: "flex-end", width: 104 },
-  cacheLow: { color: role.contentAccent },
-  trend: {
-    display: { default: "flex", [NARROW]: "none" },
-    justifyContent: "flex-end",
-    flexShrink: 0,
-    width: 96,
-  },
-  cost: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    gap: space.s1,
-    flexShrink: 0,
-    width: 132,
-  },
-  costHead: { display: "flex", justifyContent: "flex-end", flexShrink: 0, width: 132 },
-  costLine: { display: "flex", alignItems: "baseline", gap: space.s1_5 },
-  share: {
-    ...figure,
-    color: role.contentTertiary,
-  },
-  absent: { color: role.contentTertiary },
-  shareTrack: {
-    display: "flex",
-    width: "100%",
-    height: 2,
+  swatchLit: { backgroundColor: role.chartSeries },
+  value: { ...figure, color: role.contentPrimary, whiteSpace: "nowrap" },
+  quiet: { ...figure, color: role.contentTertiary },
+  accent: { color: role.contentAccent },
+  track: {
+    position: "relative",
+    display: "block",
+    flex: 1,
+    minWidth: 0,
+    height: 4,
     overflow: "clip",
     borderRadius: 2,
     backgroundColor: role.fillTertiary,
   },
-  shareFill: { height: "100%", backgroundColor: role.bgInteractiveStrong },
-  more: {
-    margin: 0,
-    paddingBlock: space.s2,
-    paddingInline: space.s3,
-    color: role.contentTertiary,
+  fill: {
+    position: "absolute",
+    insetBlock: 0,
+    insetInlineStart: 0,
+    width: "100%",
+    transformOrigin: "left center",
+    backgroundColor: role.contentSecondary,
+    transitionProperty: "transform, background-color",
+    transitionDuration: {
+      default: motion.durationNormal,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
   },
-
+  fillLit: { backgroundColor: role.chartSeries },
+  bone: {
+    display: "block",
+    flexShrink: 0,
+    borderRadius: radius.indicator,
+    backgroundColor: role.fillSecondary,
+    animationName: { default: bonePulse, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationDuration: "1.8s",
+    animationTimingFunction: "ease-in-out",
+    animationIterationCount: "infinite",
+  },
   empty: {
     display: "flex",
     flexDirection: "column",
@@ -205,17 +140,9 @@ export const usageStyles = create({
     minHeight: 148,
     textAlign: "center",
   },
-  emptyTitle: {
-    color: role.contentPrimary,
-    textWrap: "balance",
-  },
-  emptyBody: {
-    maxWidth: 340,
-    margin: 0,
-    color: role.contentSecondary,
-    textWrap: "pretty",
-  },
-  emptyActions: { display: "flex", alignItems: "center", gap: space.s1_5, marginTop: space.s1 },
+  emptyTitle: { color: role.contentPrimary, textWrap: "balance" },
+  emptyBody: { maxWidth: 340, margin: 0, color: role.contentSecondary, textWrap: "pretty" },
+  emptyAction: { marginBlockStart: space.s1 },
   notice: {
     display: "flex",
     alignItems: "flex-start",
@@ -228,29 +155,9 @@ export const usageStyles = create({
     color: role.contentSecondary,
     textWrap: "pretty",
   },
-  noticeIcon: {
-    flexShrink: 0,
-    marginBlockStart: space.px,
-  },
-  noticeIconAlert: { color: role.contentAccent },
+  noticeIcon: { flexShrink: 0, marginBlockStart: space.px, color: role.contentAccent },
   noticeCopy: { flex: 1, minWidth: 0, paddingBlockStart: space.px },
-});
-
-const bonePulse = keyframes({
-  "0%, 100%": { opacity: 0.55 },
-  "50%": { opacity: 1 },
-});
-
-export const skeletonStyles = create({
-  bone: {
-    display: "inline-block",
-    verticalAlign: "middle",
-    flexShrink: 0,
-    borderRadius: radius.indicator,
-    backgroundColor: role.fillSecondary,
-    animationName: { default: bonePulse, "@media (prefers-reduced-motion: reduce)": "none" },
-    animationDuration: "1.8s",
-    animationTimingFunction: "ease-in-out",
-    animationIterationCount: "infinite",
-  },
+  pinned: { display: "inline-flex", alignItems: "center", gap: space.s1_5, minWidth: 0 },
+  pinnedName: { overflowWrap: "anywhere", color: role.contentPrimary },
+  pinIcon: { flexShrink: 0, color: role.contentSecondary },
 });

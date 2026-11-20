@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
 import electronMetadata from "electron/package.json" with { type: "json" };
-import { ACCOUNT_SCHEMES } from "../src/shared/account/scheme.ts";
+import { DEVELOPMENT_ACCOUNT_SCHEME } from "../src/shared/account/scheme.ts";
 
 export function prepareDevElectron() {
   if (process.platform !== "darwin") return electronPath;
@@ -15,7 +15,7 @@ export function prepareDevElectron() {
 
   const fingerprint = createHash("sha256")
     .update(readFileSync(import.meta.filename))
-    .update(ACCOUNT_SCHEMES.development)
+    .update(DEVELOPMENT_ACCOUNT_SCHEME)
     .update(icon)
     .digest("hex");
 
@@ -63,7 +63,7 @@ export function prepareDevElectron() {
       JSON.stringify([
         {
           CFBundleURLName: "Nyte Account",
-          CFBundleURLSchemes: [ACCOUNT_SCHEMES.development],
+          CFBundleURLSchemes: [DEVELOPMENT_ACCOUNT_SCHEME],
         },
       ]),
       plist,

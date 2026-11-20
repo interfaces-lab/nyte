@@ -10,8 +10,8 @@ import type { Decoded, Schema } from "./schema.ts";
 import { nullable } from "./wire/nullable.ts";
 
 const ABANDONED = Type.Union([
-  Type.Literal("keep"),
-  Type.Object({ summarize: Type.Object({ instructions: Type.Optional(Type.String()) }) }),
+  Type.Object({ kind: Type.Literal("keep") }),
+  Type.Object({ kind: Type.Literal("summarize"), instructions: Type.Optional(Type.String()) }),
 ]);
 
 export const TreeNodeType = Type.Object({
@@ -101,6 +101,21 @@ export const ReviseOutcomeType = Type.Union([
 ]);
 
 export type ReviseOutcome = Decoded<typeof ReviseOutcomeType>;
+
+/** Where `reorder` puts a queued message: right after `after`, or first when it is null. */
+export const ReorderPlaceType = Type.Object({ after: nullable(idSchema<"message">()) });
+
+export type ReorderPlace = Decoded<typeof ReorderPlaceType>;
+
+/** `sent` and `missing` mean the message left the queue; `stale` means `after` did. */
+export const ReorderOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("moved") }),
+  Type.Object({ kind: Type.Literal("sent") }),
+  Type.Object({ kind: Type.Literal("missing") }),
+  Type.Object({ kind: Type.Literal("stale") }),
+]);
+
+export type ReorderOutcome = Decoded<typeof ReorderOutcomeType>;
 
 export const MoveOptionsType = Type.Object({
   running: Type.Optional(Type.Enum(["refuse", "stop"])),

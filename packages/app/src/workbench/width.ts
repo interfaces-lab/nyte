@@ -39,6 +39,18 @@ export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBoun
   });
 }
 
+export function workbenchSeparatorValue(panelWidth: number, stageWidth: number) {
+  const bounds = workbenchWidthBounds(stageWidth);
+
+  const percent = (pixels: number): number =>
+    stageWidth <= 0 ? 100 : Math.min(100, Math.max(0, Math.round((pixels / stageWidth) * 100)));
+
+  const min = percent(bounds.min);
+  const max = percent(bounds.max);
+
+  return { min, max, now: Math.min(max, Math.max(min, percent(panelWidth))) };
+}
+
 export function clampWorkbenchWidthToBounds(width: number, bounds: WorkbenchWidthBounds): number {
   const normalized = Number.isFinite(width) ? Math.round(width) : bounds.min;
 

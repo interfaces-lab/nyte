@@ -10,6 +10,7 @@ import { persistPaneContent, restorePaneContent } from "../panes/pane-kinds.ts";
 import type { PaneContent } from "../panes/pane-kinds.ts";
 import { chatContent, paneSelectionSchema } from "../panes/pane-layout.ts";
 import type { PaneSelection } from "../panes/pane-layout.ts";
+import { withChatsInOneTab } from "./model.ts";
 import type { LastingTab, WindowState } from "./model.ts";
 
 const strict = { additionalProperties: false };
@@ -102,15 +103,18 @@ export function storeStrip(state: WindowState): StoredStrip {
 }
 
 export function parseStrip(stored: unknown, createId: () => string): WindowState | undefined {
-  if (Value.Check(currentStripSchema, stored))
-    return restoreStrip(
-      stored,
-      (layout) =>
-        restoreLayout(layout, restorePaneContent) ??
-        createLayout(chatContent({ kind: "blank" }), { newId: createId }),
-    );
+  const restored = Value.Check(currentStripSchema, stored)
+    ? restoreStrip(
+        stored,
+        (layout) =>
+          restoreLayout(layout, restorePaneContent) ??
+          createLayout(chatContent({ kind: "blank" }), { newId: createId }),
+      )
+    : Value.Check(earlierStripSchema, stored)
+      ? restoreStrip(stored, migrateLayout)
+      : undefined;
 
-  return Value.Check(earlierStripSchema, stored) ? restoreStrip(stored, migrateLayout) : undefined;
+  return restored === undefined ? undefined : withChatsInOneTab(restored, createId);
 }
 
 function restoreStrip<Stored>(
@@ -138,6 +142,7 @@ function restoreStrip<Stored>(
     activeTabId,
     recent: stored.recent.filter((id) => id !== activeTabId && open.has(id)),
     closed: stored.closed.map((closed) => ({ tab: restoreTab(closed.tab), index: closed.index })),
+    hidden: [],
   };
 }
 
@@ -190,17 +195,16 @@ function migrateLayout(layout: Static<typeof earlierLayoutSchema>): Layout<PaneC
       ],
     },
     focus: [asId<"pane">(focused), asId<"pane">(other)],
-    zoomed: null,
   };
 }
 
 function singlePane(id: string, selection: PaneSelection): Layout<PaneContent> {
-  return { root: earlierPane(id, selection), focus: [asId<"pane">(id)], zoomed: null };
+  return { root: earlierPane(id, selection), focus: [asId<"pane">(id)] };
 }
 
 function earlierPane(id: string, selection: PaneSelection): Pane<PaneContent> {
   const pane: PaneId = asId<"pane">(id);
   const tab = { id: asId<"pane-tab">(`${id}-chat`), content: chatContent(selection) };
 
-  return { kind: "pane", id: pane, tabs: [tab], active: tab.id, hidden: false };
+  return { kind: "pane", id: pane, tab };
 }

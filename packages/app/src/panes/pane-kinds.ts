@@ -25,13 +25,8 @@ export const paneRules: LayoutRules<PaneContent> = {
 
     return identity === undefined ? undefined : `${content.kind}:${identity}`;
   },
-  replaceable: replaceableContent,
   newId: () => crypto.randomUUID(),
 };
-
-export function paneMount(content: PaneContent): PaneKind<unknown>["mount"] {
-  return registry[content.kind].mount;
-}
 
 export function persistPaneContent<K extends PaneKindName>(
   content: PaneContent<K>,
@@ -51,10 +46,6 @@ export function restorePaneContent(stored: StoredContent): PaneContent | undefin
 
 function identifyContent<K extends PaneKindName>(content: PaneContent<K>): string | undefined {
   return registry[content.kind].identity(content.fields);
-}
-
-function replaceableContent<K extends PaneKindName>(content: PaneContent<K>): boolean {
-  return registry[content.kind].replaceable(content.fields);
 }
 
 function restoreKnown<K extends PaneKindName>(

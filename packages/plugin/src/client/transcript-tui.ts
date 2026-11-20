@@ -1,38 +1,30 @@
-import { Box, Text } from "@opentui/core";
-import type { VNode } from "@opentui/core";
 import { branchSummary, compaction, text, thinking, tool } from "@nyte-ai/plugin/client";
 import type { Renderer } from "@nyte-ai/plugin/client";
 import type { Plugin } from "@nyte-ai/plugin/client";
 import { defineRenderer } from "@nyte-ai/plugin/client";
+import { box, text as textView } from "./tui-view.ts";
+import type { TuiView } from "./tui-view.ts";
 
-const unreadable = (): VNode | null => null;
+const unreadable = (): TuiView | null => null;
 
-/**
- * Renderers for the terminal client, as OpenTUI nodes: the five built-in
- * part kinds. Feature plugins contribute their own renderers. A state its
- * schema rejects draws nothing, for the client to show raw.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const transcriptRenderers: readonly Renderer[] = [
-  defineRenderer(text, "tui", (state) => Text({ content: state.markdown }), unreadable),
+  defineRenderer(text, "tui", (state) => textView({ content: state.markdown }), unreadable),
   defineRenderer(
     thinking,
     "tui",
-    (state) => Text({ content: `Thinking: ${state.markdown}` }),
+    (state) => textView({ content: `Thinking: ${state.markdown}` }),
     unreadable,
   ),
   defineRenderer(
     tool,
     "tui",
     (state, act) =>
-      Box(
+      box(
         { flexDirection: "row", gap: 1 },
-        Text({ content: state.class.kind === "custom" ? state.class.label : state.name }),
+        textView({ content: state.class.kind === "custom" ? state.class.label : state.name }),
         state.phase === "settled"
-          ? Text({ content: state.outcome.kind })
-          : Text({ content: "[stop]", onMouseDown: () => void act("stop", {}) }),
+          ? textView({ content: state.outcome.kind })
+          : textView({ content: "[stop]", onMouseDown: () => void act("stop", {}) }),
       ),
     unreadable,
   ),
@@ -40,13 +32,13 @@ export const transcriptRenderers: readonly Renderer[] = [
     compaction,
     "tui",
     (state) =>
-      Text({ content: state.summary ?? `Context compacted at ${state.tokensBefore} tokens.` }),
+      textView({ content: state.summary ?? `Context compacted at ${state.tokensBefore} tokens.` }),
     unreadable,
   ),
   defineRenderer(
     branchSummary,
     "tui",
-    (state) => Text({ content: `Branch summary: ${state.markdown}` }),
+    (state) => textView({ content: `Branch summary: ${state.markdown}` }),
     unreadable,
   ),
 ];

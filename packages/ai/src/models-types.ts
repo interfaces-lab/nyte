@@ -37,7 +37,6 @@ import type {
 export interface ModelsPublication {
   /** Provider-selected persisted catalog. Omit to leave storage unchanged; null deletes it. */
   persist?: ModelsStoreEntry | null;
-  /** Optional synchronous update of provider-private in-memory catalog state. */
   update?: () => void;
 }
 
@@ -76,7 +75,6 @@ export interface ModelsRefreshResult {
 }
 
 export interface ModelsRequestTransforms {
-  /** Transform fully assembled model/auth/request headers before provider dispatch. */
   transformHeaders?: (headers: ProviderHeaders) => ProviderHeaders | Promise<ProviderHeaders>;
 }
 
@@ -101,13 +99,6 @@ export interface Provider<TApi extends Api = Api> {
   /** True when its models run only once the user picks one: a host choosing a default for the user passes over it, as for agents found installed rather than signed into. */
   readonly explicitOnly?: boolean;
 
-  /**
-   * Required: at least one of `apiKey`/`oauth`. Every provider has auth
-   * semantics — even providers with only ambient credentials (env vars, AWS
-   * profiles, ADC files) and keyless local servers provide `apiKey` auth
-   * whose `resolve()` reports whether the provider is configured.
-   * `Models.getAuth()` returns undefined when the provider is unconfigured.
-   */
   readonly auth: ProviderAuth;
 
   fetchAccountLimits?(input: {
@@ -232,7 +223,6 @@ export interface Models {
     options?: AuthOperationOptions,
   ): Promise<void>;
 
-  /** Return models whose providers have complete auth configuration. */
   getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]>;
 
   /**
@@ -294,7 +284,6 @@ export interface Models {
 export interface MutableModels extends Models {
   /** An independent provider registry sharing this catalog's credential and model stores. */
   withProvider(provider: Provider): Models;
-  /** Upsert/replace by provider.id. Provider ids are unique. */
   setProvider(provider: Provider): void;
   deleteProvider(id: string): void;
   clearProviders(): void;

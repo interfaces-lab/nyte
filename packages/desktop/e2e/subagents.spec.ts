@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures.ts";
 import { chatPane, menuShortcut, messages, openNewChat, primaryKey, send } from "./ui.ts";
+import { captureWindow } from "./window-capture.ts";
 
 test.use({ chapter: "subagents" });
 
@@ -17,12 +18,12 @@ test("background agents share one block, report in one line each, and wake the p
     log.getByText("Done", { exact: true }),
     "each agent's card and its report say Done",
   ).toHaveCount(4);
-  await expect(log.getByText(/Child \S+ completed/u)).toHaveCount(0);
+  await expect(log.getByText(/Subagent \S+ completed/u)).toHaveCount(0);
   await expect(log.getByText(/Echo: Trace part/u)).toHaveCount(0);
   await expect(log.getByRole("button", { name: "Edit Message" })).toHaveCount(1);
   await expect(chatPane(page).getByText(/queued/u)).toHaveCount(0);
 
-  await page.screenshot({ path: testInfo.outputPath("agents.png") });
+  await captureWindow(desktop, testInfo.outputPath("agents.png"));
   await testInfo.attach("agents-accessibility", {
     body: await page.locator("body").ariaSnapshot(),
     contentType: "text/plain",
@@ -41,7 +42,7 @@ test("background agents share one block, report in one line each, and wake the p
   await expect(tabs.nth(1)).toHaveAccessibleName("Map the core, preview");
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
   await expect(messages(page).getByText("Echo: Trace part 1.")).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("agents-child.png") });
+  await captureWindow(desktop, testInfo.outputPath("agents-child.png"));
 
   await tabs.nth(0).click();
   await expect(log.getByText("2 agents done")).toBeVisible();
@@ -65,7 +66,7 @@ test("the agents tray previews a finished agent, opens it as a full chat, and cl
   const { page } = desktop;
   const pane = chatPane(page);
   const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
-  const pill = pane.getByRole("button", { name: "Agents", exact: true });
+  const pill = pane.getByRole("button", { name: /^Agents \d+$/u });
 
   await expect(pill, "finished agents stay listed until cleared").toHaveAccessibleDescription(
     "Agents, 0 active, 2 done",
@@ -84,6 +85,6 @@ test("the agents tray previews a finished agent, opens it as a full chat, and cl
 
   await tabs.nth(0).click();
   await pill.click();
-  await pane.getByRole("button", { name: "Clear Finished" }).click();
+  await pane.getByRole("button", { name: "Clear All", exact: true }).click();
   await expect(pill).toHaveCount(0);
 });

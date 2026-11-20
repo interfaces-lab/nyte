@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import { chatPane, openChat, primaryKey } from "./ui.ts";
+import { captureWindow } from "./window-capture.ts";
 import type { Locator, Page } from "@playwright/test";
 
 test.use({ chapter: "workbench" });
@@ -21,6 +22,21 @@ async function closeTab(tabs: Locator, tab: Locator): Promise<void> {
   await tab.hover({ position: { x: 8, y: 8 } });
   await tabs.getByRole("button", { name: `Close ${label} tab` }).click();
   await expect(tabs.getByRole("tab")).toHaveCount(count - 1);
+}
+
+function fileTabs(page: Page): Locator {
+  return workbench(page).getByRole("tablist", { name: /^Editor group 1 files/u });
+}
+
+async function closeFile(page: Page, name: string): Promise<void> {
+  const tabs = fileTabs(page);
+  const tab = tabs.getByRole("tab", { name, exact: true });
+  const panel = await tab.getAttribute("aria-controls");
+
+  if (panel === null) throw new Error(`The ${name} tab controls no panel.`);
+  await tab.hover();
+  await tabs.getByRole("button", { name: `Close ${name}`, exact: true }).click();
+  await expect(page.locator(`[id="${panel}"]`)).toHaveCount(0);
 }
 
 async function openWorkbenchTab(page: Page, kind: string): Promise<void> {
@@ -98,8 +114,9 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(rail.getByRole("button")).toContainText([
       "Editor",
       "Changes",
-      "New Browser",
-      "New Terminal",
+      "Design",
+      "Browser",
+      "Terminal",
     ]);
     await page.getByRole("button", { name: "Open workbench panel" }).click();
     await expect(page.getByRole("button", { name: "Close workbench panel" })).toHaveAttribute(
@@ -112,17 +129,19 @@ test("the workbench journey", async ({ desktop }) => {
     ).toBeVisible();
   });
 
-  await test.step("New workbench tab offers Editor, Changes, Browser and Terminal", async () => {
-    await page.getByRole("button", { name: "New workbench tab" }).click();
-    await expect(
-      page.getByRole("menu", { name: "New workbench tab" }).getByRole("menuitem"),
-    ).toHaveText(["Editor", "Changes", "Browser", "Terminal"]);
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu", { name: "New workbench tab" })).toBeHidden();
+  await test.step("the empty panel lists the rail's launchers, with no New workbench tab beside them", async () => {
+    await expect(page.getByRole("button", { name: "New workbench tab" })).toHaveCount(0);
+    await expect(workbench(page).getByRole("button")).toContainText([
+      "Editor",
+      "Changes",
+      "Design",
+      "Browser",
+      "Terminal",
+    ]);
   });
 
   await test.step("Editor opens on the Start page over the home folder", async () => {
-    await openWorkbenchTab(page, "Editor");
+    await workbench(page).getByRole("button", { name: "Editor", exact: true }).click();
     await expect(workbenchTabs(page).getByRole("tab", { name: "Editor" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -132,13 +151,22 @@ test("the workbench journey", async ({ desktop }) => {
       .getByRole("tabpanel", { name: "Editor" })
       .getByRole("region", { name: "Editor", exact: true });
 
-    await expect(editorPanel.getByRole("navigation", { name: "File path" })).toHaveText("Editor");
+    await expect(editorPanel.getByRole("navigation", { name: "File path" })).toBeEmpty();
     await expect(editorPanel.getByRole("combobox", { name: "Go to file" })).toBeVisible();
     const start = editorPanel.getByRole("region", { name: "Start" });
     await expect(start.getByRole("button", { name: "Show Explorer" })).toBeVisible();
     await expect(
       start.getByRole("button", { name: `Search in Files ${primaryKey} F` }),
     ).toBeVisible();
+  });
+
+  await test.step("New workbench tab offers Editor, Changes, Design, Browser and Terminal", async () => {
+    await page.getByRole("button", { name: "New workbench tab" }).click();
+    await expect(
+      page.getByRole("menu", { name: "New workbench tab" }).getByRole("menuitem"),
+    ).toHaveText(["Editor", "Changes", "Design", "Browser", "Terminal"]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu", { name: "New workbench tab" })).toBeHidden();
   });
 
   await test.step("a markdown file opens as a document, edits in place and saves only the edit", async () => {
@@ -172,12 +200,11 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(editorPanel.getByText("Saved", { exact: true })).toBeVisible();
     await expect.poll(() => readFile(notesPath, "utf8")).toBe(NOTES.replace("jumps.", "leaps."));
 
-    await editorPanel.getByRole("button", { name: "File options" }).click();
-    await page.getByRole("menuitem", { name: "View Source" }).click();
+    const markdownView = editorPanel.getByRole("group", { name: "Markdown View" });
+    await markdownView.getByRole("button", { name: "Source", exact: true }).click();
     await expect(editorPanel.getByText("title: Field notes")).toBeVisible();
     await expect(editor.getByRole("heading")).toHaveCount(0);
-    await editorPanel.getByRole("button", { name: "File options" }).click();
-    await page.getByRole("menuitem", { name: "View Document" }).click();
+    await markdownView.getByRole("button", { name: "Document", exact: true }).click();
     await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
 
     await editor.getByRole("link", { name: "the guide" }).click({ modifiers: ["ControlOrMeta"] });
@@ -187,9 +214,8 @@ test("the workbench journey", async ({ desktop }) => {
         .getByRole("heading", { name: "Guide" }),
     ).toBeVisible();
 
-    const tabs = workbenchTabs(page);
-    await closeTab(tabs, tabs.getByRole("tab", { name: "guide.md" }));
-    await closeTab(tabs, tabs.getByRole("tab", { name: "notes.md" }));
+    await closeFile(page, "guide.md");
+    await closeFile(page, "notes.md");
   });
 
   await test.step("a PDF opens with its first page drawn, its page count and a zoom control", async () => {
@@ -218,8 +244,7 @@ test("the workbench journey", async ({ desktop }) => {
     await editorPanel.getByRole("button", { name: "Zoom in" }).click();
     await expect(editorPanel.getByText("125%")).toBeVisible();
 
-    const tabs = workbenchTabs(page);
-    await closeTab(tabs, tabs.getByRole("tab", { name: "field-guide.pdf" }));
+    await closeFile(page, "field-guide.pdf");
   });
 
   await test.step("Changes reports that the home folder is not a repository", async () => {
@@ -229,10 +254,8 @@ test("the workbench journey", async ({ desktop }) => {
       .getByRole("tabpanel", { name: "Changes" })
       .getByRole("region", { name: "Workspace changes" });
 
-    await expect(changes.getByRole("button", { name: "Uncommitted 0 files" })).toBeVisible();
-    await expect(changes.getByRole("status")).toHaveText(
-      "Couldn't read changes. Check that this folder is a Git repository.",
-    );
+    await expect(changes.getByRole("button", { name: "Uncommitted", exact: true })).toBeVisible();
+    await expect(changes.getByRole("status")).toHaveText("Not a Git repository");
     await expect(workbenchTabs(page).getByRole("tab")).toHaveText(["Editor", "Changes"]);
   });
 
@@ -289,11 +312,16 @@ test("the workbench journey", async ({ desktop }) => {
       .getByRole("navigation", { name: "Workbench navigation" })
       .getByRole("button");
 
-    for (const label of ["Editor", "Changes", "Browser", "New Browser", "New Terminal"]) {
-      await expect(rows.filter({ hasText: new RegExp(`^${label}$`, "u") })).toHaveCount(1);
+    for (const [label, count] of [
+      ["Editor", 1],
+      ["Changes", 1],
+      ["Browser", 2],
+      ["Terminal", 1],
+    ] as const) {
+      await expect(rows.filter({ hasText: new RegExp(`^${label}$`, "u") })).toHaveCount(count);
     }
 
-    await rows.filter({ hasText: /^New Terminal$/u }).click();
+    await rows.filter({ hasText: /^Terminal$/u }).click();
     await expect(workbenchTabs(page).getByRole("tab")).toHaveCount(5);
 
     const terminal = workbench(page)
@@ -329,8 +357,8 @@ test("saved v7 workbench tabs reopen as Editor", async ({ desktop }, testInfo) =
   const page = desktop.page;
 
   for (const selection of [
-    { active: "files", label: "Editor", capture: "editor-selected" },
-    { active: "kept-document", label: "migration-notes.md", capture: "document-selected" },
+    { active: "files", capture: "editor-selected" },
+    { active: "kept-document", capture: "document-selected" },
   ]) {
     await test.step(`v7 restores ${selection.capture} as v8 and survives another reload`, async () => {
       const path = join(desktop.home, "migration-notes.md");
@@ -372,33 +400,29 @@ test("saved v7 workbench tabs reopen as Editor", async ({ desktop }, testInfo) =
         await page.locator("[data-nyte-shell]").waitFor({ state: "visible" });
         await openChat(page, FIXTURES.beta);
         const tabs = workbenchTabs(page);
-        await expect(tabs.getByRole("tab")).toHaveText([
-          "Editor",
-          "migration-notes.md",
-          "migration-preview.ts",
-        ]);
-        await expect(tabs.getByRole("tab", { name: selection.label, exact: true })).toHaveAttribute(
+        await expect(tabs.getByRole("tab")).toHaveText(["Editor"]);
+        await expect(tabs.getByRole("tab", { name: "Editor", exact: true })).toHaveAttribute(
           "aria-selected",
           "true",
         );
         await expect(tabs.getByRole("tab", { name: "Editor", exact: true })).toHaveAttribute(
           "id",
-          `${desktop.home}-tab-files`,
+          `${desktop.home}-tab-editor`,
         );
-        await expect(
-          tabs.getByRole("tab", { name: "migration-notes.md", exact: true }),
-        ).toHaveAttribute("id", `${desktop.home}-tab-kept-document`);
+        const files = fileTabs(page);
+        await expect(files.getByRole("tab")).toHaveText([
+          "migration-notes.md",
+          "migration-preview.ts",
+        ]);
+        const document = files.getByRole("tab", { name: "migration-notes.md", exact: true });
+        await expect(document).toHaveAttribute("aria-selected", "true");
+        await expect(document).toHaveAttribute("id", `${desktop.home}-file-tab-kept-document`);
         const editorPanel = workbench(page).getByRole("region", { name: "Editor", exact: true });
-        await expect(editorPanel).toBeVisible();
-
-        if (selection.active === "files")
-          await expect(editorPanel.getByRole("combobox", { name: "Go to file" })).toBeVisible();
-        else
-          await expect(
-            editorPanel
-              .getByRole("textbox", { name: "migration-notes.md" })
-              .getByRole("heading", { name: "Preserved document" }),
-          ).toBeVisible();
+        await expect(
+          editorPanel
+            .getByRole("textbox", { name: "migration-notes.md" })
+            .getByRole("heading", { name: "Preserved document" }),
+        ).toBeVisible();
 
         const written = await page.evaluate(() =>
           localStorage.getItem("nyte:desktop:workbench:v7"),
@@ -410,11 +434,10 @@ test("saved v7 workbench tabs reopen as Editor", async ({ desktop }, testInfo) =
           contentType: "application/json",
         });
         const capture = testInfo.outputPath(`${selection.capture}-reload-${reload}.png`);
-        await page.screenshot({ path: capture });
-        await testInfo.attach(`${selection.capture}-reload-${reload}`, {
-          path: capture,
-          contentType: "image/png",
-        });
+        await testInfo.attach(
+          `${selection.capture}-reload-${reload}`,
+          await captureWindow(desktop, capture),
+        );
         await testInfo.attach(`${selection.capture}-reload-${reload}-accessibility`, {
           body: await workbench(page).ariaSnapshot(),
           contentType: "text/plain",

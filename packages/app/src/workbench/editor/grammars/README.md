@@ -2,7 +2,8 @@
 
 `manifest.json` pins the npm archives, archive integrity, WASM hashes, ABI versions and licences.
 The worker fetches one grammar and its fold/symbol queries for the resolved editor language.
-It does not use these assets for highlighting.
+It does not use these assets for highlighting. Captures whose node has a parse error are omitted;
+there is no regex fallback.
 
 From the repository root:
 

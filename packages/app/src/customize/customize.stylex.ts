@@ -3,7 +3,6 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { avatar, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { settingsDensity } from "../theme/tokens.stylex.ts";
 
-/** Customize borrows the settings patterns but keeps the roomier rows and type that only Settings dropped. */
 export const customizeDensity = createTheme(settingsDensity, {
   "--nyte-settings-row-padding": "12px 16px",
   "--nyte-settings-section-title-font-size": "var(--nyte-font-size-lg)",

@@ -1,4 +1,5 @@
 import { defineConfig } from "oxlint";
+import type { OxlintOverride } from "oxlint";
 
 const rendererCoreImports = [
   {
@@ -20,6 +21,10 @@ const uiLibraryImports = [
   {
     group: ["@base-ui/**"],
     message: "Import the styled component from @nyte-ai/ui. Base UI stays inside packages/ui.",
+  },
+  {
+    group: ["@tanstack/react-table", "@tanstack/table-core"],
+    message: "Import TanStack Table and the styled table parts from @nyte-ai/ui/table.",
   },
   {
     group: ["@pierre/**"],
@@ -59,7 +64,6 @@ const runtimeLoadImports = ["node:module", "module"].map((name) => ({
   message: runtimeLoadMessage,
 }));
 
-/** The lab's shell owns the display mode, the document root and the dial panel; prototypes ask it. */
 const labShellImports = [
   {
     name: "dialkit",
@@ -80,25 +84,26 @@ const reflectGlobal = {
 };
 
 export default defineConfig({
-  // Generated code, vendored upstream code, brand assets, and audit evidence are not ours to edit.
   ignorePatterns: [
     "output/**",
     ".agents/**",
     "scripts/oxlint/anti-slop/**",
+    "scripts/oxlint/landmines/**",
     "**/worker-configuration.d.ts",
     "**/routeTree.gen.ts",
     "**/*.gen.*",
     "**/models.generated*",
-    // Local-only material, such as the lab's film and research notes.
     "**/.local/**",
+    "packages/host/test/fixtures/language/**",
   ],
   plugins: ["react", "eslint", "typescript", "unicorn", "import", "oxc"],
-  // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
   jsPlugins: [
     "./packages/app/lint/design-scale.js",
     "./packages/app/lint/interactions.js",
     "./packages/app/lint/restyle.js",
     "./scripts/oxlint/anti-slop/index.ts",
+    "./scripts/oxlint/landmines/style.ts",
+    "./scripts/oxlint/landmines/testing.ts",
     "./scripts/oxlint/nyte-code/index.ts",
   ],
   categories: {
@@ -117,20 +122,22 @@ export default defineConfig({
     ],
     "react/rules-of-hooks": "error",
     "react/no-unstable-nested-components": "error",
-    // A component React Compiler cannot compile ships without memoization.
     "react/todo": "warn",
     "typescript/no-explicit-any": "error",
     "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
     "unicorn/prefer-includes": "error",
     "eslint/max-lines": ["error", { max: 1000, skipBlankLines: false, skipComments: false }],
+    "landmines-style/no-comments": "error",
+    "landmines-testing/no-fixed-sleep": "error",
+    "landmines-testing/no-unsignaled-poll": "error",
     "nyte-code/declarative-comments": "error",
     "nyte-code/no-cross-package-relative-imports": "error",
-    // Effects sync outside systems; each direct one says which.
     "nyte-code/no-direct-effect": "error",
     "nyte-code/no-is-helper-names": "error",
     "nyte-code/no-lab-imports": "error",
     "nyte-code/no-of-lookup-names": "error",
     "nyte-code/no-one-off-boolean-helpers": "error",
+    "nyte-code/no-sentinel-unions": "error",
     "nyte-code/require-suppression-reason": "error",
   },
   options: {
@@ -143,7 +150,7 @@ export default defineConfig({
   },
   overrides: [
     {
-      files: ["packages/docs/**"],
+      files: ["services/web/**"],
       jsPlugins: ["@shadcn/lint"],
       rules: {
         "shadcn/no-unknown-classes": [
@@ -158,14 +165,10 @@ export default defineConfig({
       },
     },
     {
-      files: [
-        "packages/docs/src/routes/opengraph-image[.]png.tsx",
-        "packages/docs/src/routes/og/**",
-      ],
+      files: ["services/web/src/routes/opengraph-image[.]png.tsx", "services/web/src/routes/og/**"],
       rules: { "shadcn/no-inline-styles": "off" },
     },
     {
-      // CommonJS configs, tests, and scripts run from the repository and never ship in a bundle.
       files: ["**/*.cjs", "**/*.test.{ts,tsx}", "scripts/**"],
       rules: {
         "eslint/no-restricted-globals": ["error", reflectGlobal],
@@ -173,8 +176,7 @@ export default defineConfig({
       },
     },
     {
-      // Vendored from opencode v2 (dmmulroy/anti-slop); see scripts/oxlint/anti-slop/UPSTREAM.md.
-      files: ["packages/**", "scripts/**"],
+      files: ["packages/**", "services/**", "scripts/**"],
       excludeFiles: ["scripts/oxlint/**", "packages/ai/**"],
       rules: {
         "anti-slop/no-array-filter-map": "warn",
@@ -195,11 +197,6 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * Solid components run once and read refs after the tree is built; the
-       * React render-purity rules describe a different runtime, and React
-       * Compiler never compiles them.
-       */
       files: ["packages/tui/src/**/*.tsx"],
       rules: {
         "react/refs": "off",
@@ -208,18 +205,27 @@ export default defineConfig({
       },
     },
     {
-      // Playwright hands each fixture a `use` callback; it is not React's hook.
       files: ["packages/app/e2e/**", "packages/desktop/e2e/**"],
       rules: {
         "react/rules-of-hooks": "off",
       },
     },
     {
-      /**
-       * The terminal client and the plugin examples carry every suspicious and
-       * perf rule as an error. Sequential awaits are how a shell is written, so
-       * that one rule stays off; `_exhaustive` is the never-check idiom.
-       */
+      files: ["packages/desktop/e2e/**"],
+      excludeFiles: ["packages/desktop/e2e/window-capture.ts"],
+      rules: {
+        "eslint/no-restricted-properties": [
+          "error",
+          ...["screenshot", "screencast"].map((property) => ({
+            object: "page",
+            property,
+            message:
+              "A page capture leaves the window's vibrancy black. Use captureWindow or recordWindow.",
+          })),
+        ],
+      },
+    },
+    {
       files: ["packages/tui/**", "packages/plugin/**"],
       rules: {
         "eslint/block-scoped-var": "error",
@@ -285,14 +291,12 @@ export default defineConfig({
       },
     },
     {
-      // node:test's test() returns a promise the runner already tracks.
       files: ["**/*.test.ts", "**/*.test.tsx"],
       rules: {
         "typescript/no-floating-promises": "off",
       },
     },
     {
-      // Test harnesses drive components from effects.
       files: ["**/*.test.{ts,tsx}", "**/*.browser-test.tsx", "**/e2e/**", "**/test/**"],
       rules: {
         "nyte-code/no-direct-effect": "off",
@@ -359,7 +363,6 @@ export default defineConfig({
       rules: { "nyte-design/no-light-dark-outside-tokens": "error" },
     },
     {
-      // The content stairs live in the role layer; components pick one rather than fading or mixing.
       files: [
         "packages/app/src/**/*.{ts,tsx}",
         "packages/desktop/src/renderer/**/*.{ts,tsx}",
@@ -379,6 +382,7 @@ export default defineConfig({
         "nyte-interactions/specific-confirm-label": "error",
         "nyte-interactions/no-disabled-caption": "error",
         "nyte-interactions/title-case-control-label": "error",
+        "nyte-interactions/no-stacked-fills": "error",
       },
     },
     {
@@ -394,31 +398,24 @@ export default defineConfig({
         "packages/app/**/*.{ts,tsx}",
         "packages/ui/**/*.{ts,tsx}",
         "packages/lab/**/*.{ts,tsx}",
-        "packages/mobile/**/*.{ts,tsx}",
+        "packages/ios/**/*.{ts,tsx}",
       ],
       rules: { "nyte-interactions/named-stylex-imports": "error" },
     },
     {
-      files: ["packages/mobile/src/**/*.{ts,tsx}"],
+      files: ["packages/ios/src/**/*.{ts,tsx}"],
       rules: {
         "nyte-interactions/accessible-pressable": "error",
         "nyte-interactions/specific-confirm-label": "error",
       },
     },
     {
-      /**
-       * The restriction above keeps Node-only core code out of the shipped
-       * renderer bundle. A Node-run unit test is not part of that bundle, so it
-       * may import the full surface; `*.browser-test.tsx` still loads in a real
-       * browser and stays restricted.
-       */
       files: ["packages/app/src/**/*.test.{ts,tsx}"],
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
       },
     },
     {
-      // Fixtures render bare controls to drive the component under test.
       files: ["packages/app/src/**/*.browser-test.tsx"],
       rules: {
         "react/forbid-elements": "off",
@@ -426,10 +423,6 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * The QR code needs a white quiet zone a camera can read, which no
-       * token guarantees in every appearance.
-       */
       files: ["packages/app/src/environments/pairing-code.tsx"],
       rules: {
         "nyte-design/no-raw-colors": "off",
@@ -442,7 +435,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/host/src/local/jobs.ts"],
+      files: ["packages/host/src/local/process/jobs.ts"],
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
       },
@@ -454,10 +447,6 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * Lab prototypes paint with tokens so the shell's appearance and token overrides reach them,
-       * and leave the root, the display mode and the dial panel to the shell.
-       */
       files: ["packages/lab/src/**/*.{ts,tsx}"],
       excludeFiles: ["packages/lab/src/shell/**"],
       rules: {
@@ -478,21 +467,18 @@ export default defineConfig({
       },
     },
     {
-      /** Not Nyte's surface: Design Mode's overlay paints into pages the app's tokens don't reach. */
       files: ["packages/lab/src/design-mode/overlay.tsx"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },
     {
-      /** Not Nyte's surface: the stand-in app a Design Canvas frame runs declares its own colours. */
       files: ["packages/lab/src/design-canvas/northstar.tsx"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },
     {
-      /** Not Nyte's surface: a studio film is rendered to video, so its look is fixed values. */
       files: ["packages/lab/src/studio/films/**"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },
-    ...desktopProcessFolders.map(({ folder, forbidden }) => ({
+    ...desktopProcessFolders.map(({ folder, forbidden }): OxlintOverride => ({
       files: [`packages/desktop/src/${folder}/**`],
       rules: {
         "eslint/no-restricted-imports": [

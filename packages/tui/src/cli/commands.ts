@@ -1,15 +1,10 @@
-/** Root help groups commands by task, in this order. Each heading replaces `Commands:`. */
 export type HelpGroup = "Chat" | "Sign-in" | "Tools" | "Host" | "Maintenance";
 
 export interface OptionSpec {
-  /** Long name without dashes. */
   readonly name: string;
   readonly short?: string;
-  /** Value hint such as `<URL>`; absent for a switch. */
   readonly value?: string;
-  /** Imperative fragment, no period. Includes `(default: X)` when there is one. */
   readonly summary: string;
-  /** May be given more than once; `parseOptions` keeps every value in order. Otherwise a repeat fails. */
   readonly repeatable?: boolean;
 }
 
@@ -18,16 +13,11 @@ export interface Example {
   readonly argv: readonly string[];
 }
 
-/** One action of a group, with its own help page: `nyte mcp add --help`. */
 export interface ActionSpec {
   readonly name: string;
-  /** Imperative, no period. */
   readonly summary: string;
-  /** After `nyte <group> <name> `: `<NAME> [options]`. */
   readonly usage: string;
-  /** What the group runs with no action word, such as `nyte account` linking this machine. One per group at most. */
   readonly default?: true;
-  /** Taken by this action only, on top of the group's `options`. */
   readonly options?: readonly OptionSpec[];
   readonly examples?: readonly Example[];
   readonly notes?: readonly string[];
@@ -35,17 +25,12 @@ export interface ActionSpec {
 
 export interface CommandSpec {
   readonly name: string;
-  /** Imperative, no period: `Manage MCP servers`. */
   readonly summary: string;
-  /** After `nyte <name> `: `<command> [options]`. */
   readonly usage: string;
   readonly group: HelpGroup;
-  /** For groups: the actions. A group with no `default` action shows its help when run with no action. */
   readonly subcommands?: readonly ActionSpec[];
-  /** A command's options; for a group, the ones every action takes. */
   readonly options?: readonly OptionSpec[];
   readonly examples?: readonly Example[];
-  /** Material behavior only: streams, stdin, side effects, waiting. */
   readonly notes?: readonly string[];
 }
 
@@ -67,7 +52,6 @@ const SKILL_AGENT = {
   summary: "Choose claude, codex or all (default: all)",
 } as const;
 
-/** The one list of commands. Dispatch, help, suggestions and the handler table in the entry all derive from it. */
 export const COMMANDS = [
   {
     name: "trust",
@@ -345,6 +329,62 @@ export const COMMANDS = [
     notes: [
       "Receipts go to stderr. add, remove, login and logout print the server's name on stdout when stdout isn't a terminal.",
     ],
+  },
+  {
+    name: "action",
+    summary: "List or run the actions connected clients offer",
+    usage: "<command> [options]",
+    group: "Tools",
+    subcommands: [
+      {
+        name: "list",
+        summary: "Print every action each connected client offers",
+        usage: "[options]",
+        examples: [
+          {
+            label: "Print each client's actions as JSON",
+            argv: ["nyte", "action", "list", "--json"],
+          },
+        ],
+        notes: [
+          "The Nyte app offers its commands, such as chat.new, and one setting.<NAME> action for each preference a script can read or set.",
+        ],
+      },
+      {
+        name: "run",
+        summary: "Ask a connected client to run one of its actions",
+        usage: "<ACTION> [<KEY=VALUE>...] [options]",
+        options: [
+          {
+            name: "client",
+            value: "<ID>",
+            summary: "Ask this client, by the ID that list prints",
+          },
+        ],
+        examples: [
+          { label: "Start a new chat in the app", argv: ["nyte", "action", "run", "chat.new"] },
+          {
+            label: "Switch the app to its dark theme",
+            argv: ["nyte", "action", "run", "setting.theme", "value=dark"],
+          },
+          { label: "Read a setting", argv: ["nyte", "action", "run", "setting.theme"] },
+        ],
+        notes: [
+          "Each KEY=VALUE is one field of the action's input. VALUE is read as JSON, and as text when it isn't JSON, so value=13 is a number and value=dark is text.",
+          "Without --client, asks the one client that offers the action. When several offer it, changes nothing, lists them and exits 2.",
+          "What the action answers goes to stdout as JSON; an action that answers nothing prints nothing there.",
+          "A client refuses a request from another user's device unless its Remote control setting is on.",
+        ],
+      },
+    ],
+    options: [
+      HOST_URL,
+      {
+        name: "json",
+        summary: "Print JSON, and a failure as JSON on stderr",
+      },
+    ],
+    notes: ["Needs a running host and never starts one."],
   },
   {
     name: "api",

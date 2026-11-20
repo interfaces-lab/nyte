@@ -141,7 +141,6 @@ test.each(CASES)("$name", async (entry) => {
   }
 });
 
-/** A plain, non-interactive run: both streams are pipes. */
 function capture() {
   const streams = { stdout: "", stderr: "" };
   const mode = resolveMode({ env: {}, stdin: {}, stdout: {}, stderr: {} }, false);

@@ -1,0 +1,48 @@
+.moon {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.moon-disc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--moon-rim), var(--moon) 70%);
+}
+
+.moon-light {
+  position: absolute;
+  top: 0;
+  left: 33%;
+  width: 67%;
+  height: 67%;
+  border-radius: 50%;
+  background: var(--moonlight);
+  box-shadow: -6px 6px 18px #0c102066;
+}
+
+.phase-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--plate);
+  box-shadow: 0 18px 40px #0c102014;
+}
+
+.phase-words {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.phase-sheet {
+  width: 390px;
+  padding: 24px;
+  border-radius: 24px;
+}

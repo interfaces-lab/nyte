@@ -11,7 +11,6 @@ import { printable } from "./cli/format.ts";
 import type { HostSource } from "./local-host.ts";
 import { VERSION } from "./version.ts";
 
-/** What each wire code means for the command that sent the call: its reason, and the cause after `<action>: `. */
 const HOST_FAILURES: Readonly<
   Record<SdkErrorCode, { readonly reason: Reason; readonly verb: string; readonly cause: string }>
 > = {
@@ -34,7 +33,6 @@ const HOST_FAILURES: Readonly<
   internal: { reason: "failed", verb: "Failed to", cause: "the host hit an internal error" },
 };
 
-/** `--host-url` as given, checked before any request. */
 export function readHostUrl(command: CommandName, url: string | undefined): string | undefined {
   if (url === undefined || URL.canParse(url)) return url;
 
@@ -43,7 +41,6 @@ export function readHostUrl(command: CommandName, url: string | undefined): stri
   });
 }
 
-/** Never starts a host: a read or a stream fails with `host_not_running` when this home runs none. */
 export async function connectHostSocket(input: {
   readonly source: HostSource;
   readonly name: string;
@@ -70,11 +67,6 @@ export async function connectHostSocket(input: {
   });
 }
 
-/**
- * A rejection handler for a host request: an `SdkError` becomes the error the command ends with.
- * The host's message is remote text, so it goes in a detail row, never the headline; `--json`
- * carries the whole wire error as `data`. `action` is what the command tried, such as `call head.send`.
- */
 export function hostFailure(action: string): (error: unknown) => never {
   return (error) => {
     if (!(error instanceof SdkError)) throw error;

@@ -130,11 +130,14 @@ function launch(
   worker.on("exit", (code) => fail(new Error(`The host thread exited with code ${String(code)}.`)));
   worker.postMessage(command satisfies HostMessage);
 
-  return listening.promise.then((address): Running => ({
+  return {
     worker,
-    address,
-    closed: closed.promise,
-  }));
+    started: listening.promise.then((address): Running => ({
+      worker,
+      address,
+      closed: closed.promise,
+    })),
+  };
 }
 
 export async function startHostThread(
@@ -145,6 +148,7 @@ export async function startHostThread(
   ended.promise.catch(() => undefined);
   let stopping = false;
   let current: Running;
+  let reopening: Worker | null = null;
 
   const failed = (cause: Error): void => {
     if (!stopping) ended.reject(cause);
@@ -155,9 +159,12 @@ export async function startHostThread(
   const reopen = (): void => {
     if (stopping) return;
     const port = Number(new URL(current.address).port);
+    const next = launch(entry, { ...command, port }, reopen, replaced, failed);
+    reopening = next.worker;
 
-    void launch(entry, { ...command, port }, reopen, replaced, failed).then(
+    void next.started.then(
       (running) => {
+        reopening = null;
         current = running;
 
         if (stopping) void running.worker.terminate();
@@ -166,13 +173,14 @@ export async function startHostThread(
     );
   };
 
-  current = await launch(entry, command, reopen, replaced, failed);
+  current = await launch(entry, command, reopen, replaced, failed).started;
 
   return {
     address: current.address,
     ended: ended.promise,
     async stop() {
       stopping = true;
+      await reopening?.terminate();
       current.worker.postMessage({ kind: "stop" } satisfies HostMessage);
       const timer = setTimeout(() => void current.worker.terminate(), 10_000);
       await Promise.race([current.closed, once(current.worker, "exit")]);

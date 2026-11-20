@@ -1,12 +1,12 @@
 ---
 name: nyte-styles
 description: >
-  How Nyte styles UI: the StyleX token system in packages/ui/src/styles, the cascade layers, built-in
-  dark mode, appearance inputs, type and spacing scales, and the authoring invariants components
-  follow. Use before writing or reviewing any StyleX `create()` in packages/ui, app, canvas, lab, or
-  desktop renderer; when adding or changing a token, role, theme, or base.css rule; or when a style
-  "doesn't apply", looks different in dark mode, or ignores an appearance setting. Not for the public
-  site's visual direction.
+  Explains how Nyte styles UI: the StyleX token system in packages/ui/src/styles, the cascade
+  layers, built-in dark mode, appearance inputs, type and spacing scales, and the invariants
+  components follow. Load it before writing or reviewing any StyleX `create()` in packages/ui, app,
+  canvas, lab, or desktop renderer; when adding or changing a token, role, theme, or base.css rule;
+  or when a style "doesn't apply", looks different in dark mode, or ignores an appearance setting.
+  Not for the public site's visual direction.
 paths:
   - "packages/*/src/**/*.{ts,tsx}"
 contains: "@stylexjs/stylex"
@@ -14,167 +14,197 @@ contains: "@stylexjs/stylex"
 
 # Nyte styles
 
-Every visual value is a decision someone already made. Read it from a token; add a token only when
-the decision is new and reusable.
+Read every visual value from a token, and add a token only for a new, reusable decision. Follow
+these rules when you write a style, and cite them by number when you review one.
 
-## Where things live
+## Where to read from
 
-All of it is in `packages/ui/src/styles/`, exported as `@nyte-ai/ui/styles/*`.
+Rule numbers are stable ids that other skills and reviews cite. A removed rule leaves a gap.
 
-| File | Holds | Read it through |
-| --- | --- | --- |
-| `theme.stylex.ts` | Hue ramps (data) and the `theme` layer; one hue at a time per scope | never directly |
-| `roles.stylex.ts` | Colour roles as `light-dark()` pairs over the theme; `tinted` re-declares them per scope | `role.*` in `vars.stylex.ts` |
-| `tokens.stylex.ts` | Appearance inputs, shadows, type, spacing unit, motion, component measurements | `type`, `motion`, `shadow`, `appearance` in `vars.stylex.ts`; geometry in `schema.stylex.ts` |
-| `vars.stylex.ts` | Typed handles: `role`, `type`, `motion`, `shadow`, `appearance` | components |
-| `schema.stylex.ts` | Geometry handles: `space`, `glyph`, `target`, `control`, `button`, `input`, `row`, `menu`, `dialog`, `radius`, `layer` | components |
-| `text.stylex.ts` | Whole text styles: `text.xs`, `sm`, `base`, `baseCompact`, `lg`, `xl`, `2xl`, `3xl`, `code` | compose first: `props(text.sm, styles.label)` |
-| `a11y.stylex.ts`, `floating-surface.stylex.ts` | Focus rings, `srOnly`, the raised-surface frame | components |
-| `hairline.stylex.ts` | 1px edges drawn as inset shadows: `hairline.blockEnd`, `inlineStart`, `tableCell`, `ring`, `ringAfter`, `controlRing` | components, beside the box's own style: `props(styles.bar, hairline.blockEnd)` |
-| `base.css` | The browser baseline in `@layer base` | hosts import it once |
-| `tailwind.css` | The Tailwind bridge for docs and the demo site | Tailwind hosts |
-
-Native code can't read CSS variables. `packages/ui/src/platform-colors.ts` is generated from the
-roles (`pnpm --dir packages/ui sync:tokens`) and gives mobile and the docs mobile host every role as
-hex per scheme and hue: `platformColors.light.contentQuaternary`,
-`platformScopes.dark.red.contentSecondary`, and `platform-ramps.ts` gives every ramp step: `platformRamps.blue.opaque["80"]`.
-The design docs' Colors page renders all three, so a new role or step appears there without an
-edit. Renaming or deleting a role breaks those readers, so run
-`pnpm --dir packages/mobile exec tsc --noEmit` after a role change.
-
-App-only structural measurements (sidebar width, titlebar height, prose measure) live in
-`packages/app/src/theme/tokens.stylex.ts` and `schema.stylex.ts`.
+1. **Import handles from `@nyte-ai/ui/styles/*`.** `vars.stylex` exports `role`, `type`,
+   `motion`, `shadow` and `appearance`, and `schema.stylex` exports geometry.
+2. **Compose a text style first.** `text.stylex` holds whole text styles, and one goes first in
+   the call: `props(text.sm, styles.label)`.
+3. **Pass a hairline beside the box's own style.** `hairline.stylex` holds 1px edges, and one goes
+   next to the box's style: `props(styles.bar, hairline.blockEnd)`.
+4. **Find values in the theme files.** Values live in `theme.stylex.ts`, `roles.stylex.ts` and
+   `tokens.stylex.ts` in `packages/ui/src/styles/`, and `surfaceTheme`
+   (`@nyte-ai/ui/surface-theme`) makes a hue scope. App-only measurements, such as the sidebar
+   width, live in `packages/app/src/theme/tokens.stylex.ts` and `schema.stylex.ts`.
 
 ## The cascade
 
-From lowest to highest: user agent, `@layer base` (base.css and host resets), ui component StyleX,
-app StyleX. A host declares `@layer base, priority1, … priority6;` before any sheet loads. Component
-rules always beat base.css; an app style passed through `xstyle` always beats the component's own.
-`!important` in `base` beats everything above it, so it is reserved for `[hidden]` and the iOS
-16px input floor.
+5. **Know the layer order.** From lowest to highest, the layers are the user agent, `@layer base`
+   (base.css and host resets), ui component StyleX, and app StyleX, so an app's `xstyle` beats the
+   component's own style. A host declares `@layer base, priority1, … priority6;` before any sheet
+   loads.
+6. **Use `!important` for two cases only.** `!important` in `base` beats every other layer, so use
+   it only for `[hidden]` and the iOS 16px input floor.
+42. **Give a conditional ui custom property no default.** An unconditional custom-property value
+    compiles outside the cascade layers, while a conditional one from ui lands inside one, so write
+    `{ default: null, ":not(<state>)": value }` and let the registered initial value cover the
+    rest, as Button's `--nyte-hairline-elevation` does.
 
 ## Invariants
 
-1. **Dark mode is built in.** Every colour role is a `light-dark()` pair, resolved by
-   `color-scheme` that `applyDisplayMode` sets. Components read a role; they never write
-   `light-dark()`, a hex, `rgb()`, or `oklch()` themselves. A new colour need is a new role in
-   `roles.stylex.ts` plus a handle in `vars.stylex.ts`. (lint: `nyte-design/no-raw-colors`,
-   `nyte-design/no-light-dark-outside-tokens`; test: `pnpm --dir packages/app exec vitest --run style-cascade`)
-2. **Appearance inputs reach every surface.** The desktop writes `--nyte-font-size-base`,
+A rule here that names no lint or test is not enforced.
+
+7. **Colours are roles.** Each colour is a role, a `light-dark()` pair that the `color-scheme` set
+   by `applyDisplayMode` resolves, and a new colour is a role in `roles.stylex.ts` plus a handle in
+   `vars.stylex.ts`. The lints `nyte-design/no-raw-colors` and `no-light-dark-outside-tokens`
+   enforce this.
+8. **Derive from the appearance inputs.** The desktop and the canvas set `--nyte-font-size-base`,
    `--nyte-font-size-code`, `--nyte-font-family-*`, `--nyte-font-smoothing`, `--nyte-custom-hue`,
-   and toggles transparency, cursor, and focus-modality classes on `<html>`; the canvas receives the
-   same names. Derive from these; never hard-code what they control. Materials blend with
-   `--nyte-reduce-transparency`; nothing paints a page background, because the window's vibrancy
-   shows through. (test: `pnpm --dir packages/app exec vitest --run style-cascade`)
-3. **Text uses a whole style.** Pair size, line height, and tracking through `text.*`, or the
-   `type.font*` and `type.leading*` handles together. Line heights round up to whole pixels at every
-   UI size. 13px text needs at least the 16px line box. `lineHeight: 1` or `0` is for glyph boxes
-   only. Weights come from `type.weight*`. (lint: `nyte-design/no-raw-font-weight`; test:
-   `pnpm --dir packages/app exec vitest --run style-cascade`; the size and line-height pairing is not enforced)
-4. **Spacing reads the scale.** Padding, margin, gap, and inset use `space.*` (Tailwind steps on a
-   4px unit, `space.px` for a 1px length). A structural measurement gets a name in a schema file.
-   Controls take their height from the `control` scale; rows and menu items from `row`, which
-   keeps the touch target. An `Icon` takes a glyph step for `size`. (lint:
-   `nyte-design/spacing-scale`, `nyte-design/size-grid`, `nyte-design/control-size`)
-   A hairline never takes layout space, so a box keeps its grid size: draw a 1px separator or frame
-   with `hairline` (`@nyte-ai/ui/styles/hairline.stylex`): `blockEnd`, `inlineStart`, `tableCell` on
-   table cells (the row rule and the column divider), `ring`, `ringAfter` (the ring on `::after`,
-   above the content, for a popup), or `controlRing` (a control's boundary in `strokeTertiary`). Each
-   is an inset box-shadow, in `strokeQuaternary` unless it's a control's boundary. Forced colors drop
-   shadows, so there `blockEnd`, `inlineStart` and `tableCell` draw a border image with no border
-   width, `ring` an outline inside the box, and `ringAfter` and `controlRing` a border on their
-   `::after`, none taking a pixel. A box with `ringAfter` or `controlRing` is positioned and leaves its
-   `::after` free.
-   No 1px border as a separator or divider, and no padding that makes up for one. A box takes one
-   hairline style, and sets no `boxShadow` of its own and no property its forced-colors edge uses:
-   `borderImage` with the edge styles, `outline*` with `ring` (so not on a box that draws its own focus
-   outline). StyleX merges per property and ui's styles sit in an earlier layer than the app's, so a
-   second hairline or the caller's value would replace the first. A raised box sets its drop shadow as
-   `--nyte-hairline-elevation` (registered in base.css, not inherited), which every hairline style
-   draws before its edge. Add a variant to `hairline` instead.
-   (not enforced)
-5. **CSS owns what CSS can resolve.** Hover, focus-within, sibling state, container size, entry
-   animation, and fallbacks are StyleX features; check the capability block in
-   `packages/ui/AGENTS.md` before reaching for React state, effects, observers, or
-   `requestAnimationFrame`. (partly, lint: `nyte-code/no-direct-effect`)
-6. **Relational state stays scoped.** Parent-driven styling uses `stylex.when.*` with a marker the
-   component defines, so an outer container's hover or focus cannot light up an inner control.
-   (not enforced)
-7. **Hover is an enhancement.** Guard it with `@media (hover: hover) and (pointer: fine)`
-   (`[media.hover]`); every action stays reachable by keyboard and touch. A style that names a
-   disabled state excludes it from its hover, as Button does: `":hover:not([data-disabled])"`.
-   Focus rings read `appearance.focusRing`, which a host clears while focus arrives by pointer.
-   (lint: `nyte-design/guarded-hover`; test: `pnpm --dir packages/app exec vitest --run style-cascade`)
-8. **A control can look compact and still be easy to hit.** Visual size and `target.min` are
-   separate; under a coarse pointer the tokens grow, so never branch on touch by hand. (lint:
-   `nyte-design/touch-in-tokens`, `nyte-design/control-size`; test:
-   `pnpm --dir packages/app exec vitest --run control-targets`)
-9. **Every wrapper has a job:** semantics, behavior or a ref, a formatting context, or spacing
-   outside the child's border. A wrapper that only moves styles onto one child goes. (not
-   enforced)
-10. **A caller places a component; the component owns its look.** `xstyle` on a `@nyte-ai/ui`
-    component accepts only what its contract in `packages/ui/src/styles/contracts.ts` allows, usually
-    margins, self-alignment, and width. Choose its look with its props (`size`, `variant`, `tone`).
-    Style a wrapper you own for anything else, or add an option to the component when the design
-    calls for one. Widen a contract only for a repeated, legitimate need. (lint:
-    `nyte-restyle/no-restyle`)
-11. **Logical properties.** `paddingInline`, `insetInlineEnd`, `marginBlockStart`. Centring is
-    the exception: `left: "50%"` with a -50% translate is symmetric, while a logical anchor flips
-    without its translate. (lint: `nyte-design/logical-properties`)
+   and the transparency, cursor and focus-modality classes on `<html>`, so never hard-code what
+   they control. Materials blend with `--nyte-reduce-transparency`. The `style-cascade` test in
+   rule 39 enforces this rule and rule 9.
+9. **Paint no page background.** The window's vibrancy shows through.
+10. **Set text with the type tokens.** Text takes `text.*`, or `type.font*` with `type.leading*`;
+    13px text needs at least the 16px line box (`text.baseCompact`), and `lineHeight: 1` or `0` is
+    for glyph boxes only. The lint `nyte-design/no-raw-font-weight` covers weights only.
+11. **Take row height from `row`.** Rows and menu items take their height from `row`, which keeps
+    the touch target. Visual size and `target.min` are separate tokens that grow under a coarse
+    pointer, so never branch on touch by hand. The lints `nyte-design/spacing-scale`, `size-grid`,
+    `control-size` and `touch-in-tokens` enforce this, and so does this test:
+
+    ```sh
+    pnpm --dir packages/app exec vitest --run control-targets
+    ```
+
+12. **Draw a separator with a hairline.** Draw a 1px separator or frame with a `hairline` style,
+    which takes no layout space, never with a 1px border or compensating padding. `tableCell` goes
+    on table cells, `controlRing` on a control's boundary, and `ringAfter` for a ring above a
+    popup's content. Add a missing edge as a `hairline` variant.
+13. **Give a box one hairline style.** A box with a hairline style takes no `boxShadow`, no
+    `borderImage` beside an edge style, and no `outline*` beside `ring` (their forced-colors
+    edges), so a box that draws its own focus outline takes no `ring`. StyleX merges per property
+    and ui's layer sits below the app's, so a second hairline or a caller's value silently replaces
+    the first.
+14. **Put a raised box's shadow in `--nyte-hairline-elevation`.** That variable is registered in
+    base.css and not inherited, and the shadow-drawn styles paint it before their edge.
+15. **Leave `::after` free for the ring styles.** `ringAfter`, `controlRing`, `startsAfter`,
+    `endsAfter`, `inlineStartAfter` and `pressedRing` draw on `::after`, so the box must be positioned and leave
+    `::after` free.
+16. **Let CSS own what CSS can resolve.** Read the StyleX capability block in
+    `packages/ui/AGENTS.md` before reaching for React state, effects, observers or
+    `requestAnimationFrame`. The lint `nyte-code/no-direct-effect` enforces part of this.
+17. **Style from a parent through an exported marker.** Use `stylex.when.*` with a marker the
+    component exports from a `.stylex.ts` file, as `controlRoot` is, so an outer container's hover
+    or focus can't light up an inner control.
+18. **Hover only enhances.** Every action stays reachable by keyboard and touch, and the lint
+    `nyte-design/guarded-hover` enforces this. Focus rings read `appearance.focusRing`, which a
+    host clears while focus arrives by pointer.
+19. **Give every wrapper a job.** A wrapper needs semantics, behavior or a ref, a formatting
+    context, or spacing outside the child's border. Delete a wrapper that only moves styles onto
+    its child.
+20. **A caller places a component, and the component owns its look.** Use its props (`size`,
+    `variant`, `tone`), style a wrapper you own, or add an option to the component. Widen a
+    contract in `packages/ui/src/styles/contracts.ts` only for a repeated, legitimate need. The
+    lint `nyte-restyle/no-restyle` enforces this.
+21. **Use logical properties.** The one exception is the symmetric `left: "50%"` centre. The lint
+    `nyte-design/logical-properties` enforces this.
+43. **Follow Cursor's spatial scale.** Spacing, box sizes, radii and type pairs follow Cursor's
+    scale, and colours stay Nyte's.
+44. **Fix a grid miss at its source.** Fix it at a token or a shared component, never at one
+    element.
+45. **Read a `defineConsts` number as a string.** Numeric `defineConsts` entries become strings in
+    production exports, so wrap them in `Number()` before JavaScript arithmetic and add them with
+    CSS `calc()`.
+46. **Preview a dynamic style through `props()`.** StyleX rewrites a dynamic custom property's key,
+    so an imperative preview applies `props(panelWidth(pixels)).style`, never a write to
+    `--_workbench-width`.
 
 ## Colour stairs
 
-Text, icons, fills and strokes each come in a ladder of steps called stairs, strongest first. Each
-step has one job and a contrast floor. The floor holds on every surface (`bgBase`, `bgMuted`,
-`bgElevated`, `bgChrome`), on the hover fill over each of them, in light and dark and in every hue
-scope. Pick the step for the job; never tune a colour by eye.
+22. **Pick a step by its job, never a colour by eye.** Steps run strongest first, and each contrast
+    floor holds on every surface and its hover fill, in light, dark and every hue scope.
+23. **Content steps colour text and icons.** `contentPrimary` is for body text and values (at least
+    7:1), `contentSecondary` for labels, nav and tool rows (at least 6:1), and `contentTertiary`
+    for metadata, hints and placeholders (at least 4.5:1). `contentQuaternary` is for chevrons,
+    separators and idle glyphs, never text (at least 3:1), and `contentDisabled` is for disabled
+    controls only.
+24. **Fill steps are translucent over any surface.** `fillPrimary` is for pressed or strong active,
+    `fillSecondary` for selected, open or a pressed ghost control, and `fillTertiary` for hover or a
+    chip at rest.
+25. **Stroke steps draw borders.** The opaque `strokePrimary` is a control's boundary, such as a
+    framed input's edge (at least 3:1). The translucent ones are `strokeSecondary` for a strong or
+    hover border, `strokeTertiary` for the default border, and `strokeQuaternary` for a hairline
+    divider.
+26. **Accents carry the hue, and some colours sit outside the stairs.** `contentAccent` and
+    `strokeAccent` carry the scope's hue. Surfaces, materials, scrims and the control and button
+    fills are not stairs.
+27. **State moves up the stairs.** Hover moves one step, and pressed or open moves two: from no
+    fill to `fillTertiary` to `fillSecondary`.
+28. **Text never fades.** Never fade text with opacity; if no lower step fits, the element is
+    decoration. The lint `nyte-design/no-faded-ink` enforces this.
+29. **Disabled ink means disabled.** A failed or idle item that still informs uses
+    `contentTertiary`, an error uses `contentAccent`, and an idle mark uses `contentQuaternary`.
+    The lint `nyte-design/disabled-ink` enforces this.
+30. **An icon takes its label's step.** Only decoration drops to `contentQuaternary`.
+31. **Increased contrast moves the stairs up and never merges two steps.** Syntax colours keep 4.5:1
+    on the code surfaces. This test checks every floor and the step order in both
+    `prefers-contrast` modes:
 
-| Stairs | Steps (strongest first) | Jobs and floors |
-| --- | --- | --- |
-| Content (text and icons) | `contentPrimary`, `contentSecondary`, `contentTertiary`, `contentQuaternary`, `contentDisabled` | body and values ≥7:1; labels, nav and tool rows ≥6:1; metadata, hints and placeholders ≥4.5:1; chevrons, separators and idle glyphs, never text, ≥3:1; disabled controls only |
-| Fill (translucent, over any surface) | `fillPrimary`, `fillSecondary`, `fillTertiary` | pressed fill or strong active; selected, open or pressed ghost; hover or a chip at rest |
-| Stroke | `strokePrimary` (opaque), `strokeSecondary`, `strokeTertiary`, `strokeQuaternary` (translucent) | control boundary, such as a framed input's edge, ≥3:1 on any surface and its hover fill; strong or hover border; default border; hairline divider |
+    ```sh
+    pnpm --dir packages/app exec vitest --run test/tokens.test.ts
+    ```
 
-`contentAccent` and `strokeAccent` carry the scope's hue. Surfaces, materials, scrims and the
-control and button fills sit outside the stairs.
-
-1. **State moves up the stairs.** Hover is one step up, pressed or open two: `contentSecondary` →
-   `contentPrimary`, no fill → `fillTertiary` → `fillSecondary`, `strokeQuaternary` →
-   `strokeTertiary`. (not enforced)
-2. **Text never fades.** De-emphasise with a lower step, never with `opacity` or `color-mix()`; if
-   no step fits, the content is decoration. Opacity stays for whole-element fades and images.
-   (lint: `nyte-design/no-faded-ink`)
-3. **Disabled ink means disabled.** A failed or idle item that still informs uses
-   `contentTertiary`, an error `contentAccent`, an idle mark `contentQuaternary`. (lint:
-   `nyte-design/disabled-ink`)
-4. **An icon shares its label's step.** Only decoration drops to `contentQuaternary`. (not enforced)
-5. **Increased contrast moves the stairs up**; it never merges two steps. (test:
-   `pnpm --dir packages/app exec vitest --run test/tokens.test.ts`, which runs both
-   `prefers-contrast` modes and checks every floor, including `strokePrimary` over the hover fill,
-   and that each content, fill and stroke step stays above the next)
-
-Highlighted code follows the same floors: syntax colours keep 4.5:1 on the code surfaces.
+47. **Show an error with `intent.danger`.** Its secondary ink is `contentAccent`.
+    `surfaceTheme.red` is decorative and keeps the tinted secondary ink.
+48. **Check which role an element selects.** A danger scope doesn't recolour a `color` the element
+    already inherits, so read the role it selects before calling its text red.
+49. **Measure contrast on the composited fill.** Stack the selected fill with the hover or active
+    layers, as a ghost Button does, and measure ink on the result, never on one fill alone.
 
 ## Adding or changing a token
 
-1. Put the value in the right `defineVars` group; expose a handle in `vars` or `schema`.
-   `createTheme` also applies its group's defaults class, so a theme re-declares every var in its
-   group, not only the ones it overrides, and hides any value set on an ancestor. Give a theme a
-   group of exactly the vars it changes, as `sidebarMotion` and `settingsDensity` do. Keep vars the
-   app writes on `<html>` at runtime, such as the chat width and the side panel width, out of
-   themed groups. `roles` is the exception: a hue scope re-resolves every role against its ramp on
-   purpose.
-2. `pnpm --dir packages/ui lock:tokens`, then review the lock diff.
-3. `pnpm --dir packages/ui sync:tokens` regenerates `platform-colors.ts` from the colour roles and
-   the design-scale lint's space and box tables from the `space` and box-sizing handles.
+Take these steps in order.
+
+32. **Put the value in the right group.** Put the value in the right `defineVars` group, with a
+    handle in `vars` or `schema`.
+33. **Give a theme only the vars it changes.** `createTheme` applies its group's defaults class, so
+    a theme re-declares every var in the group and hides any value set on an ancestor. Give a theme
+    a group of only the vars it changes (`sidebarMotion`, `settingsDensity`); `roles` is the
+    exception, because a hue scope re-resolves every role on purpose.
+34. **Keep runtime vars out of themed groups.** Vars the app writes on `<html>` at runtime, such as
+    the chat width, go in no themed group.
+35. **Lock the tokens.** Run this, then review the lock diff:
+
+    ```sh
+    pnpm --dir packages/ui lock:tokens
+    ```
+
+36. **Sync the tokens.** This regenerates the design-scale lint's space and box tables, and
+    `platform-colors.ts` and `platform-ramps.ts` (every role and ramp step as hex) for mobile and
+    the docs' Colors page, which needs no edit:
+
+    ```sh
+    pnpm --dir packages/ui sync:tokens
+    ```
+
+37. **Typecheck mobile after renaming or deleting a role.**
+
+    ```sh
+    pnpm --dir packages/ios exec tsc --noEmit
+    ```
 
 ## Verify
 
-- `pnpm --dir packages/ui typecheck` runs the token lock, the platform-colour sync check, and the
-  StyleX capability check.
-- `pnpm --dir packages/app exec vitest --run test/style-cascade.electron.test.ts` proves layer order,
-  dark-mode pairs, and appearance reachability in Chromium.
-- `pnpm lint` runs the `nyte-design` rules: spacing scale, size grid, raw colours, raw weights,
-  `light-dark()` outside tokens, control sizes, touch sizes, guarded hover, logical properties; `nyte-restyle/no-restyle` explains a
-  rejected `xstyle` property. Docs runs `@shadcn/lint` for its Tailwind classes.
-- For anything a user sees, load `verify-nyte` and look at it in light and dark.
+38. **Typecheck ui.** This runs the token lock check, the platform-colour and design-scale sync
+    checks, and the StyleX capability check:
+
+    ```sh
+    pnpm --dir packages/ui typecheck
+    ```
+
+39. **Run the cascade test.** This checks the layer order, the dark-mode pairs and how far the
+    appearance inputs reach, in Chromium:
+
+    ```sh
+    pnpm --dir packages/app exec vitest --run test/style-cascade.electron.test.ts
+    ```
+
+40. **Run the lint.** `pnpm lint` runs `nyte-design` and `nyte-restyle`, and docs also runs
+    `@shadcn/lint` on its Tailwind classes.
+41. **Look in light and dark.** Look at anything a user sees in light and dark with the verify-nyte
+    skill.

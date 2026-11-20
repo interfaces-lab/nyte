@@ -4,20 +4,20 @@ import type { ReactElement, ReactNode } from "react";
 import type { Layout, PaneId, SplitDirection } from "./layout.ts";
 import { useLayoutSelect } from "./layout-store.ts";
 import type { LayoutStore } from "./layout-store.ts";
-import type { PaneController } from "./pane-controller.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import { canSplitPane, chatPanes } from "./pane-layout.ts";
 import type { DropPlacement } from "./pane-layout.ts";
 import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import type { TabPanes } from "../tabs/window-store.ts";
 
-const PaneControllerContext = createContext<PaneController | undefined>(undefined);
+const PaneControllerContext = createContext<TabPanes | undefined>(undefined);
 
 export function PaneControllerProvider({
-  controller,
+  panes,
   children,
 }: {
-  controller?: PaneController;
+  panes?: TabPanes;
   children: ReactNode;
 }): ReactElement {
   const tabId = useSyncExternalStore(
@@ -26,46 +26,46 @@ export function PaneControllerProvider({
     windowTabs.paneTabId,
   );
 
-  const value = controller ?? windowTabs.controller(tabId);
+  const value = panes ?? windowTabs.store.tab(tabId);
 
   return <PaneControllerContext value={value}>{children}</PaneControllerContext>;
 }
 
-export function hideFromPanes(sessionId: SessionId): () => boolean {
-  return windowTabs.controller().removeSessionWithUndo(sessionId);
+export function hideFromPanes(sessionId: SessionId): () => void {
+  return windowTabs.store.hide(sessionId);
 }
 
-export function splitPanes(controller: PaneController, direction: SplitDirection): boolean {
-  if (!canSplitPane(controller.getSnapshot(), windowWidth())) return false;
-  controller.split(direction);
+export function splitPanes(panes: TabPanes, direction: SplitDirection): boolean {
+  if (!canSplitPane(panes.layout.getSnapshot(), windowWidth())) return false;
+  panes.window.run(panes.tabId, { kind: "split", direction });
 
   return true;
 }
 
-export function focusNextPane(controller: PaneController): boolean {
-  const layout = controller.getSnapshot();
-  const panes = chatPanes(layout);
+export function focusNextPane(panes: TabPanes): boolean {
+  const layout = panes.layout.getSnapshot();
+  const shown = chatPanes(layout);
 
-  if (panes.length < 2) return false;
-  const index = panes.findIndex((pane) => pane.pane === layout.focus[0]);
-  const next = panes[(index + 1) % panes.length];
+  if (shown.length < 2) return false;
+  const index = shown.findIndex((pane) => pane.pane === layout.focus[0]);
+  const next = shown[(index + 1) % shown.length];
 
   if (next === undefined) return false;
-  controller.focus(next.pane);
+  panes.window.run(panes.tabId, { kind: "focus", pane: next.pane });
 
   return true;
 }
 
-function useController(): PaneController {
-  const controller = use(PaneControllerContext);
+function useTabPanes(): TabPanes {
+  const panes = use(PaneControllerContext);
 
-  if (controller === undefined) throw new Error("Pane controller is missing");
+  if (panes === undefined) throw new Error("Pane controller is missing");
 
-  return controller;
+  return panes;
 }
 
 export function usePaneLayoutStore(): LayoutStore {
-  return useController().store;
+  return useTabPanes().layout;
 }
 
 export function usePaneLayout<T>(
@@ -100,55 +100,40 @@ export function useCanSplitPane(): boolean {
 }
 
 export function usePaneViewStateStore(): SessionViewStateStore {
-  return useController().viewState;
+  return useTabPanes().viewState;
 }
 
 export interface PaneActions {
   newChat(): void;
-  openSession(sessionId: SessionId): void;
-  openSessionInPane(paneId: PaneId, sessionId: SessionId): void;
   openDraftChat(draftId: string, sessionId: SessionId, composer?: ComposerViewState): void;
   split(direction: SplitDirection): void;
   close(paneId: PaneId): void;
-  focus(paneId: PaneId): void;
-  focusNext(): boolean;
   drop(sessionId: SessionId, targetPaneId: PaneId, placement: DropPlacement): void;
-  removeSession(sessionId: SessionId): void;
 }
 
 export function usePaneActions(): PaneActions {
-  const controller = useController();
+  const panes = useTabPanes();
 
   return {
     newChat() {
       windowTabs.newChat();
     },
-    openSession(sessionId) {
-      controller.selectSession(sessionId);
-    },
-    openSessionInPane(paneId, sessionId) {
-      controller.selectSessionInPane(paneId, sessionId);
-    },
     openDraftChat(draftId, sessionId, composer) {
-      controller.openDraftChat(draftId, sessionId, composer);
+      panes.window.openDraftChat(panes.tabId, draftId, sessionId, composer);
     },
     split(direction) {
-      splitPanes(controller, direction);
+      splitPanes(panes, direction);
     },
     close(paneId) {
-      controller.close(paneId);
-    },
-    focus(paneId) {
-      controller.focus(paneId);
-    },
-    focusNext() {
-      return focusNextPane(controller);
+      panes.window.run(panes.tabId, { kind: "close", pane: paneId });
     },
     drop(sessionId, targetPaneId, placement) {
-      controller.drop(sessionId, targetPaneId, placement);
-    },
-    removeSession(sessionId) {
-      controller.removeSession(sessionId);
+      panes.window.run(panes.tabId, {
+        kind: "drop",
+        sessionId,
+        pane: targetPaneId,
+        placement,
+      });
     },
   };
 }

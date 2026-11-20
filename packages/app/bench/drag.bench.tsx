@@ -8,11 +8,11 @@ import { messageScrollerStyles } from "../src/chat/transcript/transcript.stylex.
 import { reduceLayout } from "../src/panes/layout.ts";
 import type { Layout, PaneId, SplitChild } from "../src/panes/layout.ts";
 import { createLayoutStore } from "../src/panes/layout-store.ts";
-import { LayoutView, PANE_GAP } from "../src/panes/layout-view.tsx";
+import { LayoutView } from "../src/panes/layout-view.tsx";
 import { boxStyle, layoutGeometry } from "../src/panes/pane-geometry.ts";
 import { paneRules } from "../src/panes/pane-kinds.ts";
 import type { PaneContent } from "../src/panes/pane-kinds.ts";
-import { chatContent } from "../src/panes/pane-layout.ts";
+import { chatContent, MIN_PANE_SIZE } from "../src/panes/pane-layout.ts";
 import "../src/theme/global.css";
 import { DragCase } from "./gates.ts";
 import type { DragResult } from "./gates.ts";
@@ -68,6 +68,11 @@ export async function run(): Promise<string> {
     return { pane, element };
   });
 
+  const metrics = {
+    gap: Number.parseFloat(getComputedStyle(host).getPropertyValue("--nyte-pane-sash-size")),
+    minimum: MIN_PANE_SIZE,
+  };
+
   const drag = async () => {
     const moves: number[] = [];
 
@@ -79,12 +84,13 @@ export async function run(): Promise<string> {
       const sizes = panes.map((_, index) => (index === 0 ? lead : 1));
       const geometry = layoutGeometry(
         reduceLayout(layout, { kind: "resize", split: SPLIT, sizes }, paneRules),
+        metrics,
       );
 
       for (const entry of hosts) {
         const box = geometry.panes.get(entry.pane);
 
-        if (box !== undefined) Object.assign(entry.element.style, boxStyle(box, PANE_GAP));
+        if (box !== undefined) Object.assign(entry.element.style, boxStyle(box));
       }
 
       void host.offsetHeight;
@@ -104,20 +110,14 @@ export async function run(): Promise<string> {
 }
 
 function rowLayout(panes: readonly PaneId[]): Layout<PaneContent> {
-  const children = panes.map((pane, index): SplitChild<PaneContent> => {
-    const tab = asId<"pane-tab">(`t${String(index)}`);
-
-    return {
-      node: {
-        kind: "pane",
-        id: pane,
-        tabs: [{ id: tab, content: chatContent({ kind: "blank" }) }],
-        active: tab,
-        hidden: false,
-      },
-      size: 1,
-    };
-  });
+  const children = panes.map((pane, index): SplitChild<PaneContent> => ({
+    node: {
+      kind: "pane",
+      id: pane,
+      tab: { id: asId<"pane-tab">(`t${String(index)}`), content: chatContent({ kind: "blank" }) },
+    },
+    size: 1,
+  }));
   const first = children[0];
   const second = children[1];
   const focused = panes[0];
@@ -133,6 +133,5 @@ function rowLayout(panes: readonly PaneId[]): Layout<PaneContent> {
       children: [first, second, ...children.slice(2)],
     },
     focus: [focused],
-    zoomed: null,
   };
 }

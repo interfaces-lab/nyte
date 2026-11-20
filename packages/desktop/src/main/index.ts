@@ -18,8 +18,9 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import {
-  BROWSER_BOUNDS_CHANNEL,
+  APPS_ARGUMENT,
   BROWSER_FOCUS_CHANNEL,
+  BROWSER_SHOWN_CHANNEL,
   CALL_CHANNEL,
   HOST_PORT_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
@@ -31,10 +32,12 @@ import {
   THEME_PREFERENCE_CHANNEL,
   UNSAVED_EDITS_CHANNEL,
   VIEWING_CHANNEL,
+  WINDOW_APP_ARGUMENT,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
   WINDOW_OPEN_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
+  WINDOW_WORKSPACE_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
@@ -55,7 +58,7 @@ import { safeExternalUrl } from "./native/external-url.ts";
 import { Alerts } from "./alerts.ts";
 import { BrowserSurfaces } from "./browser/browser.ts";
 import { BrowserHistoryStore } from "./browser/browser-history.ts";
-import { showContextMenu } from "./native/context-menu.ts";
+import { showContextMenu, showEditableMenu } from "./native/context-menu.ts";
 import { callIpc, callTable } from "../shared/ipc-call.ts";
 import type { CallRoute } from "../shared/ipc-call.ts";
 import { localFonts } from "./native/fonts.ts";
@@ -73,31 +76,34 @@ import { readConnectConfig } from "../shared/connect-config.ts";
 import type { ConnectConfig } from "../shared/connect-config.ts";
 import { adoptStagedCli, inspectBundledCli, installCli, stageCli } from "./native/cli.ts";
 import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
-import { DESKTOP_APP_IDS } from "../shared/host-agent-job.ts";
+import { findPackagedBuild } from "../shared/desktop-builds.ts";
 import { throwForRenderer } from "../host/desktop-host.ts";
 import type { DesktopHost } from "../host/desktop-host.ts";
 import { bridgeHostPort, startHostRuntime } from "./host-runtime.ts";
 import { createHostTray } from "./host-tray.ts";
 import type { HostTray } from "./host-tray.ts";
-import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import type { HostRuntime } from "./host-runtime.ts";
-import type { HostWindow } from "../shared/host-window.ts";
+import type { HostWindow, WindowEnd } from "../shared/host-window.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
-import { LaunchStateStore } from "./launch-state.ts";
+import { LaunchStateStore, openingFrame, windowsAfterClose } from "./launch-state.ts";
 import { registerUpdates } from "./updates/updates.ts";
 import { createOpenWith } from "./open-with.ts";
+import type { DesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
-
+import { besideBounds, createAppSwitch, windowsAppDetails, windowTitle } from "./apps.ts";
 import {
-  decodeBrowserBounds,
-  decodeBrowserFocus,
+  browserFocus,
+  browserShown,
   terminalNotice,
   themePreference,
   unsavedEditsHeld,
   viewedChat,
+  windowWorkspacePath,
 } from "../shared/ipc-inputs.ts";
+import { createWindowWorkspaces } from "../shared/window-workspace.ts";
 
 interface NyteWindow {
+  readonly app: DesktopApp;
   readonly window: BrowserWindow;
   readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
   readonly present: () => void;
@@ -122,24 +128,22 @@ let previewCanvas: CanvasPreviewer;
 
 let previewsOpen = new AbortController();
 
-const updateTest = app.isPackaged && app.getName() === "Nyte Update Test";
+const build = app.isPackaged ? findPackagedBuild(app.getName()) : null;
 
-app.setName(updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte (Dev)");
+app.setName(build?.name ?? "Nyte (Dev)");
 
 app.setPath(
   "userData",
   app.commandLine.getSwitchValue("user-data-dir") ||
-    join(
-      app.getPath("appData"),
-      updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte Dev",
-    ),
+    join(app.getPath("appData"), build?.name ?? "Nyte Dev"),
 );
 
-if (updateTest) process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
+if (build === null ? process.env["NYTE_HOME"] === undefined : build.homeInUserData)
+  process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
 
 const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-state.json"));
 
-const home = updateTest ? app.getPath("userData") : homedir();
+const home = build?.homeInUserData === true ? app.getPath("userData") : homedir();
 
 const nyteHome = process.env["NYTE_HOME"] ?? join(home, ".nyte");
 
@@ -249,12 +253,26 @@ const unsavedEdits = createUnsavedEdits((options, id) => {
     : dialog.showMessageBoxSync(window, options);
 });
 
+const windowWorkspaces = createWindowWorkspaces();
+
 const openWith = createOpenWith({
   host: startedHost,
-  windows: () => [...windows.keys()],
+  windows: () => [...windows].flatMap(([id, entry]) => (entry.app === "code" ? [id] : [])),
+  workspace: (window) => windowWorkspaces.workspace(window),
   send: (window, path) => windows.get(window)?.menuCommands.dispatch({ kind: "open-file", path }),
-  open: (opening) => createWindow(undefined, opening),
+  open: (opening) => createWindow(opening.kind === "file" ? "code" : "nyte", { opening }),
   failed: (path, message) => dialog.showErrorBox(`Couldn't open ${basename(path)}`, message),
+});
+
+const switchApp = createAppSwitch({
+  windows: () => windows,
+  workspace: (window) => windowWorkspaces.workspace(window),
+  arrive: (entry, subject) => entry.menuCommands.dispatch({ kind: "arrive", subject }),
+  open: (app, opening, beside) => {
+    const bounds = beside.window.getBounds();
+    const workArea = screen.getDisplayMatching(bounds).workArea;
+    createWindow(app, { opening, bounds: besideBounds(bounds, workArea, MIN_WIDTH) });
+  },
 });
 
 let updates: Awaited<ReturnType<typeof registerUpdates>> | undefined;
@@ -330,7 +348,6 @@ const mainCalls: CallTable = {
       .catch(throwForRenderer);
   },
   "host.pickFolder": (window) => pickFolder(window),
-  "host.storeOpening": async () => "ready",
   "host.updates.state": async () => updates?.state() ?? { kind: "idle" },
   "host.updates.check": async () => updates?.click(),
   "host.updates.channel": async () => {
@@ -347,7 +364,6 @@ const mainCalls: CallTable = {
     return updates.setChannel(channel);
   },
   "host.hostProcess.state": async () => hostRuntime?.hostProcess.state() ?? { kind: "offline" },
-  "host.hostProcess.restart": async () => hostRuntime?.hostProcess.restart(),
   "host.hostProcess.confirm": async (window, { action }) =>
     hostRuntime?.hostProcess.confirm(action, windows.get(window)?.window),
   "host.hostProcess.start": async () => hostRuntime?.hostProcess.start(),
@@ -375,12 +391,16 @@ const mainCalls: CallTable = {
   "host.browser.perform": (window, input) => browserSurfaces.perform(input, window),
   "host.browser.close": async (window, input) => browserSurfaces.close(input, window),
   "host.browser.captureFrame": (_window, input) => browserSurfaces.captureFrame(input),
-  "host.browser.pickElement": (_window, input) => browserSurfaces.pickElement(input),
+  "host.browser.design": async (_window, input) => browserSurfaces.design(input),
   "host.browser.find": (_window, input) => browserSurfaces.find(input),
   "host.browser.cancelDownload": async (_window, input) => browserSurfaces.cancelDownload(input),
   "host.browser.login": async (_window, input) => browserSurfaces.login(input),
   "host.browser.history": (_window, input) => browserSurfaces.history(input),
   "host.browser.forgetHistory": (_window, input) => browserSurfaces.forgetHistory(input),
+  "host.browser.guests": async (window) => browserSurfaces.guests(window),
+  "host.browser.attach": async (window, input) => browserSurfaces.attach(input, window),
+  "host.browser.setEntered": async (window, input) => browserSurfaces.setEntered(input, window),
+  "host.switchApp": async (window, input) => switchApp(window, input),
 } satisfies { readonly [P in MainCallPath]: CallHandler<P> };
 
 const mainRoute: CallRoute = (window, path, input) => callTable(mainCalls, window, path, input);
@@ -404,7 +424,7 @@ async function installStagedCli(staged: Promise<string>): Promise<void> {
 
 function startHost(): DesktopHost {
   const runtime = startHostRuntime({
-    appId: updateTest ? DESKTOP_APP_IDS.updateTest : DESKTOP_APP_IDS.production,
+    build,
     home,
     nyteHome,
     connect: new ConnectRuntime({
@@ -418,7 +438,8 @@ function startHost(): DesktopHost {
     agent: browserSurfaces.agent,
     preview: (request, signal) => previewCanvas(request, signal),
     previewSignal: () => previewsOpen.signal,
-    mediaOrigin: mediaOrigin(accountScheme({ packaged: app.isPackaged, updateTest })),
+    openChat: (session) => alerts.openChat(session),
+    mediaOrigin: mediaOrigin(accountScheme(build)),
     emitHostEvent,
     keepAwake,
     settingsChanged: (next) => {
@@ -447,7 +468,7 @@ function createAccount(config: ConnectConfig | undefined): AccountSession | unde
     try {
       session = registerAccount({
         publishableKey: config.clerk.publishableKey,
-        scheme: accountScheme({ packaged: app.isPackaged, updateTest }),
+        scheme: accountScheme(build),
         window: (id) => (id === undefined ? currentWindow() : windows.get(id))?.window,
         onChange: () => desktopHost?.accountChanged(),
         store: new AccountStore({
@@ -524,14 +545,10 @@ function registerIpc(): void {
     launchState.setTheme(value);
   });
 
-  ipcMain.on(BROWSER_BOUNDS_CHANNEL, (event, message) => {
+  ipcMain.on(BROWSER_SHOWN_CHANNEL, (event, message) => {
     senderWindow(event);
 
-    try {
-      browserSurfaces.setBounds(decodeBrowserBounds(message), event.sender.id);
-    } catch {
-      return;
-    }
+    if (browserShown.Check(message)) browserSurfaces.setShown(message, event.sender.id);
   });
 
   ipcMain.on(VIEWING_CHANNEL, (event, viewed) => {
@@ -552,21 +569,25 @@ function registerIpc(): void {
     if (unsavedEditsHeld.Check(held)) unsavedEdits.report(event.sender.id, held);
   });
 
+  ipcMain.on(WINDOW_WORKSPACE_CHANNEL, (event, path) => {
+    const entry = senderWindow(event);
+
+    if (!windowWorkspacePath.Check(path)) return;
+    windowWorkspaces.shown(event.sender.id, path ?? undefined);
+    entry.window.setTitle(windowTitle(entry.app, path ?? undefined));
+  });
+
   ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
     senderWindow(event);
 
-    try {
-      browserSurfaces.setFocus(decodeBrowserFocus(message), event.sender.id);
-    } catch {
-      return;
-    }
+    if (browserFocus.Check(message)) browserSurfaces.setFocus(message, event.sender.id);
   });
 
   ipcMain.on(HOST_PORT_CHANNEL, (event, nonce: unknown) => {
     senderWindow(event);
 
     if (typeof nonce !== "string" || hostRuntime === undefined) return;
-    event.sender.postMessage(HOST_PORT_CHANNEL, nonce, [bridgeHostPort(hostRuntime.link)]);
+    event.sender.postMessage(HOST_PORT_CHANNEL, nonce, [bridgeHostPort(hostRuntime.route)]);
   });
 
   ipcMain.handle(CALL_CHANNEL, async (event, request: CallRequest) => {
@@ -576,20 +597,8 @@ function registerIpc(): void {
   });
 }
 
-interface OpeningFrame {
-  readonly bounds: Partial<Electron.Rectangle>;
-  readonly maximized: boolean;
-  readonly fullscreen: boolean;
-}
-
-function openingFrame(): OpeningFrame {
-  const saved = launchState.window();
-
-  if (saved === undefined)
-    return { bounds: { width: 1280, height: 800 }, maximized: false, fullscreen: false };
-  const { bounds } = saved;
-
-  const shown = screen
+function onScreen(bounds: Electron.Rectangle): boolean {
+  return screen
     .getAllDisplays()
     .some(
       ({ workArea }) =>
@@ -598,31 +607,37 @@ function openingFrame(): OpeningFrame {
         bounds.y < workArea.y + workArea.height &&
         bounds.y + bounds.height > workArea.y,
     );
-
-  if (windows.size === 0 && shown) return saved;
-
-  return {
-    bounds: { width: bounds.width, height: bounds.height },
-    maximized: false,
-    fullscreen: false,
-  };
 }
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
-/**
- * A window Finder opened shows what it opened, not the last chat a launch returns to, and its
- * workspace is seeded before it loads, so every load of it shows the folder.
- */
-function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOpen): NyteWindow {
-  const frame = openingFrame();
-  const kept = launchState.windows();
+const MIN_WIDTH = 500;
 
-  if (!kept.includes(windowId)) launchState.setWindows([...kept, windowId]);
+function createWindow(
+  app: DesktopApp,
+  input: {
+    readonly windowId?: string;
+    readonly opening?: DesktopWindowOpen;
+    readonly bounds?: Electron.Rectangle;
+  } = {},
+): NyteWindow {
+  const windowId = input.windowId ?? randomUUID();
+  const opening = input.opening;
+
+  const frame = openingFrame({
+    own: launchState.frame(windowId),
+    last: launchState.window(),
+    first: windows.size === 0,
+    onScreen,
+  });
+
+  launchState.keepWindow(windowId, app, opening);
 
   const options: Electron.BrowserWindowConstructorOptions = {
     ...frame.bounds,
-    minWidth: 500,
+    ...input.bounds,
+    title: windowTitle(app, opening?.workspace?.path),
+    minWidth: MIN_WIDTH,
     minHeight: 520,
     show: false,
     backgroundColor: windowBackgroundColor(),
@@ -632,14 +647,17 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
         `${CANVAS_SHELL_ARGUMENT}=${canvasShell}`,
         `${MACHINE_NAME_ARGUMENT}=${machineName()}`,
         `${WINDOW_ID_ARGUMENT}=${windowId}`,
-        ...(windows.size === 0 && opening === undefined
+        `${WINDOW_APP_ARGUMENT}=${app}`,
+        ...(windows.size === 0 && (opening === undefined || opening.kind === "app")
           ? [`${LAUNCH_WINDOWS_ARGUMENT}=${launchState.windows().join(",")}`]
           : []),
         ...(opening === undefined ? [] : [`${WINDOW_OPEN_ARGUMENT}=${JSON.stringify(opening)}`]),
+        `${APPS_ARGUMENT}=${build === null ? "nyte,code,studio" : "nyte,code"}`,
       ],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webviewTag: true,
     },
   };
 
@@ -647,7 +665,11 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   const created = new BrowserWindow(options);
   const id = created.webContents.id;
 
+  if (process.platform === "win32")
+    created.setAppDetails(windowsAppDetails(app, build?.appId ?? "ai.nyte.dev", process.execPath));
+
   const entry: NyteWindow = {
+    app,
     window: created,
     menuCommands: createMenuCommandDelivery({
       openWindow: () => reveal(entry),
@@ -658,6 +680,8 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 
       if (frame.maximized) created.maximize();
       created.show();
+
+      if (opening?.kind === "app") created.focus();
 
       if (frame.fullscreen) created.setFullScreen(true);
 
@@ -674,13 +698,16 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
     windows.set(id, entry);
   });
 
-  const releaseRendererWork = (): void => {
-    desktopHost?.releaseWindow(id);
-    alerts.reloading(id);
-    unsavedEdits.report(id, false);
+  const windowEnded = (end: WindowEnd): void => {
+    browserSurfaces.releaseWindow(id);
+    windowWorkspaces.windowEnded(id, end);
+    alerts.windowEnded(id, end);
+    unsavedEdits.windowEnded(id);
+    entry.menuCommands.windowEnded();
   };
 
-  created.webContents.on("render-process-gone", releaseRendererWork);
+  created.webContents.on("render-process-gone", () => windowEnded("crashed"));
+  created.on("page-title-updated", (event) => event.preventDefault());
   const placeButtons = (): void => placeWindowButtons(created);
 
   const fullscreenChanged = (): void => {
@@ -695,10 +722,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   created.on("enter-full-screen", fullscreenChanged);
   created.on("leave-full-screen", fullscreenChanged);
   screen.on("display-metrics-changed", placeButtons);
-  created.webContents.on("did-navigate", () => {
-    releaseRendererWork();
-    entry.menuCommands.reset();
-  });
+  created.webContents.on("did-navigate", () => windowEnded("navigated"));
 
   const updateWindowBackground = (): void => {
     created.setBackgroundColor(windowBackgroundColor());
@@ -718,25 +742,13 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 
     return { action: "deny" };
   });
-  created.webContents.on("context-menu", (_event, params) => {
-    if (!params.isEditable) return;
-    Menu.buildFromTemplate([
-      { role: "undo", enabled: params.editFlags.canUndo },
-      { role: "redo", enabled: params.editFlags.canRedo },
-      { type: "separator" },
-      { role: "cut", enabled: params.editFlags.canCut },
-      { role: "copy", enabled: params.editFlags.canCopy },
-      { role: "paste", enabled: params.editFlags.canPaste },
-      { type: "separator" },
-      { role: "selectAll", enabled: params.editFlags.canSelectAll },
-    ]).popup({ window: created, frame: params.frame ?? undefined });
-  });
-  created.webContents.on("will-attach-webview", (event) => event.preventDefault());
+  created.webContents.on("context-menu", (_event, params) => showEditableMenu(created, params));
+  browserSurfaces.hostGuests(created);
   created.webContents.on("will-navigate", (event, url) => {
     if (url !== created.webContents.getURL()) event.preventDefault();
   });
 
-  if (opening?.workspace !== undefined) desktopHost?.seedWorkspace(id, opening.workspace);
+  windowWorkspaces.opened(id, opening?.workspace?.path);
   void created.loadURL(rendererUrl);
 
   created.on("close", (event) => {
@@ -748,7 +760,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 
     const bounds = created.getNormalBounds();
 
-    launchState.setWindow({
+    launchState.setWindow(windowId, {
       bounds: {
         x: Math.round(bounds.x),
         y: Math.round(bounds.y),
@@ -761,17 +773,17 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   });
 
   created.on("closed", () => {
-    entry.menuCommands.reset();
     nativeTheme.off("updated", updateWindowBackground);
     screen.off("display-metrics-changed", placeButtons);
     windows.delete(id);
 
-    if (!quitting && windows.size > 0)
-      launchState.setWindows(launchState.windows().filter((kept) => kept !== windowId));
-    browserSurfaces.releaseWindow(id);
-    desktopHost?.closeWindow(id);
-    alerts.release(id);
-    unsavedEdits.report(id, false);
+    const saved = windowsAfterClose(launchState.windows(), windowId, {
+      quitting,
+      remaining: windows.size,
+    });
+
+    if (saved !== undefined) launchState.setWindows(saved);
+    windowEnded("closed");
 
     if (windows.size === 0) {
       previewsOpen.abort();
@@ -783,12 +795,13 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 }
 
 function restoreWindows(): NyteWindow {
-  const saved = launchState.windows();
-  const first = createWindow(saved[0]);
+  const opened = launchState.windows().map((windowId) => {
+    const kept = launchState.reopening(windowId);
 
-  for (const windowId of saved.slice(1)) createWindow(windowId);
+    return createWindow(kept.app, { windowId, opening: kept.opening });
+  });
 
-  return first;
+  return opened[0] ?? createWindow("nyte");
 }
 
 function showHostTray(): void {
@@ -808,7 +821,7 @@ function showHostTray(): void {
     openSettings: () => {
       app.focus({ steal: true });
       const window = currentWindow() ?? restoreWindows();
-      window.menuCommands.dispatch({ kind: "action", action: clientActions.settings.id });
+      window.menuCommands.dispatch({ kind: "action", action: "settings.open", input: {} });
     },
   });
 }
@@ -844,7 +857,7 @@ if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   const config = readConnectConfig(import.meta.env);
-  const scheme = accountScheme({ packaged: app.isPackaged, updateTest });
+  const scheme = accountScheme(build);
 
   const shellRoot = app.isPackaged
     ? join(process.resourcesPath, "canvas")
@@ -854,7 +867,7 @@ if (!hasSingleInstanceLock) {
     scheme,
     frontendApiHost: config?.clerk.frontendApiHost,
     shellRoot,
-    host: () => hostRuntime?.link.fetch,
+    host: () => hostRuntime?.route.fetch,
   });
   canvasShell = canvasShellUrl(scheme);
   previewCanvas = offscreenCanvasPreviewer(
@@ -886,14 +899,14 @@ if (!hasSingleInstanceLock) {
 
     desktopHost = startHost();
     powerMonitor.on("suspend", () => desktopHost?.suspend());
-    powerMonitor.on("resume", () => desktopHost?.resume());
+    powerMonitor.on("resume", () => hostRuntime?.resume());
 
     const menu = Menu.buildFromTemplate(
       applicationMenuTemplate({
         platform: process.platform,
         name: app.getName(),
         dispatch: (command) => (currentWindow() ?? restoreWindows()).menuCommands.dispatch(command),
-        newWindow: () => createWindow(),
+        newWindow: () => createWindow("nyte"),
         developer: !app.isPackaged,
         view: (command, window) => {
           const host = [...windows].find(([, entry]) => entry.window === window)?.[0];

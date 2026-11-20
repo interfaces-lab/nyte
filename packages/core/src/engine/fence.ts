@@ -9,8 +9,8 @@ import type {
 } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
-import { commit } from "../fold/commit.ts";
-import { liveParts, readRunEnd } from "../fold/reads.ts";
+import { commit } from "../watch/commit.ts";
+import { liveParts, readRunEnd } from "../watch/reads.ts";
 import { stoppedParts } from "../store/parts.ts";
 import { inboxRef, liveRef, runRef } from "../store/refs.ts";
 import {

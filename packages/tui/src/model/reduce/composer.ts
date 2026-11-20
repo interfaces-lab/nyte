@@ -191,8 +191,6 @@ export const composerHandlers = {
       : stay(withNotice(next, "Queued message saved.", "info", now));
   },
   "send-refused": (state, msg, now) => {
-    const submission = state.local.submissions.find((candidate) => candidate.id === msg.submission);
-
     const next = withNotice(
       withLocal(state, {
         submissions: state.local.submissions.filter((candidate) => candidate.id !== msg.submission),
@@ -202,13 +200,9 @@ export const composerHandlers = {
       now,
     );
 
-    const target = submission?.session ?? state.facts.chat?.id;
-
-    if (target === undefined) return stay(next);
-
     return stageHandback(
       next,
-      target,
+      msg.session,
       { draft: msg.snapshot, notice: null, unlessLanded: null },
       now,
     );
@@ -232,22 +226,6 @@ export const composerHandlers = {
     const parts = new Map(draft.parts).set(msg.marker, { ...part, body: msg.body });
 
     return stay(withLocal(state, { draft: { ...draft, parts } }));
-  },
-  "directory-listed": (state, msg) => {
-    const current = state.local.completion;
-
-    if (
-      current.kind !== "open" ||
-      current.token.trigger !== "cd" ||
-      current.token.query !== msg.path
-    )
-      return stay(state);
-
-    return stay(
-      withLocal(state, {
-        completion: { ...current, directories: { path: msg.path, entries: msg.entries } },
-      }),
-    );
   },
   "command-completed": (state, msg) => {
     const current = state.local.completion;
@@ -301,9 +279,6 @@ function send(
 
   if (draft.kind !== "message") return stay(state);
   const command = draft.command === null ? null : runnableCommand(state, draft.text);
-
-  if (command?.entry.name === "cd" && command.argument === "")
-    return refuse(state, "error: Directory is required. Use /cd <path>.", now, "error");
 
   if (command !== null) {
     const intent = command.entry.run(command.argument) ?? {
@@ -509,7 +484,8 @@ function acceptCompletion(
 
     case "execute": {
       const entry = resolveCommand(state, edit.name);
-      const intent: Intent = entry?.run("") ?? { kind: "prefill", text: `/${edit.name} ` };
+      const prefill: Intent = { kind: "prefill", text: `/${edit.name} ` };
+      const intent = entry === null || entry.takesText ? prefill : (entry.run("") ?? prefill);
       const range = inlineTokenRange(state.local.draft.text, edit.from, edit.to);
 
       const cleared = edit.leading

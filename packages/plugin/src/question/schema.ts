@@ -125,11 +125,6 @@ export function findQuestionPart(parts: readonly PartView[], call: CallId): Part
   );
 }
 
-/**
- * A question part's state, or null when it doesn't parse.
- *
- * @category plugins
- */
 export function readQuestion(part: PartView): QuestionState | null {
   const checked = question.state["~standard"].validate(part.state);
 

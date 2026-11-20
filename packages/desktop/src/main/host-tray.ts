@@ -3,13 +3,11 @@ import process from "node:process";
 import { dev } from "@nyte-ai/sdk/client";
 import { app, clipboard, Menu, nativeImage, shell, Tray } from "electron";
 import type { MenuItemConstructorOptions, NativeImage } from "electron";
-import { processAlive } from "./host-agent.ts";
+import { processAlive } from "@nyte-ai/service/host-endpoint";
 import type { HostAgent } from "./host-agent.ts";
-import type { HostLink } from "./host-link.ts";
+import type { HostLink } from "../host/host-link.ts";
 import { readHostStatus } from "./host-status.ts";
 import type { HostIssue, HostReading, HostStatus } from "./host-status.ts";
-
-const PROBE_EVERY_MS = 5_000;
 
 const HEADER_ICON_POINTS = 32;
 
@@ -27,7 +25,6 @@ const STATUS_COLORS = {
 
 const MAC_VERSION = process.getSystemVersion().split(".").map(Number);
 
-/** Menu item sublabels draw from macOS 14.4; before it, the status joins the label. */
 const SUBLABELS =
   (MAC_VERSION[0] ?? 0) > 14 || ((MAC_VERSION[0] ?? 0) === 14 && (MAC_VERSION[1] ?? 0) >= 4);
 
@@ -54,7 +51,6 @@ export function createHostTray(options: HostTrayOptions): HostTray {
   const tray = new Tray(icon);
   const appIcon = nativeImage.createFromPath(resourcePath("icon.png"));
   let reading: HostReading = { status: "stopped", issues: [] };
-  let open = false;
   let probing: Promise<void> | undefined;
 
   const refresh = (): Promise<void> => {
@@ -76,29 +72,18 @@ export function createHostTray(options: HostTrayOptions): HostTray {
   const show = async (): Promise<void> => {
     await refresh();
 
-    const menu = Menu.buildFromTemplate(
-      items(options, reading, badgedIcon(appIcon, STATUS_COLORS[reading.status])),
+    tray.popUpContextMenu(
+      Menu.buildFromTemplate(
+        items(options, reading, badgedIcon(appIcon, STATUS_COLORS[reading.status])),
+      ),
     );
-    menu.once("menu-will-show", () => {
-      open = true;
-    });
-    menu.once("menu-will-close", () => {
-      open = false;
-    });
-    tray.popUpContextMenu(menu);
   };
 
   tray.on("click", () => void show());
   tray.on("right-click", () => void show());
+  tray.on("mouse-enter", () => void refresh());
 
-  const timer = setInterval(() => {
-    if (!open) void refresh();
-  }, PROBE_EVERY_MS);
-
-  app.once("will-quit", () => {
-    clearInterval(timer);
-    tray.destroy();
-  });
+  app.once("will-quit", () => tray.destroy());
   void refresh();
 
   return { refresh: () => void refresh() };

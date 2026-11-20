@@ -56,11 +56,8 @@ async function sudoAccess(ctx) {
 }
 
 /**
- * On Ctrl-C the child in the foreground gets the same SIGINT and stops, and
- * its step reports that; init only notes it here.
- *
- * @param {readonly string[]} args  Arguments after `init`.
- * @returns {Promise<number>} The exit code.
+ * @param {readonly string[]} args
+ * @returns {Promise<number>}
  */
 export async function init(args, options = {}) {
   const flags = parseInitArgs(args);

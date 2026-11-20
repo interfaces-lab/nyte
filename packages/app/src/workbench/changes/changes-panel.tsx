@@ -4,9 +4,11 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { ChangeSet, RunId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
 import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
+import { Icon } from "@nyte-ai/ui/icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
 import { createDiffFilesLoader } from "../../diff/diff-expansion.ts";
+import type { DiffFilesLoader } from "../../diff/diff-expansion.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
   readGitPatches,
@@ -71,6 +73,25 @@ const NO_TURN_OPTIONS: readonly TurnChangeOption[] = [];
 
 const NO_COLLAPSED_PATHS: readonly string[] = [];
 
+const WORKTREE_LOADERS = new Map<string, DiffFilesLoader>();
+
+function worktreeLoader(workspace: WorkspaceId | undefined, root: string): DiffFilesLoader {
+  const key = `${workspace ?? ""}\u0000${root}`;
+  const held = WORKTREE_LOADERS.get(key);
+
+  if (held !== undefined) return held;
+
+  const made = createDiffFilesLoader({
+    readContents: async (input) => (await gitFor(workspace)).contents(input.path, input.scope),
+    root,
+    scope: { kind: "worktree" },
+  });
+
+  WORKTREE_LOADERS.set(key, made);
+
+  return made;
+}
+
 const styles = create({
   panel: {
     display: "flex",
@@ -91,8 +112,10 @@ const styles = create({
   empty: {
     display: "flex",
     flex: 1,
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
+    gap: space.s2,
     minHeight: 0,
     padding: space.s5,
     color: role.contentSecondary,
@@ -392,14 +415,7 @@ function ChangesPanelView({
   const expandable = repository !== undefined && workingScope;
 
   const loadDiffFiles =
-    expandable && root !== undefined
-      ? createDiffFilesLoader({
-          readContents: async (input) =>
-            (await gitFor(gitWorkspace)).contents(input.path, input.scope),
-          root,
-          scope: { kind: "worktree" },
-        })
-      : undefined;
+    expandable && root !== undefined ? worktreeLoader(gitWorkspace, root) : undefined;
 
   const filterFiles = (): void => {
     if (!fileTreeVisible) onToggleFileTree();
@@ -492,7 +508,11 @@ function ChangesPanelView({
           ...turnOptions.map(turnScopeOption),
         ])}
         scopeStats={totals.stats}
-        scopeFileCount={totals.fileCount}
+        scopeFileCount={
+          snapshot.data?.kind === "none" && resolved.rows === "working"
+            ? undefined
+            : totals.fileCount
+        }
         snapshot={snapshot.data}
         repository={repository}
         branch={branchReadout(snapshot.data)}
@@ -520,6 +540,7 @@ function ChangesPanelView({
           title={emptyState.detail}
           {...props(styles.empty)}
         >
+          {emptyState.icon !== undefined && <Icon name={emptyState.icon} size="lg" />}
           {emptyState.text}
         </div>
       ) : (
@@ -536,6 +557,7 @@ function ChangesPanelView({
           )}
           <ChangesStack
             ref={stack}
+            visible={visible}
             items={sections}
             collapsedPaths={collapsedPaths}
             onToggleCollapsed={toggleCollapsedPath}

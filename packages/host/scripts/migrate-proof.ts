@@ -5,7 +5,7 @@ import { backup, DatabaseSync } from "node:sqlite";
 import { asId } from "@nyte-ai/schema";
 import { chatOnly, fakeModels } from "../test/fixtures/fake-models.ts";
 import { openHost } from "../src/open.ts";
-import { sqliteStore } from "../src/sqlite.ts";
+import { sqliteStore } from "../src/store/sqlite.ts";
 import { MAPPING } from "../test/migration/mapping.ts";
 import { verifyMigration } from "../test/migration/verify.ts";
 

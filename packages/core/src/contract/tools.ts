@@ -14,6 +14,7 @@ import type {
   WaitTarget,
 } from "@nyte-ai/schema";
 import type { Connection } from "./host.ts";
+import type { PluginApi, When } from "./plugin.ts";
 import type { Session } from "./session.ts";
 import type { ExecutionEnv, Job, Workspace } from "./workspace.ts";
 
@@ -23,7 +24,9 @@ export interface ToolInvocation extends Durable {
   readonly head: HeadName;
   readonly signal: AbortSignal;
   readonly session: Session;
-  readonly sdk: Connection;
+  readonly host: Connection;
+  /** The API of the plugin that owns the tool, acting as this call. */
+  readonly api: PluginApi<"core">;
   readonly workspace: Workspace;
   readonly env: ExecutionEnv;
   progress(update: ToolProgress): void;
@@ -34,7 +37,7 @@ export interface ToolInvocation extends Durable {
       args: Json,
       options?: { readonly key?: string; readonly signal?: AbortSignal },
     ): Promise<ToolOutcome>;
-    list(): readonly ToolInfo[];
+    list(): Promise<readonly ToolInfo[]>;
     loaded(): Promise<readonly string[]>;
   };
 }
@@ -71,6 +74,8 @@ export interface Durable {
 
 export interface ToolDefinition<Args = unknown, Output = unknown> {
   readonly name: string;
+  /** Whether the tool is in a chat. */
+  readonly when?: When;
   readonly namespace?: ToolNamespace;
   readonly description: string;
   readonly parameters: Schema<Args>;
@@ -90,9 +95,9 @@ export interface ToolDefinition<Args = unknown, Output = unknown> {
     | { readonly kind: "regex"; readonly pattern: string };
   class(args: Args, context: { readonly call: CallId }): ToolClass;
   /** What a call can change besides the session: `"workspace"` when it may write the workspace's files, so the runner snapshots the tree around it and records what changed; `"none"` when it cannot (reads, browser pages, canvases, questions, starting or messaging a child session without waiting on it, or a script whose nested calls declare their own); a call that waits on a child session keeps the default, since the child writes the same workspace while it waits. Default `"workspace"`. A call nested inside one that snapshots is covered by its parent's pair and takes none of its own. */
-  readonly effects?: "workspace" | "none";
-  /** Whether a permissions policy may hold a call before it runs: `"policy"` (the default) lets a before_tool gate such as the approvals plugin ask by the call's class; `"never"` for a call that changes nothing the user guards (a question, a canvas, a web search, a page read, or a script whose nested calls are gated on their own); `"runtime"` for the mirror of a call another agent runtime runs, which asked through `PluginApi.approve` before it ran. Snapshots read `effects`, never this. */
-  readonly approval?: "policy" | "never" | "runtime";
-  readonly replay: "safe" | "never";
+  readonly changes?: "workspace" | "none";
+  /** Whether a permissions policy may hold a call before it runs: `"policy"` (the default) lets a before_tool gate such as the approvals plugin ask by the call's class; `"never"` for a call that changes nothing the user guards (a question, a canvas, a web search, a page read, or a script whose nested calls are gated on their own); `"runtime"` for the mirror of a call another agent runtime runs, which asked through `PluginApi.approve` before it ran. Snapshots read `changes`, never this. */
+  readonly asks?: "policy" | "never" | "runtime";
+  readonly rerun: "safe" | "never";
   execute(args: Args, invocation: ToolInvocation): Promise<ToolResult<Output>>;
 }

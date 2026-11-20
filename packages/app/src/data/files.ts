@@ -74,7 +74,10 @@ export function mentionFile(
 export function mentionFileAt(path: string, kind: MentionFile["kind"]): MentionFile {
   const target = kind === "folder" ? `${path}/` : path;
   const url = new URL("file://");
-  url.pathname = target.replace(/[%\\\n\r\t]/gu, encodeURIComponent);
+  url.pathname = target.replace(
+    /[%\\\n\r\t()]/gu,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
+  );
   const name = path.split("/").at(-1) ?? "";
 
   return {

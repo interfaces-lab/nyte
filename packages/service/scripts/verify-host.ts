@@ -20,7 +20,7 @@ import {
   operationsDigest,
 } from "@nyte-ai/protocol";
 import type { HostSocket, SocketLike } from "@nyte-ai/protocol";
-import { sdk } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk/client";
 import { hostFilePath, hostSocketPath } from "../src/host-endpoint.ts";
 
@@ -106,7 +106,6 @@ printTable(rows);
 
 process.exitCode = rows.every((row) => row.ok) ? 0 : 1;
 
-/** Read-only checks against the host serving `~/.nyte`, over `host.sock` alone: the socket admits its caller as the owner, so no token is read. */
 async function verifyAttached(): Promise<void> {
   const socket = hostSocketPath();
 
@@ -224,32 +223,33 @@ async function servedChecks(
     status(post(url, "/sessions.list", { limit: 1 }, bearer(need(token, "host.json"))), 200),
   );
 
-  const connection = await obtain("sdk connects", "sdk.connect, HTTP", async () => {
+  const connection = await obtain("sdk connects", "connect, HTTP", async () => {
     const value = await within(
       CALL_MS,
-      "sdk.connect",
-      sdk.connect({ url, credentials: { kind: "token", token: need(token, "host.json") } }),
+      "connect",
+      connect({
+        url,
+        credentials: { kind: "token", token: need(token, "host.json") },
+        client: { kind: "other", name: "verify-host", version: "1" },
+        journal: createSendJournal(),
+      }),
     );
 
     return { result: `host ${value.hostId}`, value };
   });
 
-  await step("sdk sessions.list", "sdk.connect, HTTP", async () => {
+  await step("sdk sessions.list", "connect, HTTP", async () => {
     const page = await within(
       CALL_MS,
       "sessions.list",
-      need(connection, "sdk.connect").sessions.list({ limit: 1 }),
+      need(connection, "connect").sessions.list({ limit: 1 }),
     );
 
     return `${String(page.items.length)} sessions`;
   });
 
-  await step("sdk models.list", "sdk.connect, HTTP", async () => {
-    const catalog = await within(
-      CALL_MS,
-      "models.list",
-      need(connection, "sdk.connect").models.list(),
-    );
+  await step("sdk models.list", "connect, HTTP", async () => {
+    const catalog = await within(CALL_MS, "models.list", need(connection, "connect").models.list());
 
     return `${String(catalog.providers.length)} providers`;
   });
@@ -358,7 +358,6 @@ async function servedChecks(
   );
 }
 
-/** The OAuth sign-in and tool calls of `mcp-agents` and the MCP server's tests, against the served host. */
 async function mcpChecks(url: string, socket: string): Promise<void> {
   const resource = `${url}/mcp`;
 
@@ -622,7 +621,6 @@ async function closeConnection(connection: Connection | undefined): Promise<void
   await connection?.close().catch(() => undefined);
 }
 
-/** Starts `nyte host --json` from this checkout's TUI on `env`'s home, the way the TUI runs from source. */
 function spawnHost(root: string, env: NodeJS.ProcessEnv, hosts: Set<HostProcess>): HostProcess {
   const child = spawn("bun", [TUI_ENTRY, "host", "--json"], {
     cwd: root,
@@ -657,7 +655,6 @@ function spawnHost(root: string, env: NodeJS.ProcessEnv, hosts: Set<HostProcess>
   return host;
 }
 
-/** Sends SIGTERM to this script's own child and waits for it, then SIGKILL if it outlives `STOP_MS`. */
 async function stopHost(host: HostProcess): Promise<Exit> {
   if (host.child.exitCode !== null || host.child.signalCode !== null) return host.exited;
   host.child.kill("SIGTERM");

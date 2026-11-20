@@ -1,12 +1,12 @@
 import type { Kernel } from "../contract/kernel.ts";
 import type { ServerHost } from "../contract/server.ts";
 import { driveInProcess } from "../drive/execution.ts";
-import { applyBatch, heldReceipt } from "../engine/batches.ts";
-import { attachSession } from "./attach.ts";
-import { sessionChanges } from "./session-changes.ts";
+import { applyBatch, heldReceipt } from "../env/batches.ts";
+import { attachSession } from "./session-attachment.ts";
+import { sessionChanges } from "./sessions-feed.ts";
 import { leaseHold, releaseHold } from "../engine/holds.ts";
 import { move } from "../engine/move.ts";
-import { authenticateToken, redeemPairing } from "../engine/principals.ts";
+import { authenticateToken, redeemPairing } from "./principals.ts";
 import { sendReceipt } from "../engine/receipts.ts";
 import { hostPrincipalsRef } from "../store/refs.ts";
 
@@ -54,11 +54,6 @@ export function createServerHost(kernel: Kernel): ServerHost {
       },
       attach: (session, principal) => attachSession(kernel, session, principal),
       sessions: (principal) => sessionChanges(kernel, principal),
-      activations: () => kernel.sessions.activations(),
-      onActivation: (listener) =>
-        kernel.bus.subscribeAll((_session, event) => {
-          if (event.kind === "activation") listener();
-        }),
     },
   };
 }

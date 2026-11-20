@@ -21,7 +21,7 @@ async function until(predicate: () => boolean, what: () => string): Promise<void
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(what());
-    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
   }
 }
 

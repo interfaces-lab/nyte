@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { lastUserText } from "@nyte-ai/bench";
 import { listen } from "@nyte-ai/host";
-import { sdk } from "@nyte-ai/sdk/client";
 import { openTestHost } from "../fixture/host.ts";
 import { followedSession } from "../../src/model/state.ts";
 import { startTui } from "../harness/tui.ts";
@@ -97,9 +96,7 @@ test("offline, then back: a message sent while the service is down waits as pend
   });
 
   const url = String(first.address);
-  const connection = await sdk.connect({ url, credentials: { kind: "token", token } });
   await using tui = await startTui({
-    host: connection,
     endpoint: { url, token },
     size: { width: 80, height: 24 },
   });
@@ -132,7 +129,6 @@ test("offline, then back: a message sent while the service is down waits as pend
   });
 
   await tui.dispose();
-  await connection.close();
   await second.close();
   expect(lastUserText(await fixture.requested(2))).toBe("are you there");
   expect(fixture.requests).toHaveLength(2);

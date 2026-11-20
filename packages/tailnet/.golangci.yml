@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=https://golangci-lint.run/jsonschema/golangci.jsonschema.json
+
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - canonicalheader
+    - copyloopvar
+    - errcheck
+    - errorlint
+    - forbidigo
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - misspell
+    - modernize
+    - noctx
+    - nolintlint
+    - perfsprint
+    - staticcheck
+    - thelper
+    - unconvert
+    - unused
+    - usestdlibvars
+    - usetesting
+
+  settings:
+    govet:
+      enable: [shadow]
+    gocritic:
+      enabled-tags: [diagnostic]
+    gosec:
+      # errcheck owns unchecked errors.
+      excludes: [G104]
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    forbidigo:
+      forbid:
+        - pattern: ^(fmt\.Print(f|ln)?|print(ln)?)$
+          msg: Stdout carries only protocol lines. Log to stderr with the log package.
+        - pattern: ^os\.Stdout$
+          msg: Stdout carries only protocol lines. Write status through the reporter.
+
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # The tests start real processes and read the paths they made.
+      - path: _test\.go$
+        linters: [gosec]
+
+formatters:
+  enable:
+    - gofumpt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

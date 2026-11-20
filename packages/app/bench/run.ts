@@ -57,7 +57,7 @@ async function markdownTable(): Promise<string> {
   const rows: string[][] = [];
 
   for (const motion of MOTIONS)
-    for (const variant of ["prose", "streamdown"] as const) {
+    for (const variant of ["prose", "streamdown", "words"] as const) {
       const fixtures = await measureGate(
         new URL("./markdown.bench.tsx", import.meta.url),
         MarkdownCase,
@@ -69,7 +69,7 @@ async function markdownTable(): Promise<string> {
       rows.push(
         ...fixtures.map((fixture) => [
           fixture.fixture,
-          variant === "prose" ? "Prose" : "Streamdown bare",
+          { prose: "Prose", streamdown: "Streamdown bare", words: "Words bare" }[variant],
           motion === "reduce" ? "reduce" : "fades on",
           String(fixture.updates),
           String(fixture.runs.length),

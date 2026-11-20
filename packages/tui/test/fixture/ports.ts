@@ -23,6 +23,8 @@ import type {
   ChatUpdate,
   Ports,
   SessionPort,
+  RefusedSend,
+  SendEnd,
   SettingsPort,
   ShellEnd,
   ShellPort,
@@ -52,6 +54,7 @@ export interface FakeSession extends SessionPort {
     readonly stoppedTasks: unknown[];
   };
   withdrawResult: "withdrawn" | "landed-first" | "gone";
+  sendEnd: SendEnd | null;
   answerResult: boolean | Error;
   readonly toolStates: Map<string, ToolPartState>;
   commandResult: CommandOutcome | null;
@@ -62,6 +65,7 @@ export interface FakeHost extends HostPort {
   readonly sessions: ReadonlyMap<string, FakeSession>;
   publishCatalog(catalog: ModelCatalogView): void;
   publishSessions(sessions: readonly SessionInfo[]): void;
+  refuseReplays(sends: readonly RefusedSend[]): void;
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
   readonly starts: Parameters<HostPort["start"]>[0][];
   readonly folders: (string | null)[];
@@ -70,13 +74,15 @@ export interface FakeHost extends HostPort {
   folderCommandResult: WorkspaceCommandOutcome | null;
 }
 
+type Done = { readonly kind: "closed" } | { readonly kind: "failed"; readonly error: unknown };
+
 function queue<T>(): AsyncIterable<T> & {
   push(value: T): void;
   close(): void;
   fail(error: unknown): void;
 } {
   const values: T[] = [];
-  let done: { readonly error: unknown } | "closed" | null = null;
+  let done: Done | null = null;
   let waiting: (() => void) | null = null;
 
   const wake = (): void => {
@@ -91,11 +97,11 @@ function queue<T>(): AsyncIterable<T> & {
       wake();
     },
     close() {
-      done = "closed";
+      done = { kind: "closed" };
       wake();
     },
     fail(error) {
-      done = { error };
+      done = { kind: "failed", error };
       wake();
     },
     async *[Symbol.asyncIterator]() {
@@ -107,9 +113,9 @@ function queue<T>(): AsyncIterable<T> & {
           continue;
         }
 
-        if (done === "closed") return;
+        if (done?.kind === "closed") return;
 
-        if (done !== null) throw done.error;
+        if (done?.kind === "failed") throw done.error;
 
         await new Promise<void>((resolve) => {
           waiting = resolve;
@@ -158,6 +164,7 @@ function fakeSession(id: string): FakeSession {
     id: asId(id),
     calls,
     withdrawResult: "withdrawn",
+    sendEnd: null,
     answerResult: true,
     commandResult: null,
     toolStates: new Map(),
@@ -175,8 +182,12 @@ function fakeSession(id: string): FakeSession {
     async send(content, options) {
       calls.send.push({ content, delivery: options.delivery });
       sent += 1;
+      const message = asId<"message">(`sent-${String(sent)}`);
 
-      return { message: asId(`sent-${String(sent)}`) };
+      return {
+        message,
+        delivered: Promise.resolve(session.sendEnd ?? { kind: "sent", message }),
+      };
     },
     async withdraw(message) {
       calls.withdraw.push(message);
@@ -244,7 +255,6 @@ function fakeSession(id: string): FakeSession {
 
       return "stopped";
     },
-    changeDirectory: async (path) => ({ kind: "changed", cwd: path }),
     reload: async () => "updated",
     upload: async () => asId("blob-1"),
     mentions: async () => [],
@@ -258,6 +268,7 @@ export function fakeHost(): FakeHost {
   const catalogs = queue<Pick<HostView, "catalog" | "settings" | "version">>();
 
   const directory = queue<readonly SessionInfo[]>();
+  const refusals = queue<readonly RefusedSend[]>();
   const hostSettings: FakeHost["hostSettings"] = [];
   const starts: FakeHost["starts"] = [];
   const folders: FakeHost["folders"] = [];
@@ -312,6 +323,8 @@ export function fakeHost(): FakeHost {
     sessionInfos: () => directory,
     health: () => queue<Health>(),
     publishSessions: (list) => directory.push(list),
+    refuseReplays: (sends) => refusals.push(sends),
+    refusedSends: () => refusals,
     publishCatalog(next) {
       catalog = next;
       catalogs.push({ catalog: next.generation, settings: [], version: "0.0.0" });
@@ -470,7 +483,6 @@ export function fakePorts(host: FakeHost): FakePorts {
 
       return files.pasteResult.kind === "text" ? { kind: "text", text } : files.pasteResult;
     },
-    listDirectory: async () => [],
     resolveMention: async () => null,
     readText: async (path) => files.texts.get(path) ?? null,
     editor: async () => files.editorResult,

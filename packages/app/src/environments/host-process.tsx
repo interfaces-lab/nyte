@@ -46,14 +46,12 @@ function hostDetail(state: HostProcess | undefined, now: number): string {
   }
 }
 
-export function HostProcessSection(): ReactElement | null {
-  const bridge = nyte.host.hostProcess;
-  const state = useHostProcess().data;
-  const now = useNowMinute();
-
-  const act = useMutation({
+export function useHostProcessAction() {
+  return useMutation({
     mutationFn: async (action: HostAction) =>
-      action === "start" ? bridge?.start() : bridge?.confirm({ action }),
+      action === "start"
+        ? nyte.host.hostProcess?.start()
+        : nyte.host.hostProcess?.confirm({ action }),
     onError: (cause, action) =>
       toast.add({
         type: "error",
@@ -61,8 +59,14 @@ export function HostProcessSection(): ReactElement | null {
         id: "host-process",
       }),
   });
+}
 
-  if (bridge === undefined) return null;
+export function HostProcessSection(): ReactElement | null {
+  const state = useHostProcess().data;
+  const now = useNowMinute();
+  const act = useHostProcessAction();
+
+  if (nyte.host.hostProcess === undefined) return null;
 
   const running = state?.kind === "current" || state?.kind === "stale";
 

@@ -125,7 +125,7 @@ function mountManual(connection: Connection): (shell: ReactNode) => void {
 }
 
 function start(connection: Connection, mount = mountManual(connection)): void {
-  seedFirstFrame(connection.url);
+  seedFirstFrame(connection.url, undefined);
   mountApp(connection, mount, async () => undefined);
 }
 
@@ -159,7 +159,7 @@ function refuse(connection: Connection, fromLink: boolean, cause: unknown): void
 async function resume(connection: Connection, fromLink: boolean): Promise<void> {
   if (fromLink) await releaseStoredAccountDevice(accountConfig);
 
-  if (!fromLink && seedFirstFrame(connection.url)) {
+  if (!fromLink && seedFirstFrame(connection.url, undefined)) {
     mountApp(connection, mountManual(connection), () =>
       connectAddress(connection, false).then(
         () => saveConnection(connection),

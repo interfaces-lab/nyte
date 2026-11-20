@@ -36,7 +36,7 @@ VITE_NYTE_CLERK_PUBLISHABLE_KEY= NYTE_E2E_PORT=5287 pnpm --dir packages/app e2e
 
 ## How it works
 
-`server/start.ts` serves the built app and a host on `127.0.0.1:5181`. The host keeps its store in memory and works in a temporary Git workspace with one commit. Its provider answers `Echo: <message>` without a network. The message `Start an agent.` starts one subagent, `Map the core`. Outside CI, Playwright reuses a server already running on that port.
+`server/start.ts` serves the built app and a host on `127.0.0.1:5181`. The host keeps its store in memory and works in a temporary Git workspace with one commit. Its provider answers `Echo: <message>` without a network. The message `Start an agent.` starts one subagent, `Map the core`, and `/warm` edits both accents in the chat's workspace's `design/tokens.css`, then says so. Outside CI, Playwright reuses a server already running on that port.
 
 The specs in `web/` cover:
 
@@ -45,6 +45,7 @@ The specs in `web/` cover:
 - A first chat, and a child chat opening in the pane.
 - A terminal on the host's Home folder.
 - A workspace journey that reads, edits, blames, searches and mentions files in the seeded workspace.
+- The Design tab, each test on a workspace of its own with the desktop suite's sample designs, opened from Open Folder…: the sandboxed board and its chrome under hostile design CSS, selection, retyped words and dragged frames saved to disk, an agent's edit lit on the board, a design that throws, a save that meets a change on disk, Add to Chat, and a page frame, which loads nothing without the desktop's browser. Live pages are the desktop suite's.
 
 The scenario specs run in their own `timed` project with one worker, after the other specs:
 

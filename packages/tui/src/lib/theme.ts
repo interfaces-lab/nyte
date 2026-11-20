@@ -212,7 +212,6 @@ function monochrome(theme: CliTheme): CliTheme {
   });
 }
 
-/** Each theme with and without color, solid or with the terminal's background showing through. */
 function variants(theme: CliTheme) {
   const plain = monochrome(theme);
   const through = (base: CliTheme) => Object.freeze({ ...base, backdrop: base.transparent });

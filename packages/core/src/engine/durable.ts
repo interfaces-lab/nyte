@@ -15,14 +15,16 @@ import type { Kernel, StepEnd, StepOutcome } from "../contract/kernel.ts";
 import { decodePartRecord } from "../contract/records.ts";
 import type { CallRecord } from "../contract/records.ts";
 import type { Durable } from "../contract/tools.ts";
-import { changeCall } from "../fold/commit.ts";
+import { changeCall } from "../watch/commit.ts";
 import { storedAnswer } from "../store/parts.ts";
-import { partRef } from "../store/refs.ts";
+import { partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
 import { waitIndex, wokenIndex } from "../store/wait-index.ts";
 import { dev } from "../util/dev-log.ts";
+import { callPhase } from "./call-phase.ts";
+import { stopRequested } from "./fence.ts";
 import { holdLease } from "./lease.ts";
-import { lapsed, readParkedWait, runWait, waitingOn } from "./waits.ts";
+import { lapsed, readParkedWait, runWait, WAIT_STOPPED, waitingOn } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 export type ActionIntent = {
@@ -41,7 +43,9 @@ interface Place {
   readonly signal: AbortSignal;
 }
 
-const STOPPED: WaitOutcome = { kind: "stopped" };
+export const LEASE_MS = 30_000;
+
+export const RENEW_MS = LEASE_MS / 3;
 
 const parkedExecutions = new WeakSet<Durable>();
 
@@ -49,6 +53,14 @@ class Parked extends Error {
   constructor() {
     super("The durable step parked on a wait.");
   }
+}
+
+export const HOST_CLOSING = new Error("The host is closing.");
+
+async function endsStopped(kernel: Kernel, place: Place): Promise<boolean> {
+  if (place.signal.reason !== HOST_CLOSING) return true;
+
+  return place.run !== null && stopRequested(kernel.store, place.session, place.run);
 }
 
 export function signalsPark(error: unknown): boolean {
@@ -94,7 +106,7 @@ export async function runStep<T>(
   const { opening, run } = input;
 
   const opened = await changeCall(kernel, { session, call, run }, async (current) => {
-    if (current !== null && current.kind !== "intent") {
+    if (current !== null && callPhase(current).kind !== "intended") {
       record = current;
 
       return null;
@@ -118,31 +130,27 @@ export async function runStep<T>(
     return value;
   };
 
-  const settle = async (ended: StepEnd<T>) => {
-    const written = await changeCall(kernel, { session, call, run }, async (current) => {
-      if (current === null || current.result !== null) return null;
-      const settled = await input.settle(ended);
+  const settle = async (ended: StepEnd<T>): Promise<T> => {
+    const written = await settleCall(kernel, { session, call, run }, () => input.settle(ended));
 
-      return {
-        record: { ...current, result: settled.result, waiting: null, partial: [] },
-        updates: settled.updates,
-        index: { add: [], drop: wokenDrop(session, current) },
-      };
-    });
-
-    return read(written.record?.result ?? null);
+    return written.fenced && opening !== undefined
+      ? opening.fenced
+      : read(written.record?.result ?? null);
   };
 
   dev("durable", "step", { session, call, kind: input.kind });
+  const phase = callPhase(record);
 
-  if (record.result !== null) {
-    dev("durable", "replayed", { session, call });
+  switch (phase.kind) {
+    case "settled":
+      dev("durable", "replayed", { session, call });
 
-    return { kind: "done", value: read(record.result) };
-  }
-
-  if (!opened.wrote && record.replay === "never") {
-    return { kind: "interrupted", value: await settle({ kind: "interrupted" }) };
+      return { kind: "done", value: read(phase.result) };
+    case "opened":
+    case "parked":
+    case "woken":
+      if (!opened.wrote && phase.replay === "never")
+        return { kind: "interrupted", value: await settle({ kind: "interrupted" }) };
   }
 
   const writes: Promise<unknown>[] = [];
@@ -170,6 +178,24 @@ export async function runStep<T>(
   return { kind: "done", value };
 }
 
+export function settleCall(
+  kernel: Kernel,
+  scope: { readonly session: SessionId; readonly call: CallId; readonly run: RunId | null },
+  settle: () => Promise<{ readonly result: Json; readonly updates: readonly RefUpdate[] }>,
+): Promise<{ readonly record: CallRecord | null; readonly fenced: boolean }> {
+  return changeCall(kernel, scope, async (current) => {
+    if (current === null || callPhase(current).kind === "settled") return null;
+    const settled = await settle();
+
+    return {
+      record: { ...current, result: settled.result, waiting: null, partial: [] },
+      updates: settled.updates,
+      index: { add: [], drop: wokenDrop(scope.session, current) },
+      fences: scope.run === null ? [] : [runRef(scope.session, scope.run)],
+    };
+  });
+}
+
 export async function runAction(
   kernel: Kernel,
   input: {
@@ -195,7 +221,7 @@ export async function runAction(
 
         const lease = rerun
           ? holdLease(`re-run ${input.call}`, () => renewRerun(kernel, input.session, input.call), {
-              every: LEASE_MS / 3,
+              every: RENEW_MS,
               lapse: LEASE_MS,
             })
           : null;
@@ -276,7 +302,9 @@ export async function runAction(
 
 async function renewRerun(kernel: Kernel, session: SessionId, call: CallId): Promise<boolean> {
   const renewed = await changeCall(kernel, { session, call, run: null }, async (current) =>
-    current === null || current.result !== null || current.reran?.holder !== kernel.instance
+    current === null ||
+    callPhase(current).kind === "settled" ||
+    current.reran?.holder !== kernel.instance
       ? null
       : {
           record: { ...current, reran: { ...current.reran, expiresAt: Date.now() + LEASE_MS } },
@@ -291,25 +319,32 @@ export async function reserveRerun(
   session: SessionId,
   call: CallId,
 ): Promise<boolean> {
-  const reserved = await changeCall(kernel, { session, call, run: null }, async (current) =>
-    current === null ||
-    current.result !== null ||
-    current.waiting !== null ||
-    ((current.reran?.waits ?? 0) === current.waits.length && !lapsed(kernel, current))
-      ? null
-      : {
-          record: {
-            ...current,
-            reran: {
-              waits: current.waits.length,
-              holder: kernel.instance,
-              expiresAt: Date.now() + LEASE_MS,
-            },
-          },
-        },
-  );
+  const reserved = await changeCall(kernel, { session, call, run: null }, async (current) => {
+    if (current === null) return null;
+    const phase = callPhase(current).kind;
 
-  return reserved.wrote || (reserved.record?.result ?? null) !== null;
+    if (
+      phase === "settled" ||
+      phase === "parked" ||
+      ((current.reran?.waits ?? 0) === current.waits.length && !lapsed(kernel, current))
+    )
+      return null;
+
+    return {
+      record: {
+        ...current,
+        reran: {
+          waits: current.waits.length,
+          holder: kernel.instance,
+          expiresAt: Date.now() + LEASE_MS,
+        },
+      },
+    };
+  });
+
+  return (
+    reserved.wrote || (reserved.record !== null && callPhase(reserved.record).kind === "settled")
+  );
 }
 
 export async function openAction(
@@ -405,14 +440,14 @@ function createDurable(
 
       if (outcome !== undefined) return outcome;
 
-      if (place.signal.aborted) {
+      if (place.signal.aborted && (await endsStopped(kernel, place))) {
         await changeCall(kernel, place, async (current) =>
           current === null || current.waits.length !== index || current.waiting !== null
             ? null
-            : { record: { ...current, waits: [...current.waits, STOPPED] } },
+            : { record: { ...current, waits: [...current.waits, WAIT_STOPPED] } },
         );
 
-        return STOPPED;
+        return WAIT_STOPPED;
       }
 
       const early =
@@ -612,5 +647,3 @@ function readOwnEntry(
 ): Json | undefined {
   return entries !== undefined && Object.hasOwn(entries, key) ? entries[key] : undefined;
 }
-
-export const LEASE_MS = 30_000;

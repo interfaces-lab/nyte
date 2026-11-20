@@ -8,7 +8,7 @@ import { app, BrowserWindow } from "electron";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { ACCOUNT_SCHEMES } from "../../shared/account/scheme.ts";
+import { DEVELOPMENT_ACCOUNT_SCHEME } from "../../shared/account/scheme.ts";
 import { canvasShellUrl, registerRenderer } from "../renderer-protocol.ts";
 import { exitWithParent } from "./exit-with-parent.ts";
 
@@ -34,7 +34,7 @@ app.setPath("userData", join(directory, "profile"));
 
 app.on("window-all-closed", () => undefined);
 
-const scheme = ACCOUNT_SCHEMES.development;
+const scheme = DEVELOPMENT_ACCOUNT_SCHEME;
 
 const PAGE = `<!doctype html><meta charset="utf-8"><script defer src="/page.js"></script>`;
 

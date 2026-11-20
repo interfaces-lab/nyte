@@ -7,12 +7,11 @@ import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
 import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "./ipc.ts";
-import { TERMINAL_NOTICE_LIMITS } from "@nyte-ai/app/contract/bridge.ts";
-import type {
-  BrowserBoundsMessage,
-  BrowserFocusMessage,
-  BrowserKey,
-} from "@nyte-ai/app/contract/bridge.ts";
+import { DESIGN_PICK_CHARS, WHEEL_DELTA_LIMIT } from "./browser-page.ts";
+import { BROWSER_DESIGN_VIEW_KEYS, TERMINAL_NOTICE_LIMITS } from "@nyte-ai/app/contract/bridge.ts";
+import { DESKTOP_APPS } from "@nyte-ai/app/contract/desktop-app.ts";
+import { ArrivalSubjectType, SelectedWorkspaceType } from "@nyte-ai/app/contract/desktop-window.ts";
+import type { BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
 
 type Parser<T> = Pick<Validator<TProperties, TSchema, T>, "Parse">;
 
@@ -47,6 +46,14 @@ export const themeSource = Type.Union([
 
 const noInput = Type.Optional(Type.Undefined());
 
+const designOff = strict({ kind: Type.Literal("off") });
+
+const designView = strict({
+  kind: Type.Literal("view"),
+  view: Type.Enum(Object.values(BROWSER_DESIGN_VIEW_KEYS)),
+  shown: Type.Boolean(),
+});
+
 const remotePlugin = Type.Literal("cloudflare");
 
 const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
@@ -77,7 +84,6 @@ type CallInputParsers = { readonly [P in CallPath]: Parser<CallInput<P>> };
 
 export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.endpoint": compile(noInput),
-  "host.state": compile(noInput),
   "host.restore": compile(strict({ session: nonEmpty })),
   "host.fonts": compile(noInput),
   "host.usage": checkedUsageWindow,
@@ -86,14 +92,11 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.pickWorkspace": compile(noInput),
   "host.pickFolder": compile(noInput),
   "host.trustWorkspace": compile(strict({ path: nonEmpty })),
-  "host.closeWorkspace": compile(noInput),
-  "host.storeOpening": compile(noInput),
   "host.updates.state": compile(noInput),
   "host.updates.check": compile(noInput),
   "host.updates.channel": compile(noInput),
   "host.updates.setChannel": compile(strict({ channel: Type.Enum(["stable", "nightly"]) })),
   "host.hostProcess.state": compile(noInput),
-  "host.hostProcess.restart": compile(noInput),
   "host.hostProcess.confirm": compile(strict({ action: Type.Enum(["restart", "stop"]) })),
   "host.hostProcess.start": compile(noInput),
   "host.bundledCli": compile(noInput),
@@ -169,6 +172,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
           strict({ kind: Type.Literal("project"), path: nonEmpty }),
         ]),
       ),
+      holder: Type.Enum(["tab", "board"]),
     }),
   ),
   "host.browser.navigate": compile(
@@ -212,7 +216,12 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   ),
   "host.browser.close": compile(strict({ surface: nonEmpty })),
   "host.browser.captureFrame": compile(strict({ surface: nonEmpty })),
-  "host.browser.pickElement": compile(strict({ surface: nonEmpty })),
+  "host.browser.design": compile(
+    strict({
+      surface: nonEmpty,
+      change: Type.Union([strict({ kind: Type.Literal("on") }), designOff, designView]),
+    }),
+  ),
   "host.browser.find": compile(
     strict({
       surface: nonEmpty,
@@ -237,6 +246,22 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.browser.forgetHistory": compile(
     strict({ owner: Type.Union([nonEmpty, Type.Null()]), url: Type.String({ maxLength: 8192 }) }),
   ),
+  "host.browser.guests": compile(noInput),
+  "host.browser.attach": compile(
+    strict({
+      surface: nonEmpty,
+      webContentsId: Type.Integer({ minimum: 1 }),
+      generation: Type.Integer({ minimum: 0 }),
+    }),
+  ),
+  "host.browser.setEntered": compile(strict({ surface: nonEmpty, entered: Type.Boolean() })),
+  "host.switchApp": compile(
+    strict({
+      to: Type.Enum([...DESKTOP_APPS, "last"]),
+      workspace: Type.Union([SelectedWorkspaceType, Type.Null()]),
+      subject: Type.Union([ArrivalSubjectType, Type.Null()]),
+    }),
+  ),
 };
 
 const callRequest = compile(
@@ -246,24 +271,11 @@ const callRequest = compile(
   }),
 );
 
-const size = Type.Number({ minimum: 0 });
-
-const browserBounds = compile(
-  strict({
-    surface: nonEmpty,
-    bounds: strict({ x: Type.Number(), y: Type.Number(), width: size, height: size }),
-    visible: Type.Boolean(),
-    focus: Type.Boolean(),
-  }),
-);
-
 function checked<T>(validator: Parser<unknown>, value: T): T {
   validator.Parse(value);
 
   return value;
 }
-
-const browserFocus = compile(strict({ surface: nonEmpty, focused: Type.Boolean() }));
 
 const keyName = Type.String({ maxLength: 32 });
 
@@ -290,25 +302,66 @@ export function decodeCallInput<P extends CallPath>(
   return CALL_INPUT_SCHEMAS[path].Parse(input);
 }
 
-export function decodeBrowserBounds(input: BrowserBoundsMessage): BrowserBoundsMessage {
-  return checked(browserBounds, input);
-}
-
-export function decodeBrowserFocus(input: BrowserFocusMessage): BrowserFocusMessage {
-  return checked(browserFocus, input);
-}
-
 export function decodeBrowserKey(input: BrowserKey): BrowserKey {
   return checked(browserKey, input);
 }
 
+const pageBox = strict({
+  x: Type.Number(),
+  y: Type.Number(),
+  width: Type.Number({ minimum: 0 }),
+  height: Type.Number({ minimum: 0 }),
+});
+
+const designPageMessage = Type.Union([
+  designOff,
+  designView,
+  strict({
+    kind: Type.Literal("pick"),
+    id: Type.String({ minLength: 1, maxLength: 64 }),
+    selector: Type.String({ minLength: 1, maxLength: DESIGN_PICK_CHARS.selector }),
+    text: Type.String({ maxLength: DESIGN_PICK_CHARS.text }),
+    region: Type.Optional(pageBox),
+    crop: pageBox,
+  }),
+]);
+
+export type DesignPageMessage = Static<typeof designPageMessage>;
+
+const designPageMessageParser = compile(designPageMessage);
+
+export function decodeDesignPageMessage(input: unknown): DesignPageMessage {
+  return designPageMessageParser.Parse(input);
+}
+
+const pagePoint = Type.Number({ minimum: -100_000, maximum: 100_000 });
+
+const wheelDelta = Type.Number({ minimum: -WHEEL_DELTA_LIMIT, maximum: WHEEL_DELTA_LIMIT });
+
+/** A wheel the entered page hands back, bounded to what one wheel event can move. */
+export const pageWheel = Compile(
+  strict({
+    x: pagePoint,
+    y: pagePoint,
+    deltaX: wheelDelta,
+    deltaY: wheelDelta,
+    zoom: Type.Boolean(),
+  }),
+);
+
 export const themePreference = Compile(themeSource);
+
+export const browserShown = Compile(strict({ surface: nonEmpty, visible: Type.Boolean() }));
+
+export const browserFocus = Compile(strict({ surface: nonEmpty, focused: Type.Boolean() }));
 
 export const viewedChat = Compile(
   Type.Union([Type.String({ minLength: 1, maxLength: 256 }), Type.Null()]),
 );
 
 export const unsavedEditsHeld = Compile(Type.Boolean());
+
+export const windowWorkspacePath = Compile(Type.Union([nonEmpty, Type.Null()]));
 
 export const terminalNotice = Compile(
   strict({

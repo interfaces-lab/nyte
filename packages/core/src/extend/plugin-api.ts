@@ -6,7 +6,7 @@ import type { Attached, Kernel, RegistrySet } from "../contract/kernel.ts";
 import type { PluginApi, Registries, RuntimeCall, RuntimeVerdict } from "../contract/plugin.ts";
 import type { Session } from "../contract/session.ts";
 import type { Resources } from "../contract/workspace.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { kvRef } from "../store/refs.ts";
 import { openText, sealText } from "../store/secrets.ts";
 import { put, readKv, requireSession } from "../store/session.ts";
@@ -24,11 +24,10 @@ export function corePluginApi(
 
   return build(kernel, {
     ...input,
-    contribute: input.registries.owned("core", signal),
+    registries: input.registries.owned("core", signal),
     handle: kernel.handles.session(CORE_CONTEXT, input.session),
     owner: "core",
     signal,
-    hook: () => () => {},
     report: () => {},
     reload: () => {},
   });
@@ -42,11 +41,10 @@ export function stepPluginApi(
 ): PluginApi<"core"> {
   return {
     side: api.side,
-    sdk: kernel.handles.connection(context),
-    contribute: api.contribute,
+    host: kernel.handles.connection(context),
+    registries: api.registries,
     storage: api.storage,
     signal: api.signal,
-    hook: (name, entry) => api.hook(name, entry),
     report: (issue) => api.report(issue),
     reload: () => api.reload(),
     session: kernel.handles.session(context, session),
@@ -54,8 +52,8 @@ export function stepPluginApi(
       return api.env;
     },
     wrapEnv: (wrap) => api.wrapEnv(wrap),
-    get inputs() {
-      return api.inputs;
+    get project() {
+      return api.project;
     },
     request: (request) => api.request(request),
     approve: (call, signal) => api.approve(call, signal),
@@ -69,10 +67,9 @@ export function build(
     readonly session: SessionId;
     readonly handle: Session;
     readonly signal: AbortSignal;
-    readonly contribute: Registries<"core">;
+    readonly registries: Registries<"core">;
     readonly env: Attached;
     readonly inputs: Resources | null;
-    readonly hook: PluginApi<"core">["hook"];
     report(issue: ValidationIssue): void;
     reload(): void;
   },
@@ -81,11 +78,10 @@ export function build(
 
   return {
     side: "core",
-    sdk: kernel.handles.connection(CORE_CONTEXT),
-    contribute: input.contribute,
+    host: kernel.handles.connection(CORE_CONTEXT),
+    registries: input.registries,
     storage: createPluginStorage(kernel, { owner, session }),
     signal: input.signal,
-    hook: input.hook,
     report: (issue) => input.report(issue),
     reload: () => input.reload(),
     session: input.handle,
@@ -104,7 +100,7 @@ export function build(
         dispose();
       };
     },
-    get inputs() {
+    get project() {
       if (inputs === null)
         throw new SdkError("unavailable", `Session ${session} has no resources scanned.`);
 
@@ -124,14 +120,19 @@ async function approveRuntimeCall(
   signal: AbortSignal,
 ): Promise<RuntimeVerdict> {
   const runtime = kernel.plugins.runtimes().get(session);
+  const release = runtime?.hold();
 
-  for (const plugin of runtime?.plugins() ?? []) {
-    const api = runtime?.instance(plugin.id)?.api;
+  try {
+    for (const plugin of runtime?.plugins() ?? []) {
+      const api = runtime?.instance(plugin.id)?.api;
 
-    if (plugin.approve === undefined || api === undefined) continue;
-    const verdict = await plugin.approve(call, { api, signal });
+      if (plugin.approve === undefined || api === undefined) continue;
+      const verdict = await plugin.approve(call, { api, signal });
 
-    if (verdict.kind === "deny") return verdict;
+      if (verdict.kind === "deny") return verdict;
+    }
+  } finally {
+    release?.();
   }
 
   return signal.aborted ? { kind: "deny", reason: "The request was aborted." } : ALLOWED;

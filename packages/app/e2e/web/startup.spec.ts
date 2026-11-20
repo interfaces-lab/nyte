@@ -59,7 +59,10 @@ test("a saved connection mounts from its snapshot, and another host behind it le
   await page.evaluate(() => {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith("nyte:host-identity:"))
-        localStorage.setItem(key, JSON.stringify("another-host"));
+        localStorage.setItem(
+          key,
+          JSON.stringify({ hostId: "another-host", publicKey: "A".repeat(43) }),
+        );
     }
   });
 

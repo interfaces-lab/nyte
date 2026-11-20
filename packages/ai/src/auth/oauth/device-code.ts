@@ -9,10 +9,8 @@ const SLOW_DOWN_TIMEOUT_MESSAGE =
 
 const MINIMUM_INTERVAL_MS = 1000;
 
-// RFC 8628 section 3.2: if the authorization server omits `interval`, the client must use 5 seconds.
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 
-// RFC 8628 section 3.5: `slow_down` means the polling interval must increase by 5 seconds.
 const SLOW_DOWN_INTERVAL_INCREMENT_MS = 5000;
 
 type OAuthDeviceCodeIncompletePollResult =

@@ -4,8 +4,7 @@ import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promise
 import { release, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { execFile } from "node:child_process";
-import { promisify, stripVTControlCharacters } from "node:util";
+import { stripVTControlCharacters } from "node:util";
 import { press } from "@nyte-ai/app/e2e/scenario-d";
 import { HOURS_QUESTION } from "@nyte-ai/app/e2e/scenario-u-fixture";
 import { tabTo } from "@nyte-ai/app/e2e/scenario-u-trace";
@@ -17,6 +16,7 @@ import { Value } from "typebox/value";
 import { launchPackaged, polishAnswers, polishHome, serveScriptedModel } from "./polish-fixture.ts";
 import type { PackagedDesktop, PolishHome, ScriptedEndpoint } from "./polish-fixture.ts";
 import { composer, messages, setTheme } from "./ui.ts";
+import { captureWindow } from "./window-capture.ts";
 
 const EXECUTABLE =
   process.env.NYTE_POLISH_EXE ??
@@ -72,29 +72,13 @@ async function capture(
 
   await writeFile(`${base}.aria.yml`, aria);
 
-  if (!(await captureWindow(target.application, `${base}.png`)))
-    await page.screenshot({ path: `${base}.png`, caret: "hide" }).catch(() => undefined);
+  await captureWindow(target, `${base}.png`);
 
   if (JUDGED && committed && scope !== undefined)
     await expect(scope).toMatchAriaSnapshot({ name: `${surface}-${state}.aria.yml` });
 }
 
 const BASELINE_PHASE_MS = 90_000;
-
-async function captureWindow(application: ElectronApplication, path: string): Promise<boolean> {
-  const source = await application
-    .evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getMediaSourceId())
-    .catch(() => undefined);
-
-  const id = /^window:(\d+):/u.exec(source ?? "")?.[1];
-
-  if (id === undefined) return false;
-
-  return promisify(execFile)("screencapture", ["-x", "-o", `-l${id}`, path]).then(
-    () => exists(path),
-    () => false,
-  );
-}
 
 async function phase(
   run: Run,
@@ -143,26 +127,23 @@ async function arrowTo(item: Locator, limit = 12): Promise<void> {
   throw new Error(`The arrow keys never reached ${String(item)}.`);
 }
 
-const READ_SHIFTS = `new Promise((done) => {
-  const entries = [];
-  const observer = new PerformanceObserver((list) => entries.push(...list.getEntries()));
+const READ_SHIFTS = `(() => {
+  const observer = new PerformanceObserver(() => undefined);
   observer.observe({ type: "layout-shift", buffered: true });
-  setTimeout(() => {
-    entries.push(...observer.takeRecords());
-    observer.disconnect();
-    const name = (node) => node === null ? "" : [node.nodeName, node.getAttribute?.("aria-label") ?? "", (node.textContent ?? "").slice(0, 48)].join(" ").trim();
-    done(JSON.stringify(entries.map((entry) => ({
-      startTime: entry.startTime,
-      value: entry.value,
-      hadRecentInput: entry.hadRecentInput,
-      sources: entry.sources.map((source) => ({
-        node: name(source.node),
-        previous: source.previousRect.toJSON(),
-        current: source.currentRect.toJSON(),
-      })),
-    }))));
-  }, 100);
-})`;
+  const entries = observer.takeRecords();
+  observer.disconnect();
+  const name = (node) => node === null ? "" : [node.nodeName, node.getAttribute?.("aria-label") ?? "", (node.textContent ?? "").slice(0, 48)].join(" ").trim();
+  return JSON.stringify(entries.map((entry) => ({
+    startTime: entry.startTime,
+    value: entry.value,
+    hadRecentInput: entry.hadRecentInput,
+    sources: entry.sources.map((source) => ({
+      node: name(source.node),
+      previous: source.previousRect.toJSON(),
+      current: source.currentRect.toJSON(),
+    })),
+  })));
+})()`;
 
 const RectSchema = Type.Object({
   x: Type.Number(),

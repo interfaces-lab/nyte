@@ -12,19 +12,45 @@ import {
   DEFAULT_COMPOSER_VIEW_STATE,
   EDITING,
   type SessionViewState,
-  composerHasContent,
   contentChanged,
   DEFAULT_SESSION_VIEW_STATE,
   draftHasContent,
+  draftKept,
   persistableComposer,
 } from "../../panes/session-view-state.ts";
 import type { SessionId } from "@nyte-ai/sdk";
-import { asId } from "@nyte-ai/schema";
+import { ModelRefType, ThinkingType, asId } from "@nyte-ai/schema";
+import { projectId } from "../../data/schemas.ts";
 import { readStored, removeStored, type StorageArea, writeStored } from "../../lib/storage.ts";
+import { journaledReceipts } from "../../data/send-journal.ts";
+import { NO_SENDING, persistedDraft, restorable, unsentNotice } from "./composer-draft.ts";
+import type { ComposerNotice, Restore, Sending, SessionDraft } from "./composer-draft.ts";
 
 const FLUSH_DEBOUNCE_MS = 200;
 
 const STORED_IMAGE_LIMIT = 256 * 1024;
+
+const STORED_STEPS_LIMIT = 16 * 1024;
+
+const stepsSchema = Type.Array(Type.Tuple([Type.String({ minLength: 1 }), Type.Boolean()]));
+
+type StoredSteps = Static<typeof stepsSchema>;
+
+function storedSteps(groups: ReadonlyMap<string, boolean>): StoredSteps | undefined {
+  const entries = [...groups];
+  let size = 2;
+  let from = entries.length;
+
+  for (; from > 0; from -= 1) {
+    size += JSON.stringify(entries[from - 1]).length + 1;
+
+    if (size > STORED_STEPS_LIMIT) break;
+  }
+
+  return from === entries.length ? undefined : entries.slice(from);
+}
+
+const NO_IMAGES: readonly ComposerImageAttachment[] = [];
 
 interface PaneDraftState {
   active: ChatDraft;
@@ -50,8 +76,28 @@ interface Persistence {
   readonly storageKey: string;
 }
 
+const omittedSchema = Type.Integer({ minimum: 1 });
+
 const storedDraftSchema = Type.Object(
-  { updatedAt: Type.Number(), composer: composerSchema },
+  {
+    updatedAt: Type.Number(),
+    composer: composerSchema,
+    project: Type.Optional(projectId),
+    folder: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    choice: Type.Optional(
+      Type.Object({ model: ModelRefType, thinking: Type.Optional(ThinkingType) }, strict),
+    ),
+    omitted: Type.Optional(omittedSchema),
+  },
+  strict,
+);
+
+const sessionDraftSchema = Type.Object(
+  {
+    ...composerSchema.properties,
+    refused: Type.Optional(Type.Object({ message: Type.String(), text: Type.String() }, strict)),
+    omitted: Type.Optional(omittedSchema),
+  },
   strict,
 );
 
@@ -73,13 +119,39 @@ const attachmentsSchema = Type.Array(
   ),
 );
 
+const sendingSchema = Type.Array(
+  Type.Object(
+    {
+      receipt: Type.String({ minLength: 1 }),
+      text: Type.String(),
+      attachments: attachmentsSchema,
+      omitted: Type.Integer({ minimum: 0 }),
+    },
+    strict,
+  ),
+);
+
 type StoredDraft = Static<typeof storedDraftSchema>;
 
 type StoredIndex = Static<typeof indexSchema>;
 
 type PersistedAttachments = Static<typeof attachmentsSchema>;
 
-type StoredValue = PersistedComposer | StoredDraft | readonly ComposerImageAttachment[];
+type StoredSession = Static<typeof sessionDraftSchema>;
+
+type StoredValue =
+  | PersistedComposer
+  | StoredDraft
+  | StoredSession
+  | readonly ComposerImageAttachment[]
+  | StoredSteps
+  | readonly StoredSending[]
+  | number;
+
+interface StoredSending extends Restore {
+  readonly receipt: string;
+  readonly omitted: number;
+}
 
 function composerView(
   composer: PersistedComposer,
@@ -92,8 +164,32 @@ function composerView(
     attachments,
     selectionStart: Math.min(composer.selectionStart, length),
     selectionEnd: Math.min(composer.selectionEnd, length),
-    focused: false,
   };
+}
+
+function storedImages(
+  attachments: readonly ComposerImageAttachment[],
+): readonly ComposerImageAttachment[] {
+  return attachments.filter((image) => image.content.data.length <= STORED_IMAGE_LIMIT);
+}
+
+function storedSending(sending: readonly Sending[]): readonly StoredSending[] | undefined {
+  if (sending.length === 0) return undefined;
+
+  return sending.map((sent) => {
+    const attachments = storedImages(sent.attachments);
+
+    return {
+      receipt: sent.receipt,
+      text: sent.text,
+      attachments,
+      omitted: sent.attachments.length - attachments.length,
+    };
+  });
+}
+
+function readOmitted(storage: StorageArea, images: string): number {
+  return readStored(storage, `${images}:omitted`, omittedSchema, 0);
 }
 
 function readOwner<Schema extends TSchema>(
@@ -116,6 +212,7 @@ export class WindowDrafts {
   readonly sessions = new Map<SessionId, SessionViewState>();
   readonly #panes = new Map<string, Map<PaneId, PaneDraftState>>();
   readonly #listeners = new Set<() => void>();
+  readonly #keyed = new Map<string, Set<() => void>>();
   readonly #persistence: Persistence | undefined;
   readonly #pending = new Map<string, StoredValue | undefined>();
   #flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -133,6 +230,22 @@ export class WindowDrafts {
 
     return () => this.#listeners.delete(listener);
   };
+
+  subscribeKey(key: string, listener: () => void): () => void {
+    const listeners = this.#keyed.get(key) ?? new Set<() => void>();
+    this.#keyed.set(key, listeners);
+    listeners.add(listener);
+
+    return () => {
+      listeners.delete(listener);
+
+      if (listeners.size === 0 && this.#keyed.get(key) === listeners) this.#keyed.delete(key);
+    };
+  }
+
+  notify(key: string): void {
+    for (const listener of this.#keyed.get(key) ?? []) listener();
+  }
 
   readonly listedDrafts = (): readonly ChatDraft[] => {
     this.#listed ??= this.drafts();
@@ -184,47 +297,110 @@ export class WindowDrafts {
       id: crypto.randomUUID(),
       updatedAt: Date.now(),
       status: EDITING,
+      omitted: 0,
     };
   }
 
   saveDraft(previous: ChatDraft, next: ChatDraft): void {
-    this.save(`draft:${next.id}`, previous.composer, next.composer, {
-      updatedAt: next.updatedAt,
-      composer: persistableComposer(next.composer),
-    });
+    this.save(
+      `draft:${next.id}`,
+      previous.composer,
+      next.composer,
+      draftHasContent(next)
+        ? {
+            updatedAt: next.updatedAt,
+            composer: persistableComposer(next.composer),
+            project: next.project,
+            folder: next.folder,
+            choice: next.choice,
+            omitted: next.omitted === 0 ? undefined : next.omitted,
+          }
+        : undefined,
+    );
 
     if (!contentChanged(previous.composer, next.composer)) return;
     clearTimeout(this.#publishTimer);
     this.#publishTimer = setTimeout(this.emit, FLUSH_DEBOUNCE_MS);
   }
 
+  saveSession(sessionId: SessionId, previous: SessionDraft, next: SessionDraft): void {
+    const after = persistedDraft(next);
+    const notice = restorable(next);
+
+    const record: StoredSession | undefined = draftKept(next)
+      ? {
+          ...persistableComposer(after),
+          ...(notice === null || notice.restore === null
+            ? {}
+            : { refused: { message: notice.message, text: notice.restore.text } }),
+          omitted: next.omitted === 0 ? undefined : next.omitted,
+        }
+      : undefined;
+
+    this.save(`session:${sessionId}`, persistedDraft(previous), after, record);
+    const before = restorable(previous)?.restore?.attachments ?? NO_IMAGES;
+    const kept = notice?.restore?.attachments ?? NO_IMAGES;
+    const persistence = this.#persistence;
+
+    if (persistence === undefined) return;
+    const key = `${persistence.storageKey}:session:${sessionId}`;
+
+    if (before !== kept) this.#saveImages(`${key}:refused`, kept);
+
+    if (previous.sending === next.sending) return;
+    this.#pending.set(`${key}:sending`, storedSending(next.sending));
+    this.#store();
+  }
+
+  saveSteps(sessionId: SessionId, stepGroups: ReadonlyMap<string, boolean>): void {
+    const persistence = this.#persistence;
+
+    if (persistence !== undefined)
+      this.#pending.set(
+        `${persistence.storageKey}:session:${sessionId}:steps`,
+        storedSteps(stepGroups),
+      );
+
+    this.#schedule();
+  }
+
   save(
     owner: string,
     previous: ComposerViewState,
     next: ComposerViewState,
-    record: PersistedComposer | StoredDraft | undefined,
+    record: StoredValue | undefined,
   ): void {
     const persistence = this.#persistence;
 
     if (persistence !== undefined) {
       const key = `${persistence.storageKey}:${owner}`;
-      this.#pending.set(key, composerHasContent(next) ? record : undefined);
+      this.#pending.set(key, record);
 
-      if (previous.attachments !== next.attachments) {
-        const stored = next.attachments.filter(
-          (image) => image.content.data.length <= STORED_IMAGE_LIMIT,
-        );
-
-        this.#pending.set(`${key}:images`, stored.length > 0 ? stored : undefined);
-      }
+      if (previous.attachments !== next.attachments)
+        this.#saveImages(`${key}:images`, next.attachments);
     }
 
+    this.#schedule();
+  }
+
+  #saveImages(key: string, attachments: readonly ComposerImageAttachment[]): void {
+    const stored = storedImages(attachments);
+    const omitted = attachments.length - stored.length;
+    this.#pending.set(key, stored.length === 0 ? undefined : stored);
+    this.#pending.set(`${key}:omitted`, omitted === 0 ? undefined : omitted);
+  }
+
+  #schedule(): void {
     clearTimeout(this.#flushTimer);
     this.#flushTimer = setTimeout(this.#store, FLUSH_DEBOUNCE_MS);
 
     if (globalThis.window === undefined) return;
     window.addEventListener("pagehide", this.#store);
     document.addEventListener("visibilitychange", this.#store);
+  }
+
+  persist(): void {
+    this.#store();
   }
 
   readonly emit = (): void => {
@@ -247,15 +423,30 @@ export class WindowDrafts {
     const readDraft = (id: string): ChatDraft | undefined => {
       const stored = readOwner(persistence, `draft:${id}`, storedDraftSchema);
 
-      return (
-        stored && {
-          id,
-          updatedAt: stored.record.updatedAt,
-          composer: composerView(stored.record.composer, stored.attachments),
-          choice: undefined,
-          status: EDITING,
-        }
+      if (stored === undefined) return undefined;
+
+      const dropped = readOmitted(
+        persistence.storage,
+        `${persistence.storageKey}:draft:${id}:images`,
       );
+
+      const draft: ChatDraft = {
+        id,
+        updatedAt: stored.record.updatedAt,
+        composer: composerView(stored.record.composer, stored.attachments),
+        choice: stored.record.choice && {
+          model: stored.record.choice.model,
+          thinking: stored.record.choice.thinking,
+        },
+        project: stored.record.project,
+        folder: stored.record.folder,
+        status: EDITING,
+        omitted: (stored.record.omitted ?? 0) + dropped,
+      };
+
+      if (dropped > 0) this.saveDraft({ ...draft, composer: DEFAULT_COMPOSER_VIEW_STATE }, draft);
+
+      return draft;
     };
 
     for (const [tabId, panes] of Object.entries(index.tabs)) {
@@ -279,15 +470,72 @@ export class WindowDrafts {
       }
     }
 
+    const journaled = journaledReceipts();
+
     for (const id of index.sessions) {
-      const stored = readOwner(persistence, `session:${id}`, composerSchema);
+      const key = `${persistence.storageKey}:session:${id}`;
+      const stored = readOwner(persistence, `session:${id}`, sessionDraftSchema);
 
-      if (stored === undefined) continue;
-      const composer = composerView(stored.record, stored.attachments);
+      const stepGroups = new Map(
+        readStored(
+          persistence.storage,
+          `${persistence.storageKey}:session:${id}:steps`,
+          stepsSchema,
+          [],
+        ),
+      );
 
-      if (!composerHasContent(composer)) continue;
-      this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, composer });
+      if (stored === undefined) {
+        if (stepGroups.size > 0)
+          this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, stepGroups });
+        continue;
+      }
+
+      const refused = stored.record.refused;
+
+      const notice: ComposerNotice | null =
+        refused === undefined
+          ? null
+          : {
+              kind: "error",
+              message: refused.message,
+              restore: {
+                text: refused.text,
+                attachments: readStored(
+                  persistence.storage,
+                  `${key}:refused`,
+                  attachmentsSchema,
+                  [],
+                ),
+              },
+            };
+
+      const sending = readStored(persistence.storage, `${key}:sending`, sendingSchema, []);
+      const unsent = sending.filter((sent) => !journaled.has(sent.receipt));
+
+      const dropped =
+        readOmitted(persistence.storage, `${key}:images`) +
+        (refused === undefined ? 0 : readOmitted(persistence.storage, `${key}:refused`)) +
+        unsent.reduce((count, sent) => count + sent.omitted, 0);
+
+      const draft: SessionDraft = {
+        composer: composerView(stored.record, stored.attachments),
+        edit: null,
+        notice: unsentNotice(notice, unsent),
+        sending: NO_SENDING,
+        omitted: (stored.record.omitted ?? 0) + dropped,
+      };
+
+      if (dropped > 0 || sending.length > 0) {
+        this.saveSession(asId<"session">(id), DEFAULT_SESSION_VIEW_STATE.draft, draft);
+        this.#pending.set(`${key}:sending`, undefined);
+      }
+
+      if (!draftKept(draft) && stepGroups.size === 0) continue;
+      this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, draft, stepGroups });
     }
+
+    if (this.#pending.size > 0) this.#schedule();
   }
 
   #flush(): void {
@@ -316,7 +564,7 @@ export class WindowDrafts {
     }
 
     const sessions = [...this.sessions]
-      .filter(([, state]) => composerHasContent(state.composer))
+      .filter(([, state]) => draftKept(state.draft) || state.stepGroups.size > 0)
       .map(([id]) => id)
       .toSorted();
 

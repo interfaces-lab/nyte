@@ -9,6 +9,12 @@ const OUTPUT_LIMIT = 64 * 1024;
 
 const SHELL_LOCAL = new Set(["PWD", "OLDPWD", "SHLVL", "_"]);
 
+const RETRY_DELAYS_MS = [30_000, 120_000, 600_000, 3_600_000];
+
+type ShellRead =
+  | { readonly kind: "loaded"; readonly environment: Map<string, string> }
+  | { readonly kind: "failed"; readonly reason: string };
+
 let shared: (() => Promise<void>) | undefined;
 
 /**
@@ -16,7 +22,9 @@ let shared: (() => Promise<void>) | undefined;
  * every child spawn and provider auth env read (`processEnvironment()`) until it lands. The
  * process itself goes on: a desktop app opened from the Dock inherits launchd's bare PATH and
  * none of the rc files' API keys, and only what it spawns and what auth reads need the shell's.
- * The read gives up after 10 s and keeps the inherited environment.
+ * The read gives up after 10 s and keeps the inherited environment. A failed read is logged and
+ * tried again in the background, without holding anything, so a host started while the machine
+ * was waking or updating still gets the shell's environment.
  */
 export function completeShellEnvironment(): Promise<void> {
   if (shared === undefined) {
@@ -27,7 +35,6 @@ export function completeShellEnvironment(): Promise<void> {
   return shared();
 }
 
-/** Returns a repair that merges the login shell's environment into `env` on its first call; later calls share that attempt. */
 export function createShellEnvironmentRepair({
   env = process.env,
   platform = process.platform,
@@ -39,8 +46,28 @@ export function createShellEnvironmentRepair({
 } = {}): () => Promise<void> {
   let attempt: Promise<void> | undefined;
 
+  const repair = async (retries: readonly number[]): Promise<void> => {
+    const failure = await repairShellEnvironment({ env, platform, timeoutMs });
+
+    if (failure === undefined) return;
+    const [delay, ...later] = retries;
+
+    if (delay === undefined) {
+      process.stderr.write(
+        `Couldn't read the login shell's environment: ${failure}. Commands keep the environment the host started with.\n`,
+      );
+
+      return;
+    }
+
+    process.stderr.write(
+      `Couldn't read the login shell's environment: ${failure}. Trying again in ${String(delay / 1000)} s.\n`,
+    );
+    setTimeout(() => void repair(later), delay).unref();
+  };
+
   return () => {
-    attempt ??= repairShellEnvironment({ env, platform, timeoutMs });
+    attempt ??= repair(RETRY_DELAYS_MS);
 
     return attempt;
   };
@@ -54,23 +81,25 @@ async function repairShellEnvironment({
   env: NodeJS.ProcessEnv;
   platform: NodeJS.Platform;
   timeoutMs: number;
-}): Promise<void> {
+}): Promise<string | undefined> {
   const shell = env.SHELL || "/bin/sh";
 
-  if (platform === "win32" || !isAbsolute(shell)) return;
+  if (platform === "win32" || !isAbsolute(shell)) return undefined;
   const inheritedPath = env.PATH;
-  const loaded = await readLoginShellEnvironment({ shell, env, timeoutMs });
+  const read = await readLoginShellEnvironment({ shell, env, timeoutMs });
 
-  if (loaded === undefined) return;
+  if (read.kind === "failed") return `${shell} ${read.reason}`;
 
-  for (const [name, value] of loaded) {
+  for (const [name, value] of read.environment) {
     if (name !== "PATH" && !SHELL_LOCAL.has(name)) env[name] = value;
   }
 
-  const path = loaded.get("PATH");
+  const path = read.environment.get("PATH");
 
-  if (path === undefined || path === "") return;
+  if (path === undefined || path === "") return undefined;
   env.PATH = inheritedPath ? `${path}:${inheritedPath}` : path;
+
+  return undefined;
 }
 
 function readLoginShellEnvironment({
@@ -81,7 +110,7 @@ function readLoginShellEnvironment({
   shell: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
-}): Promise<Map<string, string> | undefined> {
+}): Promise<ShellRead> {
   return new Promise((resolve) => {
     const marker = `nyte-env-${randomUUID()}`;
     const fence = `\0${marker}\0`;
@@ -97,40 +126,60 @@ function readLoginShellEnvironment({
     let bytes = 0;
     let settled = false;
 
-    const finish = (loaded: Map<string, string> | undefined): void => {
+    const finish = (read: ShellRead): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       child.stdout.destroy();
-      child.kill("SIGKILL");
 
-      resolve(loaded);
+      resolve(read);
     };
 
-    const timer = setTimeout(() => finish(undefined), timeoutMs);
-    child.on("error", () => finish(undefined));
-    child.stdout.on("error", () => finish(undefined));
+    const fail = (reason: string): void => finish({ kind: "failed", reason });
+
+    const abandon = (reason: string): void => {
+      try {
+        if (child.pid === undefined) child.kill("SIGKILL");
+        else process.kill(-child.pid, "SIGKILL");
+      } catch {}
+
+      fail(reason);
+    };
+
+    const timer = setTimeout(
+      () => abandon(`timed out after ${String(timeoutMs / 1000)} s`),
+      timeoutMs,
+    );
+
+    child.on("error", (error) => fail(`couldn't start: ${error.message}`));
+    child.stdout.on("error", (error) => abandon(`stdout failed: ${error.message}`));
     child.stdout.on("data", (chunk: Buffer) => {
       bytes += chunk.byteLength;
 
       if (bytes > OUTPUT_LIMIT) {
-        finish(undefined);
+        abandon(`printed more than ${String(OUTPUT_LIMIT / 1024)} KiB`);
 
         return;
       }
 
       chunks.push(chunk);
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       const [, fenced, ...after] = Buffer.concat(chunks).toString("utf8").split(fence);
 
-      if (code !== 0 || fenced === undefined || after.length === 0) {
-        finish(undefined);
+      if (code !== 0) {
+        fail(signal === null ? `exited with code ${String(code)}` : `was killed by ${signal}`);
 
         return;
       }
 
-      finish(parseEnvironment(fenced));
+      if (fenced === undefined || after.length === 0) {
+        fail("printed no complete environment");
+
+        return;
+      }
+
+      finish({ kind: "loaded", environment: parseEnvironment(fenced) });
     });
   });
 }

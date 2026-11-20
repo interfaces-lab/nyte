@@ -1,3 +1,12 @@
-export { Editor, resolveSearchShortcut } from "@pierre/diffs/edit";
+export { EditStateManager, Editor, resolveSearchShortcut } from "@pierre/diffs/edit";
 
-export type { EditorOptions, EditorSelection, EditorType, Range } from "@pierre/diffs/edit";
+export type {
+  EditorChange,
+  EditorKeymap,
+  EditorOptions,
+  EditorSelection,
+  EditorType,
+  EditorViewState,
+  Range,
+  TextEdit,
+} from "@pierre/diffs/edit";

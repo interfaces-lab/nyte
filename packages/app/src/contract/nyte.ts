@@ -1,4 +1,5 @@
 import type { NyteBridge } from "./bridge.ts";
+import type { DesktopApp } from "./desktop-app.ts";
 
 let installed: NyteBridge | undefined;
 
@@ -10,6 +11,16 @@ function bridge(): NyteBridge {
 
 export function installBridge(value: NyteBridge): void {
   installed = value;
+}
+
+/** The app this window is, read before or without a bridge as Nyte. */
+export function windowApp(): DesktopApp {
+  return installed?.app ?? "nyte";
+}
+
+/** The apps this window can switch between: none where the client has one app. */
+export function offeredApps(): readonly DesktopApp[] {
+  return installed?.apps ?? [];
 }
 
 export const nyte: NyteBridge = {
@@ -24,9 +35,6 @@ export const nyte: NyteBridge = {
   },
   get canvasShell() {
     return bridge().canvasShell;
-  },
-  get relay() {
-    return bridge().relay;
   },
   get host() {
     return bridge().host;

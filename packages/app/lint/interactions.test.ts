@@ -19,6 +19,7 @@ const rules = [
   "specific-confirm-label",
   "no-disabled-caption",
   "title-case-control-label",
+  "no-stacked-fills",
 ];
 
 const FailedRun = Type.Object({ stdout: Type.String() });
@@ -46,13 +47,13 @@ test("interaction guards reject regressions and accept semantic controls", async
       rejected,
       `import * as stylex from "@stylexjs/stylex";
 const layout = { touchAction: "none" };
-const controls = <><div onClick={() => {}} /><Dialog finalFocus={false} /><Pressable onPress={() => {}} /><Button>Confirm</Button><Button>save file</Button><MenuItem meta={disabled ? "No file open" : "⌘S"}>Save</MenuItem></>;`,
+const controls = <><div onClick={() => {}} /><Dialog finalFocus={false} /><Pressable onPress={() => {}} /><Button>Confirm</Button><Button>save file</Button><MenuItem meta={disabled ? "No file open" : "⌘S"}>Save</MenuItem><Row interactive><Row.Actions><Button iconOnly icon="square" aria-label="Stop" /></Row.Actions></Row></>;`,
     );
     await writeFile(
       accepted,
       `import { create } from "@stylexjs/stylex";
 const layout = { touchAction: "manipulation" };
-const controls = <><button onClick={() => {}} /><div role="option" onClick={() => {}} /><Dialog /><Pressable accessibilityRole="link" /><Button>Delete File</Button><p>No {count} matches</p><MenuItem disabled={disabled} meta="⌘S">Save</MenuItem></>;`,
+const controls = <><button onClick={() => {}} /><div role="option" onClick={() => {}} /><Dialog /><Pressable accessibilityRole="link" /><Button>Delete File</Button><p>No {count} matches</p><MenuItem disabled={disabled} meta="⌘S">Save</MenuItem><Row interactive><Row.Actions><Button variant="plain" iconOnly icon="square" aria-label="Stop" /></Row.Actions></Row><Row><Button>Open File</Button></Row></>;`,
     );
 
     const output = await execute("node", [
@@ -88,6 +89,7 @@ const controls = <><button onClick={() => {}} /><div role="option" onClick={() =
     expect(message("specific-confirm-label")).toContain('"Confirm" does not say what happens');
     expect(message("title-case-control-label")).toContain('Write "Save File"');
     expect(message("no-disabled-caption")).toContain('only while "disabled" holds');
+    expect(message("no-stacked-fills")).toContain("two translucent fills stack");
     expect(message("named-stylex-imports")).toContain(
       'import { create, props } from "@stylexjs/stylex"',
     );

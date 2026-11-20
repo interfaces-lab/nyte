@@ -31,7 +31,7 @@ import type { HookContext, Kernel, PluginRuntime, ToolSource } from "../contract
 import { decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord } from "../contract/records.ts";
 import { modelInfo, withLimits } from "../extend/models.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { runRef, sessionRef } from "../store/refs.ts";
 import { attempt, load, put, requireSession, STALE } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";

@@ -11,9 +11,9 @@ import subagentsPlugin from "@nyte-ai/plugin/core/subagents";
 import { listen } from "@nyte-ai/host";
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
-import type { HostConnection } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
+import type { ClientConnection, ClientConnectOptions } from "@nyte-ai/sdk/client";
 import type { LocalEndpoint } from "@nyte-ai/service";
-import { openLiveHost } from "../../src/live-host.ts";
 
 export type Reply = FakeModels["reply"] extends (...replies: readonly (infer R)[]) => void
   ? R
@@ -26,7 +26,7 @@ export type ProviderRequest = FakeModels["requests"][number];
 export interface TestHost extends AsyncDisposable {
   readonly host: TestHostHandle;
   readonly endpoint: LocalEndpoint;
-  readonly live: HostConnection;
+  readonly client: ClientConnection;
   readonly models: FakeModels;
   readonly requests: readonly ProviderRequest[];
   reply(...replies: readonly Reply[]): void;
@@ -42,6 +42,7 @@ export async function openTestHost(options?: {
   readonly workspace?: WorkspaceTarget;
   readonly loadPlugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
   readonly loadPluginDirectory?: (dir: string) => Promise<PluginDirectory>;
+  readonly fetch?: NonNullable<ClientConnectOptions["transport"]>["fetch"];
 }): Promise<TestHost> {
   dev.off();
   const models = fakeModels({ models: options?.models });
@@ -71,12 +72,18 @@ export async function openTestHost(options?: {
   });
 
   const endpoint = { url: String(listener.address), token };
-  const live = openLiveHost(endpoint, "tui");
+  const client = await connect({
+    url: endpoint.url,
+    credentials: { kind: "token", token },
+    client: { kind: "tui", name: "nyte", version: "0.0.0" },
+    journal: createSendJournal(),
+    transport: { fetch: options?.fetch },
+  });
   let closed: Promise<void> | null = null;
 
   const close = (): Promise<void> =>
     (closed ??= (async () => {
-      live.release();
+      await client.close();
       await listener.close();
       await host.close();
     })());
@@ -84,7 +91,7 @@ export async function openTestHost(options?: {
   return {
     host,
     endpoint,
-    live,
+    client,
     models,
     requests: models.requests,
     reply: (...replies) => models.reply(...replies),

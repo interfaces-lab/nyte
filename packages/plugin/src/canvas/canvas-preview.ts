@@ -1,6 +1,8 @@
 import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import {
+  CANVAS_LAYOUT_GLOBAL,
   CANVAS_MAX_HEIGHT,
   CANVAS_RUNTIME,
   clampCanvasHeight,
@@ -18,6 +20,27 @@ const SETTLE_TIMEOUT_MS = 8000;
 const SETTLE_QUIET_MS = 400;
 
 const CONSOLE_KEPT = 40;
+
+const FINDINGS_KEPT = 24;
+
+export const CanvasLayoutFindingType = Type.Object({
+  rule: Type.String(),
+  component: Type.String(),
+  at: Type.Union([Type.String(), Type.Null()]),
+  measured: Type.Number(),
+  floor: Type.Number(),
+  message: Type.String(),
+  fix: Type.String(),
+});
+
+export type CanvasLayoutFinding = Static<typeof CanvasLayoutFindingType>;
+
+export const CanvasPreviewFindingType = Type.Intersect([
+  CanvasLayoutFindingType,
+  Type.Object({ widths: Type.Array(Type.Number()) }),
+]);
+
+export type CanvasPreviewFinding = Static<typeof CanvasPreviewFindingType>;
 
 export type CanvasPreviewRequest = {
   readonly module: CanvasModule;
@@ -37,6 +60,7 @@ export type CanvasPreviewReport = {
   readonly heights: { readonly chat: number; readonly phone: number };
   readonly errors: readonly CanvasPreviewError[];
   readonly console: readonly CanvasPreviewLog[];
+  readonly findings: readonly CanvasPreviewFinding[];
 };
 
 export type CanvasPreviewOutcome =
@@ -87,6 +111,7 @@ type HarnessSetup = {
   readonly quietMs: number;
   readonly timeoutMs: number;
   readonly consoleKept: number;
+  readonly layout: string;
 };
 
 function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
@@ -162,6 +187,15 @@ function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
         }),
     },
   });
+  const layout: unknown = Object.getOwnPropertyDescriptor(globalThis, setup.layout)?.value;
+
+  if (
+    typeof layout === "object" &&
+    layout !== null &&
+    "arm" in layout &&
+    typeof layout.arm === "function"
+  )
+    layout.arm();
   this.postMessage(setup.initialize, "*");
 
   return true;
@@ -178,6 +212,7 @@ function harness(request: CanvasPreviewRequest): string {
     quietMs: SETTLE_QUIET_MS,
     timeoutMs: SETTLE_TIMEOUT_MS,
     consoleKept: CONSOLE_KEPT,
+    layout: CANVAS_LAYOUT_GLOBAL,
   };
 
   return `(${installHarness.toString()}).call(globalThis, ${JSON.stringify(setup)})`;
@@ -192,35 +227,70 @@ async function settle(page: CanvasPreviewPage) {
   return answer;
 }
 
+const checked = Type.Array(CanvasLayoutFindingType);
+
+async function checkLayout(page: CanvasPreviewPage): Promise<readonly CanvasLayoutFinding[]> {
+  const answer = await page.evaluate(
+    `globalThis[${JSON.stringify(CANVAS_LAYOUT_GLOBAL)}]?.check() ?? []`,
+  );
+
+  if (!Value.Check(checked, answer))
+    throw new Error("The canvas shell answered its layout check with something unreadable.");
+
+  return answer;
+}
+
+function mergeFindings(
+  checks: readonly { readonly width: number; readonly findings: readonly CanvasLayoutFinding[] }[],
+): CanvasPreviewFinding[] {
+  const merged = new Map<string, CanvasPreviewFinding>();
+
+  for (const check of checks)
+    for (const finding of check.findings) {
+      const key = `${finding.rule} ${finding.message.replaceAll(/-?\d+(?:\.\d+)?(?= px| ×)/gu, "#")}`;
+      const seen = merged.get(key);
+
+      const worse =
+        seen === undefined ||
+        Math.abs(finding.floor - finding.measured) > Math.abs(seen.floor - seen.measured);
+
+      merged.set(key, {
+        ...(worse ? finding : seen),
+        widths: [...new Set([...(seen?.widths ?? []), check.width])],
+      });
+    }
+
+  return [...merged.values()].slice(0, FINDINGS_KEPT);
+}
+
 export async function runCanvasPreview(
   page: CanvasPreviewPage,
   request: CanvasPreviewRequest,
 ): Promise<CanvasPreviewReport> {
   const { chat, phone } = CANVAS_PREVIEW_WIDTHS;
   await page.resize(chat, 900);
-  const install = harness(request);
 
-  let attempts = 0;
-
-  while ((await page.evaluate(install)) !== true) {
-    attempts += 1;
-
-    if (attempts > 50) throw new Error("The canvas shell did not start in the preview.");
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  if ((await page.evaluate(harness(request))) !== true)
+    throw new Error("The canvas shell did not start in the preview.");
 
   const wide = await settle(page);
   await page.resize(chat, clampCanvasHeight(wide.height > 0 ? wide.height : 240));
   const narrow = await settle(page);
+  const wideFindings = await checkLayout(page);
   const png = await page.capture();
   await page.resize(phone, 900);
   const last = await settle(page);
+  const phoneFindings = await checkLayout(page);
 
   return {
     png,
     heights: { chat: narrow.height, phone: last.height },
     errors: last.errors.map((error) => ({ ...error, stack: error.stack ?? null })),
     console: last.console,
+    findings: mergeFindings([
+      { width: chat, findings: wideFindings },
+      { width: phone, findings: phoneFindings },
+    ]),
   };
 }
 
@@ -251,6 +321,34 @@ export function describeCanvasPreview(report: CanvasPreviewReport): string {
     "Preview only; the user has not seen it. The screenshot is the chat-column render.",
     ...heights,
     ...errors,
+    ...(report.findings.length === 0
+      ? ["No layout findings."]
+      : describeCanvasFindings(report.findings)),
     ...logs,
   ].join("\n");
+}
+
+/**
+ * The findings as an agent reads them: each rule's fix once, then one line per place it broke. A width is named only
+ * when the finding shows at one of them, since most show at both.
+ */
+export function describeCanvasFindings(findings: readonly CanvasPreviewFinding[]): string[] {
+  if (findings.length === 0) return [];
+  const widths = Object.values(CANVAS_PREVIEW_WIDTHS).length;
+
+  return [
+    `Layout findings (${String(findings.length)}):`,
+    ...[...new Set(findings.map((finding) => finding.rule))].flatMap((rule) => {
+      const broken = findings.filter((finding) => finding.rule === rule);
+
+      return [
+        `${rule}: ${broken[0]?.fix ?? ""}.`,
+        ...broken.map((finding) =>
+          finding.widths.length === widths
+            ? `- ${finding.message}.`
+            : `- ${finding.message} (${finding.widths.join(", ")} px).`,
+        ),
+      ];
+    }),
+  ];
 }

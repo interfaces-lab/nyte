@@ -3,8 +3,12 @@ import type { SessionView } from "@nyte-ai/schema";
 import { isPart, text as textPart } from "@nyte-ai/core";
 import type { Connection, Session } from "@nyte-ai/core";
 import { parseSse, readStreamFrame } from "@nyte-ai/protocol";
-import { connect } from "../src/connect.ts";
-import { createSendJournal } from "../src/journal.ts";
+import { listen } from "@nyte-ai/host";
+import { connect as connectClient } from "../src/connect.ts";
+import type { ClientConnection } from "../src/connect.ts";
+import { connect } from "../src/connection/connect.ts";
+import type { Chat, ChatOptions } from "../src/live/chat.ts";
+import { createSendJournal } from "../src/send/journal.ts";
 import { BASE, TOKEN_SECRET, served } from "./served.ts";
 import type { Served } from "./served.ts";
 
@@ -32,6 +36,49 @@ export async function client(host: Served, journal = createSendJournal()): Promi
   cleanups.push(() => connection.close());
 
   return connection;
+}
+
+export async function liveClient(
+  host: Served,
+  journal = createSendJournal(),
+): Promise<ClientConnection> {
+  const listener = await listen(host.host, {
+    transport: { kind: "http" },
+    auth: { kind: "token", token: TOKEN_SECRET },
+  });
+
+  cleanups.push(() => listener.close());
+  const address = (listener.address ?? "").replace(/^http/u, "ws");
+
+  const connection = await connectClient({
+    url: BASE,
+    credentials: { kind: "token", token: TOKEN_SECRET },
+    client: { kind: "other", name: "sdk-test", version: "1" },
+    journal,
+    transport: {
+      fetch: host.fetch,
+      socket: (request) =>
+        new WebSocket(request.url.replace(/^ws:\/\/host\.test/u, address), {
+          headers: request.headers,
+        }),
+    },
+  });
+
+  cleanups.push(() => connection.close());
+
+  return connection;
+}
+
+export function heldChat(
+  connection: ClientConnection,
+  session: Session["id"],
+  options?: ChatOptions,
+): Chat {
+  const chat = connection.chat(session, options);
+  const stop = chat.subscribe(() => undefined);
+  cleanups.push(async () => stop());
+
+  return chat;
 }
 
 export async function settledChat(host: Served, connection: Connection): Promise<Session> {
@@ -111,4 +158,20 @@ export function tapped(
     },
     cancel: () => frames.return(undefined).then(() => undefined),
   });
+}
+
+export async function viewWhen(
+  read: () => Promise<SessionView>,
+  done: (view: SessionView) => boolean,
+): Promise<SessionView> {
+  const deadline = Date.now() + 5_000;
+
+  for (;;) {
+    const view = await read();
+
+    if (done(view)) return view;
+
+    if (Date.now() > deadline) throw new Error("No view was accepted within 5000 ms.");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }

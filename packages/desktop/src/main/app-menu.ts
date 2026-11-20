@@ -2,12 +2,12 @@ import { nativeImage } from "electron";
 import type { App, BaseWindow, MenuItemConstructorOptions, WebContents } from "electron";
 import type {
   AppInfo,
-  AppMenuAction,
   AppMenuCommand,
   BrowserKey,
   BrowserNavigationAction,
 } from "@nyte-ai/app/contract/bridge.ts";
 import { clientActionAccelerator, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
+import type { RunnableAction } from "@nyte-ai/app/contract/client-actions.ts";
 import { shortcutCharacter } from "@nyte-ai/app/contract/browser-shortcuts.ts";
 
 export type ViewCommand = Extract<
@@ -55,23 +55,27 @@ export function applicationMenuTemplate(options: {
     click: () => options.dispatch({ kind: "about", info: options.appInfo() }),
   };
 
-  const action = (
-    definition: Extract<(typeof clientActions)[keyof typeof clientActions], { id: AppMenuAction }>,
-  ): MenuItemConstructorOptions => {
+  const action = (definition: RunnableAction): MenuItemConstructorOptions => {
     const accelerator = clientActionAccelerator(definition);
 
     return {
       label: definition.label,
       accelerator: accelerator === "" ? undefined : accelerator,
-      click: () => options.dispatch({ kind: "action", action: definition.id }),
+      click: () =>
+        options.dispatch({
+          kind: "action",
+          action: definition.action,
+          input: definition.input ?? {},
+        }),
     };
   };
 
   const settings = action(clientActions.settings);
 
-  const command = (
-    definition: Extract<(typeof clientActions)[keyof typeof clientActions], { id: AppMenuAction }>,
-  ): MenuItemConstructorOptions => ({ ...action(definition), registerAccelerator: false });
+  const command = (definition: RunnableAction): MenuItemConstructorOptions => ({
+    ...action(definition),
+    registerAccelerator: false,
+  });
 
   const fileActions = [
     { label: "New Window", accelerator: "Shift+CommandOrControl+N", click: options.newWindow },
@@ -82,6 +86,14 @@ export function applicationMenuTemplate(options: {
     { type: "separator" },
     action(clientActions.newTerminal),
     action(clientActions.newBrowser),
+  ] satisfies MenuItemConstructorOptions[];
+
+  const apps = [
+    { type: "separator" },
+    action(clientActions.openNyte),
+    action(clientActions.openCode),
+    ...(options.developer ? [action(clientActions.openStudio)] : []),
+    action(clientActions.flipApp),
   ] satisfies MenuItemConstructorOptions[];
 
   const update = { id: "check-for-updates", label: "Check for Updates…" };
@@ -176,12 +188,22 @@ export function applicationMenuTemplate(options: {
       ],
     },
     options.platform === "darwin"
-      ? { role: "windowMenu" }
+      ? {
+          role: "windowMenu",
+          submenu: [
+            { role: "minimize" },
+            { role: "zoom" },
+            ...apps,
+            { type: "separator" },
+            { role: "front" },
+          ],
+        }
       : {
           role: "windowMenu",
           submenu: [
             { role: "minimize" },
             { role: "close", accelerator: "Shift+CommandOrControl+W" },
+            ...apps,
           ],
         },
     { role: "help", submenu: options.platform === "darwin" ? [] : [about, update] },
@@ -207,7 +229,7 @@ export function createMenuCommandDelivery(options: {
 
       for (const command of pending.splice(0)) options.send(command);
     },
-    reset(): void {
+    windowEnded(): void {
       ready = false;
     },
   };

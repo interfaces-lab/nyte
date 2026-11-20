@@ -11,7 +11,8 @@ export default defineConfig({
   testDir: resolve(import.meta.dirname, "web"),
   outputDir: resolve(import.meta.dirname, "test-results"),
   forbidOnly: CI,
-  retries: CI ? 2 : 0,
+  retries: CI ? 1 : 0,
+  maxFailures: CI ? 8 : 0,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: { baseURL: E2E_ORIGIN, trace: "on-first-retry", screenshot: "only-on-failure" },
   projects: [

@@ -360,7 +360,7 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
         {
           kind: "move-to",
           commit: row.oid,
-          abandoned: "keep",
+          abandoned: { kind: "keep" },
           expect,
         },
       ],

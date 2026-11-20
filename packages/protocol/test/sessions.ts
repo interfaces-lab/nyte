@@ -31,8 +31,8 @@ const echo: ToolDefinition<{ readonly text: string }> = {
   description: "Echo the text.",
   parameters: say,
   class: () => ({ kind: "read", path: "notes.md" }),
-  replay: "safe",
-  effects: "none",
+  rerun: "safe",
+  changes: "none",
   execute: async (args) => ({ content: [{ kind: "text", text: `echo: ${args.text}` }] }),
 };
 
@@ -41,8 +41,8 @@ const boom: ToolDefinition<{ readonly text: string }> = {
   description: "Fail.",
   parameters: say,
   class: () => ({ kind: "custom", label: "Failing" }),
-  replay: "safe",
-  effects: "none",
+  rerun: "safe",
+  changes: "none",
   execute: async () => {
     throw new Error("Boom.");
   },
@@ -54,8 +54,8 @@ function gated(gate: Promise<void>): ToolDefinition<{ readonly text: string }> {
     description: "Wait for the gate.",
     parameters: say,
     class: () => ({ kind: "custom", label: "Waiting" }),
-    replay: "safe",
-    effects: "none",
+    rerun: "safe",
+    changes: "none",
     async execute() {
       await gate;
 
@@ -149,6 +149,32 @@ export async function recordSessions(): Promise<readonly Recorded[]> {
       await (await session.send("Three.")).settled();
       await session.heads.create(SIDE);
       await (await session.head(SIDE).send("Side.")).settled();
+    }),
+    await record("compaction", [MAIN], async (host, fake, id) => {
+      fake.reply(
+        { content: [{ type: "text", text: "One." }] },
+        { content: [{ type: "text", text: "Two." }] },
+        { content: [{ type: "text", text: "Earlier they counted to two." }] },
+        { content: [{ type: "text", text: "Three." }] },
+      );
+      const started = await host.sessions.start({ id, content: "Count." });
+      const session = started.session;
+      await started.receipt.settled();
+      await (await session.send("Again.")).settled();
+      const compacted = await session.compact({});
+
+      if (compacted.kind !== "started") throw new Error(`The compaction ${compacted.kind}.`);
+      await until(async () =>
+        (await session.view()).messages.some(
+          (message) =>
+            message.id === compacted.message &&
+            message.kind === "part" &&
+            message.status.kind === "settled",
+        )
+          ? true
+          : undefined,
+      );
+      await (await session.send("Once more.")).settled();
     }),
   ];
 }

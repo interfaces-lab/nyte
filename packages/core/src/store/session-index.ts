@@ -52,6 +52,8 @@ export type SessionIndexEntry =
       readonly session: SessionId;
       readonly parent: SessionId | null;
       readonly at: number;
+      readonly pinned: boolean;
+      readonly name: string | null;
     }
   | {
       readonly kind: "run" | "inbox" | "receipt" | "call";
@@ -74,6 +76,8 @@ export function projectSessionIndex(name: string, object: Json | null): SessionI
             session: ref.session,
             parent: record.parent,
             at: record.lastActivityAt,
+            pinned: record.pinned,
+            name: record.name,
           };
     }
     case "run":
@@ -85,10 +89,13 @@ export function projectSessionIndex(name: string, object: Json | null): SessionI
         ? { kind: "inbox", session: ref.session }
         : null;
     }
-    case "receipt":
-      return decodeReceiptRecord(object)?.outcome === null
+    case "receipt": {
+      const record = decodeReceiptRecord(object);
+
+      return record?.outcome === null && name.endsWith(`/${record.id}`)
         ? { kind: "receipt", session: ref.session }
         : null;
+    }
     case "call":
       return decodeCallRecord(object)?.result === null
         ? { kind: "call", session: ref.session }

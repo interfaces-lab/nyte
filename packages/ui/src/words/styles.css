@@ -1,0 +1,22 @@
+@layer base {
+  [data-markdown="img"] {
+    max-width: 100%;
+    height: auto;
+  }
+
+  [data-markdown][data-animated="true"] {
+    animation: markdown-fade-in 180ms ease-out backwards;
+  }
+
+  @keyframes markdown-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-markdown][data-animated="true"] {
+      animation: none;
+    }
+  }
+}
