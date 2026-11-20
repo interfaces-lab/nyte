@@ -146,6 +146,11 @@ Silvia O'Dwyer.
   `@pierre/diffs`' stylesheet. Nyte core remains the source of change, VCS,
   file, and session identity; Pierre does not own application state or the
   workbench composition.
+- Ported: the chat panes' size rules (`packages/app/src/panes/piecewise.ts`,
+  `packages/app/src/panes/divide.ts`) and their separator drag, which pushes
+  past a pane at its minimum size, are adapted from the unreleased
+  `@pierre/layouts` on the `necolas/layout` branch at commit
+  `a745a6171d256822f895a06d5a3f0fdafda77d58`.
 
 License: Apache License 2.0, reproduced in the appendix below. Copyright 2025
 Pierre Computer Company. The license text is also distributed in each package.

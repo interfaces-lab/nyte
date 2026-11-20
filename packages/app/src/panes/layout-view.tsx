@@ -1,20 +1,22 @@
 import { props } from "@stylexjs/stylex";
-import { useState, useSyncExternalStore } from "react";
+import { createContext, useState, useSyncExternalStore } from "react";
 import type { PointerEvent, ReactElement, ReactNode } from "react";
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { layoutPanes, reduceLayout, sizeWeight } from "./layout.ts";
 import type { Layout, LayoutNode, PaneSize, Split } from "./layout.ts";
 import type { LayoutStore } from "./layout-store.ts";
-import { boxStyle, layoutGeometry } from "./pane-geometry.ts";
-import type { Box, Geometry, Linear, Separator } from "./pane-geometry.ts";
+import { boxStyle, layoutGeometry, minimumLength } from "./pane-geometry.ts";
+import type { Box, Geometry, PaneMetrics, Separator } from "./pane-geometry.ts";
 import { paneRules } from "./pane-kinds.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import { MIN_PANE_SIZE } from "./pane-layout.ts";
 import type { PaneTabInput } from "./pane-views.tsx";
-
-export const PANE_GAP = "var(--nyte-pane-sash-size)";
+import { evaluate } from "./piecewise.ts";
 
 const KEY_STEP = 0.02;
+
+/** The geometry the layout draws, for overlays placed over its panes. */
+export const PaneGeometry = createContext<Geometry>({ panes: new Map(), separators: [] });
 
 interface Frame {
   readonly width: number;
@@ -34,11 +36,23 @@ export function LayoutView({
   readonly children?: ReactNode;
 }): ReactElement {
   const layout = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const geometry = layoutGeometry(layout);
   const [frame, setFrame] = useState<Frame | undefined>();
+  const metrics: PaneMetrics = { gap: frame?.gap ?? 0, minimum: MIN_PANE_SIZE };
+  const geometry = layoutGeometry(layout, metrics);
 
   const observe = (root: HTMLDivElement): (() => void) => {
-    const observer = new ResizeObserver(() => setFrame(readFrame(root)));
+    const update = (): void => {
+      const next = readFrame(root);
+
+      setFrame((current) =>
+        current?.width === next.width && current.height === next.height && current.gap === next.gap
+          ? current
+          : next,
+      );
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
 
     observer.observe(root);
 
@@ -83,9 +97,10 @@ export function LayoutView({
           geometry={geometry}
           separator={separator}
           frame={frame}
+          metrics={metrics}
         />
       ))}
-      {children}
+      <PaneGeometry value={geometry}>{children}</PaneGeometry>
     </div>
   );
 }
@@ -115,7 +130,7 @@ function LayoutTab({
       data-nyte-pane-id={pane}
       data-nyte-pane-tab={input.tab}
       {...props(sessionScreenStyles.layoutTab)}
-      style={boxStyle(box, PANE_GAP)}
+      style={boxStyle(box)}
       onPointerDown={() => {
         if (activate()) store.requestFocus(pane);
       }}
@@ -134,15 +149,17 @@ function LayoutSeparator({
   geometry,
   separator,
   frame,
+  metrics,
 }: {
   readonly store: LayoutStore;
   readonly layout: Layout<PaneContent>;
   readonly geometry: Geometry;
   readonly separator: Separator;
   readonly frame: Frame | undefined;
+  readonly metrics: PaneMetrics;
 }): ReactElement {
   const across = separator.direction === "right";
-  const value = separatorValue(layout, separator, geometry, frame);
+  const value = separatorValue(layout, separator, geometry, frame, metrics);
 
   const resize = (sizes: readonly PaneSize[]): void =>
     store.dispatch({ kind: "resize", split: separator.split, sizes });
@@ -166,7 +183,8 @@ function LayoutSeparator({
       separator,
       geometry,
       measured,
-      (span) => pointer - measured.gap / 2 - span.start,
+      metrics,
+      (pair) => pointer - measured.gap / 2 - pair.before.start - pair.before.length,
     );
   };
 
@@ -174,7 +192,7 @@ function LayoutSeparator({
     const root = element.parentElement;
 
     if (root === null) return;
-    const drawn = layoutGeometry(next);
+    const drawn = layoutGeometry(next, metrics);
 
     for (const child of root.children) {
       if (!(child instanceof HTMLElement)) continue;
@@ -187,7 +205,7 @@ function LayoutSeparator({
       if (box !== undefined) paintBox(child, box);
     }
 
-    const now = separatorValue(next, separator, drawn, undefined).now;
+    const now = separatorValue(next, separator, drawn, frame, metrics).now;
     element.setAttribute("aria-valuenow", String(now));
   };
 
@@ -213,21 +231,20 @@ function LayoutSeparator({
     if (root === null) return undefined;
     const measured = readFrame(root);
 
-    if (key === "Home") return sizesAt(layout, separator, geometry, measured, () => 0);
+    if (key === "Home")
+      return sizesAt(layout, separator, geometry, measured, metrics, (pair) =>
+        Math.min(0, pair.before.min - pair.before.length),
+      );
 
     if (key === "End")
-      return sizesAt(layout, separator, geometry, measured, () => Number.POSITIVE_INFINITY);
+      return sizesAt(layout, separator, geometry, measured, metrics, (pair) =>
+        Math.max(0, pair.after.length - pair.after.min),
+      );
 
     if (key !== previous && key !== next) return undefined;
-    const delta = key === previous ? -KEY_STEP : KEY_STEP;
+    const step = key === previous ? -KEY_STEP : KEY_STEP;
 
-    return sizesAt(
-      layout,
-      separator,
-      geometry,
-      measured,
-      (span, total) => span.length + delta * total,
-    );
+    return sizesAt(layout, separator, geometry, measured, metrics, (_, total) => step * total);
   };
 
   return (
@@ -244,7 +261,7 @@ function LayoutSeparator({
         sessionScreenStyles.sash,
         across ? sessionScreenStyles.sashRight : sessionScreenStyles.sashDown,
       )}
-      style={boxStyle(separator.box, PANE_GAP)}
+      style={boxStyle(separator.box)}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -289,13 +306,14 @@ function LayoutSeparator({
 interface Span {
   readonly start: number;
   readonly length: number;
+  readonly min: number;
 }
 
 interface Measured {
   readonly split: Split<PaneContent>;
-  readonly spans: ReadonlyMap<number, Span>;
-  readonly before: number;
-  readonly after: number;
+  readonly spans: readonly Span[];
+  readonly before: Span;
+  readonly after: Span;
 }
 
 function sizesAt(
@@ -303,47 +321,60 @@ function sizesAt(
   separator: Separator,
   geometry: Geometry,
   frame: Frame,
-  length: (span: Span, total: number) => number,
+  metrics: PaneMetrics,
+  move: (measured: Measured, total: number) => number,
 ): readonly PaneSize[] | undefined {
-  const measured = measure(layout, separator, geometry, frame);
+  const measured = measure(layout, separator, geometry, frame, metrics);
 
   if (measured === undefined) return undefined;
-  const first = measured.spans.get(measured.before);
-  const second = measured.spans.get(measured.after);
+  const spans = measured.spans;
+  const total = spans.reduce((sum, span) => sum + span.length, 0);
+  const delta = move(measured, total);
+  const index = separator.index;
 
-  if (first === undefined || second === undefined) return undefined;
-  const pair = first.length + second.length;
-  const floor = Math.min(MIN_PANE_SIZE, pair / 2);
-  const total = [...measured.spans.values()].reduce((sum, span) => sum + span.length, 0);
-  const resized = Math.min(pair - floor, Math.max(floor, length(first, total)));
+  const before = spans.map((_, offset) => index - offset).filter((at) => at >= 0);
+  const after = spans.map((_, offset) => index + 1 + offset).filter((at) => at < spans.length);
+  const shrinking = delta < 0 ? before : after;
+  const growing = (delta < 0 ? after : before)[0];
 
-  const lengths = new Map(
-    [...measured.spans].map(([index, span]) => [
-      index,
-      index === measured.before ? resized : index === measured.after ? pair - resized : span.length,
-    ]),
+  const room = (at: number): number =>
+    Math.max(0, (spans[at]?.length ?? 0) - (spans[at]?.min ?? 0));
+
+  const distance = Math.min(
+    Math.abs(delta),
+    shrinking.reduce((sum, at) => sum + room(at), 0),
+  );
+
+  const taken = shrinking.reduce(
+    (state: { readonly left: number; readonly taken: ReadonlyMap<number, number> }, at) => {
+      const take = Math.min(state.left, room(at));
+
+      return { left: state.left - take, taken: new Map([...state.taken, [at, take]]) };
+    },
+    { left: distance, taken: new Map() },
+  ).taken;
+
+  const lengths = spans.map(
+    (span, at) => span.length - (taken.get(at) ?? 0) + (at === growing ? distance : 0),
   );
 
   const children = measured.split.children;
 
-  const weights = children.reduce(
-    (sum, child, index) => sum + (lengths.has(index) ? sizeWeight(child.size) : 0),
-    0,
-  );
+  const weights = children.reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
   const weightedLength = children.reduce(
-    (sum, child, index) => sum + (typeof child.size === "number" ? (lengths.get(index) ?? 0) : 0),
+    (sum, child, at) => sum + (typeof child.size === "number" ? (lengths[at] ?? 0) : 0),
     0,
   );
 
-  return children.map((child, index): PaneSize => {
-    const next = lengths.get(index);
+  return children.map((child, at): PaneSize => {
+    const length = lengths[at] ?? 0;
 
-    if (next === undefined) return child.size;
+    if (typeof child.size !== "number") return { px: length };
 
-    if (typeof child.size !== "number") return { px: next };
-
-    return weightedLength === 0 ? child.size : (next / weightedLength) * weights;
+    return weightedLength === 0
+      ? child.size
+      : (Math.max(length, weightedLength * 0.001) / weightedLength) * weights;
   });
 }
 
@@ -352,6 +383,7 @@ function measure(
   separator: Separator,
   geometry: Geometry,
   frame: Frame,
+  metrics: PaneMetrics,
 ): Measured | undefined {
   const split = findSplit(layout.root, separator.split);
 
@@ -359,17 +391,21 @@ function measure(
   const across = separator.direction === "right";
   const size = across ? frame.width : frame.height;
 
-  const spans = new Map(
-    split.children.flatMap((child, index) => {
-      const span = nodeSpan(child.node, geometry, across, size, frame.gap);
+  const spans = split.children.flatMap((child) => {
+    const span = nodeSpan(child.node, geometry, across, size);
 
-      return span === undefined ? [] : [[index, span] as const];
-    }),
-  );
+    return span === undefined
+      ? []
+      : [{ ...span, min: minimumLength(child.node, split.direction, metrics) }];
+  });
 
-  const after = [...spans.keys()].find((index) => index > separator.index);
+  const before = spans[separator.index];
+  const after = spans[separator.index + 1];
 
-  return after === undefined ? undefined : { split, spans, before: separator.index, after };
+  if (spans.length !== split.children.length || before === undefined || after === undefined)
+    return undefined;
+
+  return { split, spans, before, after };
 }
 
 interface SeparatorValue {
@@ -383,39 +419,38 @@ function separatorValue(
   separator: Separator,
   geometry: Geometry,
   frame: Frame | undefined,
+  metrics: PaneMetrics,
 ): SeparatorValue {
-  const split = findSplit(layout.root, separator.split);
-  const weights = (split?.children ?? []).reduce((sum, child) => sum + sizeWeight(child.size), 0);
+  const measured =
+    frame === undefined ? undefined : measure(layout, separator, geometry, frame, metrics);
 
-  const leading = (split?.children.slice(0, separator.index + 1) ?? []).reduce(
-    (sum, child) => sum + sizeWeight(child.size),
-    0,
-  );
+  if (measured === undefined) {
+    const split = findSplit(layout.root, separator.split);
+    const children = split?.children ?? [];
+    const weights = children.reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
-  const now = weights === 0 ? 50 : Math.round((leading / weights) * 100);
-  const measured = frame === undefined ? undefined : measure(layout, separator, geometry, frame);
+    const leading = children
+      .slice(0, separator.index + 1)
+      .reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
-  if (measured === undefined) return { now, min: 0, max: 100 };
-  const lengths = [...measured.spans.values()];
-  const total = lengths.reduce((sum, span) => sum + span.length, 0);
+    return { now: weights === 0 ? 50 : Math.round((leading / weights) * 100), min: 0, max: 100 };
+  }
 
-  const before = [...measured.spans]
-    .filter(([index]) => index < measured.before)
-    .reduce((sum, [, span]) => sum + span.length, 0);
+  const spans = measured.spans;
+  const total = spans.reduce((sum, span) => sum + span.length, 0);
 
-  const pair =
-    (measured.spans.get(measured.before)?.length ?? 0) +
-    (measured.spans.get(measured.after)?.length ?? 0);
+  if (total === 0) return { now: 50, min: 0, max: 100 };
+  const leading = spans.slice(0, separator.index + 1);
+  const trailing = spans.slice(separator.index + 1);
+  const room = (span: Span): number => Math.max(0, span.length - span.min);
+  const before = leading.reduce((sum, span) => sum + span.length, 0);
+  const percent = (length: number): number => Math.round((length / total) * 100);
 
-  const floor = Math.min(MIN_PANE_SIZE, pair / 2);
-
-  return total === 0
-    ? { now, min: 0, max: 100 }
-    : {
-        now,
-        min: Math.round(((before + floor) / total) * 100),
-        max: Math.round(((before + pair - floor) / total) * 100),
-      };
+  return {
+    now: percent(before),
+    min: percent(before - leading.reduce((sum, span) => sum + room(span), 0)),
+    max: percent(before + trailing.reduce((sum, span) => sum + room(span), 0)),
+  };
 }
 
 function nodeSpan(
@@ -423,15 +458,14 @@ function nodeSpan(
   geometry: Geometry,
   across: boolean,
   size: number,
-  gap: number,
-): Span | undefined {
+): { readonly start: number; readonly length: number } | undefined {
   const edges = layoutPanes(node).flatMap((pane) => {
     const box = geometry.panes.get(pane.id);
 
     if (box === undefined) return [];
-    const start = resolve(across ? box.x : box.y, size, gap);
+    const start = evaluate(across ? box.x : box.y, size);
 
-    return [{ start, end: start + resolve(across ? box.width : box.height, size, gap) }];
+    return [{ start, end: start + evaluate(across ? box.width : box.height, size) }];
   });
 
   if (edges.length === 0) return undefined;
@@ -460,12 +494,8 @@ function readFrame(root: HTMLElement): Frame {
   return { width: rect.width, height: rect.height, gap: Number.isFinite(gap) ? gap : 0 };
 }
 
-function resolve(value: Linear, extent: number, gap: number): number {
-  return value.px + value.fraction * extent + value.gaps * gap;
-}
-
 function paintBox(element: HTMLElement, box: Box): void {
-  Object.assign(element.style, boxStyle(box, PANE_GAP));
+  Object.assign(element.style, boxStyle(box));
 }
 
 function separatorKey(separator: Separator): string {

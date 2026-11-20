@@ -118,7 +118,6 @@ function NewChatRow({
 export function Sidebar(): ReactElement {
   const sessionListId = useId();
   const workspaceCollectionID = useId();
-  const panes = usePaneActions();
   const host = useHostState();
   const open = host.data.workspace;
   const home = useHomeWorkspace();
@@ -434,18 +433,7 @@ export function Sidebar(): ReactElement {
               recentSessions={listed?.map(({ session }) => session)}
               onOpenChange={shellActions.setSearchOpen}
               onOpenSession={(sessionId) => windowTabs.openChat(sessionId, "permanent")}
-              onNewChat={() => panes.newChat()}
-              onOpenFolder={openFolder}
-              onOpenHome={
-                open === undefined
-                  ? undefined
-                  : () => {
-                      shellActions.showWorkspace();
-                      void activateWorkspace(null);
-                    }
-              }
-              onOpenSettings={openSettings}
-              onOpenCustomize={() => shellActions.openCustomize(paneSessionId)}
+              home={open !== undefined}
               trigger={
                 <Row variant="nav" xstyle={styles.navRow}>
                   <Row.Leading xstyle={styles.navLeading}>

@@ -1,17 +1,15 @@
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { useState } from "react";
+import { use, useState } from "react";
 import type { ReactElement } from "react";
 import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { PaneFloatingMount } from "../chat/chat-pane-view.tsx";
-import type { Layout } from "./layout.ts";
-import { LayoutView, PANE_GAP } from "./layout-view.tsx";
-import { usePaneLayout, usePaneLayoutStore } from "./pane-context.tsx";
+import { LayoutView, PaneGeometry } from "./layout-view.tsx";
+import { usePaneLayoutStore } from "./pane-context.tsx";
 import { dropPreviewBox } from "./pane-commands.ts";
 import type { SessionDropTarget } from "./pane-commands.ts";
-import { boxStyle, layoutGeometry } from "./pane-geometry.ts";
-import type { PaneContent } from "./pane-kinds.ts";
+import { boxStyle } from "./pane-geometry.ts";
 import { renderPaneContent } from "./pane-views.tsx";
 import { useSessionDropTarget } from "./session-dnd.tsx";
 import { useHostState } from "../data/host.ts";
@@ -26,9 +24,7 @@ import { useChatWindow } from "../window/index.ts";
 import { clientCapabilities } from "../contract/client-actions.ts";
 
 function DropPreview({ target }: { readonly target: SessionDropTarget }): ReactElement | null {
-  const box = usePaneLayout((layout: Layout<PaneContent>) =>
-    layoutGeometry(layout).panes.get(target.paneId),
-  );
+  const box = use(PaneGeometry).panes.get(target.paneId);
 
   if (box === undefined) return null;
 
@@ -37,7 +33,7 @@ function DropPreview({ target }: { readonly target: SessionDropTarget }): ReactE
       aria-hidden="true"
       data-nyte-drop-preview=""
       {...props(intent.primary, sessionScreenStyles.dropPreview)}
-      style={boxStyle(dropPreviewBox(box, target), PANE_GAP)}
+      style={boxStyle(dropPreviewBox(box, target))}
     />
   );
 }

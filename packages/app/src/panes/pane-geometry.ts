@@ -1,18 +1,20 @@
 import type { CSSProperties } from "react";
+import { divide } from "./divide.ts";
 import { sizeWeight } from "./layout.ts";
 import type { Layout, LayoutNode, PaneId, SplitDirection, SplitId, TabContent } from "./layout.ts";
+import { add, CONTAINER, compose, constant, piecewiseCss, scale } from "./piecewise.ts";
+import type { Piecewise } from "./piecewise.ts";
 
-export interface Linear {
-  readonly px: number;
-  readonly fraction: number;
-  readonly gaps: number;
+export interface PaneMetrics {
+  readonly gap: number;
+  readonly minimum: number;
 }
 
 export interface Box {
-  readonly x: Linear;
-  readonly y: Linear;
-  readonly width: Linear;
-  readonly height: Linear;
+  readonly x: Piecewise;
+  readonly y: Piecewise;
+  readonly width: Piecewise;
+  readonly height: Piecewise;
 }
 
 export interface Separator {
@@ -32,29 +34,40 @@ interface Placed {
   readonly separators: readonly Separator[];
 }
 
-const ZERO: Linear = { px: 0, fraction: 0, gaps: 0 };
+const WHOLE: Box = { x: constant(0), y: constant(0), width: CONTAINER, height: CONTAINER };
 
-const WHOLE: Box = {
-  x: ZERO,
-  y: ZERO,
-  width: { px: 0, fraction: 1, gaps: 0 },
-  height: { px: 0, fraction: 1, gaps: 0 },
-};
-
-export function layoutGeometry<Content extends TabContent>(layout: Layout<Content>): Geometry {
-  const placed = place(layout.root, WHOLE);
+export function layoutGeometry<Content extends TabContent>(
+  layout: Layout<Content>,
+  metrics: PaneMetrics,
+): Geometry {
+  const placed = place(layout.root, WHOLE, metrics);
 
   return { panes: new Map(placed.panes), separators: placed.separators };
 }
 
+/** The smallest length a node takes along a direction before its panes go below their minimum. */
+export function minimumLength<Content extends TabContent>(
+  node: LayoutNode<Content>,
+  direction: SplitDirection,
+  metrics: PaneMetrics,
+): number {
+  if (node.kind === "pane") return metrics.minimum;
+  const lengths = node.children.map((child) => minimumLength(child.node, direction, metrics));
+
+  if (node.direction !== direction) return Math.max(...lengths);
+
+  return (
+    lengths.reduce((sum, length) => sum + length, 0) + (node.children.length - 1) * metrics.gap
+  );
+}
+
 export function boxStyle(
   box: Box,
-  gap: string,
 ): Required<
   Pick<CSSProperties, "insetInlineStart" | "insetBlockStart" | "inlineSize" | "blockSize">
 > {
-  const inline = snappedSpan(box.x, box.width, "100cqi", gap);
-  const block = snappedSpan(box.y, box.height, "100cqb", gap);
+  const inline = snappedSpan(box.x, box.width, "100cqi");
+  const block = snappedSpan(box.y, box.height, "100cqb");
 
   return {
     insetInlineStart: inline.start,
@@ -64,60 +77,51 @@ export function boxStyle(
   };
 }
 
-function snappedSpan(start: Linear, length: Linear, extent: string, gap: string) {
-  const from = `round(${linearCss(start, extent, gap)}, 1px)`;
-  const to = `round(${linearCss(add(start, length), extent, gap)}, 1px)`;
+function snappedSpan(start: Piecewise, length: Piecewise, extent: string) {
+  const from = `round(${piecewiseCss(start, extent)}, 1px)`;
+  const to = `round(${piecewiseCss(add(start, length), extent)}, 1px)`;
 
   return { start: from, size: `calc(${to} - ${from})` };
 }
 
-function linearCss(value: Linear, extent: string, gap: string): string {
-  const terms = [
-    value.px === 0 ? undefined : `${format(value.px)}px`,
-    value.fraction === 0 ? undefined : `${format(value.fraction)} * ${extent}`,
-    value.gaps === 0 ? undefined : `${format(value.gaps)} * ${gap}`,
-  ].filter((term) => term !== undefined);
-
-  if (terms.length === 0) return "0px";
-
-  return value.fraction === 0 && value.gaps === 0
-    ? `${format(value.px)}px`
-    : `calc(${terms.join(" + ")})`;
-}
-
-function place<Content extends TabContent>(node: LayoutNode<Content>, box: Box): Placed {
+function place<Content extends TabContent>(
+  node: LayoutNode<Content>,
+  box: Box,
+  metrics: PaneMetrics,
+): Placed {
   if (node.kind === "pane") return { panes: [[node.id, box]], separators: [] };
   const across = node.direction === "right";
   const start = across ? box.x : box.y;
   const extent = across ? box.width : box.height;
+  const count = node.children.length - 1;
+  const gap = constant(metrics.gap);
+  const space = add(extent, constant(-count * metrics.gap));
 
-  const pixels = node.children.reduce(
-    (sum, child) => sum + (typeof child.size === "number" ? 0 : child.size.px),
-    0,
+  const shares = divide(
+    node.children.map((child) => ({
+      px: typeof child.size === "number" ? undefined : child.size.px,
+      weight: sizeWeight(child.size),
+      min: minimumLength(child.node, node.direction, metrics),
+    })),
   );
 
-  const weights = node.children.reduce((sum, child) => sum + sizeWeight(child.size), 0);
+  const lengths = shares.map((share) => compose(share, space));
 
-  const free = add(extent, { px: -pixels, fraction: 0, gaps: 1 - node.children.length });
-  const last = node.children.at(-1);
-  const gap: Linear = { px: 0, fraction: 0, gaps: 1 };
-
-  const along = (at: Linear, length: Linear): Box =>
+  const along = (at: Piecewise, length: Piecewise): Box =>
     across ? { ...box, x: at, width: length } : { ...box, y: at, height: length };
 
   const laid = node.children.reduce(
-    (state: { readonly offset: Linear; readonly placed: Placed }, child, index) => {
-      const length =
-        child === last
-          ? subtract(add(start, extent), state.offset)
-          : typeof child.size === "number"
-            ? scale(free, weights === 0 ? 0 : child.size / weights)
-            : { px: child.size.px, fraction: 0, gaps: 0 };
+    (state: { readonly offset: Piecewise; readonly placed: Placed }, child, index) => {
+      const last = index === count;
 
-      const inner = merge(state.placed, place(child.node, along(state.offset, length)));
+      const length = last
+        ? add(add(start, extent), scale(state.offset, -1))
+        : (lengths[index] ?? constant(0));
+
+      const inner = merge(state.placed, place(child.node, along(state.offset, length), metrics));
       const end = add(state.offset, length);
 
-      if (child === last) return { offset: end, placed: inner };
+      if (last) return { offset: end, placed: inner };
 
       const separator: Separator = {
         split: node.id,
@@ -142,24 +146,4 @@ function merge(left: Placed, right: Placed): Placed {
     panes: [...left.panes, ...right.panes],
     separators: [...left.separators, ...right.separators],
   };
-}
-
-function add(left: Linear, right: Linear): Linear {
-  return {
-    px: left.px + right.px,
-    fraction: left.fraction + right.fraction,
-    gaps: left.gaps + right.gaps,
-  };
-}
-
-function subtract(left: Linear, right: Linear): Linear {
-  return add(left, scale(right, -1));
-}
-
-function scale(value: Linear, factor: number): Linear {
-  return { px: value.px * factor, fraction: value.fraction * factor, gaps: value.gaps * factor };
-}
-
-function format(value: number): string {
-  return String(Number(value.toFixed(6)));
 }

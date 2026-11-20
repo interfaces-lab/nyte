@@ -2,7 +2,8 @@ import type { ClientRect } from "@dnd-kit/core";
 import type { SessionId } from "@nyte-ai/sdk";
 import { layoutPanes } from "./layout.ts";
 import type { Layout, LayoutAction, PaneId, SplitDirection } from "./layout.ts";
-import type { Box, Linear } from "./pane-geometry.ts";
+import type { Box } from "./pane-geometry.ts";
+import { add, scale } from "./piecewise.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import {
   activeSelection,
@@ -126,13 +127,13 @@ export function dropPreviewBox(box: Box, target: SessionDropTarget): Box {
     case "center":
       return box;
     case "left":
-      return { ...box, width: half(box.width) };
+      return { ...box, width: scale(box.width, 0.5) };
     case "right":
-      return { ...box, x: plus(box.x, half(box.width)), width: half(box.width) };
+      return { ...box, x: add(box.x, scale(box.width, 0.5)), width: scale(box.width, 0.5) };
     case "top":
-      return { ...box, height: half(box.height) };
+      return { ...box, height: scale(box.height, 0.5) };
     case "bottom":
-      return { ...box, y: plus(box.y, half(box.height)), height: half(box.height) };
+      return { ...box, y: add(box.y, scale(box.height, 0.5)), height: scale(box.height, 0.5) };
     default: {
       const _exhaustive: never = target.placement;
 
@@ -273,16 +274,4 @@ function unhideSession(
     ...inPane(layout, command.pane, { kind: "session", sessionId: command.sessionId }),
     { kind: "focus", pane: keep },
   ];
-}
-
-function half(value: Linear): Linear {
-  return { px: value.px / 2, fraction: value.fraction / 2, gaps: value.gaps / 2 };
-}
-
-function plus(left: Linear, right: Linear): Linear {
-  return {
-    px: left.px + right.px,
-    fraction: left.fraction + right.fraction,
-    gaps: left.gaps + right.gaps,
-  };
 }

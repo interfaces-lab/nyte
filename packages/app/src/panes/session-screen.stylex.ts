@@ -30,6 +30,8 @@ export const sessionScreenStyles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "clip",
+    /** Always on, so covering the panes doesn't change containment and restyle the document. */
+    contain: "style",
   },
   panesCovered: { contentVisibility: "hidden" },
   /** A Code window's chat panel sits after the editor. */
