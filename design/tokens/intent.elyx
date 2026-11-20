@@ -1,0 +1,116 @@
+// Generated from @nyte-ai/ui (platform-colors and the compiled roles). Regenerate instead of editing.
+import "./intent-dark.elyx" as dark
+
+// Intent scopes (surface-theme intent): primary is blue with the accent button fill, success green, warning yellow, danger red with accent secondary ink.
+// Each carries only the roles a hue scope recolours; read every other colour from color.role.
+@variants(dark.primary)
+export primary = tokens {
+  content-primary: #222f3e,
+  content-secondary: #2b4a6d,
+  content-tertiary: #2865a4,
+  content-quaternary: #3783d1,
+  content-disabled: #a0c0e4,
+  content-accent: #3c5f85,
+  content-on-interactive-strong: #ffffff,
+  content-on-control: #ffffff,
+  stroke-primary: #5f5e59,
+  stroke-secondary: #006ec649,
+  stroke-tertiary: #0d71c731,
+  stroke-quaternary: #2a80d51a,
+  stroke-accent: #3884d2,
+  fill-primary: #006ec649,
+  fill-secondary: #2a80d51a,
+  fill-tertiary: #197cd613,
+  bg-interactive-strong: #3884d2,
+  bg-control-selected: #3884d2,
+  bg-control-selected-hover: #2e7bc8,
+  bg-control-selected-pressed: #1f6eba,
+  button-fill: #3884d2,
+  button-fill-hover: #2e7bc8,
+  button-fill-pressed: #1f6eba,
+  chart-series: #417ebf
+}
+
+@variants(dark.success)
+export success = tokens {
+  content-primary: #1b3424,
+  content-secondary: #065830,
+  content-tertiary: #007a3a,
+  content-quaternary: #009e4a,
+  content-disabled: #9acca9,
+  content-accent: #116d3e,
+  content-on-interactive-strong: #ffffff,
+  content-on-control: #ffffff,
+  stroke-primary: #5f5e59,
+  stroke-secondary: #00741041,
+  stroke-tertiary: #00690d28,
+  stroke-quaternary: #006d1317,
+  stroke-accent: #00ab56,
+  fill-primary: #00741041,
+  fill-secondary: #006d1317,
+  fill-tertiary: #006a0410,
+  bg-interactive-strong: #00ab56,
+  bg-control-selected: #00a450,
+  bg-control-selected-hover: #009a47,
+  bg-control-selected-pressed: #008d3a,
+  button-fill: #008532,
+  button-fill-hover: #007d2a,
+  button-fill-pressed: #00721f,
+  chart-series: #179c5a
+}
+
+@variants(dark.warning)
+export warning = tokens {
+  content-primary: #392b1e,
+  content-secondary: #714410,
+  content-tertiary: #9e4800,
+  content-quaternary: #c56200,
+  content-disabled: #ffb95d,
+  content-accent: #955a14,
+  content-on-interactive-strong: #ffffff,
+  content-on-control: #ffffff,
+  stroke-primary: #5f5e59,
+  stroke-secondary: #ff900078,
+  stroke-tertiary: #ffa61c55,
+  stroke-quaternary: #ff8d0025,
+  stroke-accent: #f79000,
+  fill-primary: #ff900078,
+  fill-secondary: #ff8d0025,
+  fill-tertiary: #ff900019,
+  bg-interactive-strong: #f79000,
+  bg-control-selected: #cb6800,
+  bg-control-selected-hover: #c15f00,
+  bg-control-selected-pressed: #b25100,
+  button-fill: #aa4900,
+  button-fill-hover: #a14100,
+  button-fill-pressed: #953600,
+  chart-series: #e28600
+}
+
+@variants(dark.danger)
+export danger = tokens {
+  content-primary: #47211f,
+  content-secondary: #a63536,
+  content-tertiary: #c90007,
+  content-quaternary: #ef002e,
+  content-disabled: #f0a5a0,
+  content-accent: #a63536,
+  content-on-interactive-strong: #ffffff,
+  content-on-control: #ffffff,
+  stroke-primary: #5f5e59,
+  stroke-secondary: #e7000041,
+  stroke-tertiary: #f400002a,
+  stroke-quaternary: #ff000018,
+  stroke-accent: #ff3042,
+  fill-primary: #e7000041,
+  fill-secondary: #ff000018,
+  fill-tertiary: #ff000010,
+  bg-interactive-strong: #ff3042,
+  bg-control-selected: #f71635,
+  bg-control-selected-hover: #eb002b,
+  bg-control-selected-pressed: #db001b,
+  button-fill: #d10010,
+  button-fill-hover: #c70002,
+  button-fill-pressed: #ba0000,
+  chart-series: #ee052f
+}

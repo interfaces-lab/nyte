@@ -1,0 +1,910 @@
+import "./app-icon.elyx" as plates
+import "./arrangements.elyx" as arr
+
+// Every arrangement on every plate, one row per arrangement, plus one crescent turned in 45° steps.
+// Retune a plate in app-icon.elyx, a placement in arrangements.elyx, or the crescent in moon.elyx.
+singleRow = frame {
+  title: "One",
+  left: 0px,
+  top: 0px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [
+    singleNight,
+    singleDusk,
+    singleTwilight,
+    singleHaze,
+    singleInk,
+    singleIndigo,
+    singleMist,
+    singlePaper
+  ],
+
+  singleNight = frame : plates.appIcon {
+    caption: "Night"
+  }
+
+  singleDusk = frame : plates.dusk {
+    caption: "Dusk"
+  }
+
+  singleTwilight = frame : plates.twilight {
+    caption: "Twilight"
+  }
+
+  singleHaze = frame : plates.haze {
+    caption: "Haze"
+  }
+
+  singleInk = frame : plates.ink {
+    caption: "Ink"
+  }
+
+  singleIndigo = frame : plates.indigo {
+    caption: "Indigo"
+  }
+
+  singleMist = frame : plates.mist {
+    caption: "Mist"
+  }
+
+  singlePaper = frame : plates.paper {
+    caption: "Paper"
+  }
+}
+
+pairRow = frame {
+  title: "Two, facing",
+  left: 0px,
+  top: 1424px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [
+    pairNight,
+    pairDusk,
+    pairTwilight,
+    pairHaze,
+    pairInk,
+    pairIndigo,
+    pairMist,
+    pairPaper
+  ],
+
+  pairNight = frame : plates.appIcon {
+    caption: "Night",
+
+    plate {
+      @with-variant(arr.pair)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pairDusk = frame : plates.dusk {
+    caption: "Dusk",
+
+    plate {
+      @with-variant(arr.pair)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pairTwilight = frame : plates.twilight {
+    caption: "Twilight",
+
+    plate {
+      @with-variant(arr.pair)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pairHaze = frame : plates.haze {
+    caption: "Haze",
+
+    plate {
+      @with-variant(arr.pair)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pairInk = frame : plates.ink {
+    caption: "Ink",
+
+    plate {
+      @with-variant(arr.pair)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pairIndigo = frame : plates.indigo {
+    caption: "Indigo",
+
+    plate {
+      @with-variant(arr.pair)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pairMist = frame : plates.mist {
+    caption: "Mist",
+
+    plate {
+      @with-variant(arr.pair)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pairPaper = frame : plates.paper {
+    caption: "Paper",
+
+    plate {
+      @with-variant(arr.pair)
+      art {
+        left: 0px
+      }
+    }
+  }
+}
+
+trioRow = frame {
+  title: "Three, facing",
+  left: 0px,
+  top: 2848px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [
+    trioNight,
+    trioDusk,
+    trioTwilight,
+    trioHaze,
+    trioInk,
+    trioIndigo,
+    trioMist,
+    trioPaper
+  ],
+
+  trioNight = frame : plates.appIcon {
+    caption: "Night",
+
+    plate {
+      @with-variant(arr.trio)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  trioDusk = frame : plates.dusk {
+    caption: "Dusk",
+
+    plate {
+      @with-variant(arr.trio)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  trioTwilight = frame : plates.twilight {
+    caption: "Twilight",
+
+    plate {
+      @with-variant(arr.trio)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  trioHaze = frame : plates.haze {
+    caption: "Haze",
+
+    plate {
+      @with-variant(arr.trio)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  trioInk = frame : plates.ink {
+    caption: "Ink",
+
+    plate {
+      @with-variant(arr.trio)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  trioIndigo = frame : plates.indigo {
+    caption: "Indigo",
+
+    plate {
+      @with-variant(arr.trio)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  trioMist = frame : plates.mist {
+    caption: "Mist",
+
+    plate {
+      @with-variant(arr.trio)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  trioPaper = frame : plates.paper {
+    caption: "Paper",
+
+    plate {
+      @with-variant(arr.trio)
+      art {
+        left: 0px
+      }
+    }
+  }
+}
+
+quadRow = frame {
+  title: "Four corners, facing",
+  left: 0px,
+  top: 4272px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [
+    quadNight,
+    quadDusk,
+    quadTwilight,
+    quadHaze,
+    quadInk,
+    quadIndigo,
+    quadMist,
+    quadPaper
+  ],
+
+  quadNight = frame : plates.appIcon {
+    caption: "Night",
+
+    plate {
+      @with-variant(arr.quad)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadDusk = frame : plates.dusk {
+    caption: "Dusk",
+
+    plate {
+      @with-variant(arr.quad)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadTwilight = frame : plates.twilight {
+    caption: "Twilight",
+
+    plate {
+      @with-variant(arr.quad)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadHaze = frame : plates.haze {
+    caption: "Haze",
+
+    plate {
+      @with-variant(arr.quad)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadInk = frame : plates.ink {
+    caption: "Ink",
+
+    plate {
+      @with-variant(arr.quad)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadIndigo = frame : plates.indigo {
+    caption: "Indigo",
+
+    plate {
+      @with-variant(arr.quad)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadMist = frame : plates.mist {
+    caption: "Mist",
+
+    plate {
+      @with-variant(arr.quad)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadPaper = frame : plates.paper {
+    caption: "Paper",
+
+    plate {
+      @with-variant(arr.quad)
+      art {
+        left: 0px
+      }
+    }
+  }
+}
+
+quadOutRow = frame {
+  title: "Four corners, turned out",
+  left: 0px,
+  top: 5696px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [
+    quadOutNight,
+    quadOutDusk,
+    quadOutTwilight,
+    quadOutHaze,
+    quadOutInk,
+    quadOutIndigo,
+    quadOutMist,
+    quadOutPaper
+  ],
+
+  quadOutNight = frame : plates.appIcon {
+    caption: "Night",
+
+    plate {
+      @with-variant(arr.quadOut)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadOutDusk = frame : plates.dusk {
+    caption: "Dusk",
+
+    plate {
+      @with-variant(arr.quadOut)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadOutTwilight = frame : plates.twilight {
+    caption: "Twilight",
+
+    plate {
+      @with-variant(arr.quadOut)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadOutHaze = frame : plates.haze {
+    caption: "Haze",
+
+    plate {
+      @with-variant(arr.quadOut)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadOutInk = frame : plates.ink {
+    caption: "Ink",
+
+    plate {
+      @with-variant(arr.quadOut)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadOutIndigo = frame : plates.indigo {
+    caption: "Indigo",
+
+    plate {
+      @with-variant(arr.quadOut)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadOutMist = frame : plates.mist {
+    caption: "Mist",
+
+    plate {
+      @with-variant(arr.quadOut)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  quadOutPaper = frame : plates.paper {
+    caption: "Paper",
+
+    plate {
+      @with-variant(arr.quadOut)
+      art {
+        left: 0px
+      }
+    }
+  }
+}
+
+crossRow = frame {
+  title: "Four sides, facing",
+  left: 0px,
+  top: 7120px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [
+    crossNight,
+    crossDusk,
+    crossTwilight,
+    crossHaze,
+    crossInk,
+    crossIndigo,
+    crossMist,
+    crossPaper
+  ],
+
+  crossNight = frame : plates.appIcon {
+    caption: "Night",
+
+    plate {
+      @with-variant(arr.cross)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  crossDusk = frame : plates.dusk {
+    caption: "Dusk",
+
+    plate {
+      @with-variant(arr.cross)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  crossTwilight = frame : plates.twilight {
+    caption: "Twilight",
+
+    plate {
+      @with-variant(arr.cross)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  crossHaze = frame : plates.haze {
+    caption: "Haze",
+
+    plate {
+      @with-variant(arr.cross)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  crossInk = frame : plates.ink {
+    caption: "Ink",
+
+    plate {
+      @with-variant(arr.cross)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  crossIndigo = frame : plates.indigo {
+    caption: "Indigo",
+
+    plate {
+      @with-variant(arr.cross)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  crossMist = frame : plates.mist {
+    caption: "Mist",
+
+    plate {
+      @with-variant(arr.cross)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  crossPaper = frame : plates.paper {
+    caption: "Paper",
+
+    plate {
+      @with-variant(arr.cross)
+      art {
+        left: 0px
+      }
+    }
+  }
+}
+
+pinwheelRow = frame {
+  title: "Four, swirling",
+  left: 0px,
+  top: 8544px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [
+    pinwheelNight,
+    pinwheelDusk,
+    pinwheelTwilight,
+    pinwheelHaze,
+    pinwheelInk,
+    pinwheelIndigo,
+    pinwheelMist,
+    pinwheelPaper
+  ],
+
+  pinwheelNight = frame : plates.appIcon {
+    caption: "Night",
+
+    plate {
+      @with-variant(arr.pinwheel)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pinwheelDusk = frame : plates.dusk {
+    caption: "Dusk",
+
+    plate {
+      @with-variant(arr.pinwheel)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pinwheelTwilight = frame : plates.twilight {
+    caption: "Twilight",
+
+    plate {
+      @with-variant(arr.pinwheel)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pinwheelHaze = frame : plates.haze {
+    caption: "Haze",
+
+    plate {
+      @with-variant(arr.pinwheel)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pinwheelInk = frame : plates.ink {
+    caption: "Ink",
+
+    plate {
+      @with-variant(arr.pinwheel)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pinwheelIndigo = frame : plates.indigo {
+    caption: "Indigo",
+
+    plate {
+      @with-variant(arr.pinwheel)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pinwheelMist = frame : plates.mist {
+    caption: "Mist",
+
+    plate {
+      @with-variant(arr.pinwheel)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  pinwheelPaper = frame : plates.paper {
+    caption: "Paper",
+
+    plate {
+      @with-variant(arr.pinwheel)
+      art {
+        left: 0px
+      }
+    }
+  }
+}
+
+ringRow = frame {
+  title: "Six, facing",
+  left: 0px,
+  top: 9968px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [
+    ringNight,
+    ringDusk,
+    ringTwilight,
+    ringHaze,
+    ringInk,
+    ringIndigo,
+    ringMist,
+    ringPaper
+  ],
+
+  ringNight = frame : plates.appIcon {
+    caption: "Night",
+
+    plate {
+      @with-variant(arr.ring)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  ringDusk = frame : plates.dusk {
+    caption: "Dusk",
+
+    plate {
+      @with-variant(arr.ring)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  ringTwilight = frame : plates.twilight {
+    caption: "Twilight",
+
+    plate {
+      @with-variant(arr.ring)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  ringHaze = frame : plates.haze {
+    caption: "Haze",
+
+    plate {
+      @with-variant(arr.ring)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  ringInk = frame : plates.ink {
+    caption: "Ink",
+
+    plate {
+      @with-variant(arr.ring)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  ringIndigo = frame : plates.indigo {
+    caption: "Indigo",
+
+    plate {
+      @with-variant(arr.ring)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  ringMist = frame : plates.mist {
+    caption: "Mist",
+
+    plate {
+      @with-variant(arr.ring)
+      art {
+        left: 0px
+      }
+    }
+  }
+
+  ringPaper = frame : plates.paper {
+    caption: "Paper",
+
+    plate {
+      @with-variant(arr.ring)
+      art {
+        left: 0px
+      }
+    }
+  }
+}
+
+turnsRow = frame {
+  title: "One, turned (Night)",
+  left: 0px,
+  top: 11392px,
+  width: .auto,
+  height: .auto,
+  layout: {stack: {item-gap: 200px}},
+  children: [turn0, turn45, turn90, turn135, turn180, turn225, turn270, turn315],
+
+  turn0 = frame : plates.appIcon {
+    caption: "0°",
+
+    plate {
+      art {
+        moonA {
+          transform: [1, 0, 208, 0, 1, 136]
+        }
+      }
+    }
+  }
+
+  turn45 = frame : plates.appIcon {
+    caption: "45°",
+
+    plate {
+      art {
+        moonA {
+          transform: [0.7071, -0.7071, 462.91, 0.7071, 0.7071, 72.5887]
+        }
+      }
+    }
+  }
+
+  turn90 = frame : plates.appIcon {
+    caption: "90°",
+
+    plate {
+      art {
+        moonA {
+          transform: [0, -1, 688, 1, 0, 208]
+        }
+      }
+    }
+  }
+
+  turn135 = frame : plates.appIcon {
+    caption: "135°",
+
+    plate {
+      art {
+        moonA {
+          transform: [-0.7071, -0.7071, 751.41, 0.7071, -0.7071, 462.91]
+        }
+      }
+    }
+  }
+
+  turn180 = frame : plates.appIcon {
+    caption: "180°",
+
+    plate {
+      art {
+        moonA {
+          transform: [-1, 0, 616, 0, -1, 688]
+        }
+      }
+    }
+  }
+
+  turn225 = frame : plates.appIcon {
+    caption: "225°",
+
+    plate {
+      art {
+        moonA {
+          transform: [-0.7071, 0.7071, 361.0883, -0.7071, -0.7071, 751.41]
+        }
+      }
+    }
+  }
+
+  turn270 = frame : plates.appIcon {
+    caption: "270°",
+
+    plate {
+      art {
+        moonA {
+          transform: [0, 1, 136, -1, 0, 616]
+        }
+      }
+    }
+  }
+
+  turn315 = frame : plates.appIcon {
+    caption: "315°",
+
+    plate {
+      art {
+        moonA {
+          transform: [0.7071, 0.7071, 72.5887, -0.7071, 0.7071, 361.0883]
+        }
+      }
+    }
+  }
+}

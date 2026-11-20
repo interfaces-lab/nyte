@@ -1,0 +1,75 @@
+// One lit crescent: a disc minus a bite, with a soft glow under it. The bite faces up-right.
+// Arrangements place, turn and scale it with `transform`, pivoting on the disc's center (240, 240).
+export moon = frame {
+  left: 0px,
+  top: 0px,
+  width: 480px,
+  height: 480px,
+  children: [glow, crescent],
+
+  glow = shape {
+    left: -16px,
+    top: 56px,
+    width: 440px,
+    height: 440px,
+    opacity: 0.5,
+    fill: rgb(47.84%, 57.6471%, 83.92%),
+    filter: {type: .gaussian-blur, radius: 120px},
+    type: .ellipse
+  }
+
+  crescent = boolean {
+    left: 0px,
+    top: 0px,
+    width: 480px,
+    height: 480px,
+    fill: {
+      radial-gradient: {
+        at: point(72%, 38%),
+        angle: 0deg,
+        radius: 110%,
+        stops: [
+          stop(0%, rgb(86.27%, 89.8%, 98.43%)),
+          stop(45%, rgb(66.27%, 73.7255%, 92.549%)),
+          stop(100%, rgb(30.5882%, 40%, 70.98%))
+        ]
+      }
+    },
+    shadow: [
+      {
+        drop-shadow: {
+          color: rgb(16.47%, 18.82%, 88.6274%, 20%),
+          offset: point(0px, 60px),
+          blur-radius: 120px
+        }
+      },
+      {
+        inner-shadow: {
+          color: rgb(100%, 100%, 100%, 60%),
+          offset: point(-12px, 12px),
+          blur-radius: 28px
+        }
+      }
+    ],
+    operation: .subtract,
+    children: [disc, bite],
+
+    disc = shape {
+      left: 0px,
+      top: 0px,
+      width: 480px,
+      height: 480px,
+      fill: .black,
+      type: .ellipse
+    }
+
+    bite = shape {
+      left: 196px,
+      top: -44px,
+      width: 324px,
+      height: 324px,
+      fill: .black,
+      type: .ellipse
+    }
+  }
+}
