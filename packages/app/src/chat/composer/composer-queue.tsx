@@ -1,7 +1,7 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
 import type { MessageId, UserContent } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
@@ -25,6 +25,8 @@ interface ComposerQueueProps {
   readonly mac: boolean;
   readonly onEdit: (message: UserMessage) => void;
   readonly onSteer: (message: UserMessage) => void;
+  /** Moves the message right after `after`, or first when it is null. */
+  readonly onMove: (message: UserMessage, after: MessageId | null) => void;
   readonly onCancel: (message: UserMessage) => void;
   readonly onRemoveUnsent: (message: UserMessage) => void;
   readonly onResend: (message: UserMessage) => void;
@@ -65,6 +67,7 @@ export function ComposerQueue({
   mac,
   onEdit,
   onSteer,
+  onMove,
   onCancel,
   onRemoveUnsent,
   onResend,
@@ -73,7 +76,20 @@ export function ComposerQueue({
 }: ComposerQueueProps): ReactElement | null {
   const listRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<UserMessage["id"]>();
+  const moving = useRef<UserMessage["id"]>(undefined);
   const count = pending.length + unsent.length;
+  const order = pending.map((item) => item.id).join(" ");
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- keeps DOM focus on a row moved by keyboard: reordering reinserts rows, which drops focus.
+  useLayoutEffect(() => {
+    const id = moving.current;
+
+    if (id === undefined || document.activeElement !== document.body) return;
+    moving.current = undefined;
+    const row = listRef.current?.querySelector(`[data-queue-row="${CSS.escape(id)}"]`);
+
+    if (row instanceof HTMLElement) row.focus({ preventScroll: true });
+  }, [order]);
 
   if (count === 0) return null;
 
@@ -82,7 +98,18 @@ export function ComposerQueue({
   const deleteKey = mac ? "Meta+Backspace" : "Control+Delete";
 
   const unsentDescription = `${mac ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`;
-  const description = `Enter steers. Space or Right Arrow edits. ${unsentDescription}`;
+  const moveKey = mac ? "Option" : "Alt";
+  const description = `Enter steers. Space or Right Arrow edits. ${moveKey}+Up Arrow or ${moveKey}+Down Arrow moves. ${unsentDescription}`;
+
+  const placeAfter = (item: UserMessage, step: -1 | 1): MessageId | null | undefined => {
+    const index = pending.findIndex((queued) => queued.id === item.id);
+
+    if (index < 0) return undefined;
+
+    if (step === 1) return pending[index + 1]?.id;
+
+    return index === 0 ? undefined : (pending[index - 2]?.id ?? null);
+  };
 
   const release = (button: Element): void => {
     if (button === document.activeElement) onReturn();
@@ -94,6 +121,25 @@ export function ComposerQueue({
     unsentRow: boolean,
   ): void => {
     if (event.defaultPrevented || event.target !== event.currentTarget) return;
+
+    if (!unsentRow && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      const action = rowActions.get(item.id);
+      const after = placeAfter(item, event.key === "ArrowUp" ? -1 : 1);
+
+      if (
+        event.repeat ||
+        after === undefined ||
+        editingId === item.id ||
+        action?.kind === "sending" ||
+        action?.kind === "cancelling"
+      )
+        return;
+      moving.current = item.id;
+      onMove(item, after);
+
+      return;
+    }
 
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
@@ -174,6 +220,8 @@ export function ComposerQueue({
           const action = rowActions.get(item.id);
           const editingThis = editingId === item.id;
           const busyRow = action?.kind === "cancelling" || action?.kind === "sending";
+          const above = placeAfter(item, -1);
+          const below = placeAfter(item, 1);
 
           return (
             <div
@@ -181,7 +229,7 @@ export function ComposerQueue({
               key={item.id}
               data-queue-row={item.id}
               tabIndex={focusKey === item.id ? 0 : -1}
-              aria-keyshortcuts={`ArrowUp ArrowDown Enter Space ArrowRight Escape ${deleteKey}`}
+              aria-keyshortcuts={`ArrowUp ArrowDown Alt+ArrowUp Alt+ArrowDown Enter Space ArrowRight Escape ${deleteKey}`}
               aria-description={description}
               onFocus={() => setActive(item.id)}
               onKeyDown={(event) => keyDown(event, item, false)}
@@ -231,6 +279,28 @@ export function ComposerQueue({
                       onClick={(event) => {
                         release(event.currentTarget);
                         onSteer(item);
+                      }}
+                    />
+                  )}
+                  {above !== undefined && (
+                    <Button
+                      iconOnly
+                      icon="arrow-up"
+                      aria-label="Move Up"
+                      onClick={(event) => {
+                        release(event.currentTarget);
+                        onMove(item, above);
+                      }}
+                    />
+                  )}
+                  {below !== undefined && (
+                    <Button
+                      iconOnly
+                      icon="arrow-down"
+                      aria-label="Move Down"
+                      onClick={(event) => {
+                        release(event.currentTarget);
+                        onMove(item, below);
                       }}
                     />
                   )}

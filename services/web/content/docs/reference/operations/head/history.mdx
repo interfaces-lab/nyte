@@ -277,6 +277,37 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                                       "type": "string"
                                     }
                                   }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "path", "frame", "start", "end"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "design"
+                                    },
+                                    "path": {
+                                      "type": "string"
+                                    },
+                                    "frame": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "start": {
+                                      "type": "integer",
+                                      "minimum": 0
+                                    },
+                                    "end": {
+                                      "type": "integer",
+                                      "minimum": 0
+                                    }
+                                  }
                                 }
                               ]
                             },
@@ -974,6 +1005,37 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                                   },
                                   "title": {
                                     "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "path", "frame", "start", "end"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "design"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "frame": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "start": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  "end": {
+                                    "type": "integer",
+                                    "minimum": 0
                                   }
                                 }
                               }

@@ -372,6 +372,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       session(id).head(head).compact({ instructions }),
     "head.revise": ({ session: id, head, message, content, options }) =>
       session(id).head(head).revise(message, content, options),
+    "head.reorder": ({ session: id, head, message, after }) =>
+      session(id).head(head).reorder(message, { after }),
     "head.hold": ({ session: id, head, message }) => wire.hold(id, head, message),
     "head.release": async ({ session: id, head, message }) => {
       await wire.release(id, head, message);

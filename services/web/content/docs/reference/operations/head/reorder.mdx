@@ -1,0 +1,141 @@
+---
+title: head.reorder
+description: Moves a message that has not been sent yet to another place in the queue.
+---
+
+Moves a message that is still queued on a head to another place in the queue. The message keeps
+its id, content and delivery; `before_send` hooks don't run again. `after` names the queued message
+it goes right after, or is `null` to put it first. Moving never starts a run or sends anything.
+
+It answers `moved` once the message is in its new place, `sent` once it has started (and changes
+nothing), `missing` when it was withdrawn or isn't queued on this head, and `stale` when `after` is
+no longer queued, so the client can read the queue again and retry.
+
+Steered messages still go to the run at its next boundary wherever they sit; the order decides which
+lands first and which message starts the next run.
+
+## When to call it
+
+When the user reorders queued messages, for example with Move Up and Move Down in the queue. To change
+what a queued message says, use [`head.revise`](/docs/reference/operations/head/revise).
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "message": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b",
+  "after": null
+}
+```
+
+Response:
+
+```json
+{ "kind": "moved" }
+```
+
+## Errors
+
+- `invalid` when the message is still being decided by the `before_send` hooks:
+  `Message <id> is still being decided.`
+- `invalid` when `after` is the message itself.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "message", "after"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "after": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "moved"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "sent"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

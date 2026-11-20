@@ -9,6 +9,8 @@ import {
   MoveOptionsType,
   MoveOutcomeType,
   RemoveHeadOutcomeSchema,
+  ReorderOutcomeType,
+  ReorderPlaceType,
   ReviseOptionsType,
   ReviseOutcomeType,
   SendOptionsType,
@@ -246,6 +248,18 @@ export const SESSION_OPERATIONS = {
       options: Type.Optional(ReviseOptionsType),
     }),
     output: wireSchema(ReviseOutcomeType),
+  },
+  "head.reorder": {
+    ...PARTICIPANT,
+    mcp: "write",
+    summary: "Moves a message that has not been sent yet to another place in the queue.",
+    kind: "command",
+    input: wireObject({
+      ...HEAD,
+      message: idSchema<"message">(),
+      ...ReorderPlaceType.properties,
+    }),
+    output: wireSchema(ReorderOutcomeType),
   },
   "head.hold": {
     ...PARTICIPANT,

@@ -99,6 +99,7 @@ succeeds without recording a change.
 | `sessionId`, `name`                       |                                 | The chat and the head's name                                                                                  |
 | `send(content, options?)`                 | `Promise<SendReceipt>`          | Sends a message. See [send options](#send-options)                                                            |
 | `revise(message, content, { delivery? })` | `Promise<ReviseOutcome>`        | Changes a queued message. `revised`, `sent` or `missing`                                                      |
+| `reorder(message, { after })`             | `Promise<ReorderOutcome>`       | Moves a queued message after `after`, or first when it's `null`. `moved`, `sent`, `missing` or `stale`        |
 | `hold(message)`                           | `Promise<HoldOutcome>`          | Keeps a queued message from starting while it's edited. See [Held messages](#held-messages)                   |
 | `configure(patch)`                        | `Promise<ConfigureOutcome>`     | Changes model, thinking level, agent or settings. `configured`, `unknown-model`, `unknown-agent` or `invalid` |
 | `view({ tail? })`                         | `Promise<SessionView>`          | The transcript and state now                                                                                  |

@@ -11,6 +11,7 @@
     "move",
     "compact",
     "revise",
+    "reorder",
     "hold",
     "release"
   ]

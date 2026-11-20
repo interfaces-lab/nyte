@@ -22,6 +22,7 @@ import type { Head } from "../contract/session.ts";
 import { reviseQueued, send, sendNow } from "../engine/admission.ts";
 import { leaseHold, releaseHold } from "../engine/holds.ts";
 import { move } from "../engine/move.ts";
+import { reorderQueued } from "../engine/reorder.ts";
 import { configure } from "../extend/settings.ts";
 import { commit } from "../watch/commit.ts";
 import { walkCommitPath } from "../fold/paths.ts";
@@ -75,6 +76,7 @@ export function headHandle(
     send: (content, options) =>
       (activation ? sendNow : send)(kernel, { session, head, context, content, options }),
     revise,
+    reorder: (message, place) => reorderQueued(kernel, { session, head, message, place }),
     hold: (message) =>
       holdMessage(message, {
         hold: () => leaseHold(kernel, session, head, message),

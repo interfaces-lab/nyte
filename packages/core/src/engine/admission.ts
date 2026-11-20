@@ -203,7 +203,7 @@ export async function readDeparture(
   return landed === null ? { kind: "missing" } : { kind: "sent" };
 }
 
-async function refuseDeciding(kernel: Kernel, session: SessionId, message: MessageId) {
+export async function refuseDeciding(kernel: Kernel, session: SessionId, message: MessageId) {
   const input = await withFold(kernel, session, (state) => state.inputs.get(message));
 
   if (input?.schedule.kind === "deciding")
@@ -234,6 +234,7 @@ export function selectRunStart(
   return report ?? null;
 }
 
+/** With `start`, lands nothing unless the prompt `ids` were selected for is still the one the inbox it writes would select, so a reorder or revision after selection makes the caller select again. Beside that prompt it lands only the ids still delivered as steers or attaches, as run-start selection takes them. */
 export async function landing(
   kernel: Kernel,
   session: SessionId,
@@ -251,20 +252,39 @@ export async function landing(
     const held = inbox.hold?.message;
 
     if (start !== null && held !== undefined && ids.includes(held)) return [];
-    const due = inbox.messages.filter((message) => ids.includes(message) && message !== held);
 
-    if (due.length === 0) return [];
+    const candidates = inbox.messages.filter(
+      (message) => ids.includes(message) && message !== held,
+    );
 
-    const { inputs, siblings, starts } = await withFold(kernel, session, (state) => ({
-      inputs: due.map((message) => state.inputs.get(message)),
-      siblings: state.siblings.get(tip.id) ?? [],
-      starts:
+    if (candidates.length === 0) return [];
+
+    const { due, inputs, siblings, starts } = await withFold(kernel, session, (state) => {
+      const select = (messages: readonly MessageId[]) =>
         selectRunStart(
           state,
           head,
-          due.flatMap((message) => state.inputs.get(message) ?? []),
-        ) !== null,
-    }));
+          messages.flatMap((message) => state.inputs.get(message) ?? []),
+        )?.input.id;
+
+      const chosen = start === null ? undefined : select(ids);
+
+      const landable =
+        start === null
+          ? candidates
+          : candidates.filter((message) => {
+              const delivery = state.inputs.get(message)?.delivery;
+
+              return message === chosen || delivery === "attach" || delivery === "steer";
+            });
+
+      return {
+        due: landable,
+        inputs: landable.map((message) => state.inputs.get(message)),
+        siblings: state.siblings.get(tip.id) ?? [],
+        starts: chosen !== undefined && chosen === select(inbox.messages),
+      };
+    });
 
     if (start !== null && !starts) return [];
 

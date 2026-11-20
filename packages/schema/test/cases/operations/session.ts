@@ -148,6 +148,16 @@ export const sessionOperations = {
     { kind: "revised" },
     { kind: "edited" },
   ),
+  "head.reorder input": operation(
+    OPERATIONS["head.reorder"].input,
+    { ...headInput, message, after: null },
+    { ...headInput, message },
+  ),
+  "head.reorder output": operation(
+    OPERATIONS["head.reorder"].output,
+    { kind: "stale" },
+    { kind: "revised" },
+  ),
   "head.hold input": operation(
     OPERATIONS["head.hold"].input,
     { ...headInput, message },

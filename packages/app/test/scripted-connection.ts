@@ -162,6 +162,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
         return refuse();
       },
       revise: refuse,
+      reorder: refuse,
       hold: refuse,
       configure: refuse,
       view: async () => {
@@ -366,12 +367,15 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     },
     part: (id, part) => partStore(views(id), part),
     text: () => () => undefined,
-    clients: () => ({
-      subscribe: () => () => undefined,
-      snapshot: () => new Map(),
-      close: () => undefined,
-    }),
-    perform: refuse,
+    clients: {
+      read: async () => [],
+      open: () => ({
+        subscribe: () => () => undefined,
+        snapshot: () => new Map(),
+        close: () => undefined,
+      }),
+    },
+    client: () => ({ perform: refuse }),
     offer: () => () => undefined,
     close: async () => undefined,
     [Symbol.asyncDispose]: async () => undefined,

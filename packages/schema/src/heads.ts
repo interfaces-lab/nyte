@@ -102,6 +102,21 @@ export const ReviseOutcomeType = Type.Union([
 
 export type ReviseOutcome = Decoded<typeof ReviseOutcomeType>;
 
+/** Where `reorder` puts a queued message: right after `after`, or first when it is null. */
+export const ReorderPlaceType = Type.Object({ after: nullable(idSchema<"message">()) });
+
+export type ReorderPlace = Decoded<typeof ReorderPlaceType>;
+
+/** `sent` and `missing` mean the message left the queue; `stale` means `after` did. */
+export const ReorderOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("moved") }),
+  Type.Object({ kind: Type.Literal("sent") }),
+  Type.Object({ kind: Type.Literal("missing") }),
+  Type.Object({ kind: Type.Literal("stale") }),
+]);
+
+export type ReorderOutcome = Decoded<typeof ReorderOutcomeType>;
+
 export const MoveOptionsType = Type.Object({
   running: Type.Optional(Type.Enum(["refuse", "stop"])),
   abandoned: Type.Optional(ABANDONED),

@@ -26,6 +26,8 @@ import type {
   RemoveHeadOutcome,
   RemoveSessionOutcome,
   RequestOptions,
+  ReorderOutcome,
+  ReorderPlace,
   ReviseOptions,
   ReviseOutcome,
   Revision,
@@ -190,6 +192,9 @@ export interface Head {
   send(content: UserContent, options?: SendOptions): Promise<SendReceipt>;
 
   revise(message: MessageId, content: UserContent, options?: ReviseOptions): Promise<ReviseOutcome>;
+
+  /** Moves a queued message, keeping its id, content and delivery. Never starts a run or lands anything. */
+  reorder(message: MessageId, place: ReorderPlace): Promise<ReorderOutcome>;
 
   hold(message: MessageId): Promise<HoldOutcome>;
 

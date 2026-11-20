@@ -151,6 +151,16 @@ export function createClient(transport: Transport, context: ClientContext): Clie
       },
     },
     settings: { apply: (id, value) => rows.call("settings.apply", { id, value }) },
+    clients: { read: () => rows.call("clients.read", {}) },
+    client: (id) => ({
+      perform: (action, input, options) =>
+        rows.call("client.perform", {
+          client: id,
+          action,
+          input,
+          timeoutMs: options?.timeoutMs,
+        }),
+    }),
     github: {
       account: () => rows.call("github.account", {}),
       signIn: () => rows.call("github.signIn", {}),
@@ -261,6 +271,8 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       return sendReceipt(rows, session, sent.receipt, sent.message);
     },
     revise,
+    reorder: (message, place) =>
+      rows.call("head.reorder", { session, head, message, after: place.after }),
     hold: (message) =>
       holdMessage(message, {
         hold: () => rows.call("head.hold", { session, head, message }),
