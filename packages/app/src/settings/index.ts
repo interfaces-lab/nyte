@@ -3,7 +3,9 @@ export { SettingsNavigation } from "./navigation.tsx";
 export {
   firstSettingsSection,
   showsSettingsSection,
+  namesCustomSection,
   settingsSectionGroups,
+  type OpenSection,
   type SettingsSection,
 } from "./sections.ts";
 

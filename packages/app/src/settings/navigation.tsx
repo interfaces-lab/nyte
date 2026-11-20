@@ -8,17 +8,19 @@ import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Row } from "@nyte-ai/ui/row";
 import { sidebarStyles as rail } from "../sidebar/sidebar.stylex.ts";
 import { SETTINGS_PAGES, type PageInfo } from "./pages.ts";
-import { settingsSectionGroups, type SettingsSection } from "./sections.ts";
+import { hostWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
+import { placePluginSettings } from "./plugin-pages.ts";
+import { customSection, settingsSectionGroups } from "./sections.ts";
+import type { OpenSection, SettingsSection } from "./sections.ts";
 import { closeSettings } from "./return.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
-export function SettingsNavigation({
-  section,
-}: {
-  readonly section: SettingsSection;
-}): ReactElement {
+export function SettingsNavigation({ section }: { readonly section: OpenSection }): ReactElement {
   const router = useRouter();
   const sectionGroups = settingsSectionGroups();
+  const plugins = useWatchSelect(hostWatch("host"), (state) => state.value?.plugins) ?? [];
+  const settings = useWatchSelect(hostWatch("host"), (state) => state.value?.settings) ?? [];
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [highlight, setHighlight] = useState(0);
@@ -39,6 +41,10 @@ export function SettingsNavigation({
 
   const highlighted = results === undefined ? undefined : Math.min(highlight, results.length - 1);
   const groups = results === undefined ? sectionGroups : [results];
+
+  const pages = [...placePluginSettings(plugins, settings).custom.keys()].filter(
+    (title) => query === "" || title.toLocaleLowerCase().includes(query),
+  );
 
   const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === "Escape") {
@@ -133,7 +139,34 @@ export function SettingsNavigation({
             ))}
           </div>
         ))}
-        {results?.length === 0 && (
+        {pages.length > 0 && (
+          <div {...props(styles.navList)}>
+            {pages.map((title) => (
+              <Row
+                key={title}
+                variant="nav"
+                selected={section === customSection(title)}
+                render={
+                  <Link
+                    to="/settings/$section"
+                    params={{ section: customSection(title) }}
+                    preload="render"
+                    replace
+                  />
+                }
+                aria-current={section === customSection(title) ? "page" : undefined}
+                onClick={() => setSearch("")}
+                xstyle={rail.navRow}
+              >
+                <Row.Leading xstyle={rail.navLeading}>
+                  <Icon name="cube" size="sm" />
+                </Row.Leading>
+                <Row.Label>{title}</Row.Label>
+              </Row>
+            ))}
+          </div>
+        )}
+        {results?.length === 0 && pages.length === 0 && (
           <span {...props(text.sm, styles.emptyNavigation)}>No matching settings</span>
         )}
       </div>

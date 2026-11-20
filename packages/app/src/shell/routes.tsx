@@ -34,6 +34,7 @@ import { openWindowInEditor } from "../commands/window-commands.ts";
 import { ProjectOverview } from "../projects/project-overview.tsx";
 import {
   firstSettingsSection,
+  namesCustomSection,
   showsSettingsSection,
   routeSettings,
   SettingsSurface,
@@ -232,7 +233,7 @@ export const settingsRoute = createRoute({
   path: "/settings/$section",
   params: {
     parse: ({ section }) => {
-      if (!showsSettingsSection(section)) {
+      if (!showsSettingsSection(section) && !namesCustomSection(section)) {
         throw redirect({
           to: "/settings/$section",
           params: { section: firstSettingsSection() },

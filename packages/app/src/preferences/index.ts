@@ -180,6 +180,7 @@ export const preferences = {
     {},
   ),
   developerMode: definePreference({ key: "nyte:developer-mode:v1" }, Type.Boolean(), false),
+  remoteControl: definePreference({ key: "nyte:remote-control:v1" }, Type.Boolean(), false),
   projects: definePreference({ key: "nyte:projects:v1" }, Type.Boolean(), true),
 } as const;
 

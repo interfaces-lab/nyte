@@ -18,6 +18,7 @@ export const SETTINGS_SECTIONS = {
     needs: ["desktop"],
     keywords: [
       "remote access",
+      "remote control",
       "tailscale",
       "pair",
       "qr code",
@@ -178,13 +179,6 @@ export const SETTINGS_SECTIONS = {
     needs: [],
     keywords: ["env", "environment", ".env", "secret", "api key", "token", "variables"],
   },
-  "web-search": {
-    icon: "search",
-    title: "Web search",
-    group: "tools",
-    needs: [],
-    keywords: ["api key", "exa", "tavily", "firecrawl", "parallel", "search provider"],
-  },
   "source-control": {
     icon: "git-branch",
     title: "Source control",
@@ -240,9 +234,29 @@ export const SETTINGS_SECTIONS = {
 
 export type SettingsSection = keyof typeof SETTINGS_SECTIONS;
 
+/** A page plugins named themselves: the text their settings gave as `page`. */
+export type CustomSection = `page:${string}`;
+
+/** Whatever the settings route can show: one of the app's sections, or a page plugins named. */
+export type OpenSection = SettingsSection | CustomSection;
+
+const CUSTOM = "page:";
+
+export function customSection(title: string): CustomSection {
+  return `${CUSTOM}${title}`;
+}
+
+export function namesCustomSection(value: string): value is CustomSection {
+  return value.startsWith(CUSTOM) && value.length > CUSTOM.length;
+}
+
+export function readCustomSection(section: CustomSection): string {
+  return section.slice(CUSTOM.length);
+}
+
 const ORDER = Object.keys(SETTINGS_SECTIONS).filter(namesSettingsSection);
 
-function namesSettingsSection(value: string): value is SettingsSection {
+export function namesSettingsSection(value: string): value is SettingsSection {
   return Object.hasOwn(SETTINGS_SECTIONS, value);
 }
 

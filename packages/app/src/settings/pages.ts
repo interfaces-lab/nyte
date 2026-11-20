@@ -14,7 +14,6 @@ import { TerminalSettings } from "./terminal.tsx";
 import { ThemesSettings } from "./themes.tsx";
 import { VariablesSettings } from "./variables.tsx";
 import { SourceControlSettings } from "./source-control.tsx";
-import { WebSearchSettings } from "./web-search.tsx";
 import { loadDeferred } from "../lib/deferred.tsx";
 import { SETTINGS_SECTIONS } from "./sections.ts";
 import type { SectionInfo, SettingsSection } from "./sections.ts";
@@ -54,7 +53,6 @@ export const SETTINGS_PAGES = {
   editor: { ...SETTINGS_SECTIONS.editor, Page: EditorSettings, prefetch: prefetchPreviews },
   terminal: { ...SETTINGS_SECTIONS.terminal, Page: TerminalSettings, prefetch: prefetchPreviews },
   variables: { ...SETTINGS_SECTIONS.variables, Page: VariablesSettings },
-  "web-search": { ...SETTINGS_SECTIONS["web-search"], Page: WebSearchSettings },
   "source-control": { ...SETTINGS_SECTIONS["source-control"], Page: SourceControlSettings },
   browser: { ...SETTINGS_SECTIONS.browser, Page: BrowserSettings },
   developer: { ...SETTINGS_SECTIONS.developer, Page: DeveloperSettings },

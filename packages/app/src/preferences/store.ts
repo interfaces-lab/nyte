@@ -1,3 +1,4 @@
+import type { Json } from "@nyte-ai/sdk";
 import { useSyncExternalStore } from "react";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
@@ -18,6 +19,10 @@ export interface Setting<T> {
 
 export interface Preference<T> extends Setting<T> {
   readonly get: () => T;
+  /** What a value of this preference has to match. */
+  readonly schema: TSchema;
+  /** Sets the preference to `value` when it matches `schema`. Returns false, changing nothing, when it does not. */
+  readonly accept: (value: Json) => boolean;
 }
 
 export function useSetting<T>(setting: Preference<T>): T;
@@ -82,14 +87,22 @@ export function definePreference<S extends TSchema>(
     },
   });
 
+  const accept = (next: Json): boolean => {
+    if (!Value.Check(schema, next)) return false;
+
+    if (sameValue(next, value)) return true;
+    value = next;
+    notify();
+    write(slot, next);
+
+    return true;
+  };
+
   return {
     get: () => value,
-    set: (next) => {
-      if (sameValue(next, value) || !Value.Check(schema, next)) return;
-      value = next;
-      notify();
-      write(slot, next);
-    },
+    set: (next) => void accept(next),
+    schema,
+    accept,
     subscribe: (listener) => {
       listeners.add(listener);
 

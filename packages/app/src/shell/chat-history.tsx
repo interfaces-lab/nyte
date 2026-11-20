@@ -1,12 +1,8 @@
-import { useRouter } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { clientActionAriaShortcut, clientActions } from "../contract/client-actions.ts";
 import { useHostState } from "../data/host.ts";
 import { useRootRows } from "../data/session-rows.ts";
-import { usePaneActions } from "../panes/pane-context.tsx";
-import { folderPicker } from "../panes/open-workspace.tsx";
-import type { SettingsSection } from "../settings/index.ts";
 import { SearchPalette } from "../sidebar/search-palette.tsx";
 import { shellActions, useOverlays } from "../tabs/shell-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -20,8 +16,6 @@ const RECENT_LIMIT = 20;
  * latest chats first. A chat it opens replaces the one in the chat panel.
  */
 export function ChatHistory({ mac }: { readonly mac: boolean }): ReactElement {
-  const router = useRouter();
-  const panes = usePaneActions();
   const open = useOverlays().search;
   const workspace = useHostState().data.workspace;
   const roots = useRootRows();
@@ -32,9 +26,6 @@ export function ChatHistory({ mac }: { readonly mac: boolean }): ReactElement {
     .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)
     .slice(0, RECENT_LIMIT);
 
-  const openSettings = (section: SettingsSection): void =>
-    void router.navigate({ to: "/settings/$section", params: { section } });
-
   return (
     <SearchPalette
       open={open}
@@ -44,14 +35,10 @@ export function ChatHistory({ mac }: { readonly mac: boolean }): ReactElement {
         windowTabs.openChat(sessionId, "permanent");
         revealChatPanel(view);
       }}
-      onNewChat={() => {
-        panes.newChat();
-        revealChatPanel(view);
+      home={false}
+      onRan={(action) => {
+        if (action === "chat.new") revealChatPanel(view);
       }}
-      onOpenFolder={folderPicker()}
-      onOpenHome={undefined}
-      onOpenSettings={openSettings}
-      onOpenCustomize={() => shellActions.openCustomize(undefined)}
       trigger={
         <Button
           iconOnly

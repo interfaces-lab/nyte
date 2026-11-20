@@ -82,7 +82,6 @@ import type { DesktopHost } from "../host/desktop-host.ts";
 import { bridgeHostPort, startHostRuntime } from "./host-runtime.ts";
 import { createHostTray } from "./host-tray.ts";
 import type { HostTray } from "./host-tray.ts";
-import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import type { HostRuntime } from "./host-runtime.ts";
 import type { HostWindow, WindowEnd } from "../shared/host-window.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
@@ -822,7 +821,7 @@ function showHostTray(): void {
     openSettings: () => {
       app.focus({ steal: true });
       const window = currentWindow() ?? restoreWindows();
-      window.menuCommands.dispatch({ kind: "action", action: clientActions.settings.id });
+      window.menuCommands.dispatch({ kind: "action", action: "settings.open", input: {} });
     },
   });
 }

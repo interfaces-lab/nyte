@@ -2,12 +2,12 @@ import { nativeImage } from "electron";
 import type { App, BaseWindow, MenuItemConstructorOptions, WebContents } from "electron";
 import type {
   AppInfo,
-  AppMenuAction,
   AppMenuCommand,
   BrowserKey,
   BrowserNavigationAction,
 } from "@nyte-ai/app/contract/bridge.ts";
 import { clientActionAccelerator, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
+import type { RunnableAction } from "@nyte-ai/app/contract/client-actions.ts";
 import { shortcutCharacter } from "@nyte-ai/app/contract/browser-shortcuts.ts";
 
 export type ViewCommand = Extract<
@@ -55,23 +55,27 @@ export function applicationMenuTemplate(options: {
     click: () => options.dispatch({ kind: "about", info: options.appInfo() }),
   };
 
-  const action = (
-    definition: Extract<(typeof clientActions)[keyof typeof clientActions], { id: AppMenuAction }>,
-  ): MenuItemConstructorOptions => {
+  const action = (definition: RunnableAction): MenuItemConstructorOptions => {
     const accelerator = clientActionAccelerator(definition);
 
     return {
       label: definition.label,
       accelerator: accelerator === "" ? undefined : accelerator,
-      click: () => options.dispatch({ kind: "action", action: definition.id }),
+      click: () =>
+        options.dispatch({
+          kind: "action",
+          action: definition.action,
+          input: definition.input ?? {},
+        }),
     };
   };
 
   const settings = action(clientActions.settings);
 
-  const command = (
-    definition: Extract<(typeof clientActions)[keyof typeof clientActions], { id: AppMenuAction }>,
-  ): MenuItemConstructorOptions => ({ ...action(definition), registerAccelerator: false });
+  const command = (definition: RunnableAction): MenuItemConstructorOptions => ({
+    ...action(definition),
+    registerAccelerator: false,
+  });
 
   const fileActions = [
     { label: "New Window", accelerator: "Shift+CommandOrControl+N", click: options.newWindow },
