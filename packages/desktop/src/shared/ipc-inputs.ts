@@ -138,6 +138,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.openExternal": compile(strict({ url: Type.String() })),
   "host.confirmExternal": compile(strict({ url: Type.String() })),
   "host.revealPath": compile(strict({ path: nonEmpty })),
+  "host.openInBrowser": compile(strict({ path: nonEmpty })),
   "host.openPluginsFolder": compile(noInput),
   "host.contextMenu": compile(
     strict({

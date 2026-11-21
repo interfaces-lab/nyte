@@ -19,7 +19,7 @@ import {
 } from "@nyte-ai/ui/menu";
 import { Input } from "@nyte-ai/ui/input";
 import { Switch } from "@nyte-ai/ui/switch";
-import { AGENT_PROVIDERS, modelIcon, providerIcon } from "../chat/composer/model-picker-state.ts";
+import { providerIcon } from "../chat/composer/model-picker-state.ts";
 import { nyte } from "../contract/nyte.ts";
 import type { DesktopModelOption, ProviderStatus } from "../data/catalog.ts";
 import {
@@ -69,7 +69,6 @@ const popularProviders = [
 
 const outsideSignIn = new Map([
   ["claude-code", "Install Claude Code and run claude once to sign in"],
-  ["acp", "Install an ACP agent such as Codex, Gemini CLI, or Cursor"],
 ]);
 
 function ModelList({
@@ -80,17 +79,13 @@ function ModelList({
   models: readonly DesktopModelOption[];
 }): ReactElement {
   const setListing = useSetListing();
-  const agents = AGENT_PROVIDERS.has(provider.id);
+  const agents = provider.agent;
   const hidden = models.filter((option) => option.listing === "hidden");
 
   return (
     <div {...props(styles.modelPanel)}>
       <div {...props(text.sm, styles.modelPanelHeader)}>
-        <span>
-          {agents
-            ? "Pick an agent from the composer\u2019s model menu. Starred agents show first"
-            : "Pick a model from the composer\u2019s model menu. Starred models show first"}
-        </span>
+        <span>Pick a model from the composer’s model menu. Starred models show first</span>
         {models.length > 1 && (
           <Button
             size="sm"
@@ -118,7 +113,6 @@ function ModelList({
           return (
             <li key={option.key} {...props(styles.modelRow)}>
               <span {...props(text.base, styles.modelName, !shown && styles.modelHidden)}>
-                {agents && <Icon name={modelIcon(option)} size="md" />}
                 <span {...props(styles.modelNameText)}>{option.name}</span>
                 {!agents && (
                   <span {...props(text.sm, styles.modelMeta)}>
@@ -157,15 +151,7 @@ function ModelList({
   );
 }
 
-function modelSummary(provider: ProviderStatus, models: readonly DesktopModelOption[]): string {
-  if (AGENT_PROVIDERS.has(provider.id)) {
-    const names = models.map((option) => option.name);
-
-    return names.length <= 3
-      ? names.join(", ")
-      : `${names.slice(0, 2).join(", ")}, and ${names.length - 2} more`;
-  }
-
+function modelSummary(models: readonly DesktopModelOption[]): string {
   const shown = models.filter((option) => option.listing !== "hidden").length;
   const favorites = models.filter((option) => option.listing === "favorite").length;
 
@@ -413,7 +399,7 @@ function ProviderRow({
     (!disconnected
       ? unknown || models.length === 0
         ? undefined
-        : modelSummary(provider, models)
+        : modelSummary(models)
       : (popular?.description ??
         (browser !== undefined && apiKey !== undefined
           ? "Sign in, or add an API key"
@@ -421,7 +407,10 @@ function ProviderRow({
             ? "Add an API key to connect"
             : browser !== undefined
               ? "Sign in to connect"
-              : (outsideSignIn.get(provider.id) ?? "Connects through the environment"))));
+              : (outsideSignIn.get(provider.id) ??
+                (provider.agent
+                  ? `Install ${provider.name} and sign in from a terminal`
+                  : "Connects through the environment")))));
 
   const signsInHere = browser !== undefined || apiKey !== undefined;
   const canSignOut = !disconnected && !unknown && signsInHere;
@@ -571,7 +560,7 @@ function ProviderRow({
                   setModelsOpen((open) => !open);
                 }}
               >
-                {AGENT_PROVIDERS.has(provider.id) ? "Agents" : "Models"}
+                Models
                 <span {...props(srOnly)}> for {provider.name}</span>
                 <Icon name={modelsOpen ? "chevron-down" : "chevron-right"} size="xs" />
               </Button>

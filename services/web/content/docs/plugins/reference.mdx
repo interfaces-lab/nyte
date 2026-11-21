@@ -16,6 +16,7 @@ Import core plugin types from `@nyte-ai/plugin/core` and client plugin types fro
 | `activate`    | Both | `(api) => { contribute, hooks }`, run when the plugin starts. See [`activate`](#activate)                 |
 | `environment` | Core | An environment provider: where the agent's files and commands live                                        |
 | `approve`     | Core | Decides whether a call another agent runtime asks to run may run. Returns `allow` or `deny` with a reason |
+| `provider`    | Core | A model provider for the whole host, such as an agent's models. Read from built-in and home plugins only  |
 
 A core plugin starts once per chat, so `activate` runs once for each chat that loads it. A client
 plugin starts once per app.

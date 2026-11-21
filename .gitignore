@@ -51,3 +51,5 @@ __pycache__/
 /services/web/src/routes/good-nyte.tsx
 /services/web/src/routes/_site/_landing/good-nyte-3.tsx
 /services/web/src/styles/good-nyte.css
+
+/design/

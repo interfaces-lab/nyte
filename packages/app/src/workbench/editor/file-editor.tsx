@@ -564,8 +564,7 @@ export function TextFileEditor({
 
   const save = async (): Promise<void> => {
     await buffer.save({
-      write: (input) =>
-        saveFile.mutateAsync({ path: input.path, contents: input.contents, expect: input.version }),
+      write: (input) => saveFile.mutateAsync({ ...input, expect: input.version }),
       format:
         formatOnSave && workspace !== undefined
           ? async (input) => (await filesFor(workspace)).format(input.path, input.contents)

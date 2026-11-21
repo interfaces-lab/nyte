@@ -1,4 +1,5 @@
 import type { Document, FileVersion, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
+import type { TextEncoding } from "@nyte-ai/schema";
 import type { EditorChange } from "@nyte-ai/ui/diffs/edit";
 import { errorMessage } from "../../contract/errors.ts";
 
@@ -7,6 +8,7 @@ type TextFile = Extract<Document, { readonly kind: "text" }>;
 interface FileSaveInput {
   readonly path: string;
   readonly contents: string;
+  readonly encoding: TextEncoding;
   readonly version: FileVersion;
 }
 
@@ -59,6 +61,7 @@ export interface DocumentEditor {
  */
 export function createFileDocument(document: TextFile, draft?: string) {
   let path = document.path;
+  let encoding = document.encoding;
   let held = draft ?? document.contents;
   let heldLength = flatLength(held);
   let savedLength = flatLength(document.contents);
@@ -135,6 +138,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
   };
 
   const reload = (next: TextFile): void => {
+    encoding = next.encoding;
     setText(next.contents);
     savedLength = flatLength(next.contents);
     publish({
@@ -166,7 +170,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
     publish({ ...snapshot, status: { kind: "saving" } });
 
     try {
-      const input = { path, contents: unformatted, version: captured.version };
+      const input = { path, contents: unformatted, encoding, version: captured.version };
 
       const formatted = await operations.format?.(input);
 

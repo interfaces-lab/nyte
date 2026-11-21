@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,8 +14,6 @@ import { afterEach, assert, beforeEach, expect, it } from "vitest";
 import approvalsPlugin from "../src/approvals/approvals.ts";
 import { openApprovals, PERMISSIONS } from "../src/approvals/schema.ts";
 import { acpAgents } from "../src/acp/index.ts";
-import type { AcpAgent } from "../src/acp/index.ts";
-import { installedAgents, registryEntries } from "../src/acp/registry.ts";
 import { env as chatOnly, until } from "./fake-models.ts";
 
 const AGENT = fileURLToPath(new URL("./fixtures/acp-agent.mjs", import.meta.url));
@@ -95,28 +93,24 @@ function pipeJob(
 }
 
 async function openHost(gate: Plugin<"core">) {
-  const acp = acpAgents({
-    agents: async (): Promise<readonly AcpAgent[]> => [
-      {
-        id: "fake",
-        name: "Fake Agent",
-        command: process.execPath,
-        args: [AGENT],
-        env: { ACP_LOG: join(dir, "log") },
-      },
-      {
-        id: "crash",
-        name: "Crash Agent",
-        command: process.execPath,
-        args: ["-e", "process.stderr.write('no config found\\n'); process.exit(3)"],
-        env: {},
-      },
-    ],
-  });
+  const acp = acpAgents([
+    {
+      id: "fake",
+      name: "Fake Agent",
+      command: process.execPath,
+      args: [AGENT],
+      env: { ACP_LOG: join(dir, "log") },
+    },
+    {
+      id: "crash",
+      name: "Crash Agent",
+      command: process.execPath,
+      args: ["-e", "process.stderr.write('no config found\\n'); process.exit(3)"],
+      env: {},
+    },
+  ]);
 
   const models = createModels();
-  models.setProvider(acp.provider);
-  await models.refresh({ providers: ["acp"], allowNetwork: false });
   const jobs: Job[] = [];
 
   const env: ExecutionEnv = {
@@ -151,7 +145,7 @@ async function openHost(gate: Plugin<"core">) {
           attach: async () => env,
         },
       },
-      acp.plugin,
+      ...acp,
       gate,
     ],
     workspace: { kind: "chat-only", locator: null },
@@ -192,7 +186,7 @@ it("fails the turn with the agent's last words when it exits before answering", 
 
   const { receipt } = await opened.host.sessions.start({
     content: "Hi.",
-    configuration: { model: { provider: "acp", id: "crash" } },
+    configuration: { model: { provider: "crash", id: "crash" } },
   });
 
   const end = await receipt.settled();
@@ -204,12 +198,13 @@ it("fails the turn with the agent's last words when it exits before answering", 
 it("publishes the agent as a model that queues follow-ups", async () => {
   await using opened = await openHost(refuseDeletes);
   const catalog = await opened.host.models.list();
-  const provider = catalog.providers.find((entry) => entry.id === "acp");
+  const provider = catalog.providers.find((entry) => entry.id === "fake");
 
-  expect(provider?.name).toBe("ACP agents");
+  expect(provider?.name).toBe("Fake Agent");
+  expect(provider?.agent).toBe(true);
   expect(provider?.models[0]).toEqual(
     expect.objectContaining({
-      ref: { provider: "acp", id: "fake" },
+      ref: { provider: "fake", id: "fake" },
       name: "Fake Agent",
       capabilities: { steer: false },
     }),
@@ -221,7 +216,7 @@ it("runs a turn whose tool calls ask permission through the before_tool gate", a
 
   const { session, receipt } = await opened.host.sessions.start({
     content: "Use tools.",
-    configuration: { model: { provider: "acp", id: "fake" } },
+    configuration: { model: { provider: "fake", id: "fake" } },
   });
 
   const end = await receipt.settled();
@@ -267,7 +262,7 @@ it.each([
 
     const { session, receipt } = await opened.host.sessions.start({
       content,
-      configuration: { model: { provider: "acp", id: "fake" } },
+      configuration: { model: { provider: "fake", id: "fake" } },
     });
 
     const [asked] = await until(async () => {
@@ -295,7 +290,7 @@ it("stops a run by cancelling the agent's turn", async () => {
 
   const { session, receipt } = await opened.host.sessions.start({
     content: "Please wait.",
-    configuration: { model: { provider: "acp", id: "fake" } },
+    configuration: { model: { provider: "fake", id: "fake" } },
   });
 
   await until(async () =>
@@ -321,67 +316,4 @@ it("stops a run by cancelling the agent's turn", async () => {
         : undefined;
     }),
   ).toContainEqual({ method: "session/cancel" });
-});
-
-it("offers only the registry agents installed on this machine, an npx one by its own bin", async () => {
-  const windows = process.platform === "win32";
-  const bin = join(dir, "prefix", "bin");
-  const modules = windows ? join(bin, "node_modules") : join(dir, "prefix", "lib", "node_modules");
-  const gemini = join(modules, "@google", "gemini-cli");
-  const qwen = join(modules, "@qwen-code", "qwen-code");
-  await mkdir(bin, { recursive: true });
-  await mkdir(gemini, { recursive: true });
-  await mkdir(qwen, { recursive: true });
-  await writeFile(join(gemini, "package.json"), JSON.stringify({ bin: { gemini: "index.js" } }));
-  await writeFile(join(gemini, "index.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
-  const geminiCommand = join(bin, windows ? "gemini.cmd" : "gemini");
-  if (windows)
-    await writeFile(
-      geminiCommand,
-      '@node "%~dp0\\node_modules\\@google\\gemini-cli\\index.js" %*\r\n',
-    );
-  else await symlink(join(gemini, "index.js"), geminiCommand);
-  await writeFile(join(qwen, "package.json"), JSON.stringify({ bin: { qwen: "cli.js" } }));
-  await writeFile(join(qwen, "cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
-
-  for (const name of ["npx", "goose", "qwen"])
-    await writeFile(join(bin, name), "#!/bin/sh\n", { mode: 0o755 });
-
-  const os = windows ? "windows" : process.platform;
-  const target = `${os}-${process.arch === "arm64" ? "aarch64" : "x86_64"}`;
-
-  const entries = registryEntries({
-    agents: [
-      {
-        id: "gemini",
-        name: "Gemini CLI",
-        distribution: { npx: { package: "@google/gemini-cli@0.64.0", args: ["--acp"] } },
-      },
-      {
-        id: "goose",
-        name: "goose",
-        distribution: {
-          binary: {
-            [target]: { archive: "https://example.test/goose.tgz", cmd: "./goose", args: ["acp"] },
-          },
-        },
-      },
-      {
-        id: "qwen-code",
-        name: "Qwen Code",
-        distribution: { npx: { package: "@qwen-code/qwen-code@0.25.2", args: ["--acp"] } },
-      },
-      {
-        id: "copilot",
-        name: "Copilot",
-        distribution: { npx: { package: "@github/copilot@1.0.98", args: ["--acp"] } },
-      },
-      { id: "broken", distribution: {} },
-    ],
-  });
-
-  expect(await installedAgents(entries, bin)).toEqual([
-    { id: "gemini", name: "Gemini CLI", command: geminiCommand, args: ["--acp"], env: {} },
-    { id: "goose", name: "goose", command: join(bin, "goose"), args: ["acp"], env: {} },
-  ]);
 });

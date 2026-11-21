@@ -32,6 +32,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/schema";
 import { SecretValueType, standard } from "@nyte-ai/schema";
+import type { Provider } from "@nyte-ai/ai";
 import { Type } from "typebox";
 import type { Connection, PluginStorage } from "./host.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
@@ -366,6 +367,8 @@ export type SideTable = {
     };
     plugin: {
       readonly environment?: EnvironmentProvider;
+      /** A model provider for the whole host, read from built-in and home plugins; a project or chat plugin's is ignored. Its models are offered in every chat, so a provider that needs the chat reads it through its plugin's `activate`. */
+      readonly provider?: Provider;
       readonly approve?: (
         call: RuntimeCall,
         context: { readonly api: PluginApi<"core">; readonly signal: AbortSignal },

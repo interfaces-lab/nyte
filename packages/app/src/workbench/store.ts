@@ -11,7 +11,7 @@ import type {
   WorkbenchViewKey,
   WorkbenchViewState,
 } from "./model.ts";
-import { workbenchScope, workbenchViewKey } from "./paths.ts";
+import { useWorkbenchViewKey, workbenchScope } from "./paths.ts";
 import type { WorkbenchPersistence } from "./persistence.ts";
 import { persistable, restoreSnapshot, workbenchPersistence } from "./persistence.ts";
 import { shownWorkbenchTab } from "./selectors.ts";
@@ -23,6 +23,7 @@ export interface WorkbenchStore {
   readonly getSnapshot: () => WorkbenchSnapshot;
   readonly getView: (key: WorkbenchViewKey) => WorkbenchViewState;
   readonly dispatch: (view: WorkbenchViewKey, action: WorkbenchViewAction) => void;
+  readonly move: (from: WorkbenchViewKey, into: WorkbenchViewKey) => void;
 }
 
 function freezeView(view: WorkbenchViewState): WorkbenchViewState {
@@ -45,6 +46,14 @@ export function createWorkbenchStore(
   const getView = (key: WorkbenchViewKey): WorkbenchViewState =>
     read().views.get(key) ?? DEFAULT_VIEW;
 
+  const write = (views: ReadonlyMap<WorkbenchViewKey, WorkbenchViewState>): void => {
+    const written = Object.freeze({ views });
+    snapshot = written;
+
+    for (const listener of listeners) listener();
+    persistence?.set(persistable(written));
+  };
+
   return Object.freeze({
     subscribe(listener: () => void) {
       listeners.add(listener);
@@ -58,11 +67,30 @@ export function createWorkbenchStore(
       const next = reduceView(current, action);
 
       if (next === current) return;
-      const written = Object.freeze({ views: new Map(read().views).set(key, freezeView(next)) });
-      snapshot = written;
+      write(new Map(read().views).set(key, freezeView(next)));
+    },
+    move(from: WorkbenchViewKey, into: WorkbenchViewKey) {
+      const views = new Map(read().views);
+      const source = views.get(from);
 
-      for (const listener of listeners) listener();
-      persistence?.set(persistable(written));
+      if (source === undefined) return;
+      const target = views.get(into);
+      views.delete(from);
+
+      const moved =
+        target === undefined
+          ? source
+          : source.tabs.reduce(
+              (view, tab) =>
+                reduceView(view, {
+                  kind: "open",
+                  tab: tab.kind === "file" ? { ...tab, group: view.group } : tab,
+                  activate: false,
+                }),
+              target,
+            );
+
+      write(views.set(into, freezeView(moved)));
     },
   });
 }
@@ -85,13 +113,13 @@ export function useWorkbenchSnapshot(): WorkbenchSnapshot {
 }
 
 export function useWorkbenchView(workspacePath: string | undefined) {
-  const key = workbenchViewKey(workspacePath);
+  const key = useWorkbenchViewKey(workspacePath);
   const read = (): WorkbenchViewState => workbench.getView(key);
 
   return {
     key,
     view: useSyncExternalStore(workbench.subscribe, read, read),
-    scope: workbenchScope(workspacePath),
+    scope: workbenchScope(key),
   };
 }
 
@@ -99,12 +127,14 @@ export function useVisibleCanvasTab(
   workspacePath: string | undefined,
   canvas: { readonly sessionId: SessionId; readonly part: PartId } | undefined,
 ): WorkbenchTabId | undefined {
+  const key = useWorkbenchViewKey(workspacePath);
+
   const read = (): WorkbenchTabId | undefined => {
     if (canvas === undefined) return undefined;
 
     const tab = shownWorkbenchTab(
-      workbench.getView(workbenchViewKey(workspacePath)),
-      workbenchScope(workspacePath),
+      workbench.getView(key),
+      workbenchScope(key),
       clientCapabilities(nyte.host),
     );
 

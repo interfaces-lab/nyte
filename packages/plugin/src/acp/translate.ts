@@ -12,8 +12,6 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
-export const ACP_PROVIDER = "acp";
-
 export const ACP_API = "acp";
 
 export const MIRROR_TOOL = "acp";

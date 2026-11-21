@@ -467,14 +467,6 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/lab/src/design-mode/overlay.tsx"],
-      rules: { "nyte-design/no-raw-colors": "off" },
-    },
-    {
-      files: ["packages/lab/src/design-canvas/northstar.tsx"],
-      rules: { "nyte-design/no-raw-colors": "off" },
-    },
-    {
       files: ["packages/lab/src/studio/films/**"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },

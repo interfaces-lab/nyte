@@ -10,6 +10,7 @@ function model(key: string): DesktopModelOption {
   return {
     key,
     provider: "test",
+    agent: false,
     id: key,
     name: key,
     contextWindow: 1_000,

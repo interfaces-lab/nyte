@@ -141,6 +141,8 @@ export interface Kernel {
 
   readonly modelState: ModelState;
 
+  readonly pluginProviders: PluginProviders;
+
   readonly partDefinitions: PartDefinitions;
 
   readonly partTable: PartTable;
@@ -183,6 +185,11 @@ export interface Kernel {
   stopStart(session: SessionId): Promise<MessageId | null>;
 
   releaseWorktree(session: SessionId, workspace: WorkspaceId): Promise<void>;
+}
+
+export interface PluginProviders {
+  sync(): Promise<void>;
+  close(): void;
 }
 
 export interface PluginHost {

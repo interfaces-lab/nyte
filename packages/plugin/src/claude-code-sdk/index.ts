@@ -46,7 +46,7 @@ const CLAUDE_CODE_MODEL: Model<Api> = {
   baseUrl: BASE_URL,
   reasoning: true,
   thinkingLevelMap: {
-    off: null,
+    off: "off",
     minimal: null,
     low: "low",
     medium: "medium",
@@ -257,6 +257,7 @@ export function claudeCodeSdk(start: StartQuery = query) {
 
   const plugin = {
     id: "claude-code-sdk",
+    provider,
     activate(api) {
       bindSession(bindings, api.session.id, { cwd: api.env.cwd }, api.signal);
 

@@ -24,7 +24,6 @@ import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
-import { useHostState } from "../data/host.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { patchDigest } from "../diff/changes-viewed.ts";
 import { localArea, readStored, writeStored } from "../lib/storage.ts";
@@ -38,6 +37,7 @@ import type { CanvasTheme } from "./canvas-theme.ts";
 import { openConversationLink } from "../chat/markdown/external-link.ts";
 import type { MentionFile } from "../data/files.ts";
 import { PartOrigin } from "../chat/transcript/part-origin.ts";
+import { useChatFolder } from "../chat/chat-folder.ts";
 import { linkReference, useCitableFiles } from "../chat/markdown/prose.tsx";
 import { useReferenceOpener } from "../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
@@ -290,7 +290,7 @@ function TranscriptCanvas({
 }): ReactElement {
   const origin = use(PartOrigin);
   const opener = useReferenceOpener();
-  const workspacePath = useHostState().data.workspace?.path;
+  const workspacePath = useChatFolder()?.path;
   const besideTab = useVisibleCanvasTab(workspacePath, origin);
   const title = state.title;
 

@@ -40,6 +40,7 @@ const model = (id: string, name: string): ModelInfo => ({
 const copilot: Catalog["providers"][number] = {
   id: "github-copilot",
   name: "GitHub Copilot",
+  agent: false,
   credential: "missing",
   methods: [{ kind: "oauth" }],
   limits: [],

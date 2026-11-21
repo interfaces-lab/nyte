@@ -10,7 +10,7 @@ import type {
   SessionId,
   ValidationIssue,
 } from "@nyte-ai/schema";
-import type { Models } from "@nyte-ai/ai";
+import type { MutableModels } from "@nyte-ai/ai/models";
 import { createCompactor, createSummarizer } from "./agent/compaction.ts";
 import { createRequest } from "./agent/request.ts";
 import { stoppableTool } from "./agent/tool-runner.ts";
@@ -37,6 +37,7 @@ import type {
 import type {
   Kernel,
   PluginHost,
+  PluginProviders,
   PluginRuntime,
   RunTable,
   SessionDirectory,
@@ -73,7 +74,12 @@ import { createPageTable } from "./env/browser.ts";
 import { createEnvironmentRegistry } from "./env/environment.ts";
 import { readMcpWorkspace } from "./env/mcp.ts";
 import { createWorkspaces, createWorkspaceState } from "./env/workspaces.ts";
-import { createConfigurationResolver, createModelsApi, rememberChoice } from "./extend/models.ts";
+import {
+  createConfigurationResolver,
+  createModelsApi,
+  createPluginProviders,
+  rememberChoice,
+} from "./extend/models.ts";
 import { pluginSecrets } from "./extend/plugin-api.ts";
 import {
   createPluginRuntime,
@@ -128,6 +134,11 @@ export type ComposeOptions = OpenOptions & {
 const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
 
 const INACTIVE: Activation = { kind: "inactive" };
+
+const NO_PLUGIN_PROVIDERS: PluginProviders = {
+  sync: async () => undefined,
+  close: () => undefined,
+};
 
 const NO_MODELS: ModelsApi = {
   list: async () => unavailable("models"),
@@ -209,6 +220,7 @@ export async function composeServer(
   const store = await options.store.open();
 
   const kernel = await composeKernel({ ...options, plugins }, store, sources);
+  await kernel.pluginProviders.sync();
 
   for (const row of dropped)
     dev("compose", "plugin file dropped", { path: row.path, issues: row.issues.length });
@@ -459,7 +471,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly loadPluginDirectory?: PluginHost["directory"];
     readonly compileView?: NonNullable<PluginHost["compileView"]>;
     readonly poll?: number;
-    readonly models?: Models;
+    readonly models?: MutableModels;
     readonly mcp?: McpHubFactory;
     readonly clients?: ClientsApi;
     readonly github?: GitHubAccountApi;
@@ -488,6 +500,7 @@ export function createKernel(input: KernelOptions): Kernel {
   let resolveConfiguration = input.resolveConfiguration ?? null;
   let request = input.request ?? null;
   let modelsApi: ModelsApi | null = null;
+  let pluginProviders: PluginProviders | undefined;
   let mcp: McpHub | null | undefined;
   let builtins: readonly Plugin<"core">[] | null = null;
   let waits: WaitRegistry | null = null;
@@ -567,6 +580,10 @@ export function createKernel(input: KernelOptions): Kernel {
       ));
     },
     modelState: createModelState(() => bumpGeneration(kernel)),
+    get pluginProviders() {
+      return (pluginProviders ??=
+        models === undefined ? NO_PLUGIN_PROVIDERS : createPluginProviders(kernel, models));
+    },
     get partDefinitions() {
       return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
     },
@@ -684,6 +701,7 @@ export function createKernel(input: KernelOptions): Kernel {
 async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   await driver?.close();
   await kernel.mcp?.close();
+  kernel.pluginProviders.close();
   await kernel.modelState.close();
 
   const workspaces = (await kernel.store.refs.list("workspaces/")).map((ref) =>

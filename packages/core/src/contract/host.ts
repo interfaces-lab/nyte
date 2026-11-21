@@ -60,6 +60,7 @@ import type {
   WriteOutcome,
 } from "@nyte-ai/schema";
 import type { Models, Provider } from "@nyte-ai/ai";
+import type { MutableModels } from "@nyte-ai/ai/models";
 import type { Plugin } from "./plugin.ts";
 import type { Session, Sessions } from "./session.ts";
 import type { Store } from "./store.ts";
@@ -124,7 +125,7 @@ export const PARTICIPANT_AUTHORITY: ReadonlySet<Authority> = new Set<Authority>(
 
 export interface OpenOptions {
   readonly store: Store;
-  readonly models: Models;
+  readonly models: MutableModels;
   readonly plugins: readonly Plugin<"core">[];
   readonly workspace: WorkspaceTarget;
   readonly execution?:

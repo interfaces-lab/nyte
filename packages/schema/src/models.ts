@@ -166,6 +166,8 @@ export const ModelCatalogViewType = Type.Object({
     Type.Object({
       id: Type.String(),
       name: Type.String(),
+      /** An agent found installed on the host, such as Claude Code: its models run its own loop and are never picked for the user. */
+      agent: Type.Boolean(),
       credential: Type.Enum(["unknown", "missing", "configured", "verified", "failed"]),
       methods: Type.Array(LoginMethodType),
       limits: PROVIDER_LIMITS,

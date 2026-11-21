@@ -47,15 +47,10 @@ function currentWorkspacePath(): string | undefined {
 }
 
 function toggleTerminal(): void {
-  const workspacePath = currentWorkspacePath();
-  const viewKey = workbenchViewKey(workspacePath);
+  const viewKey = workbenchViewKey(currentWorkspacePath());
   const view = workbench.getView(viewKey);
 
-  const active = activeWorkbenchTab(
-    view,
-    workbenchScope(workspacePath),
-    clientCapabilities(nyte.host),
-  );
+  const active = activeWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
 
   const terminal = view.tabs.find((tab) => tab.kind === "terminal" && tab.owner.kind === "user");
 
@@ -72,15 +67,10 @@ function toggleMarkdownSource(): boolean {
     !focusWithin('[data-editor-panel] :is([data-slot="markdown-column"], diffs-container)')
   )
     return false;
-  const workspacePath = currentWorkspacePath();
-  const viewKey = workbenchViewKey(workspacePath);
+  const viewKey = workbenchViewKey(currentWorkspacePath());
   const view = workbench.getView(viewKey);
 
-  const shown = shownWorkbenchTab(
-    view,
-    workbenchScope(workspacePath),
-    clientCapabilities(nyte.host),
-  );
+  const shown = shownWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
 
   const file =
     shown !== null && tabSlot(shown) === EDITOR_SLOT ? activeEditorFile(view) : undefined;

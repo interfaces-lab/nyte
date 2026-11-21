@@ -186,6 +186,7 @@ const bridge = {
     openExternal: object("host.openExternal"),
     confirmExternal: object("host.confirmExternal"),
     revealPath: object("host.revealPath"),
+    openInBrowser: object("host.openInBrowser"),
     openPluginsFolder: none("host.openPluginsFolder"),
     pathForFile: (file: File) => webUtils.getPathForFile(file),
     contextMenu: object("host.contextMenu"),

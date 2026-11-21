@@ -36,7 +36,6 @@ import { useAccountLimits } from "../../data/usage.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { showsSettingsSection } from "../../settings/sections.ts";
 import {
-  AGENT_PROVIDERS,
   MODE_LABELS,
   modelIcon,
   modelTriggerLabel,
@@ -562,11 +561,12 @@ function ModelCard({
   const usage = usageLine(limits.data?.accounts, option);
   const levels = thinkingLevelsFor(option);
 
-  const reasoning = AGENT_PROVIDERS.has(option.provider)
-    ? "Sets its own reasoning"
-    : levels.length > 1
+  const reasoning =
+    levels.length > 1
       ? `${THINKING_LABELS[settings.thinking]} effort`
-      : undefined;
+      : option.agent
+        ? "Sets its own reasoning"
+        : undefined;
 
   return (
     <div {...props(styles.cardBody)}>

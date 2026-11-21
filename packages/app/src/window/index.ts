@@ -11,6 +11,7 @@ import { reconcile } from "../data/keep.ts";
 import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient, queryDataReader } from "../data/query-client.ts";
 import { connection } from "../data/connection.ts";
+import { subscribeHomeFolder } from "../data/workspaces.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { workbenchShowsChat } from "../workbench/model.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
@@ -88,6 +89,7 @@ const sources = {
           path = next;
           notice();
         }),
+        subscribeHomeFolder(notice),
       ];
 
       return () => {

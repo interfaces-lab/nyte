@@ -55,6 +55,7 @@ import {
 } from "./app-menu.ts";
 import { createUnsavedEdits } from "./unsaved-edits.ts";
 import { safeExternalUrl } from "./native/external-url.ts";
+import { openInBrowser } from "./native/open-in-browser.ts";
 import { Alerts } from "./alerts.ts";
 import { BrowserSurfaces } from "./browser/browser.ts";
 import { BrowserHistoryStore } from "./browser/browser-history.ts";
@@ -376,6 +377,7 @@ const mainCalls: CallTable = {
   "host.openExternal": async (_window, { url }) => void shell.openExternal(safeExternalUrl(url)),
   "host.confirmExternal": (window, { url }) => confirmExternal(safeExternalUrl(url), window),
   "host.revealPath": async (_window, { path }) => shell.showItemInFolder(path),
+  "host.openInBrowser": async (_window, { path }) => openInBrowser(path),
   "host.openPluginsFolder": async () => {
     const folder = join(home, ".nyte", "plugins");
     await mkdir(folder, { recursive: true });

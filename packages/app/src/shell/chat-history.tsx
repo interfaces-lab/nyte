@@ -7,7 +7,7 @@ import { SearchPalette } from "../sidebar/search-palette.tsx";
 import { shellActions, useOverlays } from "../tabs/shell-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { revealChatPanel } from "../workbench/commands.ts";
-import { workbenchViewKey } from "../workbench/paths.ts";
+import { useWorkbenchFolder, workbenchViewKey } from "../workbench/paths.ts";
 
 const RECENT_LIMIT = 20;
 
@@ -17,7 +17,7 @@ const RECENT_LIMIT = 20;
  */
 export function ChatHistory({ mac }: { readonly mac: boolean }): ReactElement {
   const open = useOverlays().search;
-  const workspace = useHostState().data.workspace;
+  const workspace = useWorkbenchFolder(useHostState().data.workspace);
   const roots = useRootRows();
   const view = workbenchViewKey(workspace?.path);
 

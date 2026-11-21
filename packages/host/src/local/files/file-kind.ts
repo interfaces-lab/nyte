@@ -1,4 +1,3 @@
-import { isUtf8 } from "node:buffer";
 import { extname } from "node:path";
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -62,11 +61,7 @@ export function classifyFile(path: string, head: Buffer): FileClass {
 }
 
 function looksLikeText(head: Buffer): boolean {
-  const last = head.findLastIndex(
-    (byte, index) => index >= head.length - 4 && (byte & 0xc0) !== 0x80,
-  );
+  const utf16 = (head[0] === 0xff && head[1] === 0xfe) || (head[0] === 0xfe && head[1] === 0xff);
 
-  const end = last !== -1 && (head[last] ?? 0) >= 0xc0 ? last : head.length;
-
-  return !head.includes(0) && isUtf8(head.subarray(0, end));
+  return utf16 || !head.includes(0);
 }

@@ -18,6 +18,7 @@ import { useNoDesigns } from "../studio/designs.ts";
 
 import { WORKBENCH_CHAT_TAB } from "../workbench/model.ts";
 import { activeWorkbenchTab } from "../workbench/selectors.ts";
+import { useWorkbenchFolder } from "../workbench/paths.ts";
 import { useWorkbenchView } from "../workbench/store.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { useChatWindow } from "../window/index.ts";
@@ -45,17 +46,17 @@ function SessionDropPreview(): ReactElement | null {
 }
 
 export function SessionScreen(): ReactElement {
-  const host = useHostState();
   const [floatingMount, setFloatingMount] = useState<HTMLDivElement | null>(null);
-  const workspacePath = host.data.workspace?.path;
-  const workbench = useWorkbenchView(workspacePath);
+  const folder = useWorkbenchFolder(useHostState().data.workspace);
+  const workbench = useWorkbenchView(folder?.path);
   const viewKey = workbench.key;
   const view = workbench.view;
   const maximized = view.expanded && view.layout.kind === "maximized";
+  const code = windowApp() === "code";
 
   const covered = useChatWindow((snapshot) => snapshot.covered);
   const store = usePaneLayoutStore();
-  const noDesigns = useNoDesigns(host.data.workspace);
+  const noDesigns = useNoDesigns(folder);
   const shown = activeWorkbenchTab(view, workbench.scope, clientCapabilities(nyte.host))?.kind;
 
   const paneFloatingMount =
@@ -72,7 +73,7 @@ export function SessionScreen(): ReactElement {
         {...props(
           sessionScreenStyles.panes,
           covered && sessionScreenStyles.panesCovered,
-          windowApp() === "code" && sessionScreenStyles.panesTrailing,
+          code && sessionScreenStyles.panesTrailing,
         )}
       >
         <PaneFloatingMount value={paneFloatingMount}>
@@ -81,8 +82,8 @@ export function SessionScreen(): ReactElement {
           </LayoutView>
         </PaneFloatingMount>
       </div>
-      <Workbench workspacePath={workspacePath} />
-      <div ref={setFloatingMount} {...props(sessionScreenStyles.floatingMount)} />
+      <Workbench folder={folder} />
+      {!code && <div ref={setFloatingMount} {...props(sessionScreenStyles.floatingMount)} />}
     </div>
   );
 }

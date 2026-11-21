@@ -1,5 +1,6 @@
 import type { ForgetOutcome, WorkspaceInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { MutationState } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
 import { keys, queryClient } from "./query-client.ts";
@@ -33,6 +34,53 @@ export function useHomeWorkspace(): WorkspaceId | null | undefined {
   return live === undefined
     ? queryClient.getQueryData<WorkspaceId | null>(keys.firstFrameHome)
     : live;
+}
+
+export function homeFolder(): SelectedWorkspace | undefined {
+  const home = homeWorkspaceId();
+
+  const listed = (
+    queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces) ??
+    queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.firstFrameWorkspaces)
+  )?.find((workspace) => workspace.id === home);
+
+  if (listed === undefined) return undefined;
+  const path = workspacePath(listed);
+
+  return path === null ? undefined : { id: listed.id, path, name: workspaceName(listed) };
+}
+
+export function subscribeHomeFolder(listener: () => void): () => void {
+  let path = homeFolder()?.path;
+
+  const check = (): void => {
+    const next = homeFolder()?.path;
+
+    if (next === path) return;
+    path = next;
+    listener();
+  };
+
+  const leaveHost = hostWatch("host").subscribe(check);
+
+  const leaveQueries = queryClient.getQueryCache().subscribe((event) => {
+    if (event.query.queryKey[0] === keys.workspaces[0]) check();
+  });
+
+  return () => {
+    leaveHost();
+    leaveQueries();
+  };
+}
+
+export function useHomeFolder(): SelectedWorkspace | undefined {
+  return useSyncExternalStoreWithSelector(
+    subscribeHomeFolder,
+    homeFolder,
+    homeFolder,
+    (folder) => folder,
+    (left, right) => left?.path === right?.path,
+  );
 }
 
 /** What every surface calls a folder: the host's own folder, or none, is Home. */

@@ -218,6 +218,7 @@ export const basicCases = {
         {
           id: "anthropic",
           name: "Anthropic",
+          agent: false,
           credential: "configured",
           methods: [{ kind: "oauth" }, { kind: "key" }],
           limits: [{ label: "5h", used: 1, limit: 10, resetsAt: null }],

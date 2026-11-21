@@ -437,6 +437,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
             scope,
             mime: "text/plain",
             contents: file.contents,
+            encoding: "utf-8",
             version: file.version,
           }
         : {

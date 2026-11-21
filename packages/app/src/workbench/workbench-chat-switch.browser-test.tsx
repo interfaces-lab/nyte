@@ -201,6 +201,7 @@ const files: FilesApi = {
     scope: "workspace",
     mime: "text/plain",
     contents: CONTENTS,
+    encoding: "utf-8",
     version: asId("v1"),
   }),
   bytes: refuse,

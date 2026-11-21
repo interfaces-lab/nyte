@@ -166,7 +166,7 @@ describe("openHost", () => {
     });
   });
 
-  it("defaults to ai's Nyte providers and Claude Code over this host's credential store", async () => {
+  it("defaults to ai's Nyte providers, Claude Code and the built-in ACP agents over this host's credential store", async () => {
     const home = await folder();
 
     await using host = await openHost({
@@ -179,7 +179,9 @@ describe("openHost", () => {
     expect((await host.models.list()).providers.map((provider) => provider.id)).toEqual([
       ...nyteProviders().map((provider) => provider.id),
       "claude-code",
-      "acp",
+      "antigravity",
+      "grok",
+      "fx",
     ]);
   });
 

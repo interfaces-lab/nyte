@@ -564,6 +564,7 @@ export async function replacePlugins(
   });
 
   publishPlugins(kernel);
+  await kernel.pluginProviders.sync();
   await publishSettings(kernel);
   await publishViews(kernel);
 

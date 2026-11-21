@@ -42,6 +42,7 @@ function catalog(credential: "configured" | "missing"): ModelCatalogView {
       {
         id: "test",
         name: "Test",
+        agent: false,
         credential,
         methods: [],
         limits: [],

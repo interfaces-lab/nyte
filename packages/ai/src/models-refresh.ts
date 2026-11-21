@@ -21,6 +21,7 @@ export class CatalogRefreshes {
   supersede(providerId: string): number {
     const generation = (this.generations.get(providerId) ?? 0) + 1;
     this.generations.set(providerId, generation);
+    this.restorations.delete(providerId);
     const previous = this.controllers.get(providerId);
 
     if (previous) {

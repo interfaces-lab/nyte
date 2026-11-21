@@ -11,17 +11,20 @@ import type {
   ClientConnection,
   InitializeResponse,
   SessionConfigOption,
+  SessionConfigSelectOption,
 } from "@agentclientprotocol/sdk/unstable";
 import { processEnvironment } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 import manifest from "../../package.json" with { type: "json" };
-import type { AcpAgent } from "./registry.ts";
+import type { AcpAgent } from "./catalog.ts";
 import { AcpThread } from "./thread.ts";
 import type { AcpApprove } from "./thread.ts";
 
 const AUTH_REQUIRED = -32_000;
 
 const STDERR_TAIL = 4_096;
+
+const STOP_GRACE_MS = 1_000;
 
 interface Pipe {
   readonly input: WritableStream<Uint8Array>;
@@ -50,6 +53,26 @@ function protocolStream(job: Job, stderr: (bytes: Uint8Array) => void): Readable
       controller.close();
     },
   });
+}
+
+export interface AgentChoice {
+  readonly model: string | undefined;
+  readonly thought: string | undefined;
+}
+
+export function choices(
+  option: SessionConfigOption | undefined,
+): readonly SessionConfigSelectOption[] {
+  if (option?.type !== "select") return [];
+
+  return option.options.flatMap((entry) => ("group" in entry ? entry.options : [entry]));
+}
+
+export function findOption(
+  options: readonly SessionConfigOption[],
+  category: "model" | "thought_level",
+): SessionConfigOption | undefined {
+  return options.find((option) => option.category === category && option.type === "select");
 }
 
 export class AcpProcess {
@@ -129,6 +152,14 @@ export class AcpProcess {
     return new AcpProcess(agent, (stderr) => {
       child.stderr.on("data", (chunk: Buffer) => stderr(chunk));
 
+      let open = true;
+
+      const end = (finish: () => void) => {
+        if (!open) return;
+        open = false;
+        finish();
+      };
+
       return {
         input: new WritableStream<Uint8Array>({
           write: (chunk) =>
@@ -138,12 +169,30 @@ export class AcpProcess {
         }),
         output: new ReadableStream<Uint8Array>({
           start(controller) {
-            child.stdout.on("data", (chunk: Buffer) => controller.enqueue(chunk));
-            child.on("error", (error) => controller.error(error));
-            child.on("close", () => controller.close());
+            child.stdout.on("data", (chunk: Buffer) => {
+              if (open) controller.enqueue(chunk);
+            });
+            child.on("error", (error) => end(() => controller.error(error)));
+            child.stdin.on("error", (error) => end(() => controller.error(error)));
+            child.on("close", () => end(() => controller.close()));
           },
+          cancel: () => end(() => undefined),
         }),
-        stop: async () => child.kill(),
+        stop: () =>
+          new Promise<void>((resolve) => {
+            if (child.exitCode !== null || child.signalCode !== null) {
+              resolve();
+
+              return;
+            }
+
+            const force = setTimeout(() => child.kill("SIGKILL"), STOP_GRACE_MS);
+            child.once("exit", () => {
+              clearTimeout(force);
+              resolve();
+            });
+            child.kill();
+          }),
       };
     });
   }
@@ -219,6 +268,21 @@ export class AcpProcess {
     this.#options.set(sessionId, configOptions);
 
     return configOptions;
+  }
+
+  async choose(thread: AcpThread, choice: AgentChoice): Promise<void> {
+    for (const [category, value] of [
+      ["model", choice.model],
+      ["thought_level", choice.thought],
+    ] as const) {
+      const option = findOption(this.configOptions(thread), category);
+
+      if (value === undefined || option?.currentValue === value) continue;
+
+      if (option === undefined || !choices(option).some((entry) => entry.value === value))
+        throw new Error(`${this.agent.name} no longer offers ${value}. Pick another model.`);
+      await this.configure(thread, option.id, value);
+    }
   }
 
   forget(thread: AcpThread): void {

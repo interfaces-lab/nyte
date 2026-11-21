@@ -12,6 +12,7 @@ function option(
   return {
     key: `test/${id}`,
     provider: "test",
+    agent: false,
     id,
     name: id,
     contextWindow: 1_000,

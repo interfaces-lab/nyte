@@ -57,6 +57,7 @@ export const MAIN_OPERATION_PATHS = [
   "host.openExternal",
   "host.confirmExternal",
   "host.revealPath",
+  "host.openInBrowser",
   "host.openPluginsFolder",
   "host.contextMenu",
   "host.browser.open",
@@ -155,6 +156,7 @@ export type DesktopBridge = {
         | "hostProcess"
         | "bundledCli"
         | "revealPath"
+        | "openInBrowser"
         | "openPluginsFolder"
         | "contextMenu"
         | "browser"
