@@ -1,7 +1,7 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { AdvanceReport, HeadName, Owned, SessionId } from "@nyte-ai/schema";
-import type { Models } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
+import type { MutableModels } from "@nyte-ai/ai/models";
 import { composeHost } from "@nyte-ai/core/server";
 import type { Host, Listener, OpenOptions } from "@nyte-ai/core";
 import type { ServedHost, ServerHost } from "@nyte-ai/core/server";
@@ -111,11 +111,11 @@ export async function pass(
 export class NyteHost {
   readonly #state: WorkerState;
   readonly #env: WorkerEnv;
-  readonly #models: Models | undefined;
+  readonly #models: MutableModels | undefined;
   #served: Promise<Served> | null = null;
   #passes = 0;
 
-  constructor(state: WorkerState, env: WorkerEnv, options?: { readonly models?: Models }) {
+  constructor(state: WorkerState, env: WorkerEnv, options?: { readonly models?: MutableModels }) {
     this.#state = state;
     this.#env = env;
     this.#models = options?.models;
@@ -180,7 +180,7 @@ type Served = {
 async function compose(
   state: WorkerState,
   env: WorkerEnv,
-  models: Models | undefined,
+  models: MutableModels | undefined,
 ): Promise<Served> {
   const { storage } = state;
   const store = durableObjectStore(storage);

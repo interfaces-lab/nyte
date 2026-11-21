@@ -32,6 +32,7 @@ const rows: readonly Row[] = [
       path: join(folder, "a.txt"),
       mime: "text/plain",
       contents: "hello\n",
+      encoding: "utf-8",
       version: sha256("hello\n"),
     }),
   },

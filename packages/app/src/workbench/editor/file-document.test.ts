@@ -13,6 +13,7 @@ const document: Extract<FileDocument, { readonly kind: "text" }> = {
   scope: "workspace",
   mime: "text/plain",
   contents: "original",
+  encoding: "utf-8",
   version: v1,
 };
 

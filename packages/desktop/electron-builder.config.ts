@@ -189,6 +189,12 @@ const DOCUMENT_TYPES = [
     CFBundleTypeOSTypes: ["****"],
     CFBundleTypeExtensions: type.extensions,
   })),
+  {
+    CFBundleTypeName: "Document",
+    CFBundleTypeRole: "Editor",
+    LSHandlerRank: "Alternate",
+    LSItemContentTypes: ["public.data"],
+  },
   { CFBundleTypeName: "Folder", CFBundleTypeRole: "Editor", LSItemContentTypes: ["public.folder"] },
 ];
 

@@ -22,11 +22,13 @@ import type {
 } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/schema/model";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai/models";
+import type { MutableModels } from "@nyte-ai/ai/models";
 import type { Login, ModelsApi } from "../contract/host.ts";
 import type {
   ConfigurationResolver,
   Contributions,
   Kernel,
+  PluginProviders,
   PluginRuntime,
 } from "../contract/kernel.ts";
 import { resolveSetting } from "../contract/plugin.ts";
@@ -202,6 +204,7 @@ async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalo
     return {
       id: provider.id,
       name: provider.name,
+      agent: provider.explicitOnly === true,
       credential: credentials.get(provider.id) ?? "unknown",
       methods: listLoginMethods(provider),
       limits: readProviderLimits(models, provider.id),
@@ -686,7 +689,9 @@ function baseRef(model: Model<Api>): ModelRef {
 }
 
 function acceptedThinkingLevels(model: Model<Api>): Thinking[] {
-  return ["off", ...getSupportedThinkingLevels(model).filter((level) => level !== "off")];
+  const supported = getSupportedThinkingLevels(model);
+
+  return supported.length === 0 ? ["off"] : supported;
 }
 
 function defaultThinkingLevel(model: Model<Api>, remembered: Thinking | undefined): Thinking {
@@ -747,4 +752,72 @@ function invalid(issues: readonly ValidationIssue[]): Refusal {
 
 function issue(path: readonly (string | number)[], message: string): ValidationIssue {
   return { severity: "error", path, message };
+}
+
+export function createPluginProviders(kernel: Kernel, models: MutableModels): PluginProviders {
+  const owned = new Map<string, Provider>();
+  let queue: Promise<void> = Promise.resolve();
+  let closed = false;
+
+  const mine = (id: string): boolean => {
+    const registered = models.getProvider(id);
+
+    return registered !== undefined && registered === owned.get(id);
+  };
+
+  const drop = (id: string): void => {
+    if (mine(id)) models.deleteProvider(id);
+    owned.delete(id);
+    kernel.modelState.invalidate(id);
+  };
+
+  const settle = (ids: readonly string[]): void => {
+    if (closed) return;
+
+    for (const id of ids) kernel.modelState.invalidate(id);
+    bumpGeneration(kernel);
+  };
+
+  const sync = async (): Promise<void> => {
+    const offered = new Map<string, Provider>();
+
+    for (const plugin of [...kernel.plugins.builtins, ...kernel.plugins.host]) {
+      const provider = plugin.provider;
+
+      if (
+        provider !== undefined &&
+        !offered.has(provider.id) &&
+        (models.getProvider(provider.id) === undefined || mine(provider.id))
+      )
+        offered.set(provider.id, provider);
+    }
+
+    const removed = [...owned.keys()].filter((id) => !offered.has(id));
+    const added = [...offered.values()].filter((provider) => owned.get(provider.id) !== provider);
+
+    for (const id of removed) drop(id);
+
+    for (const provider of added) {
+      models.setProvider(provider);
+      owned.set(provider.id, provider);
+    }
+
+    if (removed.length === 0 && added.length === 0) return;
+    const providers = added.map((provider) => provider.id);
+    await models.refresh({ providers, allowNetwork: false });
+    settle([...removed, ...providers]);
+    void models.refresh({ providers }).then(
+      () => settle(providers),
+      () => undefined,
+    );
+  };
+
+  return {
+    sync: () => (queue = queue.then(sync, sync)),
+    close: () => {
+      closed = true;
+
+      for (const id of [...owned.keys()]) drop(id);
+    },
+  };
 }

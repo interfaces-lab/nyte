@@ -127,6 +127,8 @@ function collisions(plugins: readonly Plugin<"core">[]): readonly ValidationIssu
   for (const plugin of plugins) {
     const declared = plugin.contribute;
 
+    if (plugin.provider !== undefined) claim("providers", plugin.provider.id, plugin.id);
+
     for (const tool of declared?.tools ?? []) claim("tools", tool.name, plugin.id);
 
     for (const setting of declared?.settings ?? []) claim("settings", setting.id, plugin.id);

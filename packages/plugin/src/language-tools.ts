@@ -1,11 +1,12 @@
 import type { FilesApi, LanguageApi, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
-import { standard } from "@nyte-ai/schema";
+import { encodeTextFile, standard } from "@nyte-ai/schema";
 import type {
   DiagnosticsFrame,
   FileVersion,
   Infer,
   LanguageLocation,
   TextEdit,
+  TextEncoding,
   TextPosition,
   WorkspaceEdit,
 } from "@nyte-ai/schema";
@@ -58,12 +59,16 @@ async function requireFiles(invocation: ToolInvocation): Promise<FilesApi> {
 async function readText(
   files: FilesApi,
   file: string,
-): Promise<{ readonly contents: string; readonly version: FileVersion }> {
+): Promise<{
+  readonly contents: string;
+  readonly encoding: TextEncoding;
+  readonly version: FileVersion;
+}> {
   const document = await files.read(file);
 
   if (document.kind !== "text") throw new Error(`${file} is not a text file.`);
 
-  return { contents: document.contents, version: document.version };
+  return { contents: document.contents, encoding: document.encoding, version: document.version };
 }
 
 async function locate(files: FilesApi, input: SymbolAt): Promise<TextPosition> {
@@ -254,7 +259,11 @@ async function applyEdit(
           `${file.path} changed since the language server read it; nothing was renamed.`,
         );
 
-      return { path: file.path, read, contents: replaceRanges(read.contents, ranges) };
+      return {
+        path: file.path,
+        read,
+        contents: encodeTextFile(replaceRanges(read.contents, ranges), read.encoding),
+      };
     }),
   );
 

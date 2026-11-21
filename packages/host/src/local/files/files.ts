@@ -17,7 +17,7 @@ import {
 import { basename, dirname, isAbsolute, join, matchesGlob, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
-import { asId, SdkError } from "@nyte-ai/schema";
+import { asId, decodeTextFile, SdkError } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import type {
   ByteReader,
@@ -247,7 +247,7 @@ export async function readDocument(
 
   if (bytes === null) return { kind: "missing", path };
   const version = hashVersion(bytes);
-  const text = decodeText(bytes);
+  const text = decodeTextFile(bytes);
 
   return text === null
     ? {
@@ -257,7 +257,14 @@ export async function readDocument(
         size: bytes.byteLength,
         version,
       }
-    : { kind: "text", path, mime: file.mime, contents: text, version };
+    : {
+        kind: "text",
+        path,
+        mime: file.mime,
+        contents: text.contents,
+        encoding: text.encoding,
+        version,
+      };
 }
 
 export async function readBytes(target: string, path: string): Promise<VersionedReader> {

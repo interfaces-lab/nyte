@@ -57,6 +57,8 @@ export * from "./socket.ts";
 
 export * from "./store.ts";
 
+export * from "./text-encoding.ts";
+
 export * from "./tools.ts";
 
 export * from "./views.ts";

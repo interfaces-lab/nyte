@@ -134,6 +134,7 @@ export function localProvider(
                 scope: "workspace",
                 mime: "text/plain",
                 contents: new TextDecoder().decode(file.contents),
+                encoding: "utf-8",
                 version: file.version,
               };
         },

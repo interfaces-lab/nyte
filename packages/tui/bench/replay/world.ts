@@ -140,6 +140,7 @@ function bigFileEnvironment(kind: string): Plugin<"core"> {
               scope: "workspace",
               mime: "text/plain",
               contents: bigBefore(),
+              encoding: "utf-8",
               version: asId("v1"),
             }),
             write: async () => ({ kind: "saved", version: asId("v2") }),

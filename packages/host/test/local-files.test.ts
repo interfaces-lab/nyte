@@ -65,6 +65,7 @@ describe("localFiles", () => {
       scope: "workspace",
       mime: "text/plain",
       contents: "hello\n",
+      encoding: "utf-8",
       version: sha256("hello\n"),
     });
     expect(await files.read("b.bin")).toMatchObject({ kind: "binary", size: 3 });

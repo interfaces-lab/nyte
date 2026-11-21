@@ -23,9 +23,8 @@ import { getTerminal, terminalActions } from "./terminal/terminal-store.ts";
 
 export function launch(view: WorkbenchViewKey, kind: LaunchKind): void {
   const descriptor = WORKBENCH_KINDS[kind];
-  const workspacePath = workspacePathForView(view);
 
-  if (!descriptor.available(workbenchScope(workspacePath), clientCapabilities(nyte.host))) return;
+  if (!descriptor.available(workbenchScope(view), clientCapabilities(nyte.host))) return;
   const tab = { id: crypto.randomUUID(), ...descriptor.launch.input };
 
   workbench.dispatch(
@@ -36,18 +35,14 @@ export function launch(view: WorkbenchViewKey, kind: LaunchKind): void {
   );
 
   if (tab.kind === "terminal")
-    void terminalActions.create({ id: tab.id, workspacePath: workspacePath ?? null });
+    void terminalActions.create({ id: tab.id, workspacePath: workspacePathForView(view) ?? null });
 }
 
 /** Shows or hides a Code window's explorer. Another tab covering the Editor gives way to it with the explorer open. */
 export function toggleExplorer(view: WorkbenchViewKey): void {
   const state = workbench.getView(view);
 
-  const shown = shownWorkbenchTab(
-    state,
-    workbenchScope(workspacePathForView(view)),
-    clientCapabilities(nyte.host),
-  );
+  const shown = shownWorkbenchTab(state, workbenchScope(view), clientCapabilities(nyte.host));
 
   const open = state.sidebars.includes(EDITOR_SLOT);
 

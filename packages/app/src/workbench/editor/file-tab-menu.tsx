@@ -27,6 +27,7 @@ export function FileTabMenuItems({
   readonly onCloseOthers: () => void;
 }): ReactElement {
   const revealPath = nyte.host.revealPath;
+  const openInBrowser = /\.html?$/iu.test(file.path) ? nyte.host.openInBrowser : undefined;
   const files = useFileTabs(viewKey);
   const group = files.groups.find((entry) => entry.id === file.group);
   const position = group?.tabs.findIndex((tab) => tab.id === file.id) ?? -1;
@@ -127,6 +128,11 @@ export function FileTabMenuItems({
       {revealPath !== undefined && (
         <ContextMenuItem onClick={() => void revealPath({ path: file.path })}>
           {revealLabel(nyte.platform)}
+        </ContextMenuItem>
+      )}
+      {openInBrowser !== undefined && (
+        <ContextMenuItem icon="globe" onClick={() => void openInBrowser({ path: file.path })}>
+          Open in Browser
         </ContextMenuItem>
       )}
     </>

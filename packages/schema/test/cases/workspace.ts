@@ -136,6 +136,7 @@ export const workspaceCases = {
       path: "/notes/a.md",
       mime: "text/markdown",
       contents: "# A\n",
+      encoding: "utf-8",
       version: fileVersion,
     },
     { kind: "text", path: "/notes/a.md", mime: "text/markdown", version: fileVersion },

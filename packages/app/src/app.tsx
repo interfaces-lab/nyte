@@ -12,7 +12,8 @@ import type { AppRouter } from "./shell/routes.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { windowTabs } from "./tabs/window-tabs.ts";
 import { activeSelection } from "./panes/pane-layout.ts";
-import { workspacePathForView } from "./workbench/paths.ts";
+import { homeFolder, subscribeHomeFolder } from "./data/workspaces.ts";
+import { WORKBENCH_HOME_VIEW_KEY, workspacePathForView } from "./workbench/paths.ts";
 import { workbench } from "./workbench/store.ts";
 import { watchUnsavedEdits } from "./workbench/editor/file-store.ts";
 import { reattachShells } from "./workbench/terminal/terminal-store.ts";
@@ -84,6 +85,20 @@ function useShownWorkspace(): void {
   });
 }
 
+function useHomeWorkbench(): void {
+  useMountEffect(() => {
+    const fold = (): void => {
+      const home = homeFolder();
+
+      if (home !== undefined) workbench.move(WORKBENCH_HOME_VIEW_KEY, home.path);
+    };
+
+    fold();
+
+    return subscribeHomeFolder(fold);
+  });
+}
+
 function useSavedShells(): void {
   useMountEffect(() => {
     reattachShells(
@@ -104,6 +119,7 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
   useClientPlugins();
   useViewedChat();
   useShownWorkspace();
+  useHomeWorkbench();
   useSavedShells();
   useMountEffect(() => watchUnsavedEdits((held) => nyte.host.setUnsavedEdits?.(held)));
   useMountEffect(releaseStartupReads);

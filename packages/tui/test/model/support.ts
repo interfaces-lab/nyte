@@ -36,6 +36,7 @@ export const CATALOG: ModelCatalogView = {
     {
       id: "test",
       name: "Test",
+      agent: false,
       credential: "verified",
       methods: [{ kind: "key" }],
       limits: [],

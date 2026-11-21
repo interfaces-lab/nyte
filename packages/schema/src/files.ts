@@ -2,6 +2,7 @@ import { Type } from "typebox";
 import { idSchema } from "./ids.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
+import { TextEncodingType } from "./text-encoding.ts";
 import { nullable } from "./wire/nullable.ts";
 
 export const FileStatusType = Type.Enum([
@@ -164,6 +165,7 @@ export const FileDocumentType = Type.Union([
     scope: FILE_SCOPE,
     mime: Type.String(),
     contents: Type.String(),
+    encoding: TextEncodingType,
     version: idSchema<"file-version">(),
   }),
   Type.Object({

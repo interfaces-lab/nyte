@@ -2,10 +2,10 @@ import { chmod, mkdir, open, readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import type { Models, Provider } from "@nyte-ai/ai";
 import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
+import type { MutableModels } from "@nyte-ai/ai/models";
 import { isJson, SdkError } from "@nyte-ai/schema";
 import type { HostDescription, Json, ValidationIssue, WorkspaceTarget } from "@nyte-ai/schema";
 import { dev, processEnvironment } from "@nyte-ai/core";
@@ -15,6 +15,7 @@ import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import approvals from "@nyte-ai/plugin/core/approvals";
 import { acpAgents } from "@nyte-ai/plugin/core/acp";
+import type { AcpAgent } from "@nyte-ai/plugin/core/acp";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import type { ClientActions } from "@nyte-ai/plugin/core/browser-client";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
@@ -63,10 +64,16 @@ declare const NYTE_BUILT_VERSION: string | undefined;
 
 const STORE_POLL_MS = 500;
 
+const ACP_AGENTS: readonly AcpAgent[] = [
+  { id: "antigravity", name: "Google Antigravity", command: "agy", args: ["acp"], env: {} },
+  { id: "grok", name: "Grok", command: "grok", args: ["agent", "stdio"], env: {} },
+  { id: "fx", name: "fx", command: "fx", args: ["acp"], env: {}, mode: "ask" },
+];
+
 export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models" | "plugins"> & {
   readonly store?: Store;
   readonly workspace?: WorkspaceTarget;
-  readonly models?: Models;
+  readonly models?: MutableModels;
   readonly plugins?: readonly Plugin<"core">[];
   readonly home?: string;
   readonly shell?: () => string | null;
@@ -131,12 +138,8 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
   const given = [...(options.plugins ?? []), ...(options.clientPlugins?.(actions) ?? [])];
   const usesLocalProvider = !given.some((plugin) => plugin.environment?.kind === "local");
 
-  const claudeCode = claudeCodeSdk();
-  const acp = acpAgents();
-
   const [models, settings] = await Promise.all([
-    options.models ??
-      nyteModels({ store, secrets, home, providers: [claudeCode.provider, acp.provider] }),
+    options.models ?? nyteModels({ store, secrets, home }),
     settingsSeed(home),
     usesLocalProvider
       ? store.open().then(async (connection) => {
@@ -164,8 +167,8 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     canvas,
     designGuide,
     languageTools,
-    claudeCode.plugin,
-    acp.plugin,
+    claudeCodeSdk().plugin,
+    ...acpAgents(ACP_AGENTS),
   ];
 
   const plugins = [
@@ -301,8 +304,7 @@ async function nyteModels(input: {
   readonly store: Store;
   readonly secrets: SecretsSource;
   readonly home: string;
-  readonly providers: readonly Provider[];
-}): Promise<Models> {
+}): Promise<MutableModels> {
   const credentials = credentialStore(input.store, input.secrets);
   const auth = defaultProviderAuthContext();
 
@@ -320,7 +322,7 @@ async function nyteModels(input: {
     catalog: { url: process.env.NYTE_MODELS_URL },
   });
 
-  for (const provider of [...nyteProviders(), ...input.providers]) models.setProvider(provider);
+  for (const provider of nyteProviders()) models.setProvider(provider);
 
   const [stored, selected] = await Promise.all([
     credentials.list(),
@@ -331,7 +333,6 @@ async function nyteModels(input: {
     providers: [
       ...new Set([
         ...stored.map((row) => row.providerId),
-        ...input.providers.map((provider) => provider.id),
         ...(selected === null ? [] : [selected.provider]),
       ]),
     ],

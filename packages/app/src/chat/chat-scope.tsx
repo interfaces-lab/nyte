@@ -2,7 +2,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { ReferenceOpenerContext } from "../references/reference-opener.tsx";
 import { workbenchReferenceOpener } from "../workbench/commands.ts";
-import { workbenchViewKey } from "../workbench/paths.ts";
+import { useWorkbenchViewKey } from "../workbench/paths.ts";
 import { ChatFolderContext } from "./chat-folder.ts";
 
 export function ChatScope({
@@ -14,7 +14,7 @@ export function ChatScope({
 }): ReactElement {
   return (
     <ChatFolderContext value={folder}>
-      <ReferenceOpenerContext value={workbenchReferenceOpener(workbenchViewKey(folder?.path))}>
+      <ReferenceOpenerContext value={workbenchReferenceOpener(useWorkbenchViewKey(folder?.path))}>
         {children}
       </ReferenceOpenerContext>
     </ChatFolderContext>

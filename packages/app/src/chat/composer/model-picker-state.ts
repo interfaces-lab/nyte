@@ -87,10 +87,12 @@ export function modelDisplayName(
 
 const PROVIDER_ICONS = new Map<string, IconName>(
   Object.entries({
-    acp: "provider-acp",
     anthropic: "model-anthropic",
+    antigravity: "agent-antigravity",
     "claude-code": "provider-claude-code",
+    fx: "provider-vercel",
     "github-copilot": "provider-copilot",
+    grok: "grok",
     openai: "model-openai",
     "openai-codex": "provider-openai-codex",
     opencode: "provider-opencode",
@@ -100,41 +102,12 @@ const PROVIDER_ICONS = new Map<string, IconName>(
   } satisfies Record<string, IconName>),
 );
 
-const ACP_AGENT_ICONS = new Map<string, IconName>(
-  Object.entries({
-    "amp-acp": "agent-amp",
-    "antigravity-acp": "agent-antigravity",
-    "claude-acp": "provider-claude-code",
-    "codex-acp": "provider-openai-codex",
-    cursor: "agent-cursor",
-    deepagents: "agent-langchain",
-    devin: "agent-devin",
-    fx: "provider-vercel",
-    gemini: "model-gemini",
-    "github-copilot-cli": "provider-copilot",
-    "glm-acp-agent": "model-zai",
-    goose: "agent-goose",
-    "grok-build": "grok",
-    junie: "agent-junie",
-    kilo: "agent-kilo",
-    kimi: "model-kimi",
-    "minimax-code": "model-minimax",
-    "mistral-vibe": "model-mistral",
-    opencode: "provider-opencode",
-    "qwen-code": "model-qwen",
-  } satisfies Record<string, IconName>),
-);
-
-export const AGENT_PROVIDERS: ReadonlySet<string> = new Set(["acp", "claude-code"]);
-
 export function providerIcon(providerId: string): IconName {
   return PROVIDER_ICONS.get(providerId) ?? "model-generic";
 }
 
 export function modelIcon(model: ModelRef): IconName {
-  return model.provider === "acp"
-    ? (ACP_AGENT_ICONS.get(model.id) ?? "provider-acp")
-    : providerIcon(model.provider);
+  return providerIcon(model.provider);
 }
 
 export const THINKING_LABELS: Readonly<Record<ModelThinkingLevel, string>> = {

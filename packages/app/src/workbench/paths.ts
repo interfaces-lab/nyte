@@ -1,17 +1,34 @@
+import { useSyncExternalStore } from "react";
+import type { SelectedWorkspace } from "../contract/bridge.ts";
+import { homeFolder, subscribeHomeFolder, useHomeFolder } from "../data/workspaces.ts";
 import type { WorkbenchScope, WorkbenchViewKey } from "./model.ts";
 
 export const WORKBENCH_HOME_VIEW_KEY: WorkbenchViewKey = "home";
 
 export function workbenchViewKey(workspacePath: string | undefined): WorkbenchViewKey {
-  return workspacePath ?? WORKBENCH_HOME_VIEW_KEY;
+  return workspacePath ?? homeFolder()?.path ?? WORKBENCH_HOME_VIEW_KEY;
+}
+
+export function useWorkbenchViewKey(workspacePath: string | undefined): WorkbenchViewKey {
+  const read = (): WorkbenchViewKey => workbenchViewKey(workspacePath);
+
+  return useSyncExternalStore(subscribeHomeFolder, read, read);
+}
+
+export function useWorkbenchFolder(
+  folder: SelectedWorkspace | undefined,
+): SelectedWorkspace | undefined {
+  const home = useHomeFolder();
+
+  return folder ?? home;
 }
 
 export function workspacePathForView(key: WorkbenchViewKey): string | undefined {
   return key === WORKBENCH_HOME_VIEW_KEY ? undefined : key;
 }
 
-export function workbenchScope(workspacePath: string | undefined): WorkbenchScope {
-  return workspacePath === undefined ? { kind: "pathless" } : { kind: "project" };
+export function workbenchScope(key: WorkbenchViewKey): WorkbenchScope {
+  return key === WORKBENCH_HOME_VIEW_KEY ? { kind: "pathless" } : { kind: "project" };
 }
 
 function normalized(path: string): string {

@@ -575,6 +575,8 @@ export interface HostBridge {
   openExternal(input: { url: string }): Promise<void>;
   confirmExternal(input: { url: string }): Promise<ExternalLinkChoice>;
   readonly revealPath?: (input: { path: string }) => Promise<void>;
+  /** Opens an HTML file in the system's default web browser. */
+  readonly openInBrowser?: (input: { path: string }) => Promise<void>;
   readonly openPluginsFolder?: () => Promise<void>;
   pathForFile(file: File): string;
   readonly contextMenu?: (input: {

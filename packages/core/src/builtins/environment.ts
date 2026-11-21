@@ -1,4 +1,4 @@
-import { PatchEntrySchema, standard, writePatch } from "@nyte-ai/schema";
+import { encodeTextFile, PatchEntrySchema, standard, writePatch } from "@nyte-ai/schema";
 import type { Infer, JobView, OutputFrame, PatchEntry, ToolContent } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Plugin } from "../contract/plugin.ts";
@@ -154,13 +154,19 @@ const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
     const previous = await files.read(args.path);
 
     if (previous.kind === "directory") throw new Error(`${args.path} is a directory.`);
-    const outcome = await files.write(args.path, args.content, { parents: true });
+    const contents = encodeTextFile(
+      args.content,
+      previous.kind === "text" ? previous.encoding : "utf-8",
+    );
+    const outcome = await files.write(args.path, contents, { parents: true });
 
     if (outcome.kind !== "saved") throw new Error(`Could not write ${args.path}: ${outcome.kind}.`);
 
-    const result = text(
-      `Wrote ${new TextEncoder().encode(args.content).byteLength} bytes to ${args.path}.`,
-    );
+    const size =
+      typeof contents === "string"
+        ? new TextEncoder().encode(contents).byteLength
+        : contents.byteLength;
+    const result = text(`Wrote ${size} bytes to ${args.path}.`);
 
     if (previous.kind !== "text" && previous.kind !== "missing") return result;
     const before = previous.kind === "text" ? previous.contents : null;
@@ -218,7 +224,9 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
       contents,
     );
 
-    const outcome = await files.write(args.path, edited, { expect: document.version });
+    const outcome = await files.write(args.path, encodeTextFile(edited, document.encoding), {
+      expect: document.version,
+    });
 
     if (outcome.kind === "stale")
       throw new Error(`${args.path} changed while it was being edited; read it again.`);

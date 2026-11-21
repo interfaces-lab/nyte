@@ -140,6 +140,7 @@ export function testEnvironment(exec: ExecutionEnv["exec"]): Plugin<"core"> {
               scope: "workspace",
               mime: "text/plain",
               contents: await readFile(path, "utf8"),
+              encoding: "utf-8",
               version: asId("v1"),
             }),
           },

@@ -9,7 +9,6 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
-import { useHostState } from "../data/host.ts";
 import { useWorkspaces } from "../data/workspaces.ts";
 import type { RailWorkspace } from "../data/workspaces.ts";
 import {
@@ -216,6 +215,7 @@ function PanelContent({
 function WorkbenchViewHost({
   viewKey,
   view,
+  chatFolder,
   current,
   scope,
   stageWidth,
@@ -223,13 +223,12 @@ function WorkbenchViewHost({
 }: {
   readonly viewKey: WorkbenchViewKey;
   readonly view: WorkbenchViewState;
+  readonly chatFolder: SelectedWorkspace | undefined;
   readonly current: boolean;
   readonly scope: WorkbenchScope;
   readonly stageWidth: number;
   readonly capabilities: ClientCapabilities;
 }): ReactElement {
-  const selected = useHostState().data.workspace;
-  const chatFolder = scope.kind === "pathless" ? undefined : selected;
   const workspace = browsedWorkspace(view.browse, chatFolder, useWorkspaces().data);
 
   const workspacePath = workspacePathForView(viewKey) ?? null;
@@ -481,13 +480,13 @@ function browsedWorkspace(
 }
 
 export function Workbench({
-  workspacePath,
+  folder,
 }: {
-  readonly workspacePath: string | undefined;
+  readonly folder: SelectedWorkspace | undefined;
 }): ReactElement {
   const capabilities = clientCapabilities(nyte.host);
   const [stageWidth, setStageWidth] = useState(2 * WORKBENCH_CENTER_WIDTH_MIN);
-  const viewKey = workbenchViewKey(workspacePath);
+  const viewKey = workbenchViewKey(folder?.path);
   const snapshot = useWorkbenchSnapshot();
   const [visited, setVisited] = useState<readonly WorkbenchViewKey[]>([viewKey]);
 
@@ -530,8 +529,9 @@ export function Workbench({
             key={key}
             viewKey={key}
             view={snapshot.views.get(key) ?? DEFAULT_VIEW}
+            chatFolder={current ? folder : undefined}
             current={current}
-            scope={current ? workbenchScope(workspacePath) : { kind: "pathless" }}
+            scope={current ? workbenchScope(key) : { kind: "pathless" }}
             stageWidth={stageWidth}
             capabilities={capabilities}
           />

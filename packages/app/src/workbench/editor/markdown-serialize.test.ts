@@ -24,6 +24,7 @@ const document: Extract<FileDocument, { readonly kind: "text" }> = {
   scope: "workspace",
   mime: "text/markdown",
   contents: source,
+  encoding: "utf-8",
   version: asId<"file-version">("v1"),
 };
 

@@ -59,7 +59,7 @@ import type {
 } from "./composer-suggestion-menu.ts";
 import { useChatFolder } from "../chat-folder.ts";
 import { activeEditorFile } from "../../workbench/model.ts";
-import { workbenchViewKey } from "../../workbench/paths.ts";
+import { useWorkbenchViewKey } from "../../workbench/paths.ts";
 import { workbench } from "../../workbench/store.ts";
 import { mentionPreviewRows } from "../../references/mention-preview.ts";
 import { sameReference } from "../../references/message-references.ts";
@@ -242,7 +242,7 @@ export function useComposerSuggestions({
   const popupId = useId();
   const deferredQuery = useDeferredValue(menu?.query ?? "");
   const root = useChatFolder()?.path;
-  const viewKey = workbenchViewKey(root);
+  const viewKey = useWorkbenchViewKey(root);
 
   const workbenchView = useSyncExternalStore(
     workbench.subscribe,

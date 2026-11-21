@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Models } from "@nyte-ai/ai/models";
+import type { MutableModels } from "@nyte-ai/ai/models";
 import type { Host, Plugin } from "@nyte-ai/core";
 import { openApprovals, PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import type { OpenApproval } from "@nyte-ai/plugin/approvals/schema";
@@ -87,7 +87,7 @@ export function readCommand(
 }
 
 export async function simulate(input: {
-  readonly models: Models;
+  readonly models: MutableModels;
   readonly plugins?: readonly Plugin<"core">[];
   readonly home?: string;
   readonly workspace?: string;

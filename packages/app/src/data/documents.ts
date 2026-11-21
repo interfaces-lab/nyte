@@ -1,3 +1,5 @@
+import { encodeTextFile } from "@nyte-ai/schema";
+import type { TextEncoding } from "@nyte-ai/schema";
 import type { Document, DocumentsApi, FileVersion, WriteOutcome } from "@nyte-ai/sdk";
 import { skipToken, useMutation, useQuery } from "@tanstack/react-query";
 import { connected } from "./connection.ts";
@@ -20,20 +22,26 @@ export function useDocument(path: string | undefined) {
 export async function writeDocument(input: {
   readonly path: string;
   readonly contents: string;
+  readonly encoding: TextEncoding;
   readonly expect?: FileVersion | "absent";
 }): Promise<WriteOutcome> {
   const outcome = await (
     await documentsApi()
   ).write(
     input.path,
-    input.contents,
+    encodeTextFile(input.contents, input.encoding),
     input.expect === undefined ? undefined : { expect: input.expect },
   );
 
   if (outcome.kind === "saved")
     queryClient.setQueryData<Document>(keys.document(input.path), (document) =>
       document?.kind === "text"
-        ? { ...document, contents: input.contents, version: outcome.version }
+        ? {
+            ...document,
+            contents: input.contents,
+            encoding: input.encoding,
+            version: outcome.version,
+          }
         : document,
     );
 

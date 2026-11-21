@@ -20,6 +20,7 @@ export type ProviderStatus = ModelCatalogView["providers"][number];
 export interface DesktopModelOption {
   readonly key: string;
   readonly provider: string;
+  readonly agent: boolean;
   readonly id: string;
   readonly name: string;
   readonly contextWindow: number;
@@ -77,6 +78,7 @@ export function toDesktopCatalog(view: ModelCatalogView): DesktopCatalog {
       return {
         key: `${model.ref.provider}/${model.ref.id}`,
         provider: model.ref.provider,
+        agent: provider.agent,
         id: model.ref.id,
         name: model.name,
         contextWindow: model.contextWindow,

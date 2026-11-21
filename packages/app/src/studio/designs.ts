@@ -184,7 +184,12 @@ function createDesignStore(workspace: SelectedWorkspace): Omit<Opened, "holders"
   const save = (file: Held): Promise<void> =>
     file.buffer.save({
       write: (input) =>
-        writeDocument({ path: input.path, contents: input.contents, expect: input.version }),
+        writeDocument({
+          path: input.path,
+          contents: input.contents,
+          encoding: input.encoding,
+          expect: input.version,
+        }),
     });
 
   const follow = async (): Promise<void> => {
