@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, sep } from "node:path";
+import { basename, isAbsolute, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyTextChange, asId, compile, findLanguage, SdkError } from "@nyte-ai/schema";
 import type {
@@ -11,9 +11,10 @@ import type {
 } from "@nyte-ai/schema";
 import type { ExecutionEnv, LanguageService } from "@nyte-ai/core";
 import { Type } from "typebox";
+import { within } from "../files/files.ts";
 import { feed } from "../feed.ts";
 import type { FeedSink } from "../feed.ts";
-import { findExecutable, hostNode, projectBins } from "../process/command.ts";
+import { findExecutable, hostNode, projectBins, run } from "../process/command.ts";
 import { codeActions, completion, resolveCodeAction, resolveCompletion } from "./assist.ts";
 import {
   findProvider,
@@ -31,10 +32,9 @@ import { answerConfiguration, initializeParams, readInitialize } from "./initial
 import type { Installer } from "./install.ts";
 import { readProgress, readWorkspaceEdit, toLspRange } from "./lsp.ts";
 import type { Place } from "./lsp.ts";
-import { openProject, passesProbe } from "./project.ts";
 import { connectLsp, LspError, METHOD_NOT_FOUND, REQUEST_CANCELLED } from "./rpc.ts";
 import { findServers } from "./servers.ts";
-import type { CompleteSpec } from "./spec.ts";
+import type { CompleteSpec, Project } from "./spec.ts";
 import type { Document, Run, Servers, Slot, Synced, Target } from "./state.ts";
 
 export const RESTART_LIMIT = { restarts: 3, windowMs: 3 * 60_000 } as const;
@@ -42,6 +42,8 @@ export const RESTART_LIMIT = { restarts: 3, windowMs: 3 * 60_000 } as const;
 export const IDLE_MS = 10 * 60_000;
 
 const START_DEADLINE_MS = 30_000;
+
+const PROBE_DEADLINE_MS = 10_000;
 
 const STOP_GRACE_MS = 2000;
 
@@ -74,21 +76,13 @@ export function localLanguage(
 
   const absolute = (path: string): string => (isAbsolute(path) ? path : join(workspace, path));
 
-  const within = (path: string): string => {
-    const inside = relative(workspace, path);
-
-    return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)
-      ? path
-      : inside.split(sep).join("/");
-  };
-
   const uri = (path: string): string => pathToFileURL(absolute(path)).href;
 
   const place: Place = (address) => {
     if (!address.startsWith("file:")) return null;
 
     try {
-      return within(fileURLToPath(address));
+      return within(workspace, fileURLToPath(address));
     } catch {
       return null;
     }
@@ -101,7 +95,7 @@ export function localLanguage(
 
   const reports = diagnosticReports({
     place,
-    within,
+    within: (path) => within(workspace, path),
     uri,
     record,
     document: (path) => documents.get(path),
@@ -110,7 +104,7 @@ export function localLanguage(
   const view = (slot: Slot): LanguageServerView => ({
     languages: [...slot.spec.languages],
     server: slot.spec.name,
-    root: within(slot.root),
+    root: within(workspace, slot.root),
     state: slot.state,
     version: slot.version,
     executable: slot.executable,
@@ -350,13 +344,14 @@ export function localLanguage(
       return null;
     }
 
-    if (
-      spec.runtime !== null &&
-      !(await passesProbe(spec.runtime.program, spec.runtime.probe, slot.root))
-    ) {
-      setState(slot, { kind: "missing", hint: spec.runtime.installHint });
+    if (spec.runtime !== null) {
+      const runtime = await findExecutable(spec.runtime.program);
 
-      return null;
+      if (runtime === null || !(await passesProbe(runtime, spec.runtime.probe, slot.root))) {
+        setState(slot, { kind: "missing", hint: spec.runtime.installHint });
+
+        return null;
+      }
     }
 
     if (
@@ -957,4 +952,37 @@ function tail(slot: Slot): string {
   const last = slot.log.slice(-3).join(" ");
 
   return last === "" ? "" : ` Its log ends: ${last}`;
+}
+
+async function passesProbe(
+  program: string,
+  probe: readonly string[],
+  folder: string,
+): Promise<boolean> {
+  const ran = await run(program, probe, { cwd: folder, timeoutMs: PROBE_DEADLINE_MS }).catch(
+    () => null,
+  );
+
+  return ran?.code === 0;
+}
+
+function openProject(root: string, installer: Installer | undefined): Project {
+  const install: Project["install"] = async (source) =>
+    installer === undefined ? null : installer.install(source, () => undefined);
+
+  return {
+    root,
+    install,
+    async tool(program, probe, source) {
+      const found = await findExecutable(program);
+
+      if (found !== null && (await passesProbe(found, probe, root))) {
+        return { path: found, pinned: false };
+      }
+
+      const installed = await install(source).catch(() => null);
+
+      return installed === null ? null : { path: installed.path, pinned: true };
+    },
+  };
 }

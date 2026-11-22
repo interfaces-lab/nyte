@@ -3,6 +3,7 @@ import { chmod, mkdir, open, readdir, rename, rm, stat, utimes } from "node:fs/p
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { findExecutable, run } from "../process/command.ts";
+import { processExists } from "../process/machine.ts";
 import { unpack, untar } from "./archive.ts";
 import { INSTALL_FOLDER, PLATFORMS } from "./spec.ts";
 import type { Install, Installed, NpmPackage } from "./spec.ts";
@@ -234,7 +235,7 @@ async function removeAbandoned(home: string): Promise<void> {
     (await readdir(home)).map(async (name) => {
       const owner = TEMPORARY.exec(name)?.[1];
 
-      if (owner !== undefined && !alive(Number(owner))) {
+      if (owner !== undefined && !processExists(Number(owner))) {
         await rm(join(home, name), { recursive: true, force: true });
       }
     }),
@@ -255,14 +256,4 @@ async function removeUnused(home: string, keep: string): Promise<void> {
       }
     }),
   );
-}
-
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-
-    return true;
-  } catch (error) {
-    return error instanceof Error && "code" in error && error.code === "EPERM";
-  }
 }

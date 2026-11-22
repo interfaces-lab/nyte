@@ -74,6 +74,14 @@ const TEMPORARY_NAME = new RegExp(
   String.raw`^\..+\.[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}${RegExp.escape(TEMPORARY_SUFFIX)}$`,
 );
 
+export function within(root: string, path: string): string {
+  const inside = relative(root, path);
+
+  return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)
+    ? path
+    : inside.split(sep).join("/");
+}
+
 export function localFiles(
   root: string,
   options?: {
@@ -84,14 +92,6 @@ export function localFiles(
   },
 ): LocalFiles {
   const absolute = (path: string): string => (isAbsolute(path) ? path : join(root, path));
-
-  const within = (path: string): string => {
-    const inside = relative(root, path);
-
-    return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)
-      ? path
-      : inside.split(sep).join("/");
-  };
 
   let found: { readonly at: number; readonly paths: Promise<readonly FileEntryView[]> } | null =
     null;
@@ -199,13 +199,13 @@ export function localFiles(
     },
     search(input) {
       const drafts = new Map(
-        (input.drafts ?? []).map((draft) => [within(absolute(draft.path)), draft.contents]),
+        (input.drafts ?? []).map((draft) => [within(root, absolute(draft.path)), draft.contents]),
       );
 
       return search(root, input, drafts, options?.ripgrep);
     },
     watch(input) {
-      const paths = (input?.paths ?? []).map((path) => within(absolute(path)));
+      const paths = (input?.paths ?? []).map((path) => within(root, absolute(path)));
 
       return watchFiles(root, paths, options?.signal);
     },
