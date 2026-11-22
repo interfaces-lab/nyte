@@ -1,0 +1,352 @@
+{
+  "language": "swift",
+  "servers": [
+    "sourcekit-lsp"
+  ],
+  "vscode": {
+    "extension": "swiftlang.swift-vscode",
+    "source": "https://github.com/swiftlang/vscode-swift/blob/main/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift",
+          "after": "let  summary  =  hub.",
+          "says": "stats"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift",
+          "after": "hub.sta",
+          "says": "func stats() -> Stats"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift",
+          "after": "try hub.submit(",
+          "says": "submit(_ message: Message"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift",
+          "after": "try hub.sub",
+          "says": "Sources/NotifyHub/Hub.swift"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift",
+          "after": "let  summ",
+          "says": "Sources/NotifyHub/Stats.swift"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Hub.swift",
+          "after": "protocol Chan",
+          "says": "Sources/NotifyHub/Email.swift"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift",
+          "after": "try hub.sub"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": false,
+      "vscode": false,
+      "note": "sourcekit-lsp advertises declarationProvider for C-family files via clangd, but SwiftLanguageService returns unsupported method for Swift files."
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Stats.swift",
+          "after": "func bu",
+          "says": "Sources/NotifyHub/Stats.swift"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Stats.swift",
+          "after": "func bu"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Stats.swift",
+          "says": "Counts"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Stats.swift",
+          "query": "EmailChannel",
+          "says": "EmailChannel"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Hub.swift",
+          "after": "func desc",
+          "says": "Add documentation"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift",
+          "after": "let  summary"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Stats.swift",
+          "after": "struct Cou",
+          "says": "Sources/NotifyHub/Stats.swift"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Stats.swift"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Hub.swift",
+          "after": "protocol Chan"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Hub.swift"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Hub.swift",
+          "after": "func sub"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/main.swift",
+          "says": "function"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Stats.swift",
+          "says": "Counts"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Stats.swift",
+          "after": "func bu",
+          "says": "add"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Hub.swift",
+          "after": "protocol Chan",
+          "says": "EmailChannel"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "Sources/NotifyHub/Hub.swift",
+          "says": "never mutated"
+        }
+      ],
+      "servers": [
+        "sourcekit-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}
