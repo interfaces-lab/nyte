@@ -24,19 +24,19 @@ import { branchReadout, changesSummary, vcsRequestForScope } from "../changes/ch
 import { ChangeStats } from "../components/change-stats.tsx";
 import { changeTotals, workingRows } from "../changes/changes-model.ts";
 import { useChangesViewOptions } from "../changes/changes-view-options.ts";
-import { launch, openChanges } from "./commands.ts";
+import { launch, openChanges } from "../workbench/commands.ts";
 import { useFileTabs } from "../editor/file-store.ts";
-import { WORKBENCH_KINDS, workbenchLaunchers } from "./model.ts";
+import { WORKBENCH_KINDS, workbenchLaunchers } from "../workbench/model.ts";
 import type {
   WorkbenchChangesScope,
   WorkbenchScope,
   WorkbenchViewKey,
   WorkbenchViewState,
-} from "./model.ts";
-import { railModel, tabPresentation } from "./selectors.ts";
-import { workbench } from "./store.ts";
+} from "../workbench/model.ts";
+import { railModel, tabPresentation } from "../workbench/selectors.ts";
+import { workbench } from "../workbench/store.ts";
 import { useTerminalRuntime } from "../terminal/terminal-store.ts";
-import { workbenchStyles } from "./workbench.stylex.ts";
+import { workbenchStyles } from "../workbench/workbench.stylex.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;
 

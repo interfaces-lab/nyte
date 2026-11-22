@@ -41,7 +41,7 @@ import type { ChangesTabPatch } from "../workbench/view-reducer.ts";
 import { launch, openUrl } from "../workbench/commands.ts";
 import { WorkbenchWorkspaceContext } from "../workbench/workbench-workspace.tsx";
 import type { WorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
-import { CompactRail, Rail, RailRow } from "../workbench/rail.tsx";
+import { CompactRail, Rail, RailRow } from "./workbench-rail.tsx";
 import { BrowserPanel } from "../browser/browser-panel";
 import { CanvasPanel } from "../canvas/canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../lib/deferred.tsx";
