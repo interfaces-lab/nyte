@@ -205,9 +205,20 @@ const SNIPPETS: readonly {
     name: "escapes",
     snippet: String.raw`a\$b\}c\\d$1`,
     text: String.raw`a$b}c\d`,
-    stops: [[7, 0]],
+    stops: [
+      [7, 0],
+      [7, 0],
+    ],
   },
-  { name: "choices", snippet: "${1|one,two,three|} end", text: "one end", stops: [[0, 3]] },
+  {
+    name: "choices",
+    snippet: "${1|one,two,three|} end",
+    text: "one end",
+    stops: [
+      [0, 3],
+      [7, 0],
+    ],
+  },
   {
     name: "variables",
     snippet: "$TM_FILENAME x ${TM_SELECTED_TEXT:fallback} y ${UNKNOWN}",
@@ -224,7 +235,15 @@ const SNIPPETS: readonly {
       [19, 0],
     ],
   },
-  { name: "a surrogate pair counts two units", snippet: "😀${1:x}", text: "😀x", stops: [[2, 1]] },
+  {
+    name: "a surrogate pair counts two units",
+    snippet: "😀${1:x}",
+    text: "😀x",
+    stops: [
+      [2, 1],
+      [3, 0],
+    ],
+  },
 ];
 
 describe("snippet grammar", () => {

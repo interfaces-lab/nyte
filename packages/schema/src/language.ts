@@ -348,7 +348,7 @@ export const LanguageServerStateType = Type.Union([
 
 export type LanguageServerState = Decoded<typeof LanguageServerStateType>;
 
-/** One language server for one project root: `installing` while its pinned version downloads; `idle` after it shut down for want of use, until the next request starts it again; `untrusted` while the user has not trusted the folder, since a server runs project code. `features` lists what it answers, and is empty until it is ready. */
+/** One language server for one project root: `installing` while its pinned version downloads; `idle` after it shut down for want of use, until the next request starts it again; `untrusted` while the user has not trusted the folder, since a server runs project code. `features` lists what it answers, and is empty until it is ready; `completionTriggers` lists the characters that open its completion list. */
 export const LanguageServerViewType = Type.Object({
   languages: Type.Array(LanguageNameType),
   server: Type.String(),
@@ -357,6 +357,7 @@ export const LanguageServerViewType = Type.Object({
   version: nullable(Type.String()),
   executable: nullable(Type.String()),
   features: Type.Array(LanguageFeatureType),
+  completionTriggers: Type.Array(Type.String()),
 });
 
 export type LanguageServerView = Decoded<typeof LanguageServerViewType>;
@@ -434,7 +435,7 @@ export const CompletionKindType = Type.Enum([
 
 export type CompletionKind = Decoded<typeof CompletionKindType>;
 
-/** A tab stop in `insert.text`, counted in UTF-16 code units from its start; `$0` comes last. */
+/** A tab stop in `insert.text`, counted in UTF-16 code units from its start; the last is where the caret ends, `$0` or the end of the text. */
 export const SnippetStopType = Type.Object({
   utf16Start: Type.Number(),
   utf16Length: Type.Number(),

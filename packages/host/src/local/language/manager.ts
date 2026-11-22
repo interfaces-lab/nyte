@@ -101,15 +101,23 @@ export function localLanguage(
     document: (path) => documents.get(path),
   });
 
-  const view = (slot: Slot): LanguageServerView => ({
-    languages: [...slot.spec.languages],
-    server: slot.spec.name,
-    root: within(workspace, slot.root),
-    state: slot.state,
-    version: slot.version,
-    executable: slot.executable,
-    features: slot.run !== null && slot.run.initialized ? [...listFeatures(slot.run)] : [],
-  });
+  const view = (slot: Slot): LanguageServerView => {
+    const run = slot.run !== null && slot.run.initialized ? slot.run : null;
+    const triggers = run === null ? null : findProvider(run, "completion", null)?.triggerCharacters;
+
+    return {
+      languages: [...slot.spec.languages],
+      server: slot.spec.name,
+      root: within(workspace, slot.root),
+      state: slot.state,
+      version: slot.version,
+      executable: slot.executable,
+      features: run === null ? [] : [...listFeatures(run)],
+      completionTriggers: Array.isArray(triggers)
+        ? triggers.filter((character): character is string => typeof character === "string")
+        : [],
+    };
+  };
 
   const views = (): readonly LanguageServerView[] => [...slots.values()].map(view);
 
