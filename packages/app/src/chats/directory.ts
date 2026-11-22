@@ -44,6 +44,11 @@ export interface Chat {
 
 export type ChatDirectory = ReadonlyMap<SessionId, Chat>;
 
+export interface ChatMark {
+  readonly state: TaskState;
+  readonly unread: boolean;
+}
+
 export function describeChats(
   sessions: Iterable<SessionInfo>,
   workspaces: readonly WorkspaceInfo[] | undefined,

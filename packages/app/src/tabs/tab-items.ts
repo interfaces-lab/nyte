@@ -2,10 +2,9 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { ProjectInfo, SessionId } from "@nyte-ai/sdk";
 import { chatTitle, NEW_CHAT_TITLE } from "../chats/index.ts";
-import type { ChatDirectory } from "../chats/index.ts";
+import type { ChatDirectory, ChatMark } from "../chats/index.ts";
 import { tabPlace, tabPlaces } from "./model.ts";
 import type { Place, Tab, WindowState } from "./model.ts";
-import type { ChatMark } from "../window/index.ts";
 
 const PLACE_ICONS = {
   blank: "new-chat",

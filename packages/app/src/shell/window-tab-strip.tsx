@@ -25,8 +25,8 @@ import { tabName } from "../tabs/tab-items.ts";
 import type { WindowTabItem } from "../tabs/tab-items.ts";
 import { useSessionRow } from "../data/session-rows.ts";
 import { useCommitCount } from "../lib/work-counts.ts";
+import type { ChatMark } from "../chats/index.ts";
 import { useChatMark, useChatWindow } from "../window/index.ts";
-import type { ChatMark } from "../window/index.ts";
 import {
   MOVE_SHORTCUTS,
   readMoveStep,
