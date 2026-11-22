@@ -87,6 +87,23 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
     ],
   ],
   ["toml", [[/^\s*\[{1,2}\s*([^\]]+?)\s*\]{1,2}\s*(?:#.*)?$/u, "heading"]]],
+  [
+    "java",
+    [
+      [
+        /^\s*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\s+)*(?:class|record)\s+(\w+)/u,
+        "class",
+      ],
+      [
+        /^\s*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\s+)*(?:interface|enum|@interface)\s+(\w+)/u,
+        "type",
+      ],
+      [
+        /^\s*(?:(?:public|protected|private|static|final|abstract|synchronized|default)\s+)+(?:[\w$.<>[\],?]+\s+)+(\w+)\s*\(/u,
+        "function",
+      ],
+    ],
+  ],
 ]);
 
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {

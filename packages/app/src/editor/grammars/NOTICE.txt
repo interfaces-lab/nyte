@@ -52,6 +52,9 @@ sql: @l1xnan/tree-sitter-sql@0.4.7 (MIT)
 toml: @tree-sitter-grammars/tree-sitter-toml@0.7.0 (MIT)
   https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-toml/-/tree-sitter-toml-0.7.0.tgz
   licenses/@tree-sitter-grammars--tree-sitter-toml.txt
+java: tree-sitter-java@0.23.5 (MIT)
+  https://registry.npmjs.org/tree-sitter-java/-/tree-sitter-java-0.23.5.tgz
+  licenses/tree-sitter-java.txt
 
 Markdown grammar upstream: tree-sitter-markdown v0.5.1
 https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown.wasm
