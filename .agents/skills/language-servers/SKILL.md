@@ -63,6 +63,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 26. **A probe says where to ask.** `file` is the path. `after` is text in that file, and the position is right after its first occurrence, so end it inside the symbol. `query` is for workspace symbols. `says` is text the answer must contain.
 27. **`servers` lists who offers the feature**, as their status rows say once ready. **`answers` says whether the probes got an answer** through the merged API.
 28. **`vscode` says whether VS Code with the extension offers the feature by default.** Put the reason in `note` wherever it differs from `answers`.
+35. **The matrix runs the pinned version of every server**, never one from `PATH`. A row describes what Nyte ships. Without `NYTE_LANGUAGE_DOWNLOADS=1` the matrix is skipped.
 29. **Record only what a run showed.**
 
     ```sh

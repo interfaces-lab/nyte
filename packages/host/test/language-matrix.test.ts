@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { readFile, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { compile, LanguageFeatureType, LanguageNameType } from "@nyte-ai/schema";
 import type { LanguageFeature, TextPosition } from "@nyte-ai/schema";
@@ -11,7 +11,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { languageInstaller } from "../src/local/language/install.ts";
 import { localLanguage } from "../src/local/language/manager.ts";
 import { SERVERS } from "../src/local/language/servers.ts";
-import { findExecutable, projectBins, run } from "../src/local/process/command.ts";
 import { localEnv, until } from "./language-harness.ts";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "language");
@@ -48,48 +47,46 @@ const Matrix = compile(
 
 const downloads = process.env.NYTE_LANGUAGE_DOWNLOADS === "1";
 
-const fixtures = await Promise.all(
-  readdirSync(FIXTURES, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .flatMap((entry) => {
-      const root = join(FIXTURES, entry.name);
+const fixtures = readdirSync(FIXTURES, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .flatMap((entry) => {
+    const root = join(FIXTURES, entry.name);
 
-      try {
-        return [
-          { folder: entry.name, root, text: readFileSync(join(root, "matrix.json"), "utf8") },
-        ];
-      } catch {
-        return [];
-      }
-    })
-    .map(async (found) => {
-      const matrix: unknown = JSON.parse(found.text);
+    try {
+      return [{ folder: entry.name, root, text: readFileSync(join(root, "matrix.json"), "utf8") }];
+    } catch {
+      return [];
+    }
+  })
+  .map((found) => {
+    const matrix: unknown = JSON.parse(found.text);
 
-      if (!Matrix.Check(matrix)) throw new Error(`${found.folder}/matrix.json is not a matrix.`);
+    if (!Matrix.Check(matrix)) throw new Error(`${found.folder}/matrix.json is not a matrix.`);
 
-      const local = await Promise.all(
-        matrix.servers.map(async (name) => {
-          const spec = SERVERS.find((server) => server.name === name);
+    return { folder: found.folder, root: found.root, matrix };
+  });
 
-          if (spec === undefined) throw new Error(`${found.folder} names no known server: ${name}`);
+describe("every matrix", () => {
+  it.each(fixtures)("$folder names known servers and probes text its files hold", (fixture) => {
+    const known = SERVERS.map((server) => server.name);
 
-          const program = await findExecutable(spec.program, projectBins(found.root));
+    const probes = Object.values(fixture.matrix.features).flatMap((row) => row.probes);
 
-          return (
-            program !== null &&
-            (spec.probe === null ||
-              (await run(program, spec.probe, { cwd: found.root }).catch(() => null))?.code === 0)
-          );
-        }),
-      );
+    expect({
+      unknown: fixture.matrix.servers.filter((name) => !known.includes(name)),
+      missing: probes.flatMap((probe) =>
+        readFileSync(join(fixture.root, probe.file), "utf8").includes(probe.after ?? "")
+          ? []
+          : [`${probe.file}: ${probe.after}`],
+      ),
+    }).toEqual({ unknown: [], missing: [] });
+  });
+});
 
-      return { ...found, matrix, runnable: downloads || local.every(Boolean) };
-    }),
-);
-
-describe.each(fixtures.filter((fixture) => fixture.runnable))("matrix: $folder", (fixture) => {
+describe.each(downloads ? fixtures : [])("matrix: $folder", (fixture) => {
   const matrix = fixture.matrix;
   let root: string;
+  let launchers: string;
   let language: LanguageService;
 
   const rows = LanguageFeatureType.enum
@@ -98,16 +95,68 @@ describe.each(fixtures.filter((fixture) => fixture.runnable))("matrix: $folder",
 
   beforeAll(async () => {
     root = await realpath(fixture.root);
+    launchers = await mkdtemp(join(tmpdir(), "nyte-matrix-"));
+    const installer = languageInstaller(join(homedir(), ".nyte", "language-servers"));
+
+    const pinned = await Promise.all(
+      SERVERS.flatMap((spec) =>
+        spec.install !== null && matrix.servers.includes(spec.name)
+          ? [
+              installer
+                .install(spec.name, spec.install, () => undefined)
+                .then(async (installed) => {
+                  if (installed.kind === "binary") return [spec.name, installed.path] as const;
+                  const launcher = join(launchers, spec.name);
+
+                  await writeFile(
+                    launcher,
+                    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(installed.path)} "$@"\n`,
+                    { mode: 0o755 },
+                  );
+
+                  return [spec.name, launcher] as const;
+                }),
+            ]
+          : [],
+      ),
+    );
+
     language = localLanguage(localEnv(root), {
       trusted: async () => true,
-      installer: downloads
-        ? languageInstaller(join(homedir(), ".nyte", "language-servers"))
-        : undefined,
+      servers: Object.fromEntries(pinned),
+      installer,
     });
-  });
+
+    const first = Object.values(matrix.features).flatMap((row) => row.probes)[0];
+
+    if (first === undefined) throw new Error("The matrix has no probe.");
+    await language.symbols({ path: first.file });
+
+    const views = await until(language.watchStatus(), (seen) =>
+      matrix.servers.every((name) =>
+        seen.some(
+          (view) =>
+            view.server === name &&
+            view.state.kind !== "idle" &&
+            view.state.kind !== "starting" &&
+            view.state.kind !== "installing",
+        ),
+      ),
+    );
+
+    expect(
+      Object.fromEntries(
+        views.map((view) => [
+          view.server,
+          view.state.kind === "busy" || view.state.kind === "ready" ? "ready" : view.state,
+        ]),
+      ),
+    ).toEqual(Object.fromEntries(matrix.servers.map((server) => [server, "ready"])));
+  }, 600_000);
 
   afterAll(async () => {
     await language.shutdown();
+    await rm(launchers, { recursive: true, force: true });
   });
 
   const locate = async (probe: Probe): Promise<TextPosition> => {
@@ -326,33 +375,6 @@ describe.each(fixtures.filter((fixture) => fixture.runnable))("matrix: $folder",
 
     return true;
   };
-
-  it("starts every server the fixture names", { timeout: 600_000 }, async () => {
-    const first = Object.values(matrix.features).flatMap((row) => row.probes)[0];
-
-    if (first === undefined) throw new Error("The matrix has no probe.");
-    await language.symbols({ path: first.file });
-
-    const views = await until(language.watchStatus(), (seen) =>
-      matrix.servers.every((name) =>
-        seen.some(
-          (view) =>
-            view.server === name &&
-            view.state.kind !== "starting" &&
-            view.state.kind !== "installing",
-        ),
-      ),
-    );
-
-    expect(
-      Object.fromEntries(
-        views.map((view) => [
-          view.server,
-          view.state.kind === "busy" || view.state.kind === "ready" ? "ready" : view.state,
-        ]),
-      ),
-    ).toEqual(Object.fromEntries(matrix.servers.map((server) => [server, "ready"])));
-  });
 
   it.each(rows)("$feature", { timeout: 120_000 }, async (row) => {
     if (row.answers) {
