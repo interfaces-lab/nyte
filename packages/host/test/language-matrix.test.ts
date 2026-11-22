@@ -68,12 +68,12 @@ const fixtures = readdirSync(FIXTURES, { withFileTypes: true })
 
 describe("every matrix", () => {
   it.each(fixtures)("$folder names known servers and probes text its files hold", (fixture) => {
-    const known = SERVERS.map((server) => server.name);
+    const known = new Set(SERVERS.map((server) => server.name));
 
     const probes = Object.values(fixture.matrix.features).flatMap((row) => row.probes);
 
     expect({
-      unknown: fixture.matrix.servers.filter((name) => !known.includes(name)),
+      unknown: fixture.matrix.servers.filter((name) => !known.has(name)),
       missing: probes.flatMap((probe) =>
         readFileSync(join(fixture.root, probe.file), "utf8").includes(probe.after ?? "")
           ? []
