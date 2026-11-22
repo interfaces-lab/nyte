@@ -4,6 +4,7 @@ import { findLanguage } from "@nyte-ai/schema";
 import { GOPLS } from "./servers/gopls.ts";
 import { OXLINT } from "./servers/oxlint.ts";
 import { RUFF } from "./servers/ruff.ts";
+import { RUST_ANALYZER } from "./servers/rust-analyzer.ts";
 import { TY } from "./servers/ty.ts";
 import { TYPESCRIPT_LANGUAGE_SERVER } from "./servers/typescript-language-server.ts";
 import { VSCODE_ESLINT_LANGUAGE_SERVER } from "./servers/vscode-eslint-language-server.ts";
@@ -13,6 +14,7 @@ export const SERVERS: readonly ServerSpec[] = [
   GOPLS,
   TY,
   RUFF,
+  RUST_ANALYZER,
   TYPESCRIPT_LANGUAGE_SERVER,
   VSCODE_ESLINT_LANGUAGE_SERVER,
   OXLINT,

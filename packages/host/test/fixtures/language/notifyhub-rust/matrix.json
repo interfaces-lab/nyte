@@ -1,0 +1,292 @@
+{
+  "language": "rust",
+  "servers": [
+    "rust-analyzer"
+  ],
+  "vscode": {
+    "extension": "rust-lang.rust-analyzer",
+    "source": "https://github.com/rust-lang/rust-analyzer/blob/2026-11-16/editors/code/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "src/main.rs",
+          "after": "let stats = hub.",
+          "says": "stats"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "src/main.rs",
+          "after": "let stats = hub.sta",
+          "says": "pub fn stats(&self) -> Stats"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "src/main.rs",
+          "after": "hub.submit(message, ",
+          "says": "fn submit"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "src/main.rs",
+          "after": "let mut hub = Hub::n",
+          "says": "src/hub.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "src/main.rs",
+          "after": "for mess",
+          "says": "src/hub.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "src/hub.rs",
+          "after": "pub trait Chan",
+          "says": "src/email.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "src/email.rs",
+          "after": "fn se",
+          "says": "src/hub.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "src/stats.rs",
+          "after": "fn bu",
+          "says": "src/stats.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "src/stats.rs",
+          "after": "fn bu"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "src/stats.rs",
+          "says": "Counts"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "src/stats.rs",
+          "query": "Counts",
+          "says": "Counts"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "src/hub.rs",
+          "after": "fn describe(channel: &dyn Channel, verb",
+          "says": "_verbose"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "src/main.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "src/stats.rs",
+          "after": "pub struct Cou",
+          "says": "src/stats.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "src/hub.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "src/hub.rs",
+          "after": "pub fn ne"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "src/main.rs",
+          "says": "function"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "src/main.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "src/stats.rs",
+          "after": "fn bu",
+          "says": "add"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "src/hub.rs",
+          "after": "pub trait Chan"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "src/hub.rs",
+          "says": "unused variable: `verbose`"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}
