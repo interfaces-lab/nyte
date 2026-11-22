@@ -71,6 +71,10 @@ export const SETTINGS_SECTIONS = {
       "workspace",
       "sleep",
       "awake",
+      "privacy",
+      "telemetry",
+      "analytics",
+      "usage statistics",
     ],
   },
   notifications: {

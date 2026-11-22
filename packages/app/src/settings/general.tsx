@@ -15,6 +15,10 @@ const keepAwake = pluginSetting("desktop.keepAwake", DESKTOP_SETTING_SCHEMAS.kee
 
 const pauseOnSleep = pluginSetting("desktop.pauseOnSleep", DESKTOP_SETTING_SCHEMAS.pauseOnSleep);
 
+const countInstalls = pluginSetting("metrics.countInstalls", Type.Boolean());
+
+const shareUsage = pluginSetting("metrics.shareUsage", Type.Boolean());
+
 const workspaceTrust = pluginSetting(
   "workspaceTrust",
   Type.Union([Type.Literal("ask"), Type.Literal("always"), Type.Literal("never")]),
@@ -119,6 +123,18 @@ export function GeneralSettings(): ReactElement {
           title="Pause agents while asleep"
           description="Stop model requests while the computer sleeps. Chats continue when it wakes"
           needs={["desktop"]}
+        />
+      </SettingsSection>
+      <SettingsSection title="Privacy">
+        <SwitchRow
+          setting={countInstalls}
+          title="Count installs"
+          description="When Nyte installs or updates, send its version, system and chip type. No ID is sent"
+        />
+        <SwitchRow
+          setting={shareUsage}
+          title="Share usage statistics"
+          description="Once a day, send request and token counts for each provider and model. No ID, prompts or files"
         />
       </SettingsSection>
     </>

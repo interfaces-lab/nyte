@@ -22,6 +22,7 @@ function PrivacyPage() {
         { title: "Who we are", url: "#operator", depth: 2 },
         { title: "Accounts and sign-in", url: "#accounts", depth: 2 },
         { title: "Your work and connections", url: "#work", depth: 2 },
+        { title: "Usage counts", url: "#usage", depth: 2 },
         { title: "Service providers", url: "#providers", depth: 2 },
         { title: "Retention and deletion", url: "#retention", depth: 2 },
         { title: "Your choices", url: "#choices", depth: 2 },
@@ -90,6 +91,21 @@ function PrivacyPage() {
         connections to another host are stored unencrypted in the owner-only file{" "}
         <code>~/.nyte/server.json</code>, not the operating system's credential store. The mobile
         app uses operating-system secure storage for connection credentials.
+      </p>
+
+      <h2 id="usage">Usage counts</h2>
+      <p>
+        When Nyte is installed or updated, the host sends its version, release channel, operating
+        system, chip type and whether the desktop app or the terminal started it. If you turn on
+        Share usage statistics, it also sends a daily total of model requests and tokens for each
+        provider and model that ships with Nyte. Neither carries an identifier, an account, your
+        prompts or your files. Our server on Cloudflare adds each report to aggregate counts and
+        does not store IP addresses. You can turn both off in Settings or with{" "}
+        <code>NYTE_TELEMETRY=0</code>.{" "}
+        <Link to="/docs/$" params={{ _splat: "usage-data" }}>
+          Usage data
+        </Link>{" "}
+        lists every field.
       </p>
 
       <h2 id="providers">Service providers</h2>

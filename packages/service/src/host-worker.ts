@@ -25,6 +25,7 @@ import type { DocsSource } from "./docs.ts";
 import { openFaultLog } from "./fault-log.ts";
 import { hostFaultsPath } from "./host-endpoint.ts";
 import { hostMessages } from "./host-thread.ts";
+import { metricsPlugin, reportInstall } from "./metrics.ts";
 import type { HostCommand, HostReport } from "./host-thread.ts";
 import { retireOnRequest } from "./outdated-host.ts";
 import { portConflict, probePort } from "./port.ts";
@@ -107,10 +108,11 @@ async function open(
   let shell: string | null = null;
   const host = await openLocalHost(command, runtime, revoked, () => shell);
 
-  if (command.socket !== undefined)
+  if (command.socket !== undefined) {
     void followTerminalShell(host, (next) => {
       shell = next;
     });
+  }
 
   let sharing: Sharing | null = null;
 
@@ -133,7 +135,7 @@ async function open(
 
     if (listener.address === null) throw new Error("The listener bound no address.");
 
-    if (command.socket !== undefined)
+    if (command.socket !== undefined) {
       await host.listen({
         transport: { kind: "socket", path: command.socket },
         auth: {
@@ -143,8 +145,12 @@ async function open(
         execution: { kind: "admit-only" },
         before: sharing.routes(command.token),
       });
+    }
 
     sharing.start();
+    void reportInstall(host, runtime.source).catch((cause: unknown) =>
+      dev("metrics", "install", { error: String(cause) }),
+    );
 
     const unfollow = retireOnRequest(host, command.supervisor, replaced);
 
@@ -186,6 +192,7 @@ async function openLocalHost(
     plugins: [
       codemodePlugin(runtime.codemode),
       docsPlugin(docs),
+      metricsPlugin(runtime.source),
       ...(clients ? [desktopSettingsPlugin] : []),
     ],
     clientPlugins: (actions) =>

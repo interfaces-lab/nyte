@@ -38,6 +38,7 @@ To build a custom web app, use `@nyte-ai/sdk`. `sdk.open` and `host.listen` serv
 | `service` | The local host process that `nyte host` and the desktop app run |
 | `canvas`, `vt` | Inline canvases and terminal emulation, bundled into the applications |
 | `connect`, `connect-broker` | Product connection services |
+| `metrics` | Anonymous install and usage counters, deployed as a Cloudflare Worker |
 | `tailnet` | The host's embedded Tailscale node, a Go binary built for each platform |
 | `bench` | Test fixtures: scripted models, cassettes, scenarios and the host simulation |
 | `ui` | Component library, not published |

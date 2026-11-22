@@ -242,6 +242,7 @@ jobs:
     env:
       NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
       NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
+      NYTE_METRICS_ORIGIN: ${{ vars.NYTE_METRICS_ORIGIN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -315,6 +316,7 @@ jobs:
     env:
       NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
       NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
+      NYTE_METRICS_ORIGIN: ${{ vars.NYTE_METRICS_ORIGIN }}
       CSC_LINK: ${{ matrix.target == 'darwin-arm64' && secrets.CSC_LINK || '' }}
       CSC_KEY_PASSWORD: ${{ matrix.target == 'darwin-arm64' && secrets.CSC_KEY_PASSWORD || '' }}
       APPLE_API_KEY_ID: ${{ matrix.target == 'darwin-arm64' && secrets.APPLE_API_KEY_ID || '' }}

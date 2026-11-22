@@ -46,6 +46,10 @@ export function hostDocsPath(env: Readonly<Record<string, string | undefined>> =
   return join(hostStateDirectory(env), "docs");
 }
 
+export function hostMetricsPath(env: Readonly<Record<string, string | undefined>> = process.env) {
+  return join(hostStateDirectory(env), "metrics");
+}
+
 export function hostRetirePath(env: Readonly<Record<string, string | undefined>> = process.env) {
   return join(hostStateDirectory(env), "retire");
 }
@@ -63,7 +67,7 @@ export async function findRunningHost(path: string): Promise<RunningHost | null>
 }
 
 export async function hostAnswers(url: string): Promise<boolean> {
-  return fetch(new URL("/.nyte/describe", url), { signal: AbortSignal.timeout(1_000) }).then(
+  return fetch(new URL("/.nyte/describe", url), { signal: AbortSignal.timeout(1000) }).then(
     async (response) => {
       await response.body?.cancel();
 

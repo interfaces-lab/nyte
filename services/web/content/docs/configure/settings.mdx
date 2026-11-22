@@ -32,6 +32,8 @@ These ship with Nyte. Plugins you add can declare more.
 | `worktrees.idleDays`     | `7`      | Clean a worktree once no chat has used it for this many days. `0` turns this off                                                                   |
 | `worktrees.maxCount`     | `20`     | Clean the least recently used worktrees beyond this many. `0` turns this off                                                                       |
 | `telemetry.endpoint`     | `""`     | An OTLP HTTP address to send a trace of each model request to. Empty sends nothing                                                                 |
+| `metrics.countInstalls`  | `true`   | Send an anonymous ping when Nyte installs or updates. See [Usage data](/docs/usage-data)                                                           |
+| `metrics.shareUsage`     | `false`  | Once a day, send anonymous request and token counts per provider and model. See [Usage data](/docs/usage-data)                                     |
 | `variables.entries`      | `{}`     | The variables from [Environment variables](/docs/environment-variables)                                                                            |
 
 Cleaning a worktree deletes its ignored dependency and build folders, such as `node_modules`. Its
@@ -47,6 +49,7 @@ In the desktop app, find them here:
 | `web_search.key.<id>` | **Settings > Web search**, shown for the chosen provider. In the terminal, `/websearch-key <provider> <key>` |
 | `worktrees.*`         | **Settings > Source control**                                                                                |
 | `telemetry.endpoint`  | **Settings > Developer** with **Developer Mode** on, as **Trace endpoint**                                   |
+| `metrics.*`           | **Settings > General > Privacy**                                                                             |
 | `variables.entries`   | **Settings > Environment variables**                                                                         |
 
 The desktop app adds settings of its own, named `desktop.*`, for notifications, sleep, its terminal

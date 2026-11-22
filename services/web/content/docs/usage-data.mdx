@@ -1,0 +1,54 @@
+---
+title: Usage data
+description: What Nyte sends about installs and usage, what it never sends, and how to turn it off.
+---
+
+Nyte sends two kinds of counts, and neither carries an ID. The server adds each one to a total and
+keeps nothing that could tell two machines apart. The totals are public at
+[nyte.sh/data](https://nyte.sh/data).
+
+| What                       | When                                            | Default |
+| -------------------------- | ----------------------------------------------- | ------- |
+| [Install count](#installs) | The first time Nyte runs, and after each update | On      |
+| [Usage statistics](#usage) | Once a day, for the day before                  | Off     |
+
+## Install count [#installs]
+
+When Nyte runs for the first time on a machine, or after it updates, the host sends:
+
+- `install` or `update`
+- the Nyte version and release channel, such as `0.3.0` and `stable`
+- the operating system and chip type, such as `darwin` and `arm64`
+- whether the desktop app or `nyte` started the host
+
+Turn it off in **Settings > General > Privacy** with **Count installs**, or set
+`metrics.countInstalls` to `false`.
+
+## Usage statistics [#usage]
+
+When you turn on **Share usage statistics** in **Settings > General > Privacy**, the host adds up
+the model requests it makes during the day. The next day it sends the totals, with the version,
+channel, system and chip type above:
+
+- for each provider and model: the number of requests, input, output and cached tokens, and the
+  cost Nyte estimated
+
+Only providers that ship with Nyte are named. A provider you added, and its models, count as `other`.
+Agents such as Claude Agent or OpenCode also count as `other`. If a day's totals can't be sent, Nyte
+drops them instead of trying again. Turning the setting off deletes the totals it hasn't sent yet.
+
+## What Nyte never sends [#never]
+
+- an ID for you, your machine or your install
+- your account, API keys or provider sign-ins
+- prompts, responses, files, folder names, tool calls or chat titles
+- anything from a build you made from source
+
+The counting server never stores your IP address. Its host, Cloudflare, sees the address of each
+request, as any web host does.
+
+## Turn everything off [#off]
+
+Set `NYTE_TELEMETRY=0` or `DO_NOT_TRACK=1` in the environment that starts the host, or set
+`NYTE_OFFLINE`. Each one turns off both kinds of counts, whatever the settings say. See
+[Environment variables](/docs/environment-variables#variables-nyte-reads).

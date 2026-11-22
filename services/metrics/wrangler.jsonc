@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nyte-metrics",
+  "account_id": "fd0b03d38b5d9c68eeb5449d5c58171c",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-25",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "triggers": { "crons": ["17 3 * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nyte-metrics",
+      "database_id": "1de6528d-da03-46ec-8ba6-fd5377b669ae",
+      "migrations_dir": "migrations",
+    },
+  ],
+}
