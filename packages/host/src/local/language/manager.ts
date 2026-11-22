@@ -453,7 +453,7 @@ export function localLanguage(
     const job = await env
       .exec([...located.command, ...slot.spec.arguments, ...(prepared.arguments ?? [])], {
         cwd: slot.root,
-        env: located.env,
+        env: { ...located.env, ...slot.spec.env, ...prepared.env },
         stdio: "protocol",
       })
       .catch((error: unknown) => {

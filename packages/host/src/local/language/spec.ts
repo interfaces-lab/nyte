@@ -74,6 +74,8 @@ export interface Prepared {
   readonly runsOn?: string;
   /** Added after the spec's own arguments. */
   readonly arguments?: readonly string[];
+  /** Set for the server's process, over the spec's own `env`. */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export interface ServerSpec {
@@ -84,6 +86,7 @@ export interface ServerSpec {
   readonly program: string;
   readonly probe: readonly string[] | null;
   readonly arguments: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
   readonly install: Install | null;
   readonly runtime: {
     readonly program: string;
