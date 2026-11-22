@@ -20,7 +20,7 @@ const LightType = Type.Object({
   at: Type.Number(),
 });
 
-export type Light = Static<typeof LightType>;
+type Light = Static<typeof LightType>;
 
 const ActorType = Type.Object({
   kind: Type.Literal("agent"),
@@ -35,7 +35,7 @@ const AgentLightType = Type.Object({
   at: Type.Number(),
 });
 
-export type AgentLight = Static<typeof AgentLightType>;
+type AgentLight = Static<typeof AgentLightType>;
 
 /** The one selection every window shows, and what agents changed in the last moments. */
 export interface Lights {
