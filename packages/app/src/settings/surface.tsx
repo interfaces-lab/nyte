@@ -8,8 +8,8 @@ import { SETTINGS_PAGES } from "./pages.ts";
 import type { PageInfo } from "./pages.ts";
 import { placePluginSettings } from "./plugin-pages.ts";
 import { PluginGroups } from "./plugin-settings.tsx";
-import { namesCustomSection, readCustomSection } from "./sections.ts";
-import type { OpenSection } from "./sections.ts";
+import { namesCustomSection, readCustomSection } from "../settings-sections/sections.ts";
+import type { OpenSection } from "../settings-sections/sections.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
 export function SettingsSurface(): ReactElement {

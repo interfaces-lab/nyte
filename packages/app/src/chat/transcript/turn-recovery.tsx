@@ -7,7 +7,7 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../../contract/errors.ts";
 import { connected } from "../../data/connection.ts";
-import { showsSettingsSection } from "../../settings/index.ts";
+import { showsSettingsSection } from "../../settings-sections/sections.ts";
 import { SessionModelChip } from "../composer/composer-model-chip.tsx";
 import { compactSession } from "../composer/composer-send.ts";
 import { useTranscriptScope } from "./transcript.tsx";

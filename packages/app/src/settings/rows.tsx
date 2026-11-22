@@ -16,8 +16,8 @@ import type { ReactElement, ReactNode } from "react";
 import { useSetting } from "../preferences/index.ts";
 import type { Setting } from "../preferences/index.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { available } from "./capability.ts";
-import type { Capability } from "./capability.ts";
+import { available } from "../settings-sections/capability.ts";
+import type { Capability } from "../settings-sections/capability.ts";
 import { settingsStyles } from "./settings.stylex.ts";
 
 const ROW_MARK = { "data-settings-row": "" } as const;

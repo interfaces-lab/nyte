@@ -37,7 +37,8 @@ import {
 import { useWindowTabsSync } from "../tabs/use-window-tabs.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { closeSettings } from "../settings/index.ts";
+import { closeSettings } from "../settings-sections/return.ts";
+import { SettingsNavigation } from "../settings/index.ts";
 import { settingsRoute } from "./routes.tsx";
 import { BrowserGuestHost } from "../browser/browser-guests.tsx";
 import { noteFocusRegion } from "../workbench/focus-region.ts";
@@ -284,7 +285,9 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
         <SessionDndProvider>
           {!code && (
             <SidebarPane>
-              <Sidebar />
+              <Sidebar
+                renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}
+              />
             </SidebarPane>
           )}
           <main

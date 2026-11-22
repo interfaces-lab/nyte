@@ -12,9 +12,9 @@ import type { PageInfo } from "./pages.ts";
 import { hostWatch } from "../data/watches.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { placePluginSettings } from "./plugin-pages.ts";
-import { customSection, settingsSectionGroups } from "./sections.ts";
-import type { OpenSection, SettingsSection } from "./sections.ts";
-import { closeSettings } from "./return.ts";
+import { customSection, settingsSectionGroups } from "../settings-sections/sections.ts";
+import type { OpenSection, SettingsSection } from "../settings-sections/sections.ts";
+import { closeSettings } from "../settings-sections/return.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
 export function SettingsNavigation({ section }: { readonly section: OpenSection }): ReactElement {

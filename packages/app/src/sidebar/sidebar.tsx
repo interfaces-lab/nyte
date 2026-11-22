@@ -32,8 +32,8 @@ import { sessionActions, useRootRows } from "../data/session-rows.ts";
 import { groupByWorkspace, localSessions } from "../data/session-list.ts";
 import { useChats } from "../chats/index.ts";
 import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
-import { firstSettingsSection } from "../settings/index.ts";
-import type { SettingsSection } from "../settings/index.ts";
+import { firstSettingsSection } from "../settings-sections/sections.ts";
+import type { SettingsSection } from "../settings-sections/sections.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { SidebarFooter } from "./account-footer.tsx";
 import { activateWorkspace, folderPicker } from "../panes/open-workspace.tsx";
@@ -42,6 +42,7 @@ import { actionIcons } from "./action-icons.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { ChatCardGroup } from "../components/chat-card.tsx";
 import { SidebarContent } from "./sidebar-content.tsx";
+import type { SettingsNavigationSlot } from "./sidebar-content.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
   ChatsList,
@@ -115,7 +116,11 @@ function NewChatRow({
   );
 }
 
-export function Sidebar(): ReactElement {
+export function Sidebar({
+  renderSettingsNavigation,
+}: {
+  readonly renderSettingsNavigation: SettingsNavigationSlot;
+}): ReactElement {
   const sessionListId = useId();
   const workspaceCollectionID = useId();
   const host = useHostState();
@@ -411,7 +416,7 @@ export function Sidebar(): ReactElement {
   return (
     <aside {...props(styles.rail)}>
       <ChatCardGroup placement="row">
-        <SidebarContent>
+        <SidebarContent renderSettingsNavigation={renderSettingsNavigation}>
           {activeSessionId !== undefined && (
             <NeighbourWarm
               key={[activeSessionId, ...neighbours].join(" ")}

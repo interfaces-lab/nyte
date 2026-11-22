@@ -25,7 +25,7 @@ import { keys } from "../data/query-client.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { settings as settingsSchema } from "../theme/schema.stylex.ts";
 import { APP_ORIGINS } from "../contract/origins.ts";
-import { available } from "./capability.ts";
+import { available } from "../settings-sections/capability.ts";
 import { SettingsDialog } from "./dialog.tsx";
 import { SettingsRow, SettingsSection, SwitchRow, TextRow } from "./rows.tsx";
 import { settingsStyles } from "./settings.stylex.ts";

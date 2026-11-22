@@ -27,6 +27,7 @@ const ENTRIES = [
         "workbench",
         "sidebar",
         "settings",
+        "settings-sections",
         "environments",
         "customize",
         "account",

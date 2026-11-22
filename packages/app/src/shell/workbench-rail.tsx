@@ -19,7 +19,7 @@ import { folderName, useHomeWorkspace } from "../data/workspaces.ts";
 import { usePaneLayout } from "../panes/pane-context.tsx";
 import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { ProjectRail } from "../projects/project-rail.tsx";
-import { showsSettingsSection } from "../settings/index.ts";
+import { showsSettingsSection } from "../settings-sections/sections.ts";
 import { branchReadout, changesSummary, vcsRequestForScope } from "../changes/change-scopes.ts";
 import { ChangeStats } from "../components/change-stats.tsx";
 import { changeTotals, workingRows } from "../changes/changes-model.ts";

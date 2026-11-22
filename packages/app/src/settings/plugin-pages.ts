@@ -1,6 +1,6 @@
 import type { HostView, SettingInfo } from "@nyte-ai/sdk";
-import { namesSettingsSection, showsSettingsSection } from "./sections.ts";
-import type { SettingsSection } from "./sections.ts";
+import { namesSettingsSection, showsSettingsSection } from "../settings-sections/sections.ts";
+import type { SettingsSection } from "../settings-sections/sections.ts";
 
 type PluginInfo = HostView["plugins"][number];
 

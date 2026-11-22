@@ -8,7 +8,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 import { queryClient } from "../data/query-client.ts";
-import { closeSettings, showNotifiedChat } from "../settings/return.ts";
+import { closeSettings, showNotifiedChat } from "../settings-sections/return.ts";
 import { createAppRouter } from "../shell/routes.tsx";
 import { activeTab, tabPlace, tabPlaces } from "./model.ts";
 import { useWindowTabsSync } from "./use-window-tabs.tsx";

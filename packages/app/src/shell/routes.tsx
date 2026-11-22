@@ -36,9 +36,9 @@ import {
   firstSettingsSection,
   namesCustomSection,
   showsSettingsSection,
-  routeSettings,
-  SettingsSurface,
-} from "../settings/index.ts";
+} from "../settings-sections/sections.ts";
+import { routeSettings } from "../settings-sections/return.ts";
+import { SettingsSurface } from "../settings/index.ts";
 
 const styles = create({
   loadError: {

@@ -20,8 +20,8 @@ import {
   firstSettingsSection,
   namesSettingsSection,
   showsSettingsSection,
-} from "../settings/sections.ts";
-import { closeSettings } from "../settings/return.ts";
+} from "../settings-sections/sections.ts";
+import { closeSettings } from "../settings-sections/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { closeTab, launch, toggleExplorer } from "../workbench/commands.ts";
 import { workbenchHasFocus } from "../workbench/focus-region.ts";

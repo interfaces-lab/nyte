@@ -15,8 +15,8 @@ import { ThemesSettings } from "./themes.tsx";
 import { VariablesSettings } from "./variables.tsx";
 import { SourceControlSettings } from "./source-control.tsx";
 import { loadDeferred } from "../lib/deferred.tsx";
-import { SETTINGS_SECTIONS } from "./sections.ts";
-import type { SectionInfo, SettingsSection } from "./sections.ts";
+import { SETTINGS_SECTIONS } from "../settings-sections/sections.ts";
+import type { SectionInfo, SettingsSection } from "../settings-sections/sections.ts";
 
 export interface PageInfo extends SectionInfo {
   readonly Page: ComponentType;

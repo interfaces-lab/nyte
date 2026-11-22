@@ -5,9 +5,12 @@ import type { Transition } from "motion/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { firstSettingsSection, SettingsNavigation } from "../settings/index.ts";
-import type { OpenSection } from "../settings/index.ts";
+import { firstSettingsSection } from "../settings-sections/sections.ts";
+import type { OpenSection } from "../settings-sections/sections.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
+
+/** Draws Settings' section list in the sidebar's settings layer. */
+export type SettingsNavigationSlot = (section: OpenSection) => ReactNode;
 
 const INSTANT: Transition = { duration: 0 };
 
@@ -30,7 +33,13 @@ function sidebarLayerTransition(node: HTMLElement): Transition {
   return { type: "tween", duration, ease: [x1, y1, x2, y2] };
 }
 
-export function SidebarContent({ children }: { readonly children: ReactNode }): ReactElement {
+export function SidebarContent({
+  renderSettingsNavigation,
+  children,
+}: {
+  readonly renderSettingsNavigation: SettingsNavigationSlot;
+  readonly children: ReactNode;
+}): ReactElement {
   const openSection = useMatch({
     from: "/settings/$section",
     shouldThrow: false,
@@ -87,7 +96,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
         transition={transition}
         {...props(styles.contentLayer)}
       >
-        <SettingsNavigation section={section} />
+        {renderSettingsNavigation(section)}
       </motion.div>
     </nav>
   );

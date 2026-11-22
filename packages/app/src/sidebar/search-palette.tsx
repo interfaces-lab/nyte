@@ -21,7 +21,7 @@ import { amongOptions, chatMark, sessionsForNavigation } from "./sidebar-view.ts
 import { useSessionSearch } from "../data/sessions.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
-import { settingsSectionGroups } from "../settings/index.ts";
+import { settingsSectionGroups } from "../settings-sections/sections.ts";
 import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
 import type { AppAction } from "../contract/client-actions.ts";
 import { appActions } from "../data/app-actions.ts";

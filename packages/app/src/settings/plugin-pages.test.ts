@@ -6,7 +6,7 @@ import type { NyteBridge } from "../contract/bridge.ts";
 import { installBridge } from "../contract/nyte.ts";
 import { createWebBridge } from "../web/bridge.ts";
 import { placePluginSettings } from "./plugin-pages.ts";
-import type { SettingsSection } from "./sections.ts";
+import type { SettingsSection } from "../settings-sections/sections.ts";
 
 type PluginInfo = HostView["plugins"][number];
 

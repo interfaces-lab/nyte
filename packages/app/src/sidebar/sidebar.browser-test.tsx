@@ -21,6 +21,7 @@ import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
 import { Sidebar } from "./sidebar.tsx";
+import { SettingsNavigation } from "../settings/index.ts";
 
 const STORED = "nyte.desktop.sidebar.v3";
 
@@ -478,7 +479,9 @@ export async function run(): Promise<string> {
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
             <PaneControllerProvider>
               <SessionDndProvider>
-                <Sidebar />
+                <Sidebar
+                  renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}
+                />
               </SessionDndProvider>
             </PaneControllerProvider>
           </TooltipProvider>

@@ -12,7 +12,7 @@ import {
 import { applyBrowserHistory } from "../browser/browser-history.ts";
 import { applyBrowserGuests } from "../browser/browser-guests.tsx";
 import { workbench } from "../workbench/store.ts";
-import { showNotifiedChat } from "../settings/return.ts";
+import { showNotifiedChat } from "../settings-sections/return.ts";
 
 export function useHostEvents(): void {
   useMountEffect(() => {
