@@ -12,7 +12,7 @@ import { describeChats } from "../src/chats/directory.ts";
 import type { ChatDirectory } from "../src/chats/directory.ts";
 import { mergeSessionRows } from "../src/data/session-rows.ts";
 import type { RowSources } from "../src/data/session-rows.ts";
-import type { TurnMessages } from "../src/chat/transcript/turns.ts";
+import type { TurnMessages } from "../src/chats/turns.ts";
 
 export const USAGE = {
   input: 1,

@@ -17,8 +17,8 @@ import type { SessionActivity } from "../../data/session-activity.ts";
 import type { WatchStore } from "../../data/watch-store.ts";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { CHANGES_VISIBLE_FILES } from "../../diff/change-tree.ts";
-import { conversationTurns } from "./turns.ts";
-import type { TurnMessages } from "./turns.ts";
+import { conversationTurns } from "../../chats/index.ts";
+import type { TurnMessages } from "../../chats/index.ts";
 import { displayTranscriptParts, transcriptSlot } from "./transcript-presentation.ts";
 import type {
   StepMessage,

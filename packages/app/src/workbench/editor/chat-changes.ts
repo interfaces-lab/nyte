@@ -3,7 +3,7 @@ import type { FileStatus, SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/s
 import { Value } from "typebox/value";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { editPatch } from "../../chat/tools/edit-patch.ts";
-import { conversationTurns } from "../../chat/transcript/turns.ts";
+import { conversationTurns } from "../../chats/index.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import type { ChatView } from "../../data/chat-store.ts";
 import { reconcile } from "../../data/keep.ts";

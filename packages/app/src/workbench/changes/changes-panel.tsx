@@ -20,7 +20,7 @@ import {
   gitFor,
 } from "../../data/vcs.ts";
 import { useSessionRow } from "../../data/session-rows.ts";
-import { conversationTurns } from "../../chat/transcript/turns.ts";
+import { conversationTurns } from "../../chats/index.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { usePaneLayout } from "../../panes/pane-context.tsx";
