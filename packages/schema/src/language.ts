@@ -95,7 +95,7 @@ export const LANGUAGES: Readonly<
     {
       readonly label: string;
       readonly ids: Readonly<Record<string, string>>;
-      readonly names?: Readonly<Record<string, string>>;
+      readonly fileNames?: Readonly<Record<string, string>>;
     }
   >
 > = {
@@ -121,14 +121,14 @@ export const LANGUAGES: Readonly<
   go: {
     label: "Go",
     ids: { ".go": "go" },
-    names: { "go.mod": "go.mod", "go.work": "go.work", "go.sum": "go.sum" },
+    fileNames: { "go.mod": "go.mod", "go.work": "go.work", "go.sum": "go.sum" },
   },
   html: { label: "HTML", ids: { ".html": "html", ".htm": "html" } },
   java: { label: "Java", ids: { ".java": "java" } },
   json: {
     label: "JSON",
     ids: { ".json": "json", ".jsonc": "jsonc" },
-    names: {
+    fileNames: {
       "tsconfig.json": "jsonc",
       "tsconfig.*.json": "jsonc",
       "tsconfig-*.json": "jsonc",
@@ -175,27 +175,29 @@ const LANGUAGE_BY_EXTENSION = new Map(
   ),
 );
 
-const LANGUAGE_NAMES = LanguageNameType.enum.flatMap((name) =>
-  Object.entries(LANGUAGES[name].names ?? {}).map((entry) => {
+const FILE_NAMES = LanguageNameType.enum.flatMap((name) =>
+  Object.entries(LANGUAGES[name].fileNames ?? {}).map((entry) => {
     const pattern = entry[0].toLowerCase();
     const star = pattern.indexOf("*");
     const found: FoundLanguage = { name, id: entry[1] };
 
     return star < 0
-      ? { start: pattern, end: null, found }
-      : { start: pattern.slice(0, star), end: pattern.slice(star + 1), found };
+      ? { prefix: pattern, suffix: null, found }
+      : { prefix: pattern.slice(0, star), suffix: pattern.slice(star + 1), found };
   }),
 );
 
 export function findLanguage(path: string): FoundLanguage | null {
-  const file = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
+  const file = path
+    .slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1)
+    .toLowerCase();
 
-  const named = LANGUAGE_NAMES.find((entry) =>
-    entry.end === null
-      ? file === entry.start
-      : file.length >= entry.start.length + entry.end.length &&
-        file.startsWith(entry.start) &&
-        file.endsWith(entry.end),
+  const named = FILE_NAMES.find((entry) =>
+    entry.suffix === null
+      ? file === entry.prefix
+      : file.length >= entry.prefix.length + entry.suffix.length &&
+        file.startsWith(entry.prefix) &&
+        file.endsWith(entry.suffix),
   );
 
   if (named !== undefined) return named.found;
@@ -512,7 +514,6 @@ export const FormatOptionsType = Type.Object({
 
 export type FormatOptions = Decoded<typeof FormatOptionsType>;
 
-/** `unavailable` when no server for the file formats documents, `failed` when its server errored. */
 export const LanguageFormatOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("edits"), edits: Type.Array(TextEditType) }),
   Type.Object({ kind: Type.Literal("unavailable"), reason: Type.String() }),
@@ -601,7 +602,6 @@ export const DocumentLinkTokenType = Type.Object({
 
 export type DocumentLinkToken = Decoded<typeof DocumentLinkTokenType>;
 
-/** Where a link leads: a file, with the position in it when the link names one, or any other URL. */
 export const LinkTargetType = Type.Union([
   Type.Object({
     kind: Type.Literal("file"),
