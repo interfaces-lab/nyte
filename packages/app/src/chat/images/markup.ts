@@ -465,7 +465,7 @@ export function markBounds(mark: Mark, spine?: readonly Point[]) {
   return { x, y, width: Math.max(...xs) + pad - x, height: Math.max(...ys) + pad - y };
 }
 
-export function soften(points: readonly Point[]): Point[] {
+function soften(points: readonly Point[]): Point[] {
   return points.map((point, index) => {
     const before = points[index - 1];
     const after = points[index + 1];
