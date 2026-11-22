@@ -26,6 +26,8 @@ export class LspError extends Error {
 
 export const REQUEST_CANCELLED = -32_800;
 
+export const METHOD_NOT_FOUND = -32_601;
+
 const SERVER_GONE = -32_099;
 
 const Envelope = compile(
@@ -64,7 +66,10 @@ export function connectLsp(job: Job, handlers: LspHandlers): LspConnection {
     const result = await handlers.request(method, params).then(
       (value) => ({ result: value }),
       (error: unknown) => ({
-        error: { code: -32_603, message: error instanceof Error ? error.message : String(error) },
+        error: {
+          code: error instanceof LspError ? error.code : -32_603,
+          message: error instanceof Error ? error.message : String(error),
+        },
       }),
     );
 

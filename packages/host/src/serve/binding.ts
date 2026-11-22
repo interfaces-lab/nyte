@@ -602,6 +602,33 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await language(id)).signatureHelp({ path, position }),
     "language.inlayHints": async ({ workspace: id, path, range }) =>
       (await language(id)).inlayHints({ path, range }),
+    "language.implementation": async ({ workspace: id, path, position }) =>
+      (await language(id)).implementation({ path, position }),
+    "language.declaration": async ({ workspace: id, path, position }) =>
+      (await language(id)).declaration({ path, position }),
+    "language.documentHighlights": async ({ workspace: id, path, position }) =>
+      (await language(id)).documentHighlights({ path, position }),
+    "language.workspaceSymbols": async ({ workspace: id, query }) =>
+      (await language(id)).workspaceSymbols({ query }),
+    "language.foldingRanges": async ({ workspace: id, path }) =>
+      (await language(id)).foldingRanges({ path }),
+    "language.selectionRanges": async ({ workspace: id, path, positions }) =>
+      (await language(id)).selectionRanges({ path, positions }),
+    "language.semanticTokens": async ({ workspace: id, path, range }) =>
+      (await language(id)).semanticTokens({ path, range }),
+    "language.callHierarchy": async ({ workspace: id, path, position }) =>
+      (await language(id)).callHierarchy({ path, position }),
+    "language.incomingCalls": async ({ workspace: id, token }) =>
+      (await language(id)).incomingCalls({ token }),
+    "language.outgoingCalls": async ({ workspace: id, token }) =>
+      (await language(id)).outgoingCalls({ token }),
+    "language.typeHierarchy": async ({ workspace: id, path, position }) =>
+      (await language(id)).typeHierarchy({ path, position }),
+    "language.supertypes": async ({ workspace: id, token }) =>
+      (await language(id)).supertypes({ token }),
+    "language.subtypes": async ({ workspace: id, token }) =>
+      (await language(id)).subtypes({ token }),
+    "language.refreshes": async ({ workspace: id }) => (await language(id)).refreshes(),
 
     "github.account": () => connection.github.account(),
     "github.signIn": () => connection.github.signIn(),

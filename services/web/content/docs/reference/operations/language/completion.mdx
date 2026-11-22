@@ -3,7 +3,7 @@ title: language.completion
 description: Lists completions at a position, each with a token to resolve its details.
 ---
 
-Lists the server's completions at a position. Each item has its label, kind, the parameters that follow the label (`tail`) and its type, and what to insert: the text with any snippet expanded, its tab stops in UTF-16 code units and the range it replaces. A callable row whose server left out its parameters gets them from a resolve, for as many rows as answer within a short budget. A newer completion in the workspace cancels one still waiting, which then answers an empty list. A file no server handles, or whose server is `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+Lists the server's completions at a position. Each item has its label, kind, the parameters that follow the label (`tail`) and its type, and what to insert: the text with any snippet expanded, its tab stops in UTF-16 code units and the range it replaces. A callable row whose server left out its parameters gets them from a resolve, for as many rows as answer within a short budget. A newer completion in the workspace cancels one still waiting, which then answers an empty list. A file no server handles, or whose servers are `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
 
 ## When to call it
 

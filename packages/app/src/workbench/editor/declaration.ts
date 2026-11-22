@@ -5,7 +5,7 @@ import type {
   TextPosition,
   TextRange,
 } from "@nyte-ai/sdk";
-import { languageFamily } from "./language-documents.ts";
+import { findLanguage } from "@nyte-ai/schema";
 
 /** A place a navigation can land: an absolute path and the range of the name there. */
 export interface Landing {
@@ -105,10 +105,15 @@ function choose(landings: readonly Landing[], title: string, none: string): Decl
 }
 
 async function nothing(api: LanguageApi, path: string): Promise<DeclarationOutcome> {
-  const family = languageFamily(path);
-  const server = (await api.status()).find((view) => view.language === family);
+  const name = findLanguage(path)?.name;
 
-  return { kind: "none", ...explain(server) };
+  const servers = (await api.status()).filter((view) =>
+    view.languages.some((language) => language === name),
+  );
+
+  const answering = servers.some((view) => view.state.kind === "ready");
+
+  return { kind: "none", ...explain(answering ? undefined : servers[0]) };
 }
 
 function explain(server: LanguageServerView | undefined) {
@@ -121,6 +126,11 @@ function explain(server: LanguageServerView | undefined) {
       return {
         message: `${server.server} doesn't run in untrusted folders.`,
         detail: "Trust the folder to turn it on.",
+      };
+    case "installing":
+      return {
+        message: `${server.server} is downloading.`,
+        detail: "Try again when it has started.",
       };
     case "starting":
       return {

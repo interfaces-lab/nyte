@@ -1,24 +1,13 @@
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
-import { compile, isJsonObject } from "@nyte-ai/schema";
+import { compile, isJson, isJsonObject } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import type { ServerCapabilities } from "./capabilities.ts";
 
-export interface Capabilities {
-  readonly incremental: boolean;
-  readonly save: "none" | "uri" | "text";
-  readonly resolvesCompletion: boolean;
-  readonly resolvesCodeAction: boolean;
-  readonly formats: boolean;
-}
+const SYMBOL_KINDS = { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) };
 
-export const NO_CAPABILITIES: Capabilities = {
-  incremental: false,
-  save: "none",
-  resolvesCompletion: false,
-  resolvesCodeAction: false,
-  formats: false,
-};
+const DYNAMIC = { dynamicRegistration: true } as const;
 
 const CAPABILITIES = {
   general: { positionEncodings: ["utf-16"] },
@@ -28,13 +17,18 @@ const CAPABILITIES = {
     workspaceEdit: { documentChanges: true, resourceOperations: [], failureHandling: "abort" },
     configuration: true,
     workspaceFolders: true,
-    didChangeConfiguration: { dynamicRegistration: false },
-    didChangeWatchedFiles: { dynamicRegistration: false },
-    executeCommand: {},
+    didChangeConfiguration: DYNAMIC,
+    didChangeWatchedFiles: { ...DYNAMIC, relativePatternSupport: true },
+    executeCommand: DYNAMIC,
+    symbol: { ...DYNAMIC, symbolKind: SYMBOL_KINDS },
+    semanticTokens: { refreshSupport: true },
+    inlayHint: { refreshSupport: true },
+    diagnostics: { refreshSupport: true },
   },
   textDocument: {
     synchronization: { didSave: true, willSave: false, willSaveWaitUntil: false },
     completion: {
+      ...DYNAMIC,
       completionItem: {
         snippetSupport: true,
         labelDetailsSupport: true,
@@ -48,22 +42,28 @@ const CAPABILITIES = {
       completionList: { itemDefaults: ["editRange", "insertTextFormat", "commitCharacters"] },
       contextSupport: true,
     },
-    hover: { contentFormat: ["markdown", "plaintext"] },
+    hover: { ...DYNAMIC, contentFormat: ["markdown", "plaintext"] },
     signatureHelp: {
+      ...DYNAMIC,
       signatureInformation: {
         documentationFormat: ["markdown", "plaintext"],
         parameterInformation: { labelOffsetSupport: true },
         activeParameterSupport: true,
       },
     },
-    definition: { linkSupport: true },
-    typeDefinition: { linkSupport: true },
-    references: {},
+    definition: { ...DYNAMIC, linkSupport: true },
+    typeDefinition: { ...DYNAMIC, linkSupport: true },
+    implementation: { ...DYNAMIC, linkSupport: true },
+    declaration: { ...DYNAMIC, linkSupport: true },
+    references: DYNAMIC,
+    documentHighlight: DYNAMIC,
     documentSymbol: {
+      ...DYNAMIC,
       hierarchicalDocumentSymbolSupport: true,
-      symbolKind: { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) },
+      symbolKind: SYMBOL_KINDS,
     },
     codeAction: {
+      ...DYNAMIC,
       codeActionLiteralSupport: {
         codeActionKind: {
           valueSet: [
@@ -83,10 +83,60 @@ const CAPABILITIES = {
       dataSupport: true,
       resolveSupport: { properties: ["edit"] },
     },
-    formatting: {},
-    rename: { prepareSupport: true },
+    formatting: DYNAMIC,
+    rename: { ...DYNAMIC, prepareSupport: true },
     publishDiagnostics: { relatedInformation: true, tagSupport: { valueSet: [1, 2] } },
-    inlayHint: {},
+    diagnostic: { ...DYNAMIC, relatedDocumentSupport: true },
+    inlayHint: DYNAMIC,
+    foldingRange: { ...DYNAMIC, lineFoldingOnly: true },
+    selectionRange: DYNAMIC,
+    callHierarchy: DYNAMIC,
+    typeHierarchy: DYNAMIC,
+    semanticTokens: {
+      ...DYNAMIC,
+      requests: { full: true, range: true },
+      tokenTypes: [
+        "namespace",
+        "type",
+        "class",
+        "enum",
+        "interface",
+        "struct",
+        "typeParameter",
+        "parameter",
+        "variable",
+        "property",
+        "enumMember",
+        "event",
+        "function",
+        "method",
+        "macro",
+        "keyword",
+        "modifier",
+        "comment",
+        "string",
+        "number",
+        "regexp",
+        "operator",
+        "decorator",
+      ],
+      tokenModifiers: [
+        "declaration",
+        "definition",
+        "readonly",
+        "static",
+        "deprecated",
+        "abstract",
+        "async",
+        "modification",
+        "documentation",
+        "defaultLibrary",
+      ],
+      formats: ["relative"],
+      overlappingTokenSupport: false,
+      multilineTokenSupport: false,
+      augmentsSyntaxTokens: true,
+    },
   },
 } as const;
 
@@ -107,16 +157,6 @@ const InitializeAnswer = compile(
           }),
         ]),
       ),
-      completionProvider: Type.Optional(
-        Type.Object({ resolveProvider: Type.Optional(Type.Boolean()) }),
-      ),
-      codeActionProvider: Type.Optional(
-        Type.Union([
-          Type.Boolean(),
-          Type.Object({ resolveProvider: Type.Optional(Type.Boolean()) }),
-        ]),
-      ),
-      documentFormattingProvider: Type.Optional(Type.Union([Type.Boolean(), Type.Object({})])),
     }),
     serverInfo: Type.Optional(
       Type.Object({ name: Type.String(), version: Type.Optional(Type.String()) }),
@@ -142,14 +182,13 @@ export function initializeParams(root: string, options: Json): Json {
   };
 }
 
-/** The capabilities this client uses and the server's version, or null for an answer that is not an `InitializeResult`. */
 export function readInitialize(
   answer: unknown,
-): { readonly capabilities: Capabilities; readonly version: string | null } | null {
+): { readonly capabilities: ServerCapabilities; readonly version: string | null } | null {
   if (!InitializeAnswer.Check(answer)) return null;
-  const sync = answer.capabilities.textDocumentSync;
+  const declared = answer.capabilities;
+  const sync = declared.textDocumentSync;
   const save = typeof sync === "object" ? sync.save : undefined;
-  const actions = answer.capabilities.codeActionProvider;
   const version = answer.serverInfo?.version;
 
   return {
@@ -161,9 +200,7 @@ export function readInitialize(
           : save === undefined || save === false
             ? "none"
             : "uri",
-      resolvesCompletion: answer.capabilities.completionProvider?.resolveProvider === true,
-      resolvesCodeAction: typeof actions === "object" && actions.resolveProvider === true,
-      formats: (answer.capabilities.documentFormattingProvider ?? false) !== false,
+      declared: isJson(declared) && isJsonObject(declared) ? declared : {},
     },
     version: version === undefined ? null : (readGoVersion(version) ?? version),
   };

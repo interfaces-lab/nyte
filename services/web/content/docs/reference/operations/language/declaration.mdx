@@ -1,0 +1,128 @@
+---
+title: language.declaration
+description: Finds where the symbol at a position is declared, where a language tells that from its definition.
+---
+
+Lists where the symbol at a position is declared, in a language whose servers tell a declaration from a definition, such as a C header from its source file. Most servers offer only [`language.definition`](/docs/reference/operations/language/definition), and then this answers empty. A file no server handles, or whose servers are `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+
+## When to call it
+
+For go to declaration where the language has one. Check that a server lists `declaration` in its `features` in [`language.status`](/docs/reference/operations/language/status) before offering it.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "main.go",
+  "position": {
+    "line": 16,
+    "utf16Column": 10
+  }
+}
+```
+
+Response:
+
+```json
+[]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "position"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "position": {
+      "type": "object",
+      "required": ["line", "utf16Column"],
+      "properties": {
+        "line": {
+          "type": "number"
+        },
+        "utf16Column": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["path", "range"],
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "range": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          },
+          "end": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

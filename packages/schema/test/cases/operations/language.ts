@@ -9,12 +9,25 @@ const range = { start: position, end: { line: 31, utf16Column: 17 } };
 const at = { workspace, path: "main.go", position };
 
 const server = {
-  language: "go",
+  languages: ["go"],
   server: "gopls",
   root: "",
   state: { kind: "busy", title: "Indexing", percent: null },
   version: "v0.24.0",
   executable: "/usr/local/bin/gopls",
+  features: ["hover", "semanticTokens"],
+};
+
+const hierarchyToken = { kind: "callHierarchy", server: "s1", answer: 4, item: 0 };
+
+const hierarchyItem = {
+  name: "bump",
+  detail: "hub",
+  kind: "function",
+  location: { path: "hub/stats.go", range },
+  selection: range,
+  deprecated: false,
+  token: hierarchyToken,
 };
 
 const completionToken = { kind: "completion", server: "s1", answer: 3, item: 0 };
@@ -45,8 +58,8 @@ export const languageOperations = {
   "language.status input": operation(OPERATIONS["language.status"].input, workspaceInput, {}),
   "language.status output": operation(
     OPERATIONS["language.status"].output,
-    [server],
-    [{ ...server, state: { kind: "asleep" } }],
+    [server, { ...server, state: { kind: "installing", percent: 42 }, features: [] }],
+    [{ ...server, features: ["telepathy"] }],
   ),
   "language.watchStatus input": operation(
     OPERATIONS["language.watchStatus"].input,
@@ -63,10 +76,11 @@ export const languageOperations = {
     { workspace, path: "main.go", text: "package main\n", version: 1 },
     { workspace, path: "main.go", text: "package main\n" },
   ),
-  "language.open output": operation(OPERATIONS["language.open"].output, null, {
-    ...server,
-    root: 1,
-  }),
+  "language.open output": operation(
+    OPERATIONS["language.open"].output,
+    [],
+    [{ ...server, languages: ["klingon"] }],
+  ),
   "language.change input": operation(
     OPERATIONS["language.change"].input,
     {
@@ -239,8 +253,8 @@ export const languageOperations = {
   ),
   "language.format output": operation(
     OPERATIONS["language.format"].output,
-    [{ range, text: "\t" }],
-    [{ range, newText: "\t" }],
+    { kind: "edits", edits: [{ range, text: "\t" }] },
+    { kind: "edits", edits: [{ range, newText: "\t" }] },
   ),
   "language.signatureHelp output": operation(
     OPERATIONS["language.signatureHelp"].output,
@@ -266,5 +280,73 @@ export const languageOperations = {
     OPERATIONS["language.inlayHints"].output,
     [{ position, label: "parent:", kind: "parameter", padLeft: false, padRight: true }],
     [{ position, label: "parent:", kind: "name", padLeft: false, padRight: true }],
+  ),
+  "language.documentHighlights output": operation(
+    OPERATIONS["language.documentHighlights"].output,
+    [{ range, kind: "write" }],
+    [{ range, kind: "call" }],
+  ),
+  "language.workspaceSymbols input": operation(
+    OPERATIONS["language.workspaceSymbols"].input,
+    { workspace, query: "newStats" },
+    { workspace },
+  ),
+  "language.workspaceSymbols output": operation(
+    OPERATIONS["language.workspaceSymbols"].output,
+    [
+      {
+        name: "newStats",
+        kind: "function",
+        container: "hub",
+        location: { path: "hub/stats.go", range },
+        deprecated: false,
+      },
+    ],
+    [{ name: "newStats", kind: "function", container: "hub", deprecated: false }],
+  ),
+  "language.foldingRanges output": operation(
+    OPERATIONS["language.foldingRanges"].output,
+    [{ startLine: 5, endLine: 8, kind: null }],
+    [{ startLine: 5, endLine: 8, kind: "paragraph" }],
+  ),
+  "language.selectionRanges input": operation(
+    OPERATIONS["language.selectionRanges"].input,
+    { workspace, path: "main.go", positions: [position] },
+    { workspace, path: "main.go", positions: position },
+  ),
+  "language.selectionRanges output": operation(
+    OPERATIONS["language.selectionRanges"].output,
+    [[range]],
+    [range],
+  ),
+  "language.semanticTokens input": operation(
+    OPERATIONS["language.semanticTokens"].input,
+    { workspace, path: "main.go" },
+    { workspace, path: "main.go", range: position },
+  ),
+  "language.semanticTokens output": operation(
+    OPERATIONS["language.semanticTokens"].output,
+    { types: ["function"], modifiers: ["definition"], data: [5, 0, 4, 0, 1] },
+    { types: ["function"], data: [5, 0, 4, 0, 1] },
+  ),
+  "language.callHierarchy output": operation(
+    OPERATIONS["language.callHierarchy"].output,
+    [hierarchyItem],
+    [{ ...hierarchyItem, token: completionToken }],
+  ),
+  "language.incomingCalls input": operation(
+    OPERATIONS["language.incomingCalls"].input,
+    { workspace, token: { ...hierarchyToken, kind: "typeHierarchy" } },
+    { workspace, token: actionToken },
+  ),
+  "language.incomingCalls output": operation(
+    OPERATIONS["language.incomingCalls"].output,
+    [{ item: hierarchyItem, ranges: [range] }],
+    [{ item: hierarchyItem }],
+  ),
+  "language.refreshes output": operation(
+    OPERATIONS["language.refreshes"].output,
+    ["semanticTokens", "inlayHints"],
+    ["diagnostics"],
   ),
 } satisfies Record<string, Case>;

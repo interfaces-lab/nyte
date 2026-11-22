@@ -29,7 +29,13 @@ function receive(message) {
     send({
       id: message.id,
       result: {
-        capabilities: { textDocumentSync: 2, hoverProvider: true, codeActionProvider: true },
+        capabilities: {
+          textDocumentSync: 2,
+          hoverProvider: true,
+          codeActionProvider: true,
+          completionProvider: {},
+          renameProvider: true,
+        },
         serverInfo: { name: "scripted", version: "1.0.0" },
       },
     });

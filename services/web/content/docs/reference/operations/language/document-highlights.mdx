@@ -1,0 +1,168 @@
+---
+title: language.documentHighlights
+description: Lists the ranges in a document that read or write the symbol at a position.
+---
+
+Lists the ranges in one document that refer to the symbol at a position, each marked `read`, `write` or plain `text`. The first server that answers decides, and its empty list counts as an answer. A file no server handles, or whose servers are `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+
+## When to call it
+
+When the caret rests on a symbol, to mark its other uses in the same file.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "hub/stats.go",
+  "position": {
+    "line": 54,
+    "utf16Column": 5
+  }
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "range": {
+      "start": {
+        "line": 39,
+        "utf16Column": 11
+      },
+      "end": {
+        "line": 39,
+        "utf16Column": 15
+      }
+    },
+    "kind": "text"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 43,
+        "utf16Column": 20
+      },
+      "end": {
+        "line": 43,
+        "utf16Column": 24
+      }
+    },
+    "kind": "text"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 54,
+        "utf16Column": 5
+      },
+      "end": {
+        "line": 54,
+        "utf16Column": 9
+      }
+    },
+    "kind": "text"
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "position"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "position": {
+      "type": "object",
+      "required": ["line", "utf16Column"],
+      "properties": {
+        "line": {
+          "type": "number"
+        },
+        "utf16Column": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["range", "kind"],
+    "properties": {
+      "range": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          },
+          "end": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "kind": {
+        "enum": ["text", "read", "write"]
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

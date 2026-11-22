@@ -1,9 +1,9 @@
 ---
 title: language.open
-description: Opens a document with the client's text and version, starting its language server if none runs.
+description: Opens a document with the client's text and version in every language server that takes it, starting the ones not running.
 ---
 
-Hands a document's text to its language server, which from then on reads the client's text instead of the disk's, and starts the server if it isn't running. It answers the server's row, or null for a file no language handles. Opening a document again replaces its text and version. A server that was `missing`, `failed` or `untrusted` is looked for and started again. In a folder the user hasn't trusted no server starts and the row is `untrusted`; trusting the folder starts the servers that hold open documents.
+Hands a document's text to every language server that takes the file, which from then on read the client's text instead of the disk's, and starts the ones that aren't running. It answers one row per server once each has started or said why it didn't, and an empty list for a file no server handles. The call waits for a server that has to download first. Opening a document again replaces its text and version. A server that was `missing`, `failed` or `untrusted` is looked for and started again. In a folder the user hasn't trusted no server starts or downloads and the rows are `untrusted`; trusting the folder starts the servers that hold open documents.
 
 ## When to call it
 
@@ -29,14 +29,39 @@ Request body:
 Response:
 
 ```json
-{
-  "language": "go",
-  "server": "gopls",
-  "root": "",
-  "state": { "kind": "ready" },
-  "version": "v0.24.0",
-  "executable": "/Users/ada/go/bin/gopls"
-}
+[
+  {
+    "languages": ["go"],
+    "server": "gopls",
+    "root": "",
+    "state": {
+      "kind": "ready"
+    },
+    "version": "v0.24.0",
+    "executable": "/Users/ada/go/bin/gopls",
+    "features": [
+      "completion",
+      "hover",
+      "signatureHelp",
+      "definition",
+      "typeDefinition",
+      "implementation",
+      "references",
+      "documentHighlights",
+      "symbols",
+      "workspaceSymbols",
+      "codeActions",
+      "format",
+      "rename",
+      "foldingRanges",
+      "selectionRanges",
+      "semanticTokens",
+      "inlayHints",
+      "callHierarchy",
+      "typeHierarchy"
+    ]
+  }
+]
 ```
 
 ## Errors
@@ -81,139 +106,208 @@ Response:
 
 ```json
 {
-  "anyOf": [
-    {
-      "type": "object",
-      "required": ["language", "server", "root", "state", "version", "executable"],
-      "properties": {
-        "language": {
-          "enum": ["go", "python", "typescript"]
-        },
-        "server": {
-          "type": "string"
-        },
-        "root": {
-          "type": "string"
-        },
-        "state": {
-          "anyOf": [
-            {
-              "type": "object",
-              "required": ["kind"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "starting"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "required": ["kind"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "ready"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "required": ["kind", "title", "percent"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "busy"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "percent": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "type": "object",
-              "required": ["kind", "hint"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "missing"
-                },
-                "hint": {
-                  "type": "string"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "required": ["kind"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "untrusted"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "required": ["kind", "reason"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "failed"
-                },
-                "reason": {
-                  "type": "string"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "required": ["kind"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "idle"
-                }
-              }
-            }
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["languages", "server", "root", "state", "version", "executable", "features"],
+    "properties": {
+      "languages": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "bash",
+            "c",
+            "csharp",
+            "css",
+            "elixir",
+            "go",
+            "html",
+            "java",
+            "json",
+            "kotlin",
+            "lua",
+            "markdown",
+            "php",
+            "python",
+            "ruby",
+            "rust",
+            "sql",
+            "swift",
+            "toml",
+            "typescript",
+            "yaml",
+            "zig"
           ]
-        },
-        "version": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
+        }
+      },
+      "server": {
+        "type": "string"
+      },
+      "root": {
+        "type": "string"
+      },
+      "state": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "starting"
+              }
             }
-          ]
-        },
-        "executable": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "ready"
+              }
             }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "title", "percent"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "busy"
+              },
+              "title": {
+                "type": "string"
+              },
+              "percent": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "hint"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "missing"
+              },
+              "hint": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "percent"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "installing"
+              },
+              "percent": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "untrusted"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "reason"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "failed"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "idle"
+              }
+            }
+          }
+        ]
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "executable": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "features": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "completion",
+            "hover",
+            "signatureHelp",
+            "definition",
+            "typeDefinition",
+            "implementation",
+            "declaration",
+            "references",
+            "documentHighlights",
+            "symbols",
+            "workspaceSymbols",
+            "codeActions",
+            "format",
+            "rename",
+            "foldingRanges",
+            "selectionRanges",
+            "semanticTokens",
+            "inlayHints",
+            "callHierarchy",
+            "typeHierarchy"
           ]
         }
       }
-    },
-    {
-      "type": "null"
     }
-  ]
+  }
 }
 ```
 

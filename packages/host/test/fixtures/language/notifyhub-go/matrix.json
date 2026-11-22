@@ -1,0 +1,292 @@
+{
+  "language": "go",
+  "servers": [
+    "gopls"
+  ],
+  "vscode": {
+    "extension": "golang.go",
+    "source": "https://github.com/golang/vscode-go/blob/master/extension/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "stats := h.",
+          "says": "Stats"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "stats := h.Sta",
+          "says": "func (h *hub.Hub) Stats() hub.Stats"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "h.Submit(ctx, ",
+          "says": "Submit(ctx context.Context"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "h := hub.N",
+          "says": "hub/hub.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "for _, mess",
+          "says": "hub/hub.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "hub/hub.go",
+          "after": "type Chan",
+          "says": "hub/email.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "h := hub.N"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "after": "func bu",
+          "says": "hub/stats.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "after": "func bu"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "says": "Counts"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "query": "newStats",
+          "says": "newStats"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "hub/hub.go",
+          "after": "channel Channel, verb",
+          "says": "Remove unused parameter"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "main.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "after": "type Cou",
+          "says": "hub/stats.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "hub/hub.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "hub/hub.go",
+          "after": "func Ne"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "main.go",
+          "says": "function"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "main.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "after": "func bu",
+          "says": "add"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "hub/hub.go",
+          "after": "type Chan",
+          "says": "Email"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "hub/hub.go",
+          "says": "nil dereference"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}

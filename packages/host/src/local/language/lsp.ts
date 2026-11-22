@@ -1,4 +1,4 @@
-import { compile } from "@nyte-ai/schema";
+import { compile, textOffset } from "@nyte-ai/schema";
 import type {
   CodeActionKind,
   CompletionItem,
@@ -25,11 +25,11 @@ import { expandSnippet } from "./snippet.ts";
 /** Turns a server's `file://` URI into the path the API answers with; null for any other scheme. */
 export type Place = (uri: string) => string | null;
 
-const PositionType = Type.Object({ line: Type.Number(), character: Type.Number() });
+export const PositionType = Type.Object({ line: Type.Number(), character: Type.Number() });
 
-const RangeType = Type.Object({ start: PositionType, end: PositionType });
+export const RangeType = Type.Object({ start: PositionType, end: PositionType });
 
-const LocationType = Type.Object({ uri: Type.String(), range: RangeType });
+export const LocationType = Type.Object({ uri: Type.String(), range: RangeType });
 
 const LocationLinkType = Type.Object({
   targetUri: Type.String(),
@@ -286,7 +286,7 @@ const COMPLETION_KINDS: readonly CompletionKind[] = [
   "typeParameter",
 ];
 
-const SYMBOL_KINDS: readonly SymbolKind[] = [
+export const SYMBOL_KINDS: readonly SymbolKind[] = [
   "file",
   "module",
   "namespace",
@@ -338,11 +338,11 @@ export function toLspRange(range: TextRange) {
   return { start: toLspPosition(range.start), end: toLspPosition(range.end) };
 }
 
-function readPosition(position: Static<typeof PositionType>): TextPosition {
+export function readPosition(position: Static<typeof PositionType>): TextPosition {
   return { line: position.line, utf16Column: position.character };
 }
 
-function readRange(range: Static<typeof RangeType>): TextRange {
+export function readRange(range: Static<typeof RangeType>): TextRange {
   return { start: readPosition(range.start), end: readPosition(range.end) };
 }
 
@@ -646,17 +646,39 @@ export function readTextEdits(value: unknown): readonly TextEdit[] {
 
 export function readPrepareRename(
   value: unknown,
-  read: (range: TextRange) => string,
+  text: string,
+  position: TextPosition,
 ): RenameTarget | null {
-  if (!PrepareRenameLsp.Check(value) || value === null || "defaultBehavior" in value) return null;
+  if (!PrepareRenameLsp.Check(value) || value === null) return null;
 
-  if ("start" in value) {
-    const range = readRange(value);
+  if ("defaultBehavior" in value) return findWord(text, position);
 
-    return { range, placeholder: read(range) };
+  if ("placeholder" in value) {
+    return { range: readRange(value.range), placeholder: value.placeholder };
   }
 
-  return { range: readRange(value.range), placeholder: value.placeholder };
+  const range = readRange(value);
+
+  return {
+    range,
+    placeholder: text.slice(textOffset(text, range.start), textOffset(text, range.end)),
+  };
+}
+
+export function findWord(text: string, position: TextPosition): RenameTarget | null {
+  const offset = textOffset(text, position);
+  const before = /[\p{L}\p{N}_$]*$/u.exec(text.slice(0, offset))?.[0] ?? "";
+  const after = /^[\p{L}\p{N}_$]*/u.exec(text.slice(offset))?.[0] ?? "";
+
+  return before === "" && after === ""
+    ? null
+    : {
+        range: {
+          start: { line: position.line, utf16Column: position.utf16Column - before.length },
+          end: { line: position.line, utf16Column: position.utf16Column + after.length },
+        },
+        placeholder: before + after,
+      };
 }
 
 /** The edit, or why it is refused: a file it would create, rename or delete. */

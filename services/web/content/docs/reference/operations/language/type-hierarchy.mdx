@@ -1,0 +1,257 @@
+---
+title: language.typeHierarchy
+description: Finds the type at a position as the root of a type hierarchy.
+---
+
+Finds the type at a position as the root of a type hierarchy, from the first server that finds one. Each item carries a token for [`language.supertypes`](/docs/reference/operations/language/supertypes) and [`language.subtypes`](/docs/reference/operations/language/subtypes). Asking for a new root, or a restart of the server, makes the earlier tokens stale. A file no server handles, or whose servers are `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+
+## When to call it
+
+When someone asks what a type extends or implements, or what extends it.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "hub/hub.go",
+  "position": {
+    "line": 18,
+    "utf16Column": 5
+  }
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "name": "Channel",
+    "detail": "example.com/notifyhub/hub",
+    "kind": "interface",
+    "location": {
+      "path": "hub/hub.go",
+      "range": {
+        "start": {
+          "line": 18,
+          "utf16Column": 5
+        },
+        "end": {
+          "line": 18,
+          "utf16Column": 12
+        }
+      }
+    },
+    "selection": {
+      "start": {
+        "line": 18,
+        "utf16Column": 5
+      },
+      "end": {
+        "line": 18,
+        "utf16Column": 12
+      }
+    },
+    "deprecated": false,
+    "token": {
+      "kind": "typeHierarchy",
+      "server": "4f0c2b9e-6a1d-4c3b-9e57-2d8a6f1b0c34",
+      "answer": 2,
+      "item": 0
+    }
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "position"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "position": {
+      "type": "object",
+      "required": ["line", "utf16Column"],
+      "properties": {
+        "line": {
+          "type": "number"
+        },
+        "utf16Column": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["name", "detail", "kind", "location", "selection", "deprecated", "token"],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "detail": {
+        "type": "string"
+      },
+      "kind": {
+        "enum": [
+          "file",
+          "module",
+          "namespace",
+          "package",
+          "class",
+          "method",
+          "property",
+          "field",
+          "constructor",
+          "enum",
+          "interface",
+          "function",
+          "variable",
+          "constant",
+          "string",
+          "number",
+          "boolean",
+          "array",
+          "object",
+          "key",
+          "null",
+          "enumMember",
+          "struct",
+          "event",
+          "operator",
+          "typeParameter"
+        ]
+      },
+      "location": {
+        "type": "object",
+        "required": ["path", "range"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "range": {
+            "type": "object",
+            "required": ["start", "end"],
+            "properties": {
+              "start": {
+                "type": "object",
+                "required": ["line", "utf16Column"],
+                "properties": {
+                  "line": {
+                    "type": "number"
+                  },
+                  "utf16Column": {
+                    "type": "number"
+                  }
+                }
+              },
+              "end": {
+                "type": "object",
+                "required": ["line", "utf16Column"],
+                "properties": {
+                  "line": {
+                    "type": "number"
+                  },
+                  "utf16Column": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "selection": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          },
+          "end": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "deprecated": {
+        "type": "boolean"
+      },
+      "token": {
+        "type": "object",
+        "required": ["kind", "server", "answer", "item"],
+        "properties": {
+          "kind": {
+            "enum": ["callHierarchy", "typeHierarchy"]
+          },
+          "server": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "number"
+          },
+          "item": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,72 @@
+---
+title: language.refreshes
+description: Streams what a language server asked clients to compute again, such as semantic tokens after a project loads.
+---
+
+Streams what a language server asked clients to compute again. A frame lists `semanticTokens`, `inlayHints` or both, each once, however many servers asked since the last frame. Diagnostics need no frame here: the host asks the servers again itself, and [`language.diagnostics`](/docs/reference/operations/language/diagnostics) streams the result.
+
+## When to call it
+
+While an editor shows semantic tokens or inlay hints. A server asks when its view of the project changed without an edit, such as when it finishes loading. On a frame, call [`language.semanticTokens`](/docs/reference/operations/language/semantic-tokens) or [`language.inlayHints`](/docs/reference/operations/language/inlay-hints) again for the files on screen.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0"
+}
+```
+
+A frame:
+
+```json
+["semanticTokens", "inlayHints"]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "enum": ["semanticTokens", "inlayHints"]
+  }
+}
+```
+
+{/* generated:end */}

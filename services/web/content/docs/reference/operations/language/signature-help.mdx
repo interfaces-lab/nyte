@@ -3,7 +3,7 @@ title: language.signatureHelp
 description: Reads the signature of the call at a position and its active parameter.
 ---
 
-Answers the signatures of the call around a position, the active one, and the active parameter; each parameter is a span of its signature's label in UTF-16 code units. Null outside a call. A file no server handles, or whose server is `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+Answers the signatures of the call around a position, the active one, and the active parameter; each parameter is a span of its signature's label in UTF-16 code units. Null outside a call. A file no server handles, or whose servers are `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
 
 ## When to call it
 

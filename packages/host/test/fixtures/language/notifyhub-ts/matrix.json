@@ -1,0 +1,289 @@
+{
+  "language": "typescript",
+  "servers": [
+    "typescript-language-server"
+  ],
+  "vscode": {
+    "extension": "vscode.typescript-language-features",
+    "source": "https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "const stats = hub.",
+          "says": "stats"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "await hub.sub",
+          "says": "Hub.submit(message: Message, signal: AbortSignal): Promise<void>"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "hub.submit(message, ",
+          "says": "submit(message: Message, signal: AbortSignal): Promise<void>"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "const hub = new H",
+          "says": "src/hub.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "for (const mess",
+          "says": "src/hub.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "src/hub.ts",
+          "after": "export interface Chan",
+          "says": "src/channels/webhook.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "const hub = new H"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "src/stats.ts",
+          "after": "function bu",
+          "says": "src/stats.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "src/stats.ts",
+          "after": "function bu"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "src/hub.ts",
+          "says": "Hub"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "src/hub.ts",
+          "query": "emptyStats",
+          "says": "emptyStats"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "src/channels/webhook.ts",
+          "after": "const retr",
+          "says": "Remove unused declaration"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "src/index.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "src/stats.ts",
+          "after": "export interface Cou",
+          "says": "src/stats.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "src/hub.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "src/hub.ts",
+          "after": "return structuredCl"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "says": "class"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "src/index.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "src/stats.ts",
+          "after": "function bu",
+          "says": "record"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "src/hub.ts",
+          "after": "export interface Chan"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "src/channels/webhook.ts",
+          "says": "not assignable to type 'number'"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}

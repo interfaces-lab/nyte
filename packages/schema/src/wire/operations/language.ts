@@ -9,19 +9,27 @@ import {
   CompletionResolveTokenType,
   CompletionTriggerType,
   DiagnosticsFrameType,
+  DocumentHighlightType,
   DocumentSymbolType,
+  FoldingRangeType,
   FormatOptionsType,
+  HierarchyCallType,
+  HierarchyItemType,
+  HierarchyTokenType,
   HoverType,
   InlayHintType,
   LanguageLocationType,
   LanguageFormatOutcomeType,
+  LanguageRefreshType,
   LanguageServerViewType,
   RenameOutcomeType,
   RenameTargetType,
+  SemanticTokensType,
   SignatureHelpType,
   TextChangeType,
   TextPositionType,
   TextRangeType,
+  WorkspaceSymbolType,
 } from "../../language.ts";
 import { nullable } from "../nullable.ts";
 import { NOTHING, ON_WORKSPACE, wireObject, wireSchema, WORKSPACE } from "./fields.ts";
@@ -41,6 +49,12 @@ const SERVERS = wireSchema(Type.Array(LanguageServerViewType));
 
 const LOCATIONS = wireSchema(Type.Array(LanguageLocationType));
 
+const ON_HIERARCHY_ITEM = wireObject({ ...WORKSPACE, token: HierarchyTokenType });
+
+const HIERARCHY_ITEMS = wireSchema(Type.Array(HierarchyItemType));
+
+const HIERARCHY_CALLS = wireSchema(Type.Array(HierarchyCallType));
+
 export const LANGUAGE_OPERATIONS = {
   "language.status": {
     ...LANGUAGE,
@@ -59,10 +73,10 @@ export const LANGUAGE_OPERATIONS = {
   "language.open": {
     ...LANGUAGE,
     summary:
-      "Opens a document with the client's text and version, starting its language server if none runs.",
+      "Opens a document with the client's text and version in every language server that takes it, starting the ones not running.",
     kind: "command",
     input: wireObject({ ...DOCUMENT, text: Type.String(), version: Type.Number() }),
-    output: wireSchema(nullable(LanguageServerViewType)),
+    output: SERVERS,
   },
   "language.change": {
     ...LANGUAGE,
@@ -121,6 +135,21 @@ export const LANGUAGE_OPERATIONS = {
     input: ON_POSITION,
     output: LOCATIONS,
   },
+  "language.implementation": {
+    ...LANGUAGE,
+    summary: "Finds the implementations of the interface or abstract member at a position.",
+    kind: "query",
+    input: ON_POSITION,
+    output: LOCATIONS,
+  },
+  "language.declaration": {
+    ...LANGUAGE,
+    summary:
+      "Finds where the symbol at a position is declared, where a language tells that from its definition.",
+    kind: "query",
+    input: ON_POSITION,
+    output: LOCATIONS,
+  },
   "language.references": {
     ...LANGUAGE,
     summary: "Finds every reference to the symbol at a position.",
@@ -128,12 +157,26 @@ export const LANGUAGE_OPERATIONS = {
     input: wireObject({ ...AT, includeDeclaration: Type.Boolean() }),
     output: LOCATIONS,
   },
+  "language.documentHighlights": {
+    ...LANGUAGE,
+    summary: "Lists the ranges in a document that read or write the symbol at a position.",
+    kind: "query",
+    input: ON_POSITION,
+    output: wireSchema(Type.Array(DocumentHighlightType)),
+  },
   "language.symbols": {
     ...LANGUAGE,
     summary: "Lists a document's symbols in document order with their depth.",
     kind: "query",
     input: ON_DOCUMENT,
     output: wireSchema(Type.Array(DocumentSymbolType)),
+  },
+  "language.workspaceSymbols": {
+    ...LANGUAGE,
+    summary: "Finds symbols by name across the projects of the language servers now running.",
+    kind: "query",
+    input: wireObject({ ...WORKSPACE, query: Type.String() }),
+    output: wireSchema(Type.Array(WorkspaceSymbolType)),
   },
   "language.prepareRename": {
     ...LANGUAGE,
@@ -188,5 +231,78 @@ export const LANGUAGE_OPERATIONS = {
     kind: "query",
     input: wireObject({ ...DOCUMENT, range: TextRangeType }),
     output: wireSchema(Type.Array(InlayHintType)),
+  },
+  "language.foldingRanges": {
+    ...LANGUAGE,
+    summary: "Lists the line ranges of a document that fold.",
+    kind: "query",
+    input: ON_DOCUMENT,
+    output: wireSchema(Type.Array(FoldingRangeType)),
+  },
+  "language.selectionRanges": {
+    ...LANGUAGE,
+    summary:
+      "Lists, for each position, the ranges a growing selection steps through, innermost first.",
+    kind: "query",
+    input: wireObject({ ...DOCUMENT, positions: Type.Array(TextPositionType) }),
+    output: wireSchema(Type.Array(Type.Array(TextRangeType))),
+  },
+  "language.semanticTokens": {
+    ...LANGUAGE,
+    summary:
+      "Reads a document's semantic tokens, or those in a range, with the legend that names them.",
+    kind: "query",
+    input: wireObject({ ...DOCUMENT, range: Type.Optional(TextRangeType) }),
+    output: wireSchema(nullable(SemanticTokensType)),
+  },
+  "language.callHierarchy": {
+    ...LANGUAGE,
+    summary: "Finds the function at a position as the root of a call hierarchy.",
+    kind: "query",
+    input: ON_POSITION,
+    output: HIERARCHY_ITEMS,
+  },
+  "language.incomingCalls": {
+    ...LANGUAGE,
+    summary: "Lists the callers of a call hierarchy item, each with its call sites.",
+    kind: "query",
+    input: ON_HIERARCHY_ITEM,
+    output: HIERARCHY_CALLS,
+  },
+  "language.outgoingCalls": {
+    ...LANGUAGE,
+    summary: "Lists what a call hierarchy item calls, each with its call sites.",
+    kind: "query",
+    input: ON_HIERARCHY_ITEM,
+    output: HIERARCHY_CALLS,
+  },
+  "language.typeHierarchy": {
+    ...LANGUAGE,
+    summary: "Finds the type at a position as the root of a type hierarchy.",
+    kind: "query",
+    input: ON_POSITION,
+    output: HIERARCHY_ITEMS,
+  },
+  "language.supertypes": {
+    ...LANGUAGE,
+    summary: "Lists the types a type hierarchy item extends or implements.",
+    kind: "query",
+    input: ON_HIERARCHY_ITEM,
+    output: HIERARCHY_ITEMS,
+  },
+  "language.subtypes": {
+    ...LANGUAGE,
+    summary: "Lists the types that extend or implement a type hierarchy item.",
+    kind: "query",
+    input: ON_HIERARCHY_ITEM,
+    output: HIERARCHY_ITEMS,
+  },
+  "language.refreshes": {
+    ...LANGUAGE,
+    summary:
+      "Streams what a language server asked clients to compute again, such as semantic tokens after a project loads.",
+    kind: "watch",
+    input: ON_WORKSPACE,
+    output: wireSchema(Type.Array(LanguageRefreshType)),
   },
 } as const satisfies OperationRows;

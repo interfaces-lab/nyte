@@ -1,3 +1,4 @@
+import { findLanguage, LANGUAGES } from "@nyte-ai/schema";
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
@@ -12,9 +13,6 @@ import { useWatchSelect } from "../../data/watch-store.ts";
 import { languageStatusWatch } from "../../data/watches.ts";
 import { trustWorkspace, useHomeWorkspace } from "../../data/workspaces.ts";
 import { workspaceFile } from "../paths.ts";
-import { languageFamily } from "./language-documents.ts";
-
-const LANGUAGES = { go: "Go", python: "Python", typescript: "TypeScript and JavaScript" } as const;
 
 const styles = create({
   bar: {
@@ -34,7 +32,7 @@ export function TrustBar(input: {
   readonly folder: { readonly id: WorkspaceId; readonly path: string } | undefined;
   readonly onTrusted: () => void;
 }) {
-  const family = languageFamily(input.path);
+  const name = findLanguage(input.path)?.name;
   const home = useHomeWorkspace();
 
   const relative =
@@ -43,19 +41,17 @@ export function TrustBar(input: {
       : workspaceFile(input.path, [input.folder.path])?.relative;
 
   const untrusted = useWatchSelect(
-    input.folder === undefined || family === undefined
+    input.folder === undefined || name === undefined
       ? undefined
       : languageStatusWatch(input.folder.id),
     (state) =>
-      state.value
-        ?.filter(
-          (view) =>
-            view.language === family &&
-            relative !== undefined &&
-            (view.root === "" || relative.startsWith(`${view.root}/`)),
-        )
-        .toSorted((left, right) => right.root.length - left.root.length)[0]?.state.kind ===
-      "untrusted",
+      state.value?.some(
+        (view) =>
+          view.state.kind === "untrusted" &&
+          view.languages.some((language) => language === name) &&
+          relative !== undefined &&
+          (view.root === "" || relative.startsWith(`${view.root}/`)),
+      ) === true,
   );
 
   const trust = useMutation({
@@ -71,8 +67,8 @@ export function TrustBar(input: {
 
   const folder = input.folder;
 
-  if (!untrusted || folder === undefined || family === undefined) return null;
-  const language = LANGUAGES[family];
+  if (!untrusted || folder === undefined || name === undefined) return null;
+  const language = LANGUAGES[name].label;
 
   if (folder.id === home)
     return (
@@ -87,7 +83,7 @@ export function TrustBar(input: {
   return (
     <div role="status" {...props(text.sm, styles.bar, hairline.blockEnd)}>
       <span {...props(styles.message)}>
-        Trust this folder to turn on {language} code intelligence. Its language server runs code
+        Trust this folder to turn on {language} code intelligence. Its language servers run code
         from the folder.
       </span>
       <Button size="2xs" loading={trust.isPending} onClick={() => trust.mutate(folder.id)}>

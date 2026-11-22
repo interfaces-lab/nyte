@@ -1,9 +1,9 @@
 import type { Job } from "@nyte-ai/core";
 import type { Json, LanguageServerId, LanguageServerState, WorkspaceEdit } from "@nyte-ai/schema";
-import type { Capabilities } from "./initialize.ts";
+import type { Registration, ServerCapabilities } from "./capabilities.ts";
 import type { ActionPlan, Place, readCompletionItem } from "./lsp.ts";
 import type { LspConnection } from "./rpc.ts";
-import type { ServerSpec } from "./servers.ts";
+import type { ServerSpec } from "./spec.ts";
 
 /** One process of a server, from its start to its exit. */
 export interface Run {
@@ -12,13 +12,19 @@ export interface Run {
   readonly rpc: LspConnection;
   readonly opened: Set<string>;
   readonly progress: Map<string, { readonly title: string; readonly percent: number | null }>;
-  capabilities: Capabilities;
+  readonly registrations: Map<string, Registration>;
+  capabilities: ServerCapabilities;
   initialized: boolean;
   stopping: boolean;
   collecting: WorkspaceEdit[] | null;
 }
 
-/** One server for one language and project root, across its restarts. */
+export interface HierarchyAnswer {
+  readonly run: LanguageServerId;
+  readonly answer: number;
+  readonly items: Json[];
+}
+
 export interface Slot {
   readonly spec: ServerSpec;
   readonly root: string;
@@ -41,33 +47,41 @@ export interface Slot {
     readonly answer: number;
     readonly plans: readonly ActionPlan[];
   } | null;
+  readonly hierarchies: {
+    callHierarchy: HierarchyAnswer | null;
+    typeHierarchy: HierarchyAnswer | null;
+  };
   readonly log: string[];
 }
 
 export interface Document {
   readonly path: string;
   readonly languageId: string;
-  readonly slot: Slot;
-  readonly linters: readonly Slot[];
+  readonly slots: readonly Slot[];
   readonly owner: "client" | "disk";
   text: string;
   version: number;
 }
 
-export interface Synced {
-  readonly run: Run;
-  readonly document: Document;
+export interface Target {
   readonly slot: Slot;
+  readonly run: Run;
 }
 
-/** What the requests that keep state between calls need from the manager. */
+export interface Synced {
+  readonly document: Document;
+  readonly targets: readonly Target[];
+}
+
 export interface Servers {
   readonly place: Place;
   uri(path: string): string;
   sync(path: string): Promise<Synced | null>;
-  findRun(server: LanguageServerId): { readonly slot: Slot; readonly run: Run } | null;
+  findRun(server: LanguageServerId): Target | null;
+  running(): readonly Target[];
   touch(slot: Slot): void;
+  record(slot: Slot, text: string): void;
   /** Cancels the completion in flight, if any, and answers the signal that cancels this one. */
   claimCompletion(): AbortSignal;
-  published(slot: Slot, path: string): readonly Json[];
+  reported(slot: Slot, path: string): readonly Json[];
 }
