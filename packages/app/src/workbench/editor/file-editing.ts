@@ -1,8 +1,3 @@
-import { getFiletypeFromFileName } from "@nyte-ai/ui/diffs";
-import type { SupportedLanguages } from "@nyte-ai/ui/diffs";
-import type { EditorSelection } from "@nyte-ai/ui/diffs/edit";
-import { selectedLines } from "./editor-selection.ts";
-
 const INDENT_SIZES = [2, 4, 8] as const;
 
 export interface Indentation {
@@ -10,29 +5,11 @@ export interface Indentation {
   readonly size: (typeof INDENT_SIZES)[number];
 }
 
-export interface FileEditingChoices {
-  readonly indentation: Indentation | undefined;
-  readonly language: SupportedLanguages | undefined;
-}
-
 export type LineEndings = "LF" | "CRLF" | "CR" | "Mixed" | "None";
-
-export interface FilePosition {
-  readonly line: number;
-  readonly column: number;
-  readonly selected: number;
-  readonly lines: number;
-  readonly selections: number;
-}
 
 export interface ResolvedIndentation {
   readonly indentation: Indentation;
   readonly source: "override" | "detected" | "default";
-}
-
-export interface ResolvedLanguage {
-  readonly language: SupportedLanguages;
-  readonly source: "override" | "detected";
 }
 
 const DEFAULT_INDENTATION: Indentation = { kind: "spaces", size: 2 };
@@ -49,15 +26,6 @@ export function resolveIndentation(
     : { indentation: detected, source: "detected" };
 }
 
-export function resolveLanguage(
-  choice: SupportedLanguages | undefined,
-  path: string,
-): ResolvedLanguage {
-  return choice === undefined
-    ? { language: getFiletypeFromFileName(path), source: "detected" }
-    : { language: choice, source: "override" };
-}
-
 export function readLineEndings(contents: string): LineEndings {
   const found = [
     /\r\n/u.test(contents) && ("CRLF" as const),
@@ -68,51 +36,6 @@ export function readLineEndings(contents: string): LineEndings {
   if (found.length > 1) return "Mixed";
 
   return found[0] ?? "None";
-}
-
-export function readFilePosition(
-  contents: string,
-  selections: readonly EditorSelection[],
-): FilePosition | undefined {
-  const primary = selections.at(-1);
-
-  if (primary === undefined) return undefined;
-  const focus = primary.direction === -1 ? primary.start : primary.end;
-  const lines = selectedLines(primary);
-
-  const starts = selections.some((selection) => selection.start.line !== selection.end.line)
-    ? lineStarts(contents)
-    : undefined;
-
-  const selected = selections.reduce(
-    (total, selection) =>
-      total +
-      (starts === undefined
-        ? selection.end.character - selection.start.character
-        : offsetAt(starts, selection.end) - offsetAt(starts, selection.start)),
-    0,
-  );
-
-  return {
-    line: focus.line + 1,
-    column: focus.character + 1,
-    selected,
-    lines: lines === undefined ? 0 : lines.end - lines.start + 1,
-    selections: selections.length,
-  };
-}
-
-export function formatPosition(position: FilePosition): string {
-  const at = `Ln ${String(position.line)}, Col ${String(position.column)}`;
-  const selected = `${String(position.selected)} selected`;
-
-  if (position.selections > 1) {
-    return `${at} (${String(position.selections)} selections${position.selected > 0 ? `, ${selected}` : ""})`;
-  }
-
-  if (position.lines > 1) return `${at} (${selected}, ${String(position.lines)} lines)`;
-
-  return position.selected > 0 ? `${at} (${selected})` : at;
 }
 
 function detectIndentation(contents: string): Indentation | undefined {
@@ -139,15 +62,4 @@ function detectIndentation(contents: string): Indentation | undefined {
   if (best === undefined || best.count === 0 || best.count === steps[1]?.count) return undefined;
 
   return { kind: "spaces", size: best.size };
-}
-
-function lineStarts(contents: string): readonly number[] {
-  return [
-    0,
-    ...Array.from(contents.matchAll(/\r\n|\r|\n/gu), (match) => match.index + match[0].length),
-  ];
-}
-
-function offsetAt(starts: readonly number[], position: EditorSelection["start"]): number {
-  return (starts[position.line] ?? 0) + position.character;
 }
