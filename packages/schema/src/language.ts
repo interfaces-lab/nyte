@@ -247,7 +247,11 @@ export const LANGUAGES: Readonly<
       ".jsx": "javascriptreact",
     },
   },
-  yaml: { label: "YAML", ids: { ".yaml": "yaml", ".yml": "yaml" } },
+  yaml: {
+    label: "YAML",
+    ids: { ".yaml": "yaml", ".yml": "yaml", ".eyaml": "yaml", ".eyml": "yaml", ".cff": "yaml" },
+    fileNames: { ".clang-format": "yaml", "_clang-format": "yaml", ".clang-tidy": "yaml" },
+  },
   zig: { label: "Zig", ids: { ".zig": "zig", ".zon": "zig" } },
 };
 
