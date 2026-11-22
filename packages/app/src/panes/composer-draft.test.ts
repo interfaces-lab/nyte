@@ -4,9 +4,9 @@ import { asId } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/sdk";
 import type { RefusedSend } from "@nyte-ai/sdk/client";
 import type { StorageArea } from "../lib/storage.ts";
-import { SessionViewStateStore } from "../panes/session-view-state.ts";
-import type { ComposerImageAttachment, ComposerViewState } from "../panes/session-view-state.ts";
-import { WindowDrafts } from "./drafts.ts";
+import { SessionViewStateStore } from "./session-view-state.ts";
+import type { ComposerImageAttachment, ComposerViewState } from "./session-view-state.ts";
+import { WindowDrafts } from "../drafts/drafts.ts";
 import {
   endedDraft,
   foldEdit,

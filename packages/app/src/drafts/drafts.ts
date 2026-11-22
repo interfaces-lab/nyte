@@ -26,8 +26,8 @@ import { projectId } from "../data/schemas.ts";
 import { readStored, removeStored, writeStored } from "../lib/storage.ts";
 import type { StorageArea } from "../lib/storage.ts";
 import { journaledReceipts } from "../data/send-journal.ts";
-import { NO_SENDING, persistedDraft, restorable, unsentNotice } from "./composer-draft.ts";
-import type { ComposerNotice, Restore, Sending, SessionDraft } from "./composer-draft.ts";
+import { NO_SENDING, persistedDraft, restorable, unsentNotice } from "../panes/composer-draft.ts";
+import type { ComposerNotice, Restore, Sending, SessionDraft } from "../panes/composer-draft.ts";
 
 const FLUSH_DEBOUNCE_MS = 200;
 

@@ -27,7 +27,7 @@ import { installScripted, scriptedConnection } from "../../../test/scripted-conn
 import { COMPLETED, sessionRow } from "../../../test/view-fixtures.ts";
 import { preferences } from "../../preferences/index.ts";
 import { Composer } from "./composer.tsx";
-import { persistedDraft } from "../../drafts/composer-draft.ts";
+import { persistedDraft } from "../../panes/composer-draft.ts";
 import { conversationMessages } from "../transcript/transcript-rows.ts";
 import {
   DRAFT,

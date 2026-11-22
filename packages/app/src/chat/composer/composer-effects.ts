@@ -12,7 +12,7 @@ import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import type { RefusedSend } from "@nyte-ai/sdk/client";
 import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
-import { handedOff, keptSending, replayedDraft, shownDraft } from "../../drafts/composer-draft.ts";
+import { handedOff, keptSending, replayedDraft, shownDraft } from "../../panes/composer-draft.ts";
 import { contentDraftText } from "../../references/message-references.ts";
 import { readPrompts } from "./composer-history.ts";
 import { deliverEdit } from "./composer-send.ts";

@@ -15,7 +15,7 @@ import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSendPlan } from "./composer-plan.ts";
-import { omittedMessage } from "../../drafts/composer-draft.ts";
+import { omittedMessage } from "../../panes/composer-draft.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import { cycleModes, modeControl, readModes } from "./composer-modes.tsx";

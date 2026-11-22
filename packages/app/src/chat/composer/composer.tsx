@@ -45,8 +45,8 @@ import {
   handedOff,
   shownDraft,
   shownNotice,
-} from "../../drafts/composer-draft.ts";
-import type { ComposerNotice } from "../../drafts/composer-draft.ts";
+} from "../../panes/composer-draft.ts";
+import type { ComposerNotice } from "../../panes/composer-draft.ts";
 import { editBlock, FILES_WHILE_SAVING, saving } from "./composer-session.ts";
 import type { PendingRowAction } from "./composer-session.ts";
 import { composerSession } from "./composer-effects.ts";
