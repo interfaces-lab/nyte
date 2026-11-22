@@ -65,17 +65,13 @@ export type LanguageLocation = Decoded<typeof LanguageLocationType>;
 export const LanguageNameType = Type.Enum([
   "bash",
   "c",
-  "csharp",
   "css",
-  "elixir",
   "go",
   "html",
   "java",
   "json",
-  "kotlin",
   "lua",
   "markdown",
-  "php",
   "python",
   "ruby",
   "rust",
@@ -84,7 +80,6 @@ export const LanguageNameType = Type.Enum([
   "toml",
   "typescript",
   "yaml",
-  "zig",
 ]);
 
 export type LanguageName = Decoded<typeof LanguageNameType>;
@@ -170,9 +165,7 @@ export const LANGUAGES: Readonly<
       ".mm": "objective-cpp",
     },
   },
-  csharp: { label: "C#", ids: { ".cs": "csharp" } },
   css: { label: "CSS", ids: { ".css": "css", ".scss": "scss", ".less": "less" } },
-  elixir: { label: "Elixir", ids: { ".ex": "elixir", ".exs": "elixir" } },
   go: {
     label: "Go",
     ids: { ".go": "go", ".tmpl": "gotmpl", ".gotmpl": "gotmpl" },
@@ -242,10 +235,8 @@ export const LANGUAGES: Readonly<
       "typedoc.json": "jsonc",
     },
   },
-  kotlin: { label: "Kotlin", ids: { ".kt": "kotlin", ".kts": "kotlin" } },
   lua: { label: "Lua", ids: { ".lua": "lua" } },
   markdown: { label: "Markdown", ids: { ".md": "markdown", ".markdown": "markdown" } },
-  php: { label: "PHP", ids: { ".php": "php" } },
   python: { label: "Python", ids: { ".py": "python", ".pyi": "python" } },
   ruby: {
     label: "Ruby",
@@ -318,7 +309,6 @@ export const LANGUAGES: Readonly<
     ids: { ".yaml": "yaml", ".yml": "yaml", ".eyaml": "yaml", ".eyml": "yaml", ".cff": "yaml" },
     fileNames: { ".clang-format": "yaml", "_clang-format": "yaml", ".clang-tidy": "yaml" },
   },
-  zig: { label: "Zig", ids: { ".zig": "zig", ".zon": "zig" } },
 };
 
 interface FoundLanguage {

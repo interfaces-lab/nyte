@@ -105,8 +105,8 @@ export const languageOperations = {
   ),
   "language.install input": operation(
     OPERATIONS["language.install"].input,
-    { workspace, server: "kotlin-lsp", root: "" },
-    { workspace, server: "kotlin-lsp" },
+    { workspace, server: "jdtls", root: "" },
+    { workspace, server: "jdtls" },
   ),
   "language.close input": operation(
     OPERATIONS["language.close"].input,
