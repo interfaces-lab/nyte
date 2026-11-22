@@ -156,8 +156,8 @@ describe("resources", () => {
     const attach = provider.attach.bind(provider);
     let failing = false;
 
-    provider.attach = async (target) => {
-      const attached = await attach(target);
+    provider.attach = async (target, trusted) => {
+      const attached = await attach(target, trusted);
 
       return {
         ...attached,

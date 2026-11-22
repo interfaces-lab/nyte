@@ -15,7 +15,10 @@ afterEach(async () => {
 });
 
 async function handle(git?: GitApi): Promise<SandboxHandle & { readonly destroys: number[] }> {
-  const { files } = await chatOnlyProvider().attach({ kind: "chat-only", locator: null });
+  const { files } = await chatOnlyProvider().attach(
+    { kind: "chat-only", locator: null },
+    async () => false,
+  );
   const destroys: number[] = [];
 
   return {
@@ -70,7 +73,7 @@ describe("chatOnlyProvider", () => {
     });
     expect(Object.keys(provider).sort()).toEqual(["attach", "inspect", "kind"]);
 
-    const env = await provider.attach(target);
+    const env = await provider.attach(target, async () => false);
     const { files } = env;
 
     expect([env.identity, env.cwd]).toEqual(["chat-only", "/"]);
@@ -140,8 +143,8 @@ describe("sandboxProvider", () => {
     );
     expect(booted).toEqual([]);
 
-    const first = await provider.attach(target);
-    const second = await provider.attach(target);
+    const first = await provider.attach(target, async () => false);
+    const second = await provider.attach(target, async () => false);
 
     expect(booted).toHaveLength(1);
     expect([first.identity, first.cwd, second.identity]).toEqual([
@@ -154,7 +157,7 @@ describe("sandboxProvider", () => {
 
     expect(sandbox.destroys).toHaveLength(1);
 
-    await provider.attach(target);
+    await provider.attach(target, async () => false);
 
     expect(booted).toHaveLength(2);
   });
@@ -175,8 +178,8 @@ describe("sandboxProvider", () => {
 
     const target: WorkspaceTarget = { kind: "vm", locator: null };
 
-    await expect(provider.attach(target)).rejects.toThrow("down");
-    expect((await provider.attach(target)).identity).toBe("sandbox-1");
+    await expect(provider.attach(target, async () => false)).rejects.toThrow("down");
+    expect((await provider.attach(target, async () => false)).identity).toBe("sandbox-1");
     expect(attempts).toBe(2);
   });
 

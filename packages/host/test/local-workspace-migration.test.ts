@@ -240,7 +240,10 @@ it("leaves local identities owned by a custom provider alone", async () => {
         environment: {
           ...provider,
           inspect: async (target) => ({ ...(await provider.inspect(target)), identity: legacy }),
-          attach: async (target) => ({ ...(await provider.attach(target)), identity: legacy }),
+          attach: async (target, trusted) => ({
+            ...(await provider.attach(target, trusted)),
+            identity: legacy,
+          }),
         },
       },
     ],

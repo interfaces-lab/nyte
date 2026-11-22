@@ -108,12 +108,12 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
           availability: { kind: "available" },
           projectSources: [".nyte/plugins/qa-probe"],
         }),
-        attach: (target) => {
+        attach: (target, trusted) => {
           const base = chatOnly.environment;
 
           if (base === undefined) throw new Error("chatOnly provides no environment.");
 
-          return base.attach(target);
+          return base.attach(target, trusted);
         },
       },
     },

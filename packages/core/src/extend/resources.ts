@@ -572,7 +572,7 @@ function attachHome(kernel: Kernel): Promise<ExecutionEnv | null> {
   const local = home === null ? undefined : kernel.environments.provider("local");
 
   if (home === null || local === undefined) return Promise.resolve(null);
-  const attached = local.attach({ kind: "local", path: home });
+  const attached = local.attach({ kind: "local", path: home }, async () => false);
   state.home = attached;
 
   attached.catch(() => {

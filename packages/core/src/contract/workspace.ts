@@ -314,7 +314,7 @@ export interface EnvironmentProvider {
     readonly availability: Availability;
     readonly projectSources: readonly string[];
   }>;
-  attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
+  attach(target: WorkspaceTarget, trusted: () => Promise<boolean>): Promise<ExecutionEnv>;
   readonly git?: (env: ExecutionEnv) => GitApi | undefined;
   readonly github?: (env: ExecutionEnv) => GitHubApi | undefined;
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;

@@ -65,7 +65,7 @@ export function localProvider(options?: {
         projectSources: await projectSources(path),
       };
     },
-    async attach(target) {
+    async attach(target, trusted) {
       const path = readTargetPath(target);
 
       if (path === null) throw new SdkError("unavailable", "A local workspace needs a path.");
@@ -81,6 +81,7 @@ export function localProvider(options?: {
         files: localFiles(real, {
           ripgrep: options?.ripgrep,
           formatter: options?.formatter,
+          trusted,
           signal: detached.signal,
         }),
         exec: localExec(real, { shell: options?.shell, signal: detached.signal }),

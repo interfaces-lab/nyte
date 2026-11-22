@@ -6,7 +6,6 @@ import type { Ran } from "../process/command.ts";
 interface Formatter {
   readonly name: string;
   readonly extensions: ReadonlySet<string>;
-  readonly project: boolean;
   arguments(path: string): readonly string[];
 }
 
@@ -35,29 +34,19 @@ const WEB = [
 ];
 
 const FORMATTERS: readonly Formatter[] = [
-  { name: "gofmt", extensions: new Set([".go"]), project: false, arguments: () => [] },
-  {
-    name: "ruff",
-    extensions: new Set([".py", ".pyi"]),
-    project: true,
-    arguments: (path) => ["format", "--stdin-filename", path, "-"],
-  },
   {
     name: "oxfmt",
     extensions: new Set([...WEB, ".toml"]),
-    project: true,
     arguments: (path) => [`--stdin-filepath=${path}`],
   },
   {
     name: "prettier",
     extensions: new Set(WEB),
-    project: true,
     arguments: (path) => ["--stdin-filepath", path],
   },
   {
     name: "biome",
     extensions: new Set([...SCRIPTS, ".json", ".jsonc", ".css", ".graphql", ".gql"]),
-    project: true,
     arguments: (path) => ["format", `--stdin-file-path=${path}`],
   },
 ];
@@ -127,9 +116,7 @@ async function detectFormatter(root: string, path: string): Promise<FormatComman
 
   const places = [
     ...projectBins(root).flatMap((folder) =>
-      candidates.flatMap((formatter) =>
-        formatter.project ? [{ formatter, lookup: join(folder, formatter.name) }] : [],
-      ),
+      candidates.map((formatter) => ({ formatter, lookup: join(folder, formatter.name) })),
     ),
     ...candidates.map((formatter) => ({ formatter, lookup: formatter.name })),
   ];

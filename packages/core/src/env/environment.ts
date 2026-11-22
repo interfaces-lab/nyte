@@ -136,7 +136,10 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       );
     }
 
-    const attached = await serving.attach(record.target);
+    const attached = await serving.attach(
+      record.target,
+      async () => (await projectTrust(kernel, record)) === true,
+    );
 
     if (attached.identity !== record.identity) {
       await attached.close();

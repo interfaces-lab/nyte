@@ -79,6 +79,7 @@ export function localFiles(
   options?: {
     readonly ripgrep?: string;
     readonly formatter?: string;
+    readonly trusted?: () => Promise<boolean>;
     readonly signal?: AbortSignal;
   },
 ): LocalFiles {
@@ -156,7 +157,11 @@ export function localFiles(
     ...localTransfers(root),
     batch: () => refusedBatch(),
     async format(path, contents) {
-      return format(root, absolute(path), contents, options?.formatter);
+      if (options?.trusted === undefined || !(await options.trusted())) {
+        return { kind: "unavailable", reason: "Trust the folder to format its files." };
+      }
+
+      return format(root, absolute(path), contents, options.formatter);
     },
     async *scan(input) {
       const directory = input?.directory ?? "";

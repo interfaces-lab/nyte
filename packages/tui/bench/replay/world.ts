@@ -127,8 +127,8 @@ function bigFileEnvironment(kind: string): Plugin<"core"> {
     environment: {
       kind,
       inspect: (target) => base.inspect(target),
-      async attach(target) {
-        const env = await base.attach(target);
+      async attach(target, trusted) {
+        const env = await base.attach(target, trusted);
 
         return {
           ...env,
