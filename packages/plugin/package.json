@@ -17,6 +17,7 @@
   "exports": {
     "./core": "./src/core.ts",
     "./core/approvals": "./src/approvals/approvals.ts",
+    "./core/autoresearch": "./src/autoresearch/autoresearch.ts",
     "./core/acp": "./src/acp/index.ts",
     "./core/bash-description": "./src/bash-description.ts",
     "./core/browser-client": "./src/browser-client.ts",
@@ -43,6 +44,7 @@
     "./core/telemetry": "./src/telemetry.ts",
     "./core/tool-search": "./src/tool-search.ts",
     "./core/web": "./src/web/index.ts",
+    "./part-view-files": "./src/part-view-files.ts",
     "./client": "./src/client.ts",
     "./client/mount": "./src/client/mount.ts",
     "./client/notifications": "./src/client/notifications.ts",
@@ -255,7 +257,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.views.json",
     "build:package": "bun ../../scripts/sdk-packages.mjs build plugin"
   },
   "dependencies": {

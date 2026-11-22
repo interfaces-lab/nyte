@@ -12,6 +12,7 @@ import { checksPlugin } from "./checks-plugin.ts";
 import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
 import { docsPlugin } from "./docs-plugin.ts";
 import { photonPlugin } from "./photon-plugin.ts";
+import { partViewsPlugin } from "./part-views-plugin.ts";
 
 const destination = fileURLToPath(new URL("../dist/", import.meta.url));
 
@@ -46,6 +47,7 @@ try {
     root: packages,
     target: "bun",
     plugins: [
+      partViewsPlugin,
       solidPlugin,
       codemodePlugin,
       photonPlugin,
@@ -101,15 +103,17 @@ try {
 } catch (cause) {
   process.stderr.write(`Build failed: ${describe(cause)}\n`);
 
-  if (directory)
+  if (directory) {
     process.stderr.write(await readFile(join(directory, "build.log"), "utf8").catch(() => ""));
+  }
   process.exitCode = 1;
 } finally {
-  if (directory)
+  if (directory) {
     await rm(directory, { recursive: true, force: true }).catch((cause: unknown) => {
       process.stderr.write(
         `Build cleanup failed: ${cause instanceof Error ? cause.message : String(cause)}\n`,
       );
       process.exitCode = 1;
     });
+  }
 }
