@@ -2,11 +2,14 @@ import { asId, SdkError } from "@nyte-ai/schema";
 import type { ClientId, ClientRow, Json, PrincipalId, SdkErrorCode } from "@nyte-ai/schema";
 import type { ServerHost } from "@nyte-ai/core/server";
 
-export type Requester = { readonly client: ClientId; readonly principal: PrincipalId };
+export interface Requester {
+  readonly client: ClientId;
+  readonly principal: PrincipalId;
+}
 
 export type Outcome = "performed" | "refused" | "failed" | "timeout";
 
-export type PerformEvent = {
+export interface PerformEvent {
   readonly c: "e";
   readonly type: "event";
   readonly scope: string;
@@ -16,7 +19,7 @@ export type PerformEvent = {
   readonly requester: Requester;
   readonly action: string;
   readonly input: Json;
-};
+}
 
 export type HostEvent =
   | {
@@ -42,12 +45,12 @@ export type Reply =
   | { readonly kind: "result"; readonly result: Json }
   | { readonly kind: "error"; readonly code: SdkErrorCode; readonly message: string };
 
-export type ClientMember = {
+export interface ClientMember {
   readonly row: ClientRow;
   deliver(event: PerformEvent): void;
-};
+}
 
-export type Clients = {
+export interface Clients {
   rows(): readonly ClientRow[];
   join(member: ClientMember): { listen(listening: boolean): void; leave(): void };
   observe(listener: (event: HostEvent) => void): () => void;
@@ -61,9 +64,9 @@ export type Clients = {
     },
   ): Promise<Json>;
   reply(from: ClientId, call: string, reply: Reply): void;
-};
+}
 
-type Pending = {
+interface Pending {
   readonly call: string;
   readonly requester: Requester;
   readonly action: string;
@@ -72,15 +75,15 @@ type Pending = {
   readonly settle: (outcome: Reply | null, failure: SdkError | null) => void;
   timer: ReturnType<typeof setTimeout> | undefined;
   delivered: boolean;
-};
+}
 
-type Entry = {
+interface Entry {
   readonly member: ClientMember;
   readonly waiting: Pending[];
   current: Pending | null;
   listening: boolean;
   seq: number;
-};
+}
 
 const HOST_REQUESTER: Requester = {
   client: asId<"client">("host"),
@@ -211,8 +214,9 @@ function openClients(): Clients {
           entries.delete(member.row.id);
           const gone = new SdkError("unavailable", "The client left before it answered.");
 
-          for (const pending of [entry.current, ...entry.waiting.splice(0)])
+          for (const pending of [entry.current, ...entry.waiting.splice(0)]) {
             if (pending !== null) finish(entry, pending, null, gone);
+          }
           announce();
         },
       };
@@ -227,8 +231,9 @@ function openClients(): Clients {
     perform(requester, request) {
       const entry = entries.get(request.client);
 
-      if (entry === undefined)
+      if (entry === undefined) {
         return Promise.reject(new SdkError("unknown", `No client ${request.client} is connected.`));
+      }
       const call = crypto.randomUUID();
 
       if (!entry.member.row.actions.some((action) => action.name === request.action)) {
@@ -281,8 +286,9 @@ function openClients(): Clients {
         pending === undefined ||
         pending.call !== call ||
         !pending.delivered
-      )
+      ) {
         throw new SdkError("unknown", `No call ${call} is waiting for this client's answer.`);
+      }
       finish(entry, pending, reply, null);
     },
   };
@@ -311,10 +317,11 @@ export function performOffered(
     .rows()
     .find((row) => row.actions.some((action) => action.name === request.action));
 
-  if (target === undefined)
+  if (target === undefined) {
     return Promise.reject(
       new SdkError("not_supported", `No connected client offers ${request.action}.`),
     );
+  }
 
   return clients.perform(HOST_REQUESTER, { ...request, client: target.id });
 }

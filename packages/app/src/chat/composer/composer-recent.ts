@@ -31,8 +31,9 @@ export function useSuggestionFrecency(): SuggestionFrecency {
 export function rememberSuggestion(id: string): void {
   const current = recent.get();
 
-  if (current[0] !== id)
+  if (current[0] !== id) {
     recent.set([id, ...current.filter((held) => held !== id)].slice(0, MAX_RECENT));
+  }
   const halfLives = Date.now() / HALF_LIFE_MS;
   const weights = frecency.get();
   const held = weights[id];

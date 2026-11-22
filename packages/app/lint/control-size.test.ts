@@ -1,14 +1,13 @@
 import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "vitest";
 
 const run = promisify(execFile);
 
-const here = dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 
 const fixture = join(here, "fixtures/control-size-fixture.ts");
 
@@ -33,10 +32,18 @@ test("control sizes and touch sizes come from tokens", async () => {
       "--format",
       "json",
       fixture,
-    ]).catch((error: { stdout?: string }) => ({ stdout: error.stdout ?? "" }));
+    ]).catch((error: unknown) => ({
+      stdout:
+        typeof error === "object" &&
+        error !== null &&
+        "stdout" in error &&
+        typeof error.stdout === "string"
+          ? error.stdout
+          : "",
+    }));
 
     const report: {
-      diagnostics?: Array<{ code?: string; labels?: Array<{ span: { line: number } }> }>;
+      diagnostics?: { code?: string; labels?: { span: { line: number } }[] }[];
     } = JSON.parse(result.stdout);
 
     const lines = readFileSync(fixture, "utf8").split("\n");

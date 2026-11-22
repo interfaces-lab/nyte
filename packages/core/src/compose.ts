@@ -196,12 +196,13 @@ export async function composeServer(
     (outcome, index) => outcome.kind === "rejected" && fromFile(index) === undefined,
   );
 
-  if (rejected.length > 0)
+  if (rejected.length > 0) {
     throw new SdkError(
       "invalid",
       `The host cannot load ${rejected.map((outcome) => outcome.id).join(", ")}.`,
       { issues: rejected.flatMap((outcome) => outcome.issues) },
     );
+  }
 
   const dropped = outcomes.flatMap((outcome, index) => {
     const file = fromFile(index);
@@ -222,8 +223,9 @@ export async function composeServer(
   const kernel = await composeKernel({ ...options, plugins }, store, sources);
   await kernel.pluginProviders.sync();
 
-  for (const row of dropped)
+  for (const row of dropped) {
     dev("compose", "plugin file dropped", { path: row.path, issues: row.issues.length });
+  }
 
   reportUserPluginFailures(
     kernel,
@@ -360,7 +362,7 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
     const outcome = await settings.apply(id, value);
 
     if (outcome.kind === "applied") applied += 1;
-    else if (outcome.kind === "unknown")
+    else if (outcome.kind === "unknown") {
       issues.push({
         severity: "warning",
         path: [id],
@@ -368,7 +370,7 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
           ? `${id} is a session-scope setting; settings.json seeds host-scope settings only, so set it on a session.`
           : `No setting is named ${id}.`,
       });
-    else
+    } else {
       issues.push(
         ...outcome.issues.map((issue) => ({
           ...issue,
@@ -376,6 +378,7 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
           path: [id, ...issue.path],
         })),
       );
+    }
   }
 
   dev("compose", "settings seeded", {
@@ -384,8 +387,9 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
     issues: issues.length,
   });
 
-  if (issues.length > 0)
+  if (issues.length > 0) {
     kernel.host.report({ id: "settings", source: "user", path: seed.path, issues });
+  }
 }
 
 async function composeKernel(
@@ -692,8 +696,9 @@ export function createKernel(input: KernelOptions): Kernel {
 
   const execution = kernel.execution;
 
-  if (execution.kind === "dispatch")
+  if (execution.kind === "dispatch") {
     kernel.wakes.subscribe((session, head) => dispatchHead(kernel, execution, session, head));
+  }
 
   return kernel;
 }
@@ -752,8 +757,9 @@ async function evictIdleRuntimes(kernel: Kernel): Promise<void> {
       : [session];
   });
 
-  for (const session of idle)
+  for (const session of idle) {
     if (kernel.sessions.activation(session).kind === "active") kernel.sessions.forget(session);
+  }
 
   await Promise.all(idle.map((session) => kernel.plugins.close(session)));
 }

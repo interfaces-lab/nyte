@@ -160,8 +160,9 @@ test("the tree holds its pointer mid-window: opened on the current message, move
   await using tui = await startTui({ size: { width: 100, height: 24 } });
   await tui.ready();
 
-  for (const turn of ["1", "2", "3", "4", "5"])
+  for (const turn of ["1", "2", "3", "4", "5"]) {
     await answered(tui, `answer ${turn}`, `question ${turn}`);
+  }
 
   tui.press("chat.interrupt");
   tui.press("chat.interrupt");
@@ -240,13 +241,14 @@ test("/accounts switches the login the next request uses, without asking the pro
   for (const [label, key] of [
     ["Primary", "sk-primary"],
     ["Secondary", "sk-secondary"],
-  ] as const)
+  ] as const) {
     await fixture.models.models.login(
       "test",
       "api_key",
       { prompt: async () => key, notify: () => undefined },
       label,
     );
+  }
   await fixture.models.models.selectAccount(
     "test",
     (await fixture.models.models.listAccounts("test")).find(

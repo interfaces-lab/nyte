@@ -6,7 +6,7 @@ import type { ShellJob } from "../../model/state.ts";
 import { CardView } from "./card.tsx";
 import { useTranscript } from "./scope.tsx";
 
-const CLOCK_INTERVAL_MS = 1_000;
+const CLOCK_INTERVAL_MS = 1000;
 
 export function ShellCard(props: { readonly job: ShellJob }): JSX.Element {
   const { kit } = useApp();

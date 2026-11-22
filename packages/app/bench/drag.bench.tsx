@@ -122,8 +122,9 @@ function rowLayout(panes: readonly PaneId[]): Layout<PaneContent> {
   const second = children[1];
   const focused = panes[0];
 
-  if (first === undefined || second === undefined || focused === undefined)
+  if (first === undefined || second === undefined || focused === undefined) {
     throw new Error("A drag needs two panes.");
+  }
 
   return {
     root: {

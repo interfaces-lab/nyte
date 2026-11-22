@@ -429,7 +429,7 @@ describe("openai-codex streaming", () => {
     ["gpt-5.1-codex", "flex", 0.5],
     ["gpt-5.1-codex", "priority", 2],
     ["gpt-5.5", "priority", 2.5],
-  ] satisfies ReadonlyArray<readonly [string, "flex" | "priority", number]>)(
+  ] satisfies readonly (readonly [string, "flex" | "priority", number])[])(
     "prices %s %s service-tier usage from the requested tier when Codex echoes default",
     async (modelId, serviceTier, multiplier) => {
       const terminalEvent = {
@@ -476,7 +476,7 @@ describe("openai-codex streaming", () => {
       { "content-type": "application/json", "retry-after": "Wed, 13 May 2026 00:00:45 GMT" },
       45_000,
     ],
-  ] satisfies ReadonlyArray<readonly [string, Record<string, string>, number]>)(
+  ] satisfies readonly (readonly [string, Record<string, string>, number])[])(
     "uses %s for SSE retries",
     async (_name, headers, expectedDelay) => {
       vi.useFakeTimers();

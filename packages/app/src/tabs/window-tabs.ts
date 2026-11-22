@@ -41,39 +41,39 @@ function forgetWindows(windowIds: readonly string[]): void {
 }
 
 class WindowTabs {
-  #stored = false;
-  #windowKey = `${WINDOW_KEY_PREFIX}web`;
-  #startupDestination = true;
-  #drafts: WindowDrafts | undefined;
-  #saveTimer: ReturnType<typeof setTimeout> | undefined;
-  readonly store = new WindowStore(initialWindow("tab", newId), () => this.#windowDrafts());
+  private stored = false;
+  private windowKey = `${WINDOW_KEY_PREFIX}web`;
+  private wantsStartupDestination = true;
+  private drafts: WindowDrafts | undefined;
+  private saveTimer: ReturnType<typeof setTimeout> | undefined;
+  readonly store = new WindowStore(initialWindow("tab", newId), () => this.windowDrafts());
 
   constructor() {
-    this.store.subscribe(() => this.#save());
+    this.store.subscribe(() => this.save());
   }
 
   get strip(): boolean {
-    return this.#stored && windowApp() !== "code";
+    return this.stored && windowApp() !== "code";
   }
 
   get startupDestination(): boolean {
-    return this.#startupDestination;
+    return this.wantsStartupDestination;
   }
 
   start(desktopWindow: Pick<DesktopWindow, "id" | "launch">): void {
-    this.#stored = true;
-    this.#windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
+    this.stored = true;
+    this.windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
 
     if (desktopWindow.launch !== undefined) forgetWindows(desktopWindow.launch.windowIds);
 
     const saved = parseStrip(
-      readStored(localArea(), `${this.#windowKey}:tabs`, Type.Unknown(), undefined),
+      readStored(localArea(), `${this.windowKey}:tabs`, Type.Unknown(), undefined),
       newId,
     );
 
     this.store.restore(saved ?? initialWindow(newId(), newId));
-    this.#startupDestination = desktopWindow.launch !== undefined && saved === undefined;
-    window.addEventListener("pagehide", this.#flush);
+    this.wantsStartupDestination = desktopWindow.launch !== undefined && saved === undefined;
+    window.addEventListener("pagehide", this.flush);
   }
 
   readonly subscribe = this.store.subscribe;
@@ -97,7 +97,7 @@ class WindowTabs {
   }
 
   showDraft(draftId: string): void {
-    const located = this.#windowDrafts().find(draftId);
+    const located = this.windowDrafts().find(draftId);
 
     const owner =
       located?.kind === "active"
@@ -126,27 +126,27 @@ class WindowTabs {
     return this.store.tab(this.paneTabId());
   }
 
-  #windowDrafts(): WindowDrafts {
+  private windowDrafts(): WindowDrafts {
     const local = localArea();
 
-    this.#drafts ??= new WindowDrafts(
-      local === undefined ? undefined : { storage: local, storageKey: `${this.#windowKey}:drafts` },
+    this.drafts ??= new WindowDrafts(
+      local === undefined ? undefined : { storage: local, storageKey: `${this.windowKey}:drafts` },
     );
 
-    return this.#drafts;
+    return this.drafts;
   }
 
-  #save(): void {
-    if (!this.#stored) return;
-    this.#saveTimer ??= setTimeout(this.#flush, SAVE_DELAY_MS);
+  private save(): void {
+    if (!this.stored) return;
+    this.saveTimer ??= setTimeout(this.flush, SAVE_DELAY_MS);
   }
 
-  readonly #flush = (): void => {
-    clearTimeout(this.#saveTimer);
-    this.#saveTimer = undefined;
+  private readonly flush = (): void => {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = undefined;
     const lasting = withoutPreviews(this.getSnapshot(), () => crypto.randomUUID());
 
-    writeStored(localArea(), `${this.#windowKey}:tabs`, storeStrip(lasting));
+    writeStored(localArea(), `${this.windowKey}:tabs`, storeStrip(lasting));
   };
 }
 

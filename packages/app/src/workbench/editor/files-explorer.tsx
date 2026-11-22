@@ -21,14 +21,13 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import type { HostBridge } from "../../contract/bridge.ts";
+import type { HostBridge, SelectedWorkspace } from "../../contract/bridge.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
 import { keys } from "../../data/query-client.ts";
 import { refreshVcs } from "../../data/vcs.ts";
 import type { MentionFile } from "../../data/files.ts";
-import type { SelectedWorkspace } from "../../contract/bridge.ts";
 import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
 import { fuzzyScore } from "../../lib/fuzzy-match.ts";
 import { addFileToChat } from "../../references/add-to-chat.ts";
@@ -226,8 +225,9 @@ export function FilesExplorer({
     const source = absolute(from);
     const target = absolute(to);
 
-    if (source !== undefined && target !== undefined)
+    if (source !== undefined && target !== undefined) {
       fileActions.moved(viewKey, [{ from: source, to: target }]);
+    }
     refresh();
   };
 
@@ -327,8 +327,9 @@ export function FilesExplorer({
     refresh();
     const target = absolute(copy);
 
-    if (item.kind === "file" && target !== undefined)
+    if (item.kind === "file" && target !== undefined) {
       fileActions.open(viewKey, { path: target, preview: true });
+    }
   };
 
   const remove = async (item: ContextMenuItem): Promise<void> => {
@@ -369,14 +370,14 @@ export function FilesExplorer({
 
     const id = toast.add({
       title: `Deleted ${name}`,
-      timeout: 6_000,
+      timeout: 6000,
       actionProps: {
         children: "Undo",
         onClick: () => {
           toast.close(id);
           void restoreEntry(workspace, token).then(
             (restored) => {
-              if (restored.kind !== "restored")
+              if (restored.kind !== "restored") {
                 toast.add({
                   type: "error",
                   title: `Couldn't restore ${name}`,
@@ -385,6 +386,7 @@ export function FilesExplorer({
                       ? `Something is at ${path} now.`
                       : "It's no longer held. The host restarted since.",
                 });
+              }
 
               refresh();
             },
@@ -406,8 +408,9 @@ export function FilesExplorer({
       errorMessage,
     );
 
-    if (failure !== undefined)
+    if (failure !== undefined) {
       toast.add({ type: "error", title: `Couldn't delete ${path}`, description: failure });
+    }
     refreshWorkspace(workspace);
   };
 
@@ -477,8 +480,9 @@ export function FilesExplorer({
             (target.dataset.type === "context-menu-trigger" ||
               target.dataset.type === "context-menu-anchor"),
         )
-    )
+    ) {
       return;
+    }
 
     const row = event
       .composedPath()
@@ -671,8 +675,9 @@ export function FilesExplorer({
         model={model}
         onDragEnd={() => setWorkbenchDrag([])}
         onClick={(event) => {
-          if (!(event.metaKey || event.ctrlKey || event.shiftKey))
+          if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
             openFromTree(event.nativeEvent, true);
+          }
         }}
         onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
         onKeyDown={(event) => {
@@ -683,8 +688,9 @@ export function FilesExplorer({
             event.ctrlKey ||
             event.altKey ||
             event.shiftKey
-          )
+          ) {
             return;
+          }
 
           if (
             event.nativeEvent
@@ -694,8 +700,9 @@ export function FilesExplorer({
                   target instanceof HTMLElement &&
                   target.matches('input, textarea, [contenteditable="true"]'),
               )
-          )
+          ) {
             return;
+          }
 
           if (event.key === "Enter") openFromTree(event.nativeEvent, true);
 
@@ -716,11 +723,12 @@ export function FilesExplorer({
         symbols={outline.symbols}
         empty={outline.path === undefined ? "Open a file to see its outline" : "No symbols"}
         onOpen={(line) => {
-          if (outline.path !== undefined)
+          if (outline.path !== undefined) {
             fileActions.open(viewKey, {
               path: outline.path,
               target: { kind: "position", line },
             });
+          }
         }}
       />
       <ConfirmDialog

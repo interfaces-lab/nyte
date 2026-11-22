@@ -1,9 +1,11 @@
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { create, props } from "@stylexjs/stylex";
-import { createContext, use, type ComponentProps, type ReactElement } from "react";
+import { createContext, use } from "react";
+import type { ComponentProps, ReactElement } from "react";
 
 import { control, input, space, target } from "./styles/schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { danger } from "./styles/theme.stylex.ts";

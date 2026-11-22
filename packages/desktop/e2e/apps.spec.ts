@@ -82,7 +82,7 @@ async function readLight(page: Page): Promise<Static<typeof LightReply>["lights"
     () =>
       new Promise((resolve) => {
         const channel = new BroadcastChannel("nyte:light:v1");
-        const timer = setTimeout(() => resolve(null), 2_000);
+        const timer = setTimeout(() => resolve(null), 2000);
 
         channel.addEventListener("message", (event: MessageEvent<unknown>) => {
           clearTimeout(timer);
@@ -195,7 +195,7 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
         await expect(async () => {
           await text.getByText("second", { exact: true }).click();
           await expect(editor(code).getByRole("button", { name: /^Ln 2, Col \d+$/u })).toBeVisible({
-            timeout: 1_000,
+            timeout: 1000,
           });
         }).toPass();
         const from = await text.getByText("second", { exact: true }).boundingBox();
@@ -337,8 +337,9 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
       const pages = application.windows();
       const problems = pages.map(collectErrors);
 
-      for (const page of pages)
+      for (const page of pages) {
         await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
+      }
 
       const titles = (): Promise<string[]> =>
         Promise.all(pages.map((page) => title(application, page)));
@@ -361,8 +362,9 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
       const code = kinds.find((kind) => kind.label === "Code")?.page;
       const studio = kinds.find((kind) => kind.label === "Studio")?.page;
 
-      if (code === undefined || studio === undefined)
+      if (code === undefined || studio === undefined) {
         throw new Error("The relaunch brought Code or Studio back as another kind.");
+      }
       await expect(
         workbench(studio)
           .getByRole("navigation", { name: "Designs" })

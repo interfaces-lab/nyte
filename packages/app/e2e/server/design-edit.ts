@@ -11,8 +11,9 @@ export const WARM_REPLY = "The accent is warm now, by day and by night.";
 export function warmReply(request: Request): Reply | undefined {
   if (lastUserText(request) !== WARM_PROMPT) return undefined;
 
-  if (request.context.messages.at(-1)?.role === "toolResult")
+  if (request.context.messages.at(-1)?.role === "toolResult") {
     return { content: [{ type: "text", text: WARM_REPLY }] };
+  }
 
   return {
     content: [

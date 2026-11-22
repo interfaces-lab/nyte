@@ -239,8 +239,9 @@ export function SideChatWindow({
 function keepFocus(handle: ComposerEditorHandle): void {
   const active = document.activeElement;
 
-  if (active !== null && active !== document.body && active.closest(SIDE_CHAT_DIALOG) === null)
+  if (active !== null && active !== document.body && active.closest(SIDE_CHAT_DIALOG) === null) {
     return;
+  }
 
   handle.focus({ preventScroll: true });
 }

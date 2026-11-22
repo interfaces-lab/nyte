@@ -212,8 +212,9 @@ export async function endRun(
 
   const woke = await kernel.waits.runEnded(session, run, ended.end);
 
-  if (!woke && ended.report !== null)
+  if (!woke && ended.report !== null) {
     await deliverReport(kernel, ended.report.session, ended.report.id);
+  }
 
   if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
 }
@@ -318,8 +319,9 @@ function extractRunAnswer(state: FoldState, run: RunId): string {
   return (
     messages
       .flatMap((message) => {
-        if (message.kind !== "part" || message.partKind !== "text" || message.turn !== turn)
+        if (message.kind !== "part" || message.partKind !== "text" || message.turn !== turn) {
           return [];
+        }
         const part = state.parts.get(message.part)?.state;
 
         return isJsonObject(part) && typeof part.markdown === "string" && part.markdown !== ""

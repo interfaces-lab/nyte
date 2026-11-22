@@ -28,7 +28,8 @@ import {
   useChatRead,
   useHealth,
 } from "../connection/live.ts";
-import { uploadDraft, type DraftContent } from "../media/attachments.ts";
+import { uploadDraft } from "../media/attachments.ts";
+import type { DraftContent } from "../media/attachments.ts";
 import { sendAnswer } from "./send-answer.ts";
 import type { SendAnswer } from "./send-answer.ts";
 

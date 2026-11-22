@@ -18,8 +18,9 @@ const EMPTY: PrincipalRecord = { principals: [], codes: [] };
 export function gate(authority: ReadonlySet<Authority>, operation: keyof typeof OPERATIONS): void {
   const needed = OPERATIONS[operation].authority;
 
-  if (!authority.has(needed))
+  if (!authority.has(needed)) {
     throw new SdkError("denied", `${operation} needs ${needed} authority.`);
+  }
 }
 
 export function gated<T extends object>(
@@ -72,8 +73,9 @@ export function createPrincipals(kernel: Kernel): Host["principals"] {
       }));
     },
     async pair(input) {
-      if (!input.authority.has("participant"))
+      if (!input.authority.has("participant")) {
         throw new SdkError("invalid", "A pairing code needs participant authority.");
+      }
       const code = mintCode();
       const codeDigest = await sha256(code);
       const expiresAt = Date.now() + PAIRING_TTL;

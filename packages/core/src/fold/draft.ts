@@ -88,11 +88,12 @@ export function updatePart(
   if (transcriptRole(next.placement) !== null) {
     const message = draft.messages.get(toPartMessageId(id));
 
-    if (message?.kind === "part")
+    if (message?.kind === "part") {
       setMessage(
         draft,
         partRow({ ...message, version: next.version, status: next.status }, next.state),
       );
+    }
 
     return;
   }
@@ -126,8 +127,9 @@ export function rowState(
     partKind === compaction.kind &&
     COMPACTION_MATERIAL.Check(state) &&
     state.material.data !== null
-  )
+  ) {
     return { state: { ...state, material: { ...state.material, data: null } }, elided: true };
+  }
 
   return { state };
 }
@@ -175,17 +177,15 @@ export function committed(draft: Draft, id: CommitId): Message | undefined {
   if (message?.kind !== "user") return message;
   const ids = draft.siblings.get(commit.parent) ?? [id];
 
-  const index = Math.max(
-    0,
-    ids.findIndex((sibling) => sibling === id),
-  );
+  const index = Math.max(0, ids.indexOf(id));
 
   if (
     message.siblings.ids === ids &&
     message.siblings.index === index &&
     message.siblings.count === ids.length
-  )
+  ) {
     return message;
+  }
   const next: Message = { ...message, siblings: { index, count: ids.length, ids } };
   setMessage(draft, next);
 
@@ -206,8 +206,9 @@ export function setMessage(draft: Draft, message: Message): void {
     !hidesTurn(info, message) &&
     previous !== undefined &&
     (previous.turn !== message.turn || hidesTurn(info, previous))
-  )
+  ) {
     touchRow(draft, "turns", message.turn);
+  }
   const owner = draft.inputs.get(message.id)?.head;
   const head = owner === undefined ? undefined : draft.heads.get(owner);
 
@@ -215,8 +216,9 @@ export function setMessage(draft: Draft, message: Message): void {
     owner !== undefined &&
     head?.pending.includes(message.id) === true &&
     queued(previous, head) !== queued(message, head)
-  )
+  ) {
     touchRow(draft, "heads", owner);
+  }
 
   if (previous === undefined) return;
   draft.swapped.add(message.id);
@@ -238,8 +240,9 @@ export function setTurn(draft: Draft, turn: FoldTurn): void {
   if (previous?.info === turn.info) return;
   draft.retitled.add(turn.info.id);
 
-  if ([...draft.paths.values()].some((path) => path.turnAt.has(turn.info.id)))
+  if ([...draft.paths.values()].some((path) => path.turnAt.has(turn.info.id))) {
     touchRow(draft, "turns", turn.info.id);
+  }
 }
 
 export function showsTurn(messages: ReadonlyMap<MessageId, Message>, info: TurnInfo): boolean {
@@ -311,28 +314,32 @@ export function noteHead(
     !sameValue(current.info.execution, next.info.execution) ||
     (current.pending !== next.pending &&
       !sameValue(readQueueIds(draft.messages, current), readQueueIds(draft.messages, next)))
-  )
+  ) {
     touchRow(draft, "heads", name);
+  }
 
   if (
     current === undefined ||
     !sameValue(current.configuration, next.configuration) ||
     !sameValue(current.context, next.context)
-  )
+  ) {
     touchRow(draft, "settings", name);
+  }
 
   if (current === undefined) touchRow(draft, "usage", name);
 
-  if (current?.background !== next.background)
+  if (current?.background !== next.background) {
     diffRows(
       draft,
       "background",
       backgroundRows(name, current?.background ?? []),
       backgroundRows(name, next.background),
     );
+  }
 
-  if ((current?.info.execution.kind === "idle") !== (next.info.execution.kind === "idle"))
+  if ((current?.info.execution.kind === "idle") !== (next.info.execution.kind === "idle")) {
     touchPath(draft, name, draft.paths.get(name)?.committed ?? 0);
+  }
 }
 
 export function dropHead(draft: Draft, name: HeadName): void {
@@ -425,8 +432,9 @@ export function belongsInQueue(message: Message, execution: Execution): message 
     message.source.kind === "child" ||
     message.source.kind === "job" ||
     message.source.kind === "answer"
-  )
+  ) {
     return false;
+  }
   const schedule = message.status.schedule;
 
   return (

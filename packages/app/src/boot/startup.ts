@@ -10,7 +10,7 @@ interface RendererStartupOptions {
   readonly showError: (retry: () => void) => void;
 }
 
-const RETRY_MS = [250, 500, 1_000, 2_000] as const;
+const RETRY_MS = [250, 500, 1000, 2000] as const;
 
 function mark(name: string): void {
   if (performance.getEntriesByName(name).length === 0) performance.mark(name);

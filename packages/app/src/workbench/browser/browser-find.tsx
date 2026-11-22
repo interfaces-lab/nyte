@@ -93,8 +93,9 @@ export function FindBar({
           onValueChange={(value, details) => {
             setText(value);
 
-            if (!(details.event instanceof InputEvent && details.event.isComposing))
+            if (!(details.event instanceof InputEvent && details.event.isComposing)) {
               find(value, "next");
+            }
           }}
           onCompositionEnd={(event) => find(event.currentTarget.value, "next")}
           onKeyDown={(event) => {

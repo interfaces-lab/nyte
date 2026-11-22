@@ -603,13 +603,15 @@ describe("principals", () => {
     await host.principals.pair({ authority: new Set(["participant"]) });
     const before = await kernel.store.refs.get(hostPrincipalsRef());
 
-    for (const id of ["token", "local", "nobody"])
+    for (const id of ["token", "local", "nobody"]) {
       await expect(host.principals.revoke(asId(id))).resolves.toBeUndefined();
+    }
 
     expect(await kernel.store.refs.get(hostPrincipalsRef())).toEqual(before);
 
-    for (const id of ["token", "local", "nobody"])
+    for (const id of ["token", "local", "nobody"]) {
       expect(kernel.connections.register(asId(id), () => undefined).kind).toBe("admitted");
+    }
   });
 
   it("retries pair, redeem and revoke on the one record until each wins, none answering stale (ADV C N4, probe N3)", async () => {

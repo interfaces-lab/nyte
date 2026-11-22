@@ -45,8 +45,9 @@ export function EditorGroupView(input: {
           !event.currentTarget.contains(
             event.relatedTarget instanceof Node ? event.relatedTarget : null,
           )
-        )
+        ) {
           setZone(undefined);
+        }
       }}
       onDrop={(event) => {
         setZone(undefined);

@@ -61,11 +61,19 @@ export const HostDescriptionSchema: Schema<HostDescription> = standard(HostDescr
 
 export type Disposer = () => void;
 
-export type Owned = { close(): Promise<void>; [Symbol.asyncDispose](): Promise<void> };
+export interface Owned {
+  close(): Promise<void>;
+  [Symbol.asyncDispose](): Promise<void>;
+}
 
-export type RequestOptions = { readonly signal?: AbortSignal };
+export interface RequestOptions {
+  readonly signal?: AbortSignal;
+}
 
-export type Paged<T> = { readonly items: readonly T[]; readonly next: Cursor | null };
+export interface Paged<T> {
+  readonly items: readonly T[];
+  readonly next: Cursor | null;
+}
 
 export type Capability<T> =
   | Exclude<CapabilityWire, { readonly kind: "available" }>

@@ -173,8 +173,9 @@ export async function openRecorder(input: {
 
   const ci = process.env["CI"];
 
-  if (ci !== undefined && ci !== "" && ci !== "0" && ci !== "false")
+  if (ci !== undefined && ci !== "" && ci !== "0" && ci !== "false") {
     throw new Error(`Refusing to record ${name} in CI: unset CI and record locally.`);
+  }
 
   return record({
     path: input.path,
@@ -188,10 +189,11 @@ export async function openRecorder(input: {
 async function readCassette(path: string): Promise<Cassette> {
   const text = await readFile(path, "utf8").catch(() => null);
 
-  if (text === null)
+  if (text === null) {
     throw new Error(
       `No cassette at ${path}. Record it with NYTE_RECORD=1 and the provider's key in the environment.`,
     );
+  }
 
   const parsed: unknown = JSON.parse(text);
 
@@ -238,8 +240,9 @@ function replay(input: {
         recorded.url !== seen.url ||
         !sameJson(recorded.headers, seen.headers) ||
         JSON.stringify(canonicalJson(recorded.body, volatile, "")) !== JSON.stringify(seen.body)
-      )
+      ) {
         continue;
+      }
       used.add(index);
 
       return new Response(
@@ -268,9 +271,9 @@ function replay(input: {
 
   class ReplaySocket implements RecorderSocket {
     readyState = 0;
-    readonly #listeners = new Map<string, Set<(event: SocketEvent) => void>>();
-    readonly #frames: readonly Frame[];
-    readonly #cursor: { readonly frames: number; next: number } | null;
+    private readonly listeners = new Map<string, Set<(event: SocketEvent) => void>>();
+    private readonly frames: readonly Frame[];
+    private readonly cursor: { readonly frames: number; next: number } | null;
 
     constructor(url: string | URL, init?: SocketInit) {
       const seen = {
@@ -289,29 +292,29 @@ function replay(input: {
       }
 
       if (claimed === null) {
-        this.#frames = [];
-        this.#cursor = null;
+        this.frames = [];
+        this.cursor = null;
         const message = fail(`Cassette ${name} has no socket exchange for ${seen.url}.`);
-        queueMicrotask(() => this.#end({ message }));
+        queueMicrotask(() => this.end({ message }));
 
         return;
       }
 
       used.add(claimed.index);
-      this.#frames = claimed.exchange.frames;
-      this.#cursor = { frames: this.#frames.length, next: 0 };
-      sockets.set(claimed.index, this.#cursor);
+      this.frames = claimed.exchange.frames;
+      this.cursor = { frames: this.frames.length, next: 0 };
+      sockets.set(claimed.index, this.cursor);
 
       queueMicrotask(() => {
         this.readyState = 1;
-        this.#emit("open", {});
-        this.#serve();
+        this.emit("open", {});
+        this.serve();
       });
     }
 
     send(data: string): void {
-      const cursor = this.#cursor;
-      const expected = cursor === null ? undefined : this.#frames[cursor.next];
+      const cursor = this.cursor;
+      const expected = cursor === null ? undefined : this.frames[cursor.next];
       const received = frameText(data, places, volatile);
 
       if (cursor === null || expected?.from !== "client" || expected.data !== received) {
@@ -326,53 +329,53 @@ function replay(input: {
           }`,
         );
 
-        queueMicrotask(() => this.#end({ message }));
+        queueMicrotask(() => this.end({ message }));
 
         return;
       }
 
       cursor.next += 1;
-      this.#serve();
+      this.serve();
     }
 
     close(code = 1000, reason = ""): void {
       if (this.readyState === 3) return;
       this.readyState = 3;
-      this.#emit("close", { code, reason, wasClean: true });
+      this.emit("close", { code, reason, wasClean: true });
     }
 
     addEventListener(type: string, listener: (event: SocketEvent) => void): void {
-      const listeners = this.#listeners.get(type) ?? new Set();
+      const listeners = this.listeners.get(type) ?? new Set();
       listeners.add(listener);
-      this.#listeners.set(type, listeners);
+      this.listeners.set(type, listeners);
     }
 
     removeEventListener(type: string, listener: (event: SocketEvent) => void): void {
-      this.#listeners.get(type)?.delete(listener);
+      this.listeners.get(type)?.delete(listener);
     }
 
-    #serve(): void {
-      const cursor = this.#cursor;
-      const frame = cursor === null ? undefined : this.#frames[cursor.next];
+    private serve(): void {
+      const cursor = this.cursor;
+      const frame = cursor === null ? undefined : this.frames[cursor.next];
 
       if (cursor === null || frame?.from !== "server") return;
       cursor.next += 1;
 
       queueMicrotask(() => {
         if (this.readyState !== 1) return;
-        this.#emit("message", { data: restorePaths(frame.data, places) });
-        this.#serve();
+        this.emit("message", { data: restorePaths(frame.data, places) });
+        this.serve();
       });
     }
 
-    #end(error: { readonly message: string }): void {
-      this.#emit("error", error);
+    private end(error: { readonly message: string }): void {
+      this.emit("error", error);
       this.readyState = 3;
-      this.#emit("close", { code: 1011, reason: error.message, wasClean: false });
+      this.emit("close", { code: 1011, reason: error.message, wasClean: false });
     }
 
-    #emit(type: string, event: SocketEvent): void {
-      for (const listener of this.#listeners.get(type) ?? []) listener(event);
+    private emit(type: string, event: SocketEvent): void {
+      for (const listener of this.listeners.get(type) ?? []) listener(event);
     }
   }
 
@@ -380,19 +383,21 @@ function replay(input: {
     const problems = [...failures];
 
     for (const [index, exchange] of cassette.exchanges.entries()) {
-      if (exchange.transport === "http" && !used.has(index))
+      if (exchange.transport === "http" && !used.has(index)) {
         problems.push(
           `Exchange ${index} (${exchange.request.method} ${exchange.request.url}) was never requested.`,
         );
+      }
 
       if (exchange.transport !== "websocket") continue;
       const cursor = sockets.get(index);
 
       if (cursor === undefined) problems.push(`Socket exchange ${index} was never opened.`);
-      else if (cursor.next < cursor.frames)
+      else if (cursor.next < cursor.frames) {
         problems.push(
           `Socket exchange ${index} stopped at frame ${cursor.next} of ${cursor.frames}.`,
         );
+      }
     }
 
     if (problems.length > 0) throw new Error(`Cassette ${name}:\n${problems.join("\n")}`);
@@ -467,47 +472,49 @@ function record(input: {
   const Upstream = input.socket;
 
   class RecordingSocket implements RecorderSocket {
-    readonly #socket: RecorderSocket;
-    readonly #frames: Frame[] = [];
+    private readonly socket: RecorderSocket;
+    private readonly frames: Frame[] = [];
 
     constructor(url: string | URL, init?: SocketInit) {
-      if (Upstream === undefined)
+      if (Upstream === undefined) {
         throw new Error("Recording a socket needs `upstream.WebSocket`, such as the runtime's.");
-      this.#socket = new Upstream(url, init);
+      }
+      this.socket = new Upstream(url, init);
       exchanges.push({
         transport: "websocket",
         url: scrubUrl(String(url), places),
         headers: socketHeaders(typeof init === "object" && "headers" in init ? init.headers : {}),
-        frames: this.#frames,
+        frames: this.frames,
       });
 
-      this.#socket.addEventListener("message", (event) => {
-        if (typeof event.data !== "string")
+      this.socket.addEventListener("message", (event) => {
+        if (typeof event.data !== "string") {
           throw new Error("Recording a binary socket frame is not supported.");
+        }
 
-        this.#frames.push({ from: "server", data: scrubPaths(event.data, places) });
+        this.frames.push({ from: "server", data: scrubPaths(event.data, places) });
       });
     }
 
     get readyState(): number {
-      return this.#socket.readyState;
+      return this.socket.readyState;
     }
 
     send(data: string): void {
-      this.#frames.push({ from: "client", data: frameText(data, places, volatile) });
-      this.#socket.send(data);
+      this.frames.push({ from: "client", data: frameText(data, places, volatile) });
+      this.socket.send(data);
     }
 
     close(code?: number, reason?: string): void {
-      this.#socket.close(code, reason);
+      this.socket.close(code, reason);
     }
 
     addEventListener(type: string, listener: (event: SocketEvent) => void): void {
-      this.#socket.addEventListener(type, listener);
+      this.socket.addEventListener(type, listener);
     }
 
     removeEventListener(type: string, listener: (event: SocketEvent) => void): void {
-      this.#socket.removeEventListener(type, listener);
+      this.socket.removeEventListener(type, listener);
     }
   }
 
@@ -523,10 +530,11 @@ function record(input: {
     const text = `${JSON.stringify(cassette, null, 2)}\n`;
     const leaks = findSecrets(text);
 
-    if (leaks.length > 0)
+    if (leaks.length > 0) {
       throw new Error(
         `Not writing ${input.path}: it still holds a ${leaks.join(", ")}. Add its path to \`volatile\`.`,
       );
+    }
 
     await mkdir(dirname(input.path), { recursive: true });
     const staged = `${input.path}.${randomUUID()}.tmp`;
@@ -580,10 +588,11 @@ function readPlaces(paths: Readonly<Record<string, string>>): readonly Place[] {
 function scrubPaths(text: string, places: readonly Place[]): string {
   let scrubbed = text;
 
-  for (const place of places)
+  for (const place of places) {
     scrubbed = scrubbed
       .replaceAll(JSON.stringify(place.path).slice(1, -1), place.placeholder)
       .replaceAll(place.path, place.placeholder);
+  }
 
   return scrubbed;
 }
@@ -608,8 +617,9 @@ function scrubUrl(url: string, places: readonly Place[]): string {
 
   if (parsed.password !== "") parsed.password = REDACTED;
 
-  for (const key of new URLSearchParams(parsed.search).keys())
+  for (const key of new URLSearchParams(parsed.search).keys()) {
     if (SECRET_PARAMS.has(key.toLowerCase())) parsed.searchParams.set(key, REDACTED);
+  }
 
   return scrubPaths(parsed.href, places);
 }
@@ -659,9 +669,11 @@ function socketHeaders(
 function responseHeaders(headers: Headers): Record<string, string> {
   const kept: Record<string, string> = {};
 
-  for (const [key, value] of headers)
-    if (key === "content-type" || key === "retry-after" || key.includes("ratelimit"))
+  for (const [key, value] of headers) {
+    if (key === "content-type" || key === "retry-after" || key.includes("ratelimit")) {
       kept[key] = value;
+    }
+  }
 
   return kept;
 }
@@ -681,8 +693,9 @@ function canonicalJson(value: unknown, volatile: ReadonlySet<string>, path: stri
 
   const child = (key: string | number): string => (path === "" ? String(key) : `${path}.${key}`);
 
-  if (Array.isArray(value))
+  if (Array.isArray(value)) {
     return value.map((item: unknown, index) => canonicalJson(item, volatile, child(index)));
+  }
 
   if (typeof value !== "object" || value === null) return value;
 
@@ -690,7 +703,7 @@ function canonicalJson(value: unknown, volatile: ReadonlySet<string>, path: stri
     Object.entries(value)
       .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, item]: [string, unknown]) =>
-        SECRET_KEYS.has(key.replace(/[^a-z0-9]/giu, "").toLowerCase())
+        SECRET_KEYS.has(key.replaceAll(/[^a-z0-9]/giu, "").toLowerCase())
           ? [key, REDACTED]
           : [key, canonicalJson(item, volatile, child(key))],
       ),
@@ -707,17 +720,21 @@ function sameJson(left: unknown, right: unknown): boolean {
 function describeMismatch(expected: RecordedRequest, received: RecordedRequest): readonly string[] {
   const lines: string[] = [];
 
-  if (expected.method !== received.method)
+  if (expected.method !== received.method) {
     lines.push(`method: expected ${expected.method}, received ${received.method}`);
+  }
 
-  if (expected.url !== received.url)
+  if (expected.url !== received.url) {
     lines.push(`url: expected ${expected.url}, received ${received.url}`);
+  }
 
-  for (const key of new Set([...Object.keys(expected.headers), ...Object.keys(received.headers)]))
-    if (expected.headers[key] !== received.headers[key])
+  for (const key of new Set([...Object.keys(expected.headers), ...Object.keys(received.headers)])) {
+    if (expected.headers[key] !== received.headers[key]) {
       lines.push(
         `header ${key}: expected ${show(expected.headers[key])}, received ${show(received.headers[key])}`,
       );
+    }
+  }
 
   diffJson(expected.body, received.body, "body", lines);
 
@@ -758,14 +775,16 @@ function diffJson(expected: unknown, received: unknown, path: string, lines: str
     const left = new Map<string, unknown>(Object.entries(expected));
     const right = new Map<string, unknown>(Object.entries(received));
 
-    for (const key of new Set([...left.keys(), ...right.keys()]))
+    for (const key of new Set([...left.keys(), ...right.keys()])) {
       diffJson(left.get(key), right.get(key), `${path}.${key}`, lines);
+    }
 
     return;
   }
 
-  if (JSON.stringify(expected) !== JSON.stringify(received))
+  if (JSON.stringify(expected) !== JSON.stringify(received)) {
     lines.push(`${path}: expected ${show(expected)}, received ${show(received)}`);
+  }
 }
 
 function show(value: unknown): string {

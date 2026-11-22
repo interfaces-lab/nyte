@@ -66,8 +66,9 @@ export function parseManifest(json: string): Manifest {
     typeSize: (name, expected) => {
       const size = readNumber(type(name).get("size"), `${name} size`);
 
-      if (size !== expected)
+      if (size !== expected) {
         throw new Error(`libghostty-vt type ${name} is ${size} bytes, expected ${expected}`);
+      }
 
       return size;
     },

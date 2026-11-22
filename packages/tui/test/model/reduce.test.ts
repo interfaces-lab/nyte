@@ -600,7 +600,7 @@ describe("paste", () => {
   });
 
   test("a long single-line paste becomes a part, so typing after it stays cheap", () => {
-    const text = "x".repeat(5_000);
+    const text = "x".repeat(5000);
 
     const pasted = play(ready(idle), {
       kind: "paste-resolved",
@@ -880,8 +880,9 @@ describe("session and view intents", () => {
     const many = buildView((v) => {
       let built = v;
 
-      for (let index = 0; index < 30; index += 1)
+      for (let index = 0; index < 30; index += 1) {
         built = built.turn(`t${String(index)}`, (t) => t.user("q").text("a").ended("completed"));
+      }
 
       return built;
     });

@@ -73,7 +73,7 @@ export function createRegistrySet(input: {
   /** The chat's parent and setting values, as `when` reads them. */
   chat(): Pick<Chat, "parent" | "settings">;
   onChange(): void;
-  setting(definition: ResolvedSetting, owner: string): Setting<unknown>;
+  setting(definition: ResolvedSetting, owner: string): Setting;
   report(owner: string, issue: ValidationIssue): void;
 }): RegistrySet {
   let scheduled = false;
@@ -100,11 +100,12 @@ export function createRegistrySet(input: {
     onChange: reload,
   });
 
-  const declared = (owner: string, id: string): Setting<unknown> => {
+  const declared = (owner: string, id: string): Setting => {
     const definition = settings.declared(owner).findLast((candidate) => candidate.id === id);
 
-    if (definition === undefined)
+    if (definition === undefined) {
       throw new SdkError("unknown", `${owner} declares no setting ${id}.`);
+    }
 
     return input.setting(resolveSetting(definition), owner);
   };
@@ -180,8 +181,9 @@ export function createRegistrySet(input: {
 
     try {
       for (const kind of ORDER) {
-        for (const { owner, issue } of registries[kind].materialize(set))
+        for (const { owner, issue } of registries[kind].materialize(set)) {
           input.report(owner, { ...issue, path: [kind, ...issue.path] });
+        }
       }
     } finally {
       passing = false;
@@ -231,28 +233,14 @@ function createRegistry<T>(input: {
         derives.push(entry);
         input.onChange();
 
-        return removal(
-          () =>
-            derives.splice(
-              derives.findIndex((candidate) => candidate === entry),
-              1,
-            ),
-          signal,
-        );
+        return removal(() => derives.splice(derives.indexOf(entry), 1), signal);
       }
 
       const entry: Entry<T> = { item: value, owner };
       statics.push(entry);
       input.onChange();
 
-      return removal(
-        () =>
-          statics.splice(
-            statics.findIndex((candidate) => candidate === entry),
-            1,
-          ),
-        signal,
-      );
+      return removal(() => statics.splice(statics.indexOf(entry), 1), signal);
     },
     list: () => materialized.map((entry) => entry.item),
   });
@@ -271,7 +259,7 @@ function createRegistry<T>(input: {
         const key = input.key(entry.item, entry.owner);
         const previous = draft.get(key);
 
-        if (previous !== undefined && previous.owner !== entry.owner && input.overrides !== true)
+        if (previous !== undefined && previous.owner !== entry.owner && input.overrides !== true) {
           issues.push({
             owner: entry.owner,
             issue: {
@@ -281,6 +269,7 @@ function createRegistry<T>(input: {
               source: { plugin: entry.owner },
             },
           });
+        }
 
         draft.set(key, entry);
       }
@@ -331,7 +320,7 @@ function createRegistry<T>(input: {
         if (when === undefined || input.chat === undefined) continue;
 
         try {
-          if (when(input.chat()) === true) continue;
+          if (when(input.chat())) continue;
         } catch (error) {
           issues.push({
             owner: entry.owner,
@@ -355,8 +344,9 @@ function createRegistry<T>(input: {
 }
 
 function refuseCommandName(command: Command): string | undefined {
-  if (!COMMAND_NAME.test(command.name))
+  if (!COMMAND_NAME.test(command.name)) {
     return `The command name ${command.name} can't be typed after "/": use lowercase letters, digits and "-".`;
+  }
 
   return CLIENT_COMMAND_NAMES.some((name) => name === command.name)
     ? `/${command.name} is a built-in command; give the plugin's command another name.`
@@ -691,8 +681,9 @@ function commandResult(returned: CommandReturn): CommandResult {
 
   if (typeof returned === "string") return { kind: "text", output: returned };
 
-  if (returned.workspace !== undefined)
+  if (returned.workspace !== undefined) {
     return { kind: "move", workspace: returned.workspace, output: returned.output ?? null };
+  }
 
   return { kind: "prompt", content: returned.prompt };
 }

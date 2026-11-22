@@ -54,7 +54,7 @@ describe("the inbox clock", () => {
     const appState = fakeAppState("active");
     const ticks: number[] = [];
     focusInbox(appState, ticks);
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(5000);
     appState.move("inactive");
     appState.move("background");
     vi.advanceTimersByTime(60_000);

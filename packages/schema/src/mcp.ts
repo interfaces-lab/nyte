@@ -98,7 +98,7 @@ export type McpExposureName = Decoded<typeof McpExposureNameType>;
 export const McpOAuthConfigType = Type.Object({
   clientId: Type.Optional(Type.String()),
   clientSecret: Type.Optional(Type.String()),
-  callbackPort: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })),
+  callbackPort: Type.Optional(Type.Integer({ minimum: 1, maximum: 65_535 })),
   callbackUrl: Type.Optional(Type.String()),
   clientName: Type.Optional(Type.String()),
   scope: Type.Optional(Type.String()),

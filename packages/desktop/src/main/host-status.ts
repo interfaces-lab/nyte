@@ -21,8 +21,9 @@ export interface HostReading {
 export function readHostStatus(probe: HostProbe): HostReading {
   const approval = probe.registration === "requires-approval";
 
-  if (probe.pid === null || !probe.alive)
+  if (probe.pid === null || !probe.alive) {
     return { status: "stopped", issues: approval ? ["approval"] : [] };
+  }
 
   const issues = (["approval", "unreachable"] as const).filter((issue) =>
     issue === "approval" ? approval : probe.link === "unreachable",

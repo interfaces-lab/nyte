@@ -145,7 +145,7 @@ function TerminalStatus({
           <span>
             {tab.state.exitCode === 0 || tab.state.exitCode === null
               ? "Shell exited"
-              : "Shell exited with code " + String(tab.state.exitCode)}
+              : `Shell exited with code ${String(tab.state.exitCode)}`}
           </span>
           <Button variant="outline" onClick={restart}>
             Restart Terminal
@@ -172,8 +172,9 @@ export function TerminalPanel({
   const tab = useTerminal(tabId);
 
   useMountEffect(() => {
-    if (getTerminal(tabId) === undefined)
+    if (getTerminal(tabId) === undefined) {
       void terminalActions.restore({ id: tabId, workspacePath });
+    }
   });
 
   const cancellation = useMutation({

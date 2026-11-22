@@ -205,7 +205,7 @@ function causeKey(cause: Cause): string {
     case "missing":
       return `missing rail term ${cause.term}  ${where(cause.at)}`;
     case "unresolved":
-      return `unresolved: ${cause.reason.replace(/-?[\d.]+px/gu, "N px")}`;
+      return `unresolved: ${cause.reason.replaceAll(/-?[\d.]+px/gu, "N px")}`;
     default: {
       const exhaustive: never = cause;
 

@@ -50,7 +50,10 @@ export function showsThinking(message: Message): message is ThinkingMessage {
  *
  * @category presentation
  */
-export type RawPart = { readonly format: "text" | "json"; readonly body: string };
+export interface RawPart {
+  readonly format: "text" | "json";
+  readonly body: string;
+}
 
 export function readRawPart(message: PartMessage): RawPart {
   const { state } = message;
@@ -95,13 +98,15 @@ export function toolStatus(message: Pick<ToolMessage, "state" | "status">): Tool
   const { state, status } = message;
 
   if (state.phase !== "settled") {
-    if (status.kind === "failed")
+    if (status.kind === "failed") {
       return status.failure.class === "aborted"
         ? { tense: "none", tone: "stopped", word: "Stopped" }
         : { tense: "none", tone: "stopped", word: "Interrupted" };
+    }
 
-    if (status.kind === "waiting" && status.on.kind === "part")
+    if (status.kind === "waiting" && status.on.kind === "part") {
       return { tense: "running", tone: "attention", word: "Needs input" };
+    }
 
     return RUNNING;
   }
@@ -195,11 +200,12 @@ export function agentGroupSummary(states: readonly TaskState[]): {
   const going = states.filter((state) => !taskEnded(state)).length;
   const done = taskLabel("done").toLowerCase();
 
-  if (going > 0)
+  if (going > 0) {
     return {
       title: `Running ${String(total)} agents…`,
       detail: going === total ? undefined : `(${String(total - going)} ${done})`,
     };
+  }
   const failed = states.filter((state) => state === "failed").length;
 
   return {
@@ -466,8 +472,9 @@ function headAlert(head: HeadInfo, coordinating: boolean): HeadAttention["alert"
 
       if (last === null) return QUIET.alert;
 
-      if (coordinating && head.background.working + head.background.waiting > 0)
+      if (coordinating && head.background.working + head.background.waiting > 0) {
         return { key: `ended:${last.id}:agents`, state: undefined };
+      }
       const key = `ended:${last.id}`;
       const body = describeRunEnd(last.end);
 
@@ -496,7 +503,7 @@ export function describeRunEnd(end: RunEnd): string | undefined {
   if (status.kind === "completed") return taskLabel("done");
 
   if (status.kind !== "failed") return undefined;
-  const line = status.failure.message.replace(/\s+/g, " ").trim();
+  const line = status.failure.message.replaceAll(/\s+/g, " ").trim();
 
   return `${taskLabel("failed")}: ${line.length > 120 ? `${line.slice(0, 119)}…` : line}`;
 }
@@ -510,8 +517,11 @@ export function describeRunEnd(end: RunEnd): string | undefined {
 export function groupMark(states: readonly TaskState[]): TaskState {
   if (states.includes("waiting")) return "waiting";
 
-  if (states.some((state) => state === "working" || state === "retrying" || state === "background"))
+  if (
+    states.some((state) => state === "working" || state === "retrying" || state === "background")
+  ) {
     return "working";
+  }
 
   return states.includes("failed") ? "failed" : "done";
 }
@@ -571,13 +581,14 @@ export function completionTrigger(
 
   if (start === caret) return undefined;
 
-  if (kind === "@" || kind === "/")
+  if (kind === "@" || kind === "/") {
     return {
       kind,
       start,
       end: tokenEnd(value, caret, false),
       query: value.slice(start + 1, caret),
     };
+  }
   const opener = value.lastIndexOf("(@", caret - 2);
   const query = value.slice(opener + 2, caret);
 
@@ -671,8 +682,9 @@ export function customTool(label: string): CustomTool {
   if (named !== undefined) return named;
   const mcp = (MCP_LABEL.exec(label) ?? MCP_NAME.exec(label))?.groups;
 
-  if (mcp?.server !== undefined && mcp.name !== undefined)
+  if (mcp?.server !== undefined && mcp.name !== undefined) {
     return { verbs: RAN, name: mcp.name, server: mcp.server };
+  }
 
   if (/\s/u.test(label)) return { verbs: { running: label, past: label } };
 
@@ -795,8 +807,9 @@ export function toolTitle(
     return subject === undefined ? verb : `${verb} ${subject}`;
   }
 
-  if (toolClass.kind === "custom" && customTool(toolClass.label).name === undefined)
+  if (toolClass.kind === "custom" && customTool(toolClass.label).name === undefined) {
     return toolClass.label;
+  }
 
   return [subject, toolNoun(toolClass)].filter((word) => word !== undefined).join(" ");
 }
@@ -871,13 +884,15 @@ export function formatWholeDuration(ms: number): string {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
 
-  if (hours > 0)
+  if (hours > 0) {
     return minutes % 60 === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(minutes % 60)}m`;
+  }
 
-  if (minutes > 0)
+  if (minutes > 0) {
     return seconds % 60 === 0
       ? `${String(minutes)}m`
       : `${String(minutes)}m ${String(seconds % 60)}s`;
+  }
 
   return `${String(seconds)}s`;
 }

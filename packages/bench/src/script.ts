@@ -24,13 +24,15 @@ export function script(steps: readonly Step[]): Script {
       answered += 1;
       const step = left[0];
 
-      if (step === undefined)
+      if (step === undefined) {
         return { error: `Unscripted request ${answered}: ${describeRequest(request)}.` };
+      }
 
-      if (step.when !== undefined && !step.when(request))
+      if (step.when !== undefined && !step.when(request)) {
         return {
           error: `Unscripted request ${answered}: expected ${step.name}, got ${describeRequest(request)}.`,
         };
+      }
       left.shift();
 
       return typeof step.reply === "function" ? step.reply(request) : step.reply;

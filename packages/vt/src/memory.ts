@@ -109,6 +109,7 @@ export function createMemory(native: Native): Memory {
 }
 
 export function check(result: number, what: string) {
-  if (result !== Result.SUCCESS)
+  if (result !== Result.SUCCESS) {
     throw new Error(`libghostty-vt ${what} failed with result ${result}`);
+  }
 }

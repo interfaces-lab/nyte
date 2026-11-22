@@ -44,7 +44,7 @@ async function fixture() {
 async function rollout(homeDir: string, path: string, records: readonly unknown[]) {
   const file = join(homeDir, path);
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, records.map((value) => JSON.stringify(value)).join("\n") + "\n");
+  await writeFile(file, `${records.map((value) => JSON.stringify(value)).join("\n")}\n`);
 }
 
 const turnContext = { type: "turn_context", payload: { model: model.id } };
@@ -216,8 +216,9 @@ test("a malformed line is counted, not fatal", async () => {
   await mkdir(dirname(file), { recursive: true });
   await writeFile(
     file,
-    [JSON.stringify(turnContext), "{not json}", JSON.stringify(usageRecord("resp-1"))].join("\n") +
+    `${[JSON.stringify(turnContext), "{not json}", JSON.stringify(usageRecord("resp-1"))].join(
       "\n",
+    )}\n`,
   );
 
   const result = await read(homeDir);

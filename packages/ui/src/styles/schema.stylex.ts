@@ -178,7 +178,7 @@ export const layer = defineConsts({
   commandBackdrop: 80,
   command: 81,
   dragPreview: 1000,
-  fullscreenPage: 10001,
+  fullscreenPage: 10_001,
 });
 
 export const radius = defineConsts({

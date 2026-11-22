@@ -27,7 +27,7 @@ const confirmation = () => document.querySelector<HTMLElement>('[role="alertdial
 const trayText = () => tray()?.textContent ?? "";
 
 async function until(condition: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 3_000;
+  const deadline = performance.now() + 3000;
 
   while (performance.now() < deadline) {
     if (condition()) return;
@@ -120,8 +120,9 @@ export async function run() {
     revokeDevice: async ({ deviceId }) => {
       calls.push(`revoke:${deviceId}`);
 
-      if (view.kind === "linked")
+      if (view.kind === "linked") {
         view = { ...view, devices: view.devices.filter((device) => device.id !== deviceId) };
+      }
     },
     openAccount: async () => {
       calls.push("openAccount");

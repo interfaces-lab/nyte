@@ -21,8 +21,9 @@ const STATE_WORDS = { OPEN: "Open", CLOSED: "Closed", MERGED: "Merged" } as cons
 function checksLine(checks: readonly GitHubCheck[]): TextLine {
   if (checks.length === 0) return [{ text: "No checks", tone: "dim" }];
 
-  if (checks.every((check) => check.state === "passed"))
+  if (checks.every((check) => check.state === "passed")) {
     return checks.length === 1 ? "1 check passed" : `All ${String(checks.length)} checks passed`;
+  }
 
   return SUMMARY_ORDER.flatMap((state) => {
     const count = checks.filter((check) => check.state === state).length;
@@ -80,8 +81,9 @@ export function gitHubLines(
 
   if (pullRequest.kind === "none") return [named, "No pull request for this branch"];
 
-  if (pullRequest.kind === "unavailable")
+  if (pullRequest.kind === "unavailable") {
     return [named, "Sign in to the GitHub CLI to see its pull request"];
+  }
 
   if (pullRequest.kind === "error") return [named, [{ text: pullRequest.message, tone: "error" }]];
 

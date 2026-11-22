@@ -50,11 +50,13 @@ function pageKeeps(event: KeyboardEvent): boolean {
 
   if (pageKeys.has(event.key)) return true;
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && (mac || /^Numpad\d+$/.test(event.code)))
+  if (event.altKey && !event.ctrlKey && !event.metaKey && (mac || /^Numpad\d+$/.test(event.code))) {
     return true;
+  }
 
-  if (event.key === "F10" && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey)
+  if (event.key === "F10" && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
     return true;
+  }
 
   if (!(mac ? event.metaKey : event.ctrlKey) || event.altKey) return false;
   const typed = event.key.toLowerCase();
@@ -64,8 +66,9 @@ function pageKeeps(event: KeyboardEvent): boolean {
       ? event.code.slice(3).toLowerCase()
       : typed;
 
-  if (mac && !event.ctrlKey && !event.shiftKey && (key === "arrowleft" || key === "arrowright"))
+  if (mac && !event.ctrlKey && !event.shiftKey && (key === "arrowleft" || key === "arrowright")) {
     return editsText(event);
+  }
 
   return (
     editing.always.has(key) ||
@@ -74,7 +77,7 @@ function pageKeeps(event: KeyboardEvent): boolean {
   );
 }
 
-if (window.opener === null)
+if (window.opener === null) {
   window.addEventListener("keydown", (event) => {
     if (!event.isTrusted || event.defaultPrevented || event.isComposing || pageKeeps(event)) return;
     event.preventDefault();
@@ -89,6 +92,7 @@ if (window.opener === null)
       repeat: event.repeat,
     } satisfies BrowserKey);
   });
+}
 
 if (window.opener === null && window.top === window) {
   window.addEventListener(

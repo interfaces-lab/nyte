@@ -23,7 +23,7 @@ const frame = (): Promise<void> =>
   });
 
 const LINE =
-  "FAIL src/foo.test.ts > adds numbers \u001b[31mAssertionError: expected 2 to be 3\u001b[0m at /repo/src/foo.test.ts:42:7\n";
+  "FAIL src/foo.test.ts > adds numbers \u001B[31mAssertionError: expected 2 to be 3\u001B[0m at /repo/src/foo.test.ts:42:7\n";
 
 const LOG = `first line\n${LINE.repeat(Math.ceil((5 * 1024 * 1024) / LINE.length))}last line`;
 
@@ -156,7 +156,7 @@ export async function run(): Promise<string> {
     );
     check(excerpt.startsWith("first line"), "The open row starts at the head");
     check(excerpt.endsWith("last line"), "The open row ends at the tail");
-    check(!excerpt.includes("\u001b"), "The excerpt is terminal text");
+    check(!excerpt.includes("\u001B"), "The excerpt is terminal text");
 
     const more = [...(region?.querySelectorAll("button") ?? [])].find((button) =>
       /^Show .* more$/.test(button.textContent ?? ""),

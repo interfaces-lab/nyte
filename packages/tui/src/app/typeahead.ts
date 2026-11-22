@@ -17,9 +17,9 @@ export function holdTypeahead(renderer: CliRenderer): Typeahead {
       renderer.keyInput.off("paste", hold);
 
       for (const event of held.splice(0)) {
-        if (event instanceof PasteEvent)
+        if (event instanceof PasteEvent) {
           renderer.keyInput.processPaste(event.bytes, event.metadata);
-        else renderer.keyInput.processParsedKey(event);
+        } else renderer.keyInput.processParsedKey(event);
       }
     },
   };

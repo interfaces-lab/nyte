@@ -140,8 +140,9 @@ export function openApprovals(
       checked instanceof Promise ||
       checked.issues !== undefined ||
       checked.value.decision !== null
-    )
+    ) {
       return [];
+    }
 
     const { tool, reason } = checked.value;
 

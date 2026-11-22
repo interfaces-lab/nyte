@@ -136,7 +136,7 @@ socketTest(
     const { receipt } = await made.served.sessions.start({ name: "work", content: "Work" });
     await vi.waitFor(() => assert.equal(made.fake.requests.length, 1));
 
-    await vi.waitFor(() => assert.equal(seen.at(-1), true), { timeout: 5_000 });
+    await vi.waitFor(() => assert.equal(seen.at(-1), true), { timeout: 5000 });
     assert.deepEqual(await made.host.updateActivity(), {
       kind: "busy",
       taskCount: 1,

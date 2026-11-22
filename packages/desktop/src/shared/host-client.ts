@@ -52,29 +52,33 @@ export function offerAppActions(
 ): Disposer {
   const offer = (action: ActionDeclaration, answer: (input: Json) => Awaitable<Json>): Disposer =>
     connection.offer(action, (input, requester) => {
-      if (requester.client !== "host" && requester.principal !== connection.principal)
+      if (requester.client !== "host" && requester.principal !== connection.principal) {
         throw new SdkError("denied", "This app runs requests from its host and its own user only.");
+      }
 
       return answer(input);
     });
 
   const stops = [
     offer(OPEN_ACTION, async (input) => {
-      if (!openCalls.Check(input))
+      if (!openCalls.Check(input)) {
         throw new SdkError("invalid", "Name the chat to open as session.");
+      }
       app.openChat(input.session);
 
       return { opened: true };
     }),
     offer(BROWSER_ACTION, async (input) => {
-      if (!browserCalls.Check(input))
+      if (!browserCalls.Check(input)) {
         throw new SdkError("invalid", "The host asked the browser for something unreadable.");
+      }
 
       return answerBrowser(app.agent, input);
     }),
     offer(CANVAS_PREVIEW_ACTION, async (input) => {
-      if (!previewCalls.Check(input))
+      if (!previewCalls.Check(input)) {
         throw new SdkError("invalid", "The host asked for a canvas preview it did not describe.");
+      }
 
       return previewAnswer(app.preview, input, app.signal());
     }),
@@ -140,8 +144,9 @@ async function previewAnswer(
 function fitFrame(png: Uint8Array): string {
   const encoded = png.toBase64();
 
-  if (encoded.length > SOCKET_LIMITS.maxFrameBytes - FRAME_MARGIN)
+  if (encoded.length > SOCKET_LIMITS.maxFrameBytes - FRAME_MARGIN) {
     throw new SdkError("unavailable", "The screenshot is larger than the host's socket carries.");
+  }
 
   return encoded;
 }

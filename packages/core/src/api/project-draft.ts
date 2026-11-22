@@ -40,8 +40,9 @@ export async function draftProject(
   kernel: Kernel,
   input: ProjectDraftInput,
 ): Promise<ProjectDraft> {
-  if ((await kernel.store.refs.get(workspaceRef(input.workspace))) === null)
+  if ((await kernel.store.refs.get(workspaceRef(input.workspace))) === null) {
     throw new SdkError("unknown", `Workspace ${input.workspace} is not registered on this host.`);
+  }
 
   const [resources, servers] = await Promise.all([
     scanWorkspaceResources(kernel, input.workspace),
@@ -59,7 +60,7 @@ export async function draftProject(
       },
     ],
     output: answerSchema,
-    maxOutput: 2_000,
+    maxOutput: 2000,
   });
 
   if (outcome.kind === "refused") throw new SdkError("unavailable", outcome.reason);
@@ -75,8 +76,9 @@ async function mcpServers(
 ): Promise<readonly McpServerView[]> {
   if (kernel.mcp === null) return [];
 
-  for await (const view of kernel.mcp.watch(await readMcpWorkspace(kernel, workspace)))
+  for await (const view of kernel.mcp.watch(await readMcpWorkspace(kernel, workspace))) {
     return view.servers;
+  }
 
   return [];
 }

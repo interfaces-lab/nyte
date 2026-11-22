@@ -16,7 +16,7 @@ export function rawPart(item: unknown): Json | null {
     version: typeof version === "number" ? version : 0,
   };
 
-  if (typeof turn === "string" && typeof at === "number")
+  if (typeof turn === "string" && typeof at === "number") {
     return {
       ...raw,
       id,
@@ -27,6 +27,7 @@ export function rawPart(item: unknown): Json | null {
       role: typeof role === "string" && ROLES.has(role) ? role : "note",
       status: { kind: "settled", commit: "", endedAt: at },
     };
+  }
 
   return {
     ...raw,

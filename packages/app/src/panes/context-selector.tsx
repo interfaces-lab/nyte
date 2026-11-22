@@ -2,15 +2,18 @@ import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useEffectEvent, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { Button, buttonGlyphSize, type ButtonProps } from "@nyte-ai/ui/button";
-import { Icon, type GlyphSize, type IconName } from "@nyte-ai/ui/icon";
-import { Kbd, type KbdProps } from "@nyte-ai/ui/kbd";
+import { Button, buttonGlyphSize } from "@nyte-ai/ui/button";
+import type { ButtonProps } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
+import type { GlyphSize, IconName } from "@nyte-ai/ui/icon";
+import { Kbd } from "@nyte-ai/ui/kbd";
+import type { KbdProps } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import type { clientActions } from "../contract/client-actions.ts";
 import {
   clientActionAriaShortcut,
   clientActionKeys,
-  clientActions,
   clientCapabilities,
   resolveClientAction,
 } from "../contract/client-actions.ts";
@@ -156,8 +159,9 @@ function ContextShortcut({
   const onKeyDown = useEffectEvent((event: KeyboardEvent): void => {
     if (
       resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host))?.id !== action.id
-    )
+    ) {
       return;
+    }
 
     event.preventDefault();
     onShortcut();

@@ -213,13 +213,14 @@ test.describe("one desk, three apps", () => {
           .getByRole("button", { name: "Changed 1" }),
       ).toBeVisible();
 
-      for (const line of [WARM_DAY_LINE, WARM_NIGHT_LINE])
+      for (const line of [WARM_DAY_LINE, WARM_NIGHT_LINE]) {
         await expect(
           editor(code)
             .getByRole("tabpanel", { name: "design/tokens.css" })
             .locator(`[data-column-number="${String(line)}"]`)
             .first(),
         ).toHaveCSS("box-shadow", /inset/u);
+      }
       await desk.capture(code, "4-agent-code");
       await expect(messages(nyte).getByText(WARM_REPLY)).toBeVisible();
       await desk.capture(nyte, "4-agent-nyte");

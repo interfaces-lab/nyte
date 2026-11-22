@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { styleText } from "node:util";
 import { done, fail, seconds } from "./terminal.ts";
 
-const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const packageRoot = join(import.meta.dirname, "..");
 
 const catalogDir = join(packageRoot, "catalog.generated");
 

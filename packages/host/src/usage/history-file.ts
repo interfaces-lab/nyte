@@ -4,7 +4,8 @@ import { constants } from "node:fs";
 import type { Stats } from "node:fs";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { Type, type TSchema } from "typebox";
+import { Type } from "typebox";
+import type { TSchema } from "typebox";
 
 export interface HistoryLine {
   readonly text: string;
@@ -35,45 +36,45 @@ export function fileScanSchema<Scan extends TSchema>(scan: Scan) {
 }
 
 export class UsageScanCache<Scan> {
-  readonly #files: Map<string, FileScan<Scan>>;
-  #changed = false;
+  private readonly files: Map<string, FileScan<Scan>>;
+  private dirty = false;
 
   constructor(files: Iterable<readonly [string, FileScan<Scan>]> = []) {
-    this.#files = new Map(files);
+    this.files = new Map(files);
   }
 
   keys(): IterableIterator<string> {
-    return this.#files.keys();
+    return this.files.keys();
   }
 
   entries(): IterableIterator<[string, FileScan<Scan>]> {
-    return this.#files.entries();
+    return this.files.entries();
   }
 
   get(path: string): FileScan<Scan> | undefined {
-    return this.#files.get(path);
+    return this.files.get(path);
   }
 
   set(path: string, scan: FileScan<Scan>): void {
-    if (this.#files.get(path) === scan) return;
-    this.#files.set(path, scan);
-    this.#changed = true;
+    if (this.files.get(path) === scan) return;
+    this.files.set(path, scan);
+    this.dirty = true;
   }
 
   keepOnly(seen: ReadonlySet<string>): void {
-    for (const path of this.#files.keys()) {
+    for (const path of this.files.keys()) {
       if (seen.has(path)) continue;
-      this.#files.delete(path);
-      this.#changed = true;
+      this.files.delete(path);
+      this.dirty = true;
     }
   }
 
   get changed(): boolean {
-    return this.#changed;
+    return this.dirty;
   }
 
   markSaved(): void {
-    this.#changed = false;
+    this.dirty = false;
   }
 }
 
@@ -159,8 +160,9 @@ async function* historyLines(path: string, start: number, signal: AbortSignal | 
       if (from < bytesRead) pending.push(Buffer.from(read.subarray(from)));
     }
 
-    if (pending.length > 0)
+    if (pending.length > 0) {
       yield { text: Buffer.concat(pending).toString("utf8"), terminated: false, end: position };
+    }
   } finally {
     await file.close();
   }
@@ -179,10 +181,7 @@ export async function readCacheDocument<Document>(
   }
 }
 
-export async function writeCacheDocument<Document>(
-  path: string,
-  document: Document,
-): Promise<boolean> {
+export async function writeCacheDocument(path: string, document: unknown): Promise<boolean> {
   const temporary = `${path}.${randomUUID()}.tmp`;
 
   try {

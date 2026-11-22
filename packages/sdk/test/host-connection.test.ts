@@ -126,7 +126,7 @@ async function attach(
 }
 
 async function until(connection: ClientConnection, kind: Health["kind"]): Promise<Health> {
-  await vi.waitFor(() => expect(connection.health.snapshot().kind).toBe(kind), { timeout: 5_000 });
+  await vi.waitFor(() => expect(connection.health.snapshot().kind).toBe(kind), { timeout: 5000 });
 
   return connection.health.snapshot();
 }
@@ -218,7 +218,7 @@ async function matchesRead(connection: ClientConnection, store: HeadStore, sessi
         activation: snapshot?.activation,
       }).toEqual({ ...openSessionStore(window).snapshot(), activation: window.live.activation });
     },
-    { timeout: 4_000 },
+    { timeout: 4000 },
   );
 }
 
@@ -349,8 +349,8 @@ describe("a reconnect", () => {
       const retrying = await until(connection, "retrying");
 
       expect({ drop, retrying }).toMatchObject({ drop, retrying: { attempt: 1 } });
-      expect(retrying.kind === "retrying" && retrying.at - Date.now()).toBeLessThanOrEqual(1_000);
-      vi.advanceTimersByTime(1_000);
+      expect(retrying.kind === "retrying" && retrying.at - Date.now()).toBeLessThanOrEqual(1000);
+      vi.advanceTimersByTime(1000);
       await until(connection, "open");
     }
   });
@@ -394,7 +394,7 @@ describe("a reconnect", () => {
 
     expect(waits[1]).toBeGreaterThan(waits[0] ?? Infinity);
     expect(waits[2]).toBeGreaterThan(waits[1] ?? Infinity);
-    expect(waits[2]).toBeGreaterThan(1_000);
+    expect(waits[2]).toBeGreaterThan(1000);
   }, 30_000);
 
   it("keeps one socket when a health listener wakes the connection as it starts retrying", async () => {
@@ -465,7 +465,7 @@ describe("a silent link", () => {
   it.each([
     { case: "while idle", call: false, retry: false, alive: 29_999, lost: 40_000 },
     { case: "with a call pending", call: true, retry: false, alive: 14_999, lost: 15_000 },
-    { case: "when asked to retry", call: false, retry: true, alive: 1_999, lost: 2_000 },
+    { case: "when asked to retry", call: false, retry: true, alive: 1999, lost: 2000 },
   ] as const)(
     "is found $case, fails the pending call as a lost link, and resumes on a new socket",
     async (row) => {
@@ -485,7 +485,7 @@ describe("a silent link", () => {
 
       if (row.retry) connection.retry();
       await vi.waitFor(() => expect(transport.owed()).toEqual([]));
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5000);
       expect(connection.health.snapshot().kind).toBe("open");
       expect(transport.opened).toHaveLength(1);
 
@@ -557,7 +557,7 @@ describe("a sessions store", () => {
           expect(sessions.freshness()).toMatchObject({ kind: "fresh" });
           expect({ ids: sessions.snapshot()?.ids, rows: sessions.snapshot()?.rows }).toEqual(fresh);
         },
-        { timeout: 4_000 },
+        { timeout: 4000 },
       );
 
     await matches();
@@ -725,8 +725,9 @@ describe("offer", () => {
       { name: "offerer" },
     );
 
-    for (const name of ["one", "two", "three"])
+    for (const name of ["one", "two", "three"]) {
       offerer.offer({ name, summary: "", input: {} }, () => null);
+    }
 
     const asker = await attach(served.listener, global, { name: "asker" });
 

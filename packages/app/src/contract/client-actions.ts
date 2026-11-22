@@ -417,8 +417,9 @@ export function resolveClientAction(
   const entries: readonly ActionDefinition[] = Object.values(clientActions);
 
   return entries.find((action) => {
-    if (action.chord === undefined || !clientActionAvailable(action, stage, capabilities))
+    if (action.chord === undefined || !clientActionAvailable(action, stage, capabilities)) {
       return false;
+    }
     const terminal = action.chord === "control" || action.chord === "control-shift";
 
     if (event.defaultPrevented && !terminal) return false;
@@ -463,19 +464,22 @@ export function resolveTabShortcut(event: ActionKeyEvent, mac: boolean): TabShor
   const primary = mac ? event.metaKey : event.ctrlKey;
   const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
 
-  if (digit !== undefined && primary && !event.altKey && !event.shiftKey)
+  if (digit !== undefined && primary && !event.altKey && !event.shiftKey) {
     return { kind: "activate-index", index: Number(digit) - 1 };
+  }
 
-  if (event.key === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey)
+  if (event.key === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey) {
     return { kind: "cycle-tab", step: event.shiftKey ? -1 : 1 };
+  }
 
   if (
     (event.key === "ArrowRight" || event.key === "ArrowLeft") &&
     primary &&
     event.altKey &&
     !event.shiftKey
-  )
+  ) {
     return { kind: "cycle-tab", step: event.key === "ArrowRight" ? 1 : -1 };
+  }
 
   return undefined;
 }
@@ -518,8 +522,9 @@ export function clientActionShortcut(
   if (
     stage !== undefined &&
     (capabilities === undefined || !clientActionAvailable(action, stage, capabilities))
-  )
+  ) {
     return "";
+  }
 
   return clientActionKeys(action, mac).join(mac ? "" : "+");
 }

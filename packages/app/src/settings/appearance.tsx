@@ -2,7 +2,8 @@ import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Slider } from "@nyte-ai/ui/slider";
 import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
-import { useSyncExternalStore, type ReactElement } from "react";
+import { useSyncExternalStore } from "react";
+import type { ReactElement } from "react";
 import { Deferred } from "../lib/deferred.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { CHAT_WIDTH, preferences, useSetting } from "../preferences/index.ts";
@@ -12,17 +13,16 @@ import {
   localFontFamily,
   localFontSelection,
   uiFontFamily,
-  type CodeFont,
-  type UiFont,
 } from "../theme/fonts.ts";
+import type { CodeFont, UiFont } from "../theme/fonts.ts";
 import { appearanceStyles as styles } from "./appearance.stylex.ts";
 import { FontFamilySelect } from "./font-family-select.tsx";
 import {
   CODE_FONT_CATALOG_TITLE,
   fontSelectGroups,
   UI_FONT_CATALOG_TITLE,
-  type FontOption,
 } from "./font-select-groups.ts";
+import type { FontOption } from "./font-select-groups.ts";
 import {
   NumberRow,
   SelectRow,

@@ -148,8 +148,9 @@ export async function run(): Promise<string> {
     const defaults = await userAgentDefaults();
     const plain = getComputedStyle(element("plain"));
 
-    if (defaults.button === transparent)
+    if (defaults.button === transparent) {
       failures.push("UA button background is already transparent");
+    }
 
     if (defaults.svg === "block") failures.push("UA svg display is already block");
     check("base beats UA: button background-color", plain.backgroundColor, transparent);
@@ -170,8 +171,9 @@ export async function run(): Promise<string> {
     check("component beats base: padding-inline-start", component.paddingInlineStart, "8px");
     check("component beats base: font-weight", component.fontWeight, "500");
 
-    if (component.borderTopLeftRadius === "0px")
+    if (component.borderTopLeftRadius === "0px") {
       failures.push("base border-radius: 0 beat the component");
+    }
 
     const composed = getComputedStyle(element("composed"));
     check("app beats component: background-color", composed.backgroundColor, "rgb(1, 2, 3)");
@@ -196,11 +198,13 @@ export async function run(): Promise<string> {
       const same = lightColor === dark.get(name);
       const reason = schemeIndependentRoles.get(name);
 
-      if (same && reason === undefined)
+      if (same && reason === undefined) {
         failures.push(`role.${name} is ${lightColor} in light and dark`);
+      }
 
-      if (!same && reason !== undefined)
+      if (!same && reason !== undefined) {
         failures.push(`role.${name} is allowlisted as scheme-independent (${reason}) but differs`);
+      }
     }
 
     const fill = (id: string) => getComputedStyle(element(id)).backgroundColor;
@@ -209,16 +213,19 @@ export async function run(): Promise<string> {
       applyDisplayMode(mode);
       const tray = fill("tray");
 
-      if (mode === "dark" && tray === fill("dock"))
+      if (mode === "dark" && tray === fill("dock")) {
         failures.push(`dark: the tray is the page behind it (${tray})`);
+      }
 
-      if (tray !== fill("composer"))
+      if (tray !== fill("composer")) {
         failures.push(
           `${mode}: the tray ${tray} and composer ${fill("composer")} are two surfaces`,
         );
+      }
 
-      if (fill("queued") === tray)
+      if (fill("queued") === tray) {
         failures.push(`${mode}: a resting queued row fills over its tray`);
+      }
     }
 
     for (const mode of ["light", "dark"] as const) {
@@ -235,16 +242,19 @@ export async function run(): Promise<string> {
         delete html.dataset["platform"];
         applyTransparency(false);
 
-        if (opaque !== 1)
+        if (opaque !== 1) {
           failures.push(`${mode} ${material} with reduced transparency: alpha ${opaque}`);
+        }
 
-        if (withoutVibrancy !== 1)
+        if (withoutVibrancy !== 1) {
           failures.push(`${mode} ${material} outside the macOS shell: alpha ${withoutVibrancy}`);
+        }
 
-        if (translucent === 1)
+        if (translucent === 1) {
           failures.push(
             `${mode} ${material} in the macOS shell without reduced transparency is opaque`,
           );
+        }
       }
     }
 
@@ -259,19 +269,23 @@ export async function run(): Promise<string> {
     const moves = (parent: Element, value: string) =>
       atHue(parent, value, "250") !== atHue(parent, value, "30");
 
-    if (!moves(element("scope"), role.bgInteractiveStrong))
+    if (!moves(element("scope"), role.bgInteractiveStrong)) {
       failures.push("--nyte-custom-hue does not reach a tinted role inside a custom scope");
+    }
     applyTint();
 
-    if (!moves(host, role.bgChrome))
+    if (!moves(host, role.bgChrome)) {
       failures.push("applyTint(): --nyte-custom-hue does not reach a background");
+    }
 
-    if (moves(host, role.contentPrimary))
+    if (moves(host, role.contentPrimary)) {
       failures.push("applyTint(): --nyte-custom-hue moves text");
+    }
     html.style.setProperty("--nyte-custom-chroma-scale", "0");
 
-    if (moves(host, role.bgChrome))
+    if (moves(host, role.bgChrome)) {
       failures.push("applyTint() at intensity 0: --nyte-custom-hue still moves a background");
+    }
     html.style.removeProperty("--nyte-custom-hue");
 
     const text = element("text");
@@ -291,15 +305,17 @@ export async function run(): Promise<string> {
         `${Math.ceil((size * 18) / 13)}px`,
       );
 
-      if (!Number.isInteger(Number.parseFloat(computed.lineHeight)))
+      if (!Number.isInteger(Number.parseFloat(computed.lineHeight))) {
         failures.push(`${size}px base: line-height ${computed.lineHeight} is not a whole pixel`);
+      }
 
       const rowHeight = getComputedStyle(element("row")).height;
 
-      if (Number.parseFloat(computed.lineHeight) > Number.parseFloat(rowHeight))
+      if (Number.parseFloat(computed.lineHeight) > Number.parseFloat(rowHeight)) {
         failures.push(
           `${size}px base: type.leadingBase ${computed.lineHeight} outgrows row.heightMd ${rowHeight}`,
         );
+      }
     }
 
     html.style.removeProperty("--nyte-font-size-base");
@@ -312,8 +328,9 @@ export async function run(): Promise<string> {
     );
     applyFocusModality("keyboard");
 
-    if (getComputedStyle(text).outlineColor === transparent)
+    if (getComputedStyle(text).outlineColor === transparent) {
       failures.push("keyboard modality: appearance.focusRing is transparent");
+    }
 
     return failures.length ? failures.join("\n") : "passed";
   } finally {

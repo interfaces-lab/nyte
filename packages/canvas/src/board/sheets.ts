@@ -234,12 +234,13 @@ async function draw(load: Load): Promise<void> {
 
   resized.disconnect();
 
-  for (const place of mounted.values())
+  for (const place of mounted.values()) {
     for (const node of frameNodes(place.container)) {
       node.style.position = "absolute";
       placeNode(node);
       resized.observe(node);
     }
+  }
 
   syncStyles(load);
   applyNight();
@@ -406,10 +407,13 @@ function findFact(key: string): FrameFact | undefined {
 }
 
 function applyNight(): void {
-  for (const place of mounted.values())
-    for (const node of frameNodes(place.container))
-      if (findFact(node.getAttribute(DESIGN_ATTRIBUTE.source) ?? "")?.pinned !== true)
+  for (const place of mounted.values()) {
+    for (const node of frameNodes(place.container)) {
+      if (findFact(node.getAttribute(DESIGN_ATTRIBUTE.source) ?? "")?.pinned !== true) {
         node.setAttribute(DESIGN_ATTRIBUTE.theme, night ? "night" : "day");
+      }
+    }
+  }
 }
 
 function measure(): void {

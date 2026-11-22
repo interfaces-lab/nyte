@@ -25,7 +25,10 @@ function memoryArea(raw: string | null) {
   return { area, writes };
 }
 
-type StoredBrowse = { readonly kind: "follow" | "workspace"; readonly id?: string };
+interface StoredBrowse {
+  readonly kind: "follow" | "workspace";
+  readonly id?: string;
+}
 
 function snapshot(
   version: 7 | 8,

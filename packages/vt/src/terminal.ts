@@ -36,7 +36,7 @@ const writeChunk = 65_536;
 
 const holdLimit = 1000;
 
-const sizeMax = 0xffff_ffff;
+const sizeMax = 0xff_ff_ff_ff;
 
 export async function createTerminal(engine: Engine, options: TerminalOptions): Promise<Terminal> {
   let session: Terminal | null = await openSession(engine, options);

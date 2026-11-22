@@ -42,13 +42,14 @@ const deleted = (id: string) => ({
 });
 
 function knownOwner(userId: string): void {
-  if (!harness.clerkApi.users.has(userId))
+  if (!harness.clerkApi.users.has(userId)) {
     harness.clerkApi.users.set(userId, {
       banned: false,
       locked: false,
       updated_at: 1,
       email: `${userId}@example.com`,
     });
+  }
 }
 
 async function opened(input: { readonly name?: string; readonly desktop?: FakeDesktop } = {}) {
@@ -96,8 +97,9 @@ async function completed(
 ): Promise<{ readonly status: number; readonly link: LinkResponse }> {
   const answer = await harness.transactionCall({ desktop, transactionId, step: "complete" });
 
-  if (!Value.Check(LinkTransactionCompletion, answer.body) || answer.body.state !== "consumed")
+  if (!Value.Check(LinkTransactionCompletion, answer.body) || answer.body.state !== "consumed") {
     throw new Error(`not completed: ${answer.text}`);
+  }
 
   return { status: answer.status, link: answer.body.link };
 }
@@ -116,7 +118,7 @@ describe("opening a link transaction", () => {
     expect(
       typeof expiresAt === "number"
         ? Math.abs(expiresAt - harness.now() - LINK_TRANSACTION_LIFETIME_SECONDS * 1000)
-        : NaN,
+        : Number.NaN,
     ).toBeLessThan(5000);
     const again = await harness.openTransaction({
       desktop,

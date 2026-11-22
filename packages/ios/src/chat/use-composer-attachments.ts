@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { useSharedValue, withSpring, type SharedValue } from "react-native-reanimated";
+import { useSharedValue, withSpring } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { MAX_ATTACHMENTS, type StagedImage } from "../media/attachments.ts";
+import { MAX_ATTACHMENTS } from "../media/attachments.ts";
+import type { StagedImage } from "../media/attachments.ts";
 import { clearAnnotation } from "../media/annotations.ts";
 import {
   chooseSharedPhotos,
   readRecentPhotos,
   requestPhotoAccess,
   stageRecentPhoto,
-  type PhotoAccess,
-  type RecentPhoto,
 } from "../media/recent-photos.ts";
+import type { PhotoAccess, RecentPhoto } from "../media/recent-photos.ts";
 import { useAttachmentFlight } from "./attachment-flight.ts";
 import { SPRING } from "./composer-geometry.ts";
 

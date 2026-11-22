@@ -43,8 +43,9 @@ export async function apiCommand(input: {
 
   const names = parsed.command === "describe" ? [parsed.operation] : undefined;
 
-  if (parsed.hostUrl === undefined && parsed.command === "describe")
+  if (parsed.hostUrl === undefined && parsed.command === "describe") {
     knownOperation(parsed.operation);
+  }
 
   const operations =
     parsed.hostUrl === undefined
@@ -89,10 +90,11 @@ function parseApiArgs(args: readonly string[]) {
 
   if (command === "list") return { command, json, hostUrl } as const;
 
-  if (operation === undefined)
+  if (operation === undefined) {
     throw new CliError("missing_input", `Name the operation to ${command}.`, {
       next: [{ label: "See the options", argv: ["nyte", "api", command, "--help"] }],
     });
+  }
 
   if (command === "describe") return { command, operation, json, hostUrl } as const;
 
@@ -102,32 +104,35 @@ function parseApiArgs(args: readonly string[]) {
 function knownCall(op: string): void {
   knownOperation(op);
 
-  if (namesOperation(op) && !answersOnce(op))
+  if (namesOperation(op) && !answersOnce(op)) {
     throw new CliError(
       "invalid_arguments",
       `Can't call ${op}: it's a ${OPERATIONS[op].kind}, and call takes one answer.`,
       { next: [{ label: "See how it answers", argv: ["nyte", "api", "describe", op] }] },
     );
+  }
 }
 
 function knownOperation(op: string): void {
-  if (!namesOperation(op))
+  if (!namesOperation(op)) {
     throw new CliError("not_found", `Couldn't find operation ${op}.`, {
       next: [{ label: "See every operation", argv: ["nyte", "api", "list"] }],
     });
+  }
 }
 
 async function readStdinInput(
   op: string,
   input: { readonly stdin: () => Promise<string>; readonly output: Output },
 ): Promise<Json> {
-  if (input.output.mode.tty.stdin)
+  if (input.output.mode.tty.stdin) {
     throw new CliError("missing_input", `Can't call ${op} without its input.`, {
       next: [
         { label: "Pass the input as JSON", argv: ["nyte", "api", "call", op, "<JSON>"] },
         { label: "See its input schema", argv: ["nyte", "api", "describe", op] },
       ],
     });
+  }
 
   const text = await input.stdin();
 

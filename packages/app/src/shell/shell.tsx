@@ -96,13 +96,14 @@ const STARTUP_FAILURE = {
 function ConnectionFailure(): ReactElement | null {
   const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
 
-  if (connection.kind === "unreachable")
+  if (connection.kind === "unreachable") {
     return (
       <div role="status" {...props(styles.connectionFailure)}>
         <Loader />
         <span>Can&rsquo;t reach the host. Reconnecting&hellip;</span>
       </div>
     );
+  }
 
   if (connection.kind !== "failed") return null;
 
@@ -200,8 +201,9 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       clientCapabilities(nyte.host),
     );
 
-    if (action?.action !== undefined && runAction(shellRouter, action.action, action.input ?? {}))
+    if (action?.action !== undefined && runAction(shellRouter, action.action, action.input ?? {})) {
       event.preventDefault();
+    }
   });
 
   useMountEffect(() => {
@@ -214,8 +216,12 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const onSwitchKey = useEffectEvent((event: KeyboardEvent): void => {
     const action = resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host));
 
-    if (action?.action !== "app.open" || !runAction(shellRouter, action.action, action.input ?? {}))
+    if (
+      action?.action !== "app.open" ||
+      !runAction(shellRouter, action.action, action.input ?? {})
+    ) {
       return;
+    }
     event.preventDefault();
     event.stopPropagation();
   });

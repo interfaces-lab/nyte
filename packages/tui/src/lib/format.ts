@@ -99,7 +99,7 @@ export function excerptLabel(source: ExcerptSource, text: string): string {
     }
 
     case "terminal": {
-      const command = source.command?.trim().replace(/\s+/gu, " ");
+      const command = source.command?.trim().replaceAll(/\s+/gu, " ");
       const lines = text.split("\n").length;
 
       return command === undefined || command === ""
@@ -233,8 +233,9 @@ export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegm
     );
   }
 
-  if (state.queued !== undefined && state.queued > 0)
+  if (state.queued !== undefined && state.queued > 0) {
     segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });
+  }
 
   return segments;
 }

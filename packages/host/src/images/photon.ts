@@ -44,8 +44,9 @@ function prepare(
       image.get_width() <= limits.maxWidth &&
       image.get_height() <= limits.maxHeight &&
       base64Length(bytes.byteLength) <= limits.maxBase64Bytes
-    )
+    ) {
       return { data: bytes.toBase64(), mimeType };
+    }
 
     if (orientation >= 5) {
       const upright = transposed(image, orientation);
@@ -70,10 +71,11 @@ function prepare(
     for (;;) {
       const encoded = encodeWithin(image, target, limits.maxBase64Bytes, mimeType === "image/jpeg");
 
-      if (encoded !== undefined)
+      if (encoded !== undefined) {
         return target.width === width && target.height === height
           ? encoded
           : { ...encoded, resized: { from: { width, height }, to: target } };
+      }
 
       if (target.width === 1 && target.height === 1) return undefined;
       target = {
@@ -108,8 +110,9 @@ function encodeWithin(
     for (const candidate of jpegFirst ? [...jpegs, png] : [png, ...jpegs]) {
       const encoded = candidate.encode();
 
-      if (base64Length(encoded.byteLength) <= maxBase64Bytes)
+      if (base64Length(encoded.byteLength) <= maxBase64Bytes) {
         return { data: encoded.toBase64(), mimeType: candidate.mimeType };
+      }
     }
 
     return undefined;

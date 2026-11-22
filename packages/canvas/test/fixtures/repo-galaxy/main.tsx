@@ -144,8 +144,9 @@ export default function RepoGalaxy() {
         const reach = Math.max(drawing.screenRadius(frame, star, point.w) + 4, 9);
         const score = distance + point.w * 0.01;
 
-        if (distance < reach && (best === null || score < best.score))
+        if (distance < reach && (best === null || score < best.score)) {
           best = { id: star.id, score };
+        }
       }
 
       return best?.id ?? null;
@@ -180,8 +181,9 @@ export default function RepoGalaxy() {
         label.style.opacity = String(Math.min(1, 1.7 - point.w / 45));
       });
 
-      if (anchor !== null)
+      if (anchor !== null) {
         anchor.style.display = star === undefined || star.path === null ? "none" : "block";
+      }
 
       if (star === undefined || anchor === null) return;
       const point = drawing.project(frame, star.id);
@@ -256,8 +258,9 @@ export default function RepoGalaxy() {
       root.dataset["frameP95"] = percentile(intervals, 0.95).toFixed(2);
       root.dataset["workP95"] = busy.toFixed(2);
 
-      if (hudRef.current !== null)
+      if (hudRef.current !== null) {
         hudRef.current.textContent = `three.js · ${Math.round(1000 / median)} fps · ${busy.toFixed(1)} ms`;
+      }
     };
     clock.handle = requestAnimationFrame(loop);
 

@@ -35,8 +35,9 @@ export const checksPlugin = {
       const runtime = new Map<string, string>();
 
       const exports = Object.entries(checks).map(([name, validator]) => {
-        if (!(validator instanceof Validator))
+        if (!(validator instanceof Validator)) {
           throw new Error(`${args.path} exports ${name}, which isn't a TypeBox validator.`);
+        }
 
         return `export const ${name} = (() => {\n${standalone(validator, runtime, args.path)}\nreturn { Check };\n})();`;
       });
@@ -65,12 +66,14 @@ function standalone(validator: Validator, runtime: Map<string, string>, path: st
 
   const body = lines.join("\n").replaceAll(/^export function /gmu, "function ");
 
-  if (/^\s*(?:import|export)\b/mu.test(body))
+  if (/^\s*(?:import|export)\b/mu.test(body)) {
     throw new Error(`TypeBox generated an import or export this plugin can't place for ${path}.`);
+  }
 
   const externals = generated.External.variables.map((value) => {
-    if (!(value instanceof RegExp))
+    if (!(value instanceof RegExp)) {
       throw new Error(`TypeBox generated an external value this plugin can't write for ${path}.`);
+    }
 
     return value.toString();
   });

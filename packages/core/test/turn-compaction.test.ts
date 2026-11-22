@@ -17,13 +17,13 @@ describe("turn compaction", () => {
       id: "policy",
       contribute: {
         modelContext: [
-          { model: { provider: "test", id: "model" }, contextWindow: 100_000, compactAt: 5_000 },
+          { model: { provider: "test", id: "model" }, contextWindow: 100_000, compactAt: 5000 },
         ],
       },
     };
 
     fake.reply(
-      { content: [{ type: "text", text: "Short." }], usage: { input: 6_000, output: 5 } },
+      { content: [{ type: "text", text: "Short." }], usage: { input: 6000, output: 5 } },
       { content: [{ type: "text", text: "They asked once." }] },
       { content: [{ type: "text", text: "Second answer." }] },
     );
@@ -49,7 +49,7 @@ describe("turn compaction", () => {
       id: "policy",
       contribute: {
         modelContext: [
-          { model: { provider: "test", id: "model" }, contextWindow: 2_000, compactAt: 100 },
+          { model: { provider: "test", id: "model" }, contextWindow: 2000, compactAt: 100 },
         ],
       },
     };
@@ -93,7 +93,7 @@ describe("turn compaction", () => {
     });
 
     const labels = logged.map(label);
-    const created = labels.findIndex((entry) => entry === "part:created");
+    const created = labels.indexOf("part:created");
 
     expect(labels.slice(created, created + 5)).toEqual([
       "part:created",
@@ -134,7 +134,7 @@ describe("turn compaction", () => {
       id: "policy",
       contribute: {
         modelContext: [
-          { model: { provider: "test", id: "model" }, contextWindow: 10_000, compactAt: 2_000 },
+          { model: { provider: "test", id: "model" }, contextWindow: 10_000, compactAt: 2000 },
         ],
       },
     };
@@ -143,7 +143,7 @@ describe("turn compaction", () => {
       { content: [{ type: "text", text: "First answer." }] },
       {
         content: [{ type: "toolCall", id: "a", name: "echo", arguments: { text: "a" } }],
-        usage: { input: 2_500, output: 8 },
+        usage: { input: 2500, output: 8 },
       },
       { content: [{ type: "text", text: "They asked a first question." }] },
       { content: [{ type: "text", text: "Done." }] },
@@ -161,18 +161,18 @@ describe("turn compaction", () => {
     expect(sent(fake, 3)[1]).toContain("The earlier conversation was summarised");
     expect(
       fake.requests[3].context.messages.findLast((message) => message.role === "assistant"),
-    ).toMatchObject({ usage: { input: 2_500, output: 8 } });
+    ).toMatchObject({ usage: { input: 2500, output: 8 } });
   });
 
   it("keeps a long tool result's start and end in the compaction prompt", async () => {
     const fake = fakeModels();
-    const long = `BEGIN${"x".repeat(5_000)}FINISHED`;
+    const long = `BEGIN${"x".repeat(5000)}FINISHED`;
 
     const policy: Plugin<"core"> = {
       id: "policy",
       contribute: {
         modelContext: [
-          { model: { provider: "test", id: "model" }, contextWindow: 8_000, compactAt: 300 },
+          { model: { provider: "test", id: "model" }, contextWindow: 8000, compactAt: 300 },
         ],
       },
     };

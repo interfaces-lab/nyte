@@ -44,8 +44,9 @@ function mergeLimits(entry: Entry, next: AccountLimits, requestRevision = entry.
     if (
       observed !== undefined &&
       (observed.at > next.observedAt || observed.revision > requestRevision)
-    )
+    ) {
       continue;
+    }
 
     windows.set(window.id, window);
     entry.observed.set(window.id, { at: next.observedAt, revision: entry.revision });
@@ -60,10 +61,11 @@ function mergeLimits(entry: Entry, next: AccountLimits, requestRevision = entry.
 }
 
 function snapshot(entry: Entry): AccountLimitsResult {
-  if (entry.limits === undefined)
+  if (entry.limits === undefined) {
     return (
       entry.unavailable ?? { kind: "unavailable", reason: "failed", message: "No usage available." }
     );
+  }
 
   return {
     kind: "ready",
@@ -143,8 +145,9 @@ export class AccountLimitsCache {
         if (state.generation !== generation) return changedAccount();
         const entry = accountEntry(accountId);
 
-        if (entry.flight !== null)
+        if (entry.flight !== null) {
           return raceWithAbortSignal(entry.flight.result, operationSignal(options?.signal));
+        }
 
         if (Date.now() < entry.retryAt) return snapshot(entry);
 

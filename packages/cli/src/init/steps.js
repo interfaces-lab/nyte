@@ -147,8 +147,9 @@ async function checkCode(ctx) {
 
   if (!existsSync(ctx.target)) return todo(`${label} doesn't exist`);
 
-  if (!existsSync(join(ctx.target, ".git")))
+  if (!existsSync(join(ctx.target, ".git"))) {
     return todo(`${label} exists but isn't a git checkout`);
+  }
   const remote = await upstreamRemote(ctx);
 
   if (remote === undefined) return todo(`${label} isn't a checkout of ${upstreamSlug}`);
@@ -424,7 +425,7 @@ export const STEPS = [
         const { code, stdout } = await ctx.exec.capture("xcode-select", ["-p"]);
 
         if (code === 0 && existsSync(join(stdout.trim(), "usr", "bin", "git"))) return;
-        await sleep(5_000);
+        await sleep(5000);
       }
 
       throw new Error("Apple's installer didn't finish within an hour.");
@@ -651,8 +652,9 @@ export const STEPS = [
         : todo("Ubuntu blocks the user namespaces Electron's sandbox needs");
     },
     async apply(ctx, io) {
-      if (ctx.sudo === "missing")
+      if (ctx.sudo === "missing") {
         throw new Error("Installing an AppArmor profile needs root or sudo.");
+      }
       const profile = sandboxProfile(ctx);
       const directory = await mkdtemp(join(tmpdir(), "nyte-init-"));
       const draft = join(directory, "profile");

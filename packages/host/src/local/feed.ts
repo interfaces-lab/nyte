@@ -1,11 +1,11 @@
 import type { Disposer } from "@nyte-ai/schema";
 import { closable } from "@nyte-ai/core";
 
-export type FeedSink<T> = {
+export interface FeedSink<T> {
   push(value: T): void;
   fail(error: unknown): void;
   end(): void;
-};
+}
 
 export function feed<T>(
   start: (sink: FeedSink<T>) => Disposer,

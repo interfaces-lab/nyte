@@ -34,8 +34,9 @@ async function readFailure(): Promise<void> {
     const editor = composer.current;
     const target = editor?.readElement();
 
-    if (editor === null || target === null || target === undefined)
+    if (editor === null || target === null || target === undefined) {
       throw new Error("Missing composer");
+    }
     await editor.attachFiles([{ file, kind: "file" }], excerpt.signal);
 
     return target;
@@ -104,8 +105,14 @@ async function unmounting(): Promise<void> {
       const editor = composer.current;
       const target = editor?.readElement();
 
-      if (excerpt.image === undefined || editor === null || target === null || target === undefined)
+      if (
+        excerpt.image === undefined ||
+        editor === null ||
+        target === null ||
+        target === undefined
+      ) {
         throw new Error("Missing image intake");
+      }
 
       const image = excerpt.image;
       check(image.type === "image/png", "The delivery must contain a native PNG export");
@@ -159,7 +166,7 @@ async function unmounting(): Promise<void> {
       gate.resolve(undefined);
 
       if (phase === "delivery") await finished.promise;
-      else
+      else {
         await exportMarkup(
           viewer.source,
           wholeImage({ width: viewer.source.naturalWidth, height: viewer.source.naturalHeight }),
@@ -167,6 +174,7 @@ async function unmounting(): Promise<void> {
           "light",
           "encoding-barrier.png",
         );
+      }
       await paint();
       check(
         calls === (phase === "flatten" ? 0 : 1),

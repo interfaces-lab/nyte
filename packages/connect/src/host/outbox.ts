@@ -27,8 +27,9 @@ export class ConnectOutbox {
   }
 
   sendRevocations(now: boolean): Promise<void> {
-    if (!now && Date.now() < this.revocationsSentAt + REVOCATION_REMINDER_MS)
+    if (!now && Date.now() < this.revocationsSentAt + REVOCATION_REMINDER_MS) {
       return Promise.resolve();
+    }
 
     if (this.revoking !== undefined) {
       this.revokeAgain = true;
@@ -157,8 +158,9 @@ export class ConnectOutbox {
 
     clearTimeout(this.unlinkTimer);
 
-    if (remaining > 0 && !this.options.closed())
+    if (remaining > 0 && !this.options.closed()) {
       this.unlinkTimer = setTimeout(() => void this.retryUnlinks(), this.options.unlinkRetryMs);
+    }
     this.options.changed();
   }
 }

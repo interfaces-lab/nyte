@@ -2,7 +2,7 @@ import { BROKER_ROUTES, EnvironmentList } from "@nyte-ai/connect";
 import { RELAY_AUTH_TIMEOUT_MS, RELAY_CLOSE, RELAY_PING } from "@nyte-ai/connect/relay";
 import { createProof, generateMachineKey, randomId } from "@nyte-ai/connect/signing";
 import { Value } from "typebox/value";
-import { RelayDesktop } from "./workerd.ts";
+import type { RelayDesktop } from "./workerd.ts";
 import { describe, expect, it } from "vitest";
 import {
   echo,

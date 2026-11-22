@@ -7,16 +7,19 @@ export async function answerRepair(
   secret: string | undefined,
   repair: () => Promise<void>,
 ): Promise<Response | undefined> {
-  if (request.method !== "GET" || new URL(request.url).pathname !== "/.nyte/repair")
+  if (request.method !== "GET" || new URL(request.url).pathname !== "/.nyte/repair") {
     return undefined;
+  }
 
-  if (secret === undefined || secret === "")
+  if (secret === undefined || secret === "") {
     return failure(new SdkError("unknown", "This deployment sets no CRON_SECRET."));
+  }
 
   const given = /^Bearer\s+(\S+)\s*$/i.exec(request.headers.get("Authorization") ?? "")?.[1] ?? "";
 
-  if (!timingSafeEqual(digest(given), digest(secret)))
+  if (!timingSafeEqual(digest(given), digest(secret))) {
     return failure(new SdkError("unauthenticated", "Send Authorization: Bearer <CRON_SECRET>."));
+  }
 
   await repair();
 

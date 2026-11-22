@@ -3,7 +3,8 @@ import { use } from "react";
 import type { ReactNode } from "react";
 import type { NavItem } from "~/lib/docs";
 import { DocSections } from "./frame";
-import { DocNav, type TocEntry } from "./sidebar";
+import { DocNav } from "./sidebar";
+import type { TocEntry } from "./sidebar";
 
 function PagerLink({ target, dir }: { target?: NavItem; dir: "previous" | "next" }) {
   if (!target) return null;

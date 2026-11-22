@@ -1,4 +1,5 @@
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import {
   GITHUB_COPILOT_API_VERSION,
@@ -149,8 +150,9 @@ async function startDeviceAuthorization(input: {
     describe: "GitHub device code request",
   });
 
-  if (!Value.Check(DeviceCodeResponse, json))
+  if (!Value.Check(DeviceCodeResponse, json)) {
     throw new Error("GitHub device code response is missing required fields");
+  }
   const url = URL.parse(json.verification_uri);
 
   if (
@@ -178,7 +180,7 @@ async function startDeviceAuthorization(input: {
   };
 }
 
-const LIFETIME_GRACE_MS = 1_000;
+const LIFETIME_GRACE_MS = 1000;
 
 async function pollForGitHubToken(input: {
   fetch: FetchFunction | undefined;
@@ -216,8 +218,9 @@ async function pollForGitHubToken(input: {
 
         if (Value.Check(GitHubToken, json)) return { status: "complete", value: json };
 
-        if (!Value.Check(GrantError, json))
+        if (!Value.Check(GrantError, json)) {
           return { status: "failed", message: "GitHub device authorization response is malformed" };
+        }
 
         switch (json.error) {
           case "authorization_pending":
@@ -370,12 +373,13 @@ export function githubCopilotOAuth(
         signal: interaction.signal,
       });
 
-      if (result.needsApproval)
+      if (result.needsApproval) {
         interaction.notify({
           type: "info",
           message:
             "Some Copilot models need account approval. Enable them in your Copilot settings, then sign in again.",
         });
+      }
 
       return result.credential;
     },

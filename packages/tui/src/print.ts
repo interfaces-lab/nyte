@@ -127,8 +127,9 @@ async function follow(options: PrintOptions): Promise<RunEnding> {
 
       if (next === "canceled") return { kind: "canceled", stop: await stopRun(receipt) };
 
-      if (next.done === true)
+      if (next.done === true) {
         return { kind: "lost", cause: "The chat's updates ended before the run did." };
+      }
       const view = next.value;
       const turn = view.turns.find((candidate) => candidate.prompt === receipt.message);
 
@@ -144,14 +145,16 @@ async function follow(options: PrintOptions): Promise<RunEnding> {
             message.status.kind === "failed" &&
             message.status.failure.class !== "aborted" &&
             before !== ""
-          )
+          ) {
             return {
               kind: "lost",
               cause: "The provider retried after part of the answer was printed.",
             };
+          }
 
-          if (!message.state.markdown.startsWith(before))
+          if (!message.state.markdown.startsWith(before)) {
             return { kind: "lost", cause: "The answer changed after part of it was printed." };
+          }
           writeText(message.state.markdown.slice(before.length));
           written.set(message.id, message.state.markdown);
         } else if (showsTool(message) && !tools.has(message.id)) {
@@ -309,11 +312,13 @@ async function stopRun(receipt: SendReceipt): Promise<StopOutcome> {
 }
 
 function stopReport(stop: StopOutcome) {
-  if (stop.kind === "requested")
+  if (stop.kind === "requested") {
     return { remote: "stopping", message: "Stopped waiting. The host is stopping the run." };
+  }
 
-  if (stop.kind === "missing")
+  if (stop.kind === "missing") {
     return { remote: "unknown", message: "Stopped waiting. Couldn't confirm the run stopped." };
+  }
 
   switch (stop.outcome.kind) {
     case "stopped":

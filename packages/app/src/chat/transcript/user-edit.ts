@@ -117,8 +117,9 @@ export function nextEdit(edit: UserEditState, event: UserEditEvent): UserEditSta
 export function decideSave(edit: UserEditState, draft: ComposerContent): SaveDecision {
   if (edit.saving) return { kind: "busy" };
 
-  if (composerContentEmpty(draft))
+  if (composerContentEmpty(draft)) {
     return { kind: "empty", edit: { ...edit, error: EMPTY_MESSAGE } };
+  }
 
   return {
     kind: "send",

@@ -8,11 +8,11 @@ type Spring = SimulationLinkDatum<Body> & { readonly strength: number };
 
 const SCALE = 0.042;
 
-export type Layout = {
+export interface Layout {
   readonly position: Float32Array;
   step(): boolean;
   settle(): void;
-};
+}
 
 export function createLayout(): Layout {
   const anchors = LAYERS.map((_, index) => {
@@ -47,7 +47,7 @@ export function createLayout(): Layout {
   const middle = (LAYERS.length - 1) / 2;
 
   const write = (): void => {
-    for (const body of bodies)
+    for (const body of bodies) {
       position.set(
         [
           (body.x ?? 0) * SCALE,
@@ -56,6 +56,7 @@ export function createLayout(): Layout {
         ],
         body.id * 3,
       );
+    }
   };
 
   write();

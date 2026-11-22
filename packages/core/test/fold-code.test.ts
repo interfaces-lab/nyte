@@ -115,11 +115,12 @@ it("stamps fold checkpoints with the hash of the fold code", async () => {
     (name) => name.endsWith(".ts") && name !== "code.ts",
   );
 
-  for (const name of names.toSorted())
+  for (const name of names.toSorted()) {
     hash
       .update(`${name}\0`)
       .update(await readFile(new URL(name, folder)))
       .update("\0");
+  }
 
   expect(
     hash.digest("hex").slice(0, 16),
@@ -197,8 +198,9 @@ function valueImports(
       !isExportDeclaration(statement) ||
       statement.moduleSpecifier === undefined ||
       statement.isTypeOnly
-    )
+    ) {
       return [];
+    }
     const from = readSpecifier(statement.moduleSpecifier);
     const clause = statement.exportClause;
 

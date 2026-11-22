@@ -126,7 +126,7 @@ export function hostPort(connect: () => Promise<PortEnd>): HostPort {
       request.signal.addEventListener("abort", abort, { once: true });
 
       try {
-        return (await Promise.race([client(), aborted.promise])).send(request);
+        return await (await Promise.race([client(), aborted.promise])).send(request);
       } finally {
         request.signal.removeEventListener("abort", abort);
       }
@@ -278,8 +278,9 @@ export function servePort(
     socket.addEventListener("open", () => post({ kind: "opened", id }));
     socket.addEventListener("message", (event) => {
       if (typeof event.data === "string") post({ kind: "frame", id, text: event.data });
-      else if (event.data instanceof Uint8Array || event.data instanceof ArrayBuffer)
+      else if (event.data instanceof Uint8Array || event.data instanceof ArrayBuffer) {
         post({ kind: "frame", id, text: new TextDecoder().decode(event.data) });
+      }
     });
     socket.addEventListener("close", (event) => {
       if (sockets.get(id) !== socket) return;
@@ -311,6 +312,9 @@ export function servePort(
     exchanges.set(id, {
       receive(frame) {
         switch (frame.kind) {
+          case "request":
+          case "response":
+            return;
           case "data":
             upload?.push(frame.bytes);
 
@@ -326,9 +330,6 @@ export function servePort(
           case "reset":
             abandon();
 
-            return;
-          case "request":
-          case "response":
             return;
           default: {
             const _exhaustive: never = frame;
@@ -502,6 +503,8 @@ function openClient(port: PortEnd, lost: () => void): Client {
 
       const receive = (message: ExchangeMessage): void => {
         switch (message.kind) {
+          case "request":
+            return;
           case "response": {
             body = message.body
               ? inbound(
@@ -549,8 +552,6 @@ function openClient(port: PortEnd, lost: () => void): Client {
             fail(new TypeError("The Nyte host abandoned the request."));
 
             return;
-          case "request":
-            return;
           default: {
             const _exhaustive: never = message;
 
@@ -571,7 +572,7 @@ function openClient(port: PortEnd, lost: () => void): Client {
         body: request.body !== null,
       });
 
-      if (request.body !== null)
+      if (request.body !== null) {
         upload = outbound(id, request.body, post, {
           ended: () => undefined,
           failed: (cause) => {
@@ -579,6 +580,7 @@ function openClient(port: PortEnd, lost: () => void): Client {
             fail(new TypeError(cause instanceof Error ? cause.message : String(cause)));
           },
         });
+      }
 
       return response.promise;
     },
@@ -613,10 +615,11 @@ function inbound(credit: (bytes: number) => void, cancelled: () => void): Inboun
     stream: new ReadableStream<Uint8Array>(
       {
         async pull(controller) {
-          while (queue.length === 0 && state.kind === "open")
+          while (queue.length === 0 && state.kind === "open") {
             await new Promise<void>((resolve) => {
               arrived = resolve;
             });
+          }
 
           if (state.kind === "failed") {
             controller.error(state.reason);
@@ -690,10 +693,11 @@ function outbound(
   void (async () => {
     try {
       for (;;) {
-        while (unread >= WINDOW && !stopped)
+        while (unread >= WINDOW && !stopped) {
           await new Promise<void>((resolve) => {
             credited = resolve;
           });
+        }
 
         if (stopped) return;
         const read = await reader.read();

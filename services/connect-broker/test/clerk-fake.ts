@@ -39,8 +39,9 @@ export class FakeClerkApi {
 
     this.calls.push(`${method} ${url.pathname}`);
 
-    if (new Headers(init.headers).get("authorization") !== `Bearer ${this.secretKey}`)
+    if (new Headers(init.headers).get("authorization") !== `Bearer ${this.secretKey}`) {
       return Response.json({ errors: [] }, { status: 401 });
+    }
     if (url.pathname === "/v1/users" && method === "GET") {
       if (this.userStatus !== undefined) return Response.json({}, { status: this.userStatus });
 
@@ -59,8 +60,9 @@ export class FakeClerkApi {
       if (this.userStatus !== undefined) return Response.json({}, { status: this.userStatus });
       const found = this.users.get(user);
 
-      if (found === undefined)
+      if (found === undefined) {
         return Response.json({ errors: [{ code: "resource_not_found" }] }, { status: 404 });
+      }
 
       return Response.json(userBody(user, found));
     }

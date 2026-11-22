@@ -15,9 +15,11 @@ export async function executable(path: string): Promise<boolean> {
 export async function findOnPath(name: string, path: string): Promise<string | undefined> {
   const names = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`, name] : [name];
 
-  for (const dir of path.split(delimiter))
-    for (const candidate of names)
+  for (const dir of path.split(delimiter)) {
+    for (const candidate of names) {
       if (dir !== "" && (await executable(join(dir, candidate)))) return join(dir, candidate);
+    }
+  }
 
   return undefined;
 }

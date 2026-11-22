@@ -166,8 +166,9 @@ it.each(
     controlledStore(raw, (updates) => {
       if (updates.some((update) => update.name === publication)) return write;
 
-      if (updates.some((update) => update.name === processName && update.target !== null))
+      if (updates.some((update) => update.name === processName && update.target !== null)) {
         return beat;
+      }
 
       return undefined;
     }),
@@ -175,7 +176,7 @@ it.each(
   );
 
   resources.use(a.host);
-  const heartbeatIndex = intervals.mock.calls.findIndex(([, every]) => every === 5_000);
+  const heartbeatIndex = intervals.mock.calls.findIndex(([, every]) => every === 5000);
   const tickA = intervals.mock.calls[heartbeatIndex]?.[0];
   const timerA = intervals.mock.results[heartbeatIndex];
   assert(tickA !== undefined && timerA?.type === "return");
@@ -329,7 +330,7 @@ it.each([
   const a = await compose("A", machine(row.a, "running"));
   resources.use(a.host);
   const heartbeat =
-    intervals.mock.results[intervals.mock.calls.findIndex(([, every]) => every === 5_000)];
+    intervals.mock.results[intervals.mock.calls.findIndex(([, every]) => every === 5000)];
   assert(heartbeat?.type === "return");
   clearInterval(heartbeat.value);
 

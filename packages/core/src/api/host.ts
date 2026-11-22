@@ -100,8 +100,9 @@ function hostRoutes(tailnet: TailnetStatus | undefined): readonly HostRoute[] {
     tailnet?.state !== "running" ||
     tailnet.https !== "available" ||
     tailnet.dnsName === undefined
-  )
+  ) {
     return [];
+  }
 
   return [{ kind: "tailnet", url: `https://${tailnet.dnsName.replace(/\.$/u, "")}` }];
 }

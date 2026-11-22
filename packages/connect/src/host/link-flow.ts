@@ -117,9 +117,9 @@ export class LinkFlow {
     try {
       if (authorizer === undefined || broker === undefined) throw unavailable();
 
-      if (authorizer.kind === "session")
+      if (authorizer.kind === "session") {
         await this.linkWithSession(authorizer.account, broker, attempt);
-      else await this.linkWithTransaction(authorizer, broker, attempt);
+      } else await this.linkWithTransaction(authorizer, broker, attempt);
 
       if (attempt.cancelled && attempt.persisted !== undefined) {
         await this.options.unlink(attempt.persisted);
@@ -210,11 +210,12 @@ export class LinkFlow {
 
       const key = resumable ? pending.key : await generateMachineKey();
 
-      if (!resumable)
+      if (!resumable) {
         await store.change((current) => ({
           ...current,
           linkKey: { kind: "session", origin: broker.origin, key, owner },
         }));
+      }
 
       const linked = await broker.link({
         key,
@@ -277,8 +278,9 @@ export class LinkFlow {
             }
           }
 
-          if (intent !== pending)
+          if (intent !== pending) {
             await store.change((current) => ({ ...current, linkKey: intent }));
+          }
           const { kept, state } = await this.open(intent, broker, signal);
 
           if (state === "pending") return kept;
@@ -331,8 +333,9 @@ export class LinkFlow {
 
       if (file.link !== null) return;
 
-      if (file.linkKey?.kind !== "transaction" || file.linkKey.transaction?.id !== transaction.id)
+      if (file.linkKey?.kind !== "transaction" || file.linkKey.transaction?.id !== transaction.id) {
         throw new AccountCancelled();
+      }
 
       const completion = await broker.completeLinkTransaction({
         key,
@@ -432,8 +435,9 @@ export class LinkFlow {
     if (broker === undefined) return;
     const pending = this.options.store.loadedFile()?.linkKey ?? null;
 
-    if (pending === null || pending.kind !== "transaction" || pending.origin !== broker.origin)
+    if (pending === null || pending.kind !== "transaction" || pending.origin !== broker.origin) {
       return;
+    }
     const abandoned: TransactionLinkKey = { ...pending, abandoned: true };
 
     try {

@@ -6,7 +6,7 @@ import type { LspConnection } from "./rpc.ts";
 import type { ServerSpec } from "./servers.ts";
 
 /** One process of a server, from its start to its exit. */
-export type Run = {
+export interface Run {
   readonly id: LanguageServerId;
   readonly job: Job;
   readonly rpc: LspConnection;
@@ -16,10 +16,10 @@ export type Run = {
   initialized: boolean;
   stopping: boolean;
   collecting: WorkspaceEdit[] | null;
-};
+}
 
 /** One server for one language and project root, across its restarts. */
-export type Slot = {
+export interface Slot {
   readonly spec: ServerSpec;
   readonly root: string;
   state: LanguageServerState;
@@ -42,22 +42,26 @@ export type Slot = {
     readonly plans: readonly ActionPlan[];
   } | null;
   readonly log: string[];
-};
+}
 
 /** A document the server has: the client's text, or the disk's for a file no client opened. */
-export type Document = {
+export interface Document {
   readonly path: string;
   readonly languageId: string;
   readonly slot: Slot;
   readonly owner: "client" | "disk";
   text: string;
   version: number;
-};
+}
 
-export type Synced = { readonly run: Run; readonly document: Document; readonly slot: Slot };
+export interface Synced {
+  readonly run: Run;
+  readonly document: Document;
+  readonly slot: Slot;
+}
 
 /** What the requests that keep state between calls need from the manager. */
-export type Servers = {
+export interface Servers {
   readonly place: Place;
   uri(path: string): string;
   sync(path: string): Promise<Synced | null>;
@@ -67,4 +71,4 @@ export type Servers = {
   claimCompletion(): AbortSignal;
   /** The LSP diagnostics last published for an absolute path. */
   published(path: string): readonly Json[];
-};
+}

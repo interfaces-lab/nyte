@@ -54,12 +54,13 @@ export async function accountCommand(
 }
 
 async function link(openBrowser: boolean, output: Output, signal: AbortSignal): Promise<number> {
-  if (!output.mode.interactive)
+  if (!output.mode.interactive) {
     throw new CliError("missing_input", "Can't link this machine in non-interactive mode.", {
       details: [
         { label: "Needs", value: "A terminal on stdin and stderr, CI unset and no --json" },
       ],
     });
+  }
 
   const local = await connectHost({ kind: "local" }, "cli", (phase) => output.progress(phase));
 
@@ -80,12 +81,13 @@ async function share(
   let sharingOff = false;
 
   for await (const event of serviceConnect(endpoint).share(signal)) {
-    if (event.kind === "error")
+    if (event.kind === "error") {
       throw new CliError(
         "failed",
         sharingOff ? "Couldn't turn on sharing for this machine." : "Couldn't link this machine.",
         { details: [{ label: "Cause", value: printable(event.message) }] },
       );
+    }
 
     if (event.kind === "link_failed") throw linkFailed(event.reason);
 
@@ -117,11 +119,12 @@ async function share(
     return 0;
   }
 
-  if (!signal.aborted)
+  if (!signal.aborted) {
     throw new CliError("failed", "Failed to link this machine. The Nyte host stopped.", {
       details: [{ label: "Log", value: hostLogPath() }],
       next: [LINK_AGAIN],
     });
+  }
 
   output.say("");
 
@@ -134,11 +137,12 @@ async function share(
 
   output.status("none", "Stopped waiting. This machine isn't linked.");
 
-  if (pending !== undefined)
+  if (pending !== undefined) {
     output.status(
       "none",
       `The request stays open until ${expiry(pending.expiresAt)}. Approving it links this machine.`,
     );
+  }
 
   return 0;
 }
@@ -171,8 +175,9 @@ function showLinked(
 
   if (outcome !== "unchanged") output.say("");
 
-  if (outcome === "unchanged")
+  if (outcome === "unchanged") {
     output.status("none", "This machine is already linked and shared. Nothing changed.");
+  }
   output.rows([
     outcome === "unchanged"
       ? { label: "Name", value: name }
@@ -194,10 +199,11 @@ function showNext(output: Output): void {
 async function status(json: boolean, output: Output): Promise<number> {
   const running = await findRunningHost(hostFilePath());
 
-  if (running === null)
+  if (running === null) {
     throw new CliError("host_not_running", "Can't read the link. No Nyte host is running.", {
       next: [{ label: "Start a host, then run this again", argv: ["nyte", "host"] }],
     });
+  }
 
   const view = await serviceConnect({ url: running.url, token: running.token }).view();
 
@@ -283,7 +289,7 @@ function unlinkedRows(view: Unlinked): Row[] {
 }
 
 async function unlink(yes: boolean, output: Output, signal: AbortSignal): Promise<number> {
-  if (!yes && !output.mode.interactive)
+  if (!yes && !output.mode.interactive) {
     throw new CliError(
       "missing_input",
       "Can't unlink this machine without --yes in non-interactive mode.",
@@ -296,6 +302,7 @@ async function unlink(yes: boolean, output: Output, signal: AbortSignal): Promis
         ],
       },
     );
+  }
 
   const local = await connectHost({ kind: "local" }, "cli", (phase) => output.progress(phase));
 
@@ -366,11 +373,13 @@ async function unlinkFrom(
     { label: "Account", value: account },
   ]);
 
-  if (!output.mode.tty.stdout || !output.mode.interactive)
+  if (!output.mode.tty.stdout || !output.mode.interactive) {
     output.result(`${before.environment.id}\n`);
+  }
 
-  if (after.kind === "unlinked" && after.notice.kind === "unlink_pending")
+  if (after.kind === "unlinked" && after.notice.kind === "unlink_pending") {
     output.status("warn", `Nyte Connect hasn't confirmed the unlink yet. ${UNLINK_RETRY}`);
+  }
 
   return 0;
 }

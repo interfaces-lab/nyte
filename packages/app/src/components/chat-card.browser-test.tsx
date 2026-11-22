@@ -56,7 +56,7 @@ installScripted(
     sessions: [chat],
     workspaces: [folder],
     git: {
-      watch: async function* () {
+      async *watch() {
         yield status;
         await new Promise<never>(() => undefined);
       },
@@ -129,7 +129,7 @@ function Stage({ panes }: { readonly panes: TabPanes }): ReactElement {
 }
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
     const value = read();

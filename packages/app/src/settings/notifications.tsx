@@ -7,7 +7,8 @@ import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { Switch } from "@nyte-ai/ui/switch";
 import { create, props } from "@stylexjs/stylex";
-import { useState, type ReactElement } from "react";
+import { useState } from "react";
+import type { ReactElement } from "react";
 import { TaskMark } from "../components/task-mark.tsx";
 import { Deferred } from "../lib/deferred.tsx";
 import {
@@ -16,10 +17,12 @@ import {
   DESKTOP_SETTING_SCHEMAS,
   effectiveChannels,
   findAlertBlocker,
-  type AlertBlocker,
-  type AlertChannel,
-  type AlertSettings,
-  type AlertState,
+} from "../contract/desktop-settings.ts";
+import type {
+  AlertBlocker,
+  AlertChannel,
+  AlertSettings,
+  AlertState,
 } from "../contract/desktop-settings.ts";
 import { useSetting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
@@ -355,8 +358,9 @@ function reminderNote(waiting: readonly AlertChannel[], every: number): string |
   const bounce = waiting.includes("bounce");
   const interval = every === 1 ? "minute" : `${String(every)} minutes`;
 
-  if (remind && bounce)
+  if (remind && bounce) {
     return `Needs you reminds you every ${interval} until you answer, and the Dock bounces until you switch to Nyte.`;
+  }
 
   if (remind) return `Needs you reminds you every ${interval} until you answer.`;
 

@@ -136,8 +136,8 @@ function buildSessionInfo(id: string): SessionInfo {
     archived: false,
     activation: { kind: "active" },
     heads: [],
-    createdAt: 1_000,
-    lastActivityAt: 1_000,
+    createdAt: 1000,
+    lastActivityAt: 1000,
   };
 }
 

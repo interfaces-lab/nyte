@@ -1,7 +1,8 @@
 import { Appearance } from "react-native";
 import { createMMKV, useMMKVBoolean, useMMKVString } from "react-native-mmkv";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { resolveChoice, type Choice, type Choices } from "./choice.ts";
+import { resolveChoice } from "./choice.ts";
+import type { Choice, Choices } from "./choice.ts";
 import type { TranscriptFont } from "../theme.ts";
 
 const store = createMMKV({ id: "nyte.preferences" });

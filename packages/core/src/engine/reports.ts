@@ -21,13 +21,14 @@ export async function deliverReport(
   await admitReport(kernel, session, id).catch(async (error: unknown) => {
     fault("reports", "report not delivered", { session, report: id, error: String(error) });
 
-    if (error instanceof SdkError && !RETRIED.has(error.code))
+    if (error instanceof SdkError && !RETRIED.has(error.code)) {
       await settleReceipt(kernel, session, id, {
         kind: "report",
         outcome: { kind: "undelivered", reason: error.message },
       }).catch((settling: unknown) =>
         fault("reports", "report not settled", { session, report: id, error: String(settling) }),
       );
+    }
   });
 }
 

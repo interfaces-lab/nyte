@@ -255,7 +255,7 @@ export type TranscriptFont = "system" | "monospaced";
 
 const AGENT_LINK = "^agent:.";
 
-export const FILE_LINK = "^(file:|(?![a-zA-Z][a-zA-Z\\d+.-]*:|#))";
+export const FILE_LINK = String.raw`^(file:|(?![a-zA-Z][a-zA-Z\d+.-]*:|#))`;
 
 export function markdownStyle(
   theme: Theme,

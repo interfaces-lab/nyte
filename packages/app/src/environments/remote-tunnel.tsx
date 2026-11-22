@@ -17,11 +17,8 @@ import { nyte } from "../contract/nyte.ts";
 import { keys } from "../data/query-client.ts";
 import { SettingsField, SettingsFormDialog } from "../settings/dialog.tsx";
 import { SettingsSection, SettingsSwitchRow } from "../settings/rows.tsx";
-import {
-  ConnectionStatus,
-  FactRow,
-  type ConnectionStanding,
-} from "../components/connection-list.tsx";
+import { ConnectionStatus, FactRow } from "../components/connection-list.tsx";
+import type { ConnectionStanding } from "../components/connection-list.tsx";
 import { DeviceRows } from "./device-rows.tsx";
 import { NameDeviceDialog, PairingDialog, useRevokeDevice } from "./remote-devices.tsx";
 
@@ -72,8 +69,9 @@ function tunnelFailure(connection: TunnelConnection, port: number): string | und
 function portProblem(port: string): string | undefined {
   const value = Number(port);
 
-  if (port.trim() !== "" && Number.isInteger(value) && value >= 1 && value <= 65_535)
+  if (port.trim() !== "" && Number.isInteger(value) && value >= 1 && value <= 65_535) {
     return undefined;
+  }
 
   return "Ports are whole numbers from 1 to 65535.";
 }

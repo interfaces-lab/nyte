@@ -21,15 +21,16 @@ const scriptMatch = scriptTag.exec(html);
 
 const styleMatch = styleTag.exec(html);
 
-if (scriptMatch === null || styleMatch === null)
+if (scriptMatch === null || styleMatch === null) {
   throw new Error("dist/shell/index.html has no module script or stylesheet to inline.");
+}
 
-const script = (await readFile(join(shell, scriptMatch[1]), "utf8")).replace(
-  /<\/script/g,
-  "<\\/script",
+const script = (await readFile(join(shell, scriptMatch[1]), "utf8")).replaceAll(
+  "</script",
+  String.raw`<\/script`,
 );
 
-const css = (await readFile(join(shell, styleMatch[1]), "utf8")).replace(
+const css = (await readFile(join(shell, styleMatch[1]), "utf8")).replaceAll(
   /@font-face\{[^}]*\}/g,
   "",
 );
@@ -71,8 +72,9 @@ for (const name of Object.keys(LIBRARY_VERSIONS)) {
 
   const chunks = (Array.isArray(output) ? output : [output]).flatMap((result) => result.output);
 
-  if (chunks.length !== 1 || chunks[0].type !== "chunk")
+  if (chunks.length !== 1 || chunks[0].type !== "chunk") {
     throw new Error(`The ${name} library did not build to one module.`);
+  }
   libraries[name] = chunks[0].code;
 }
 

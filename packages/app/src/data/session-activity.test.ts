@@ -82,7 +82,7 @@ const settled = Array.from({ length: 200 }, (_, index) =>
   settledTool(
     `done-${String(index)}`,
     { kind: "shell", command: "pnpm check" },
-    "Output\n".repeat(1_000),
+    "Output\n".repeat(1000),
   ),
 );
 

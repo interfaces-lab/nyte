@@ -12,8 +12,9 @@ export function moveSidebarFocus(event: KeyboardEvent<HTMLElement>): void {
     event.metaKey ||
     event.shiftKey ||
     !(current instanceof HTMLElement)
-  )
+  ) {
     return;
+  }
 
   const stops = [...event.currentTarget.querySelectorAll<HTMLElement>(STOPS)].filter(
     (stop) => stop.closest('[data-slot="row-actions"]') === null && stop.checkVisibility(),

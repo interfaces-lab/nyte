@@ -384,12 +384,14 @@ export interface Login {
   answer(code: string): Promise<void>;
 }
 
-export type PluginFile = { readonly path: string };
+export interface PluginFile {
+  readonly path: string;
+}
 
-export type PluginDirectory = {
+export interface PluginDirectory {
   readonly loaded: readonly { readonly plugin: Plugin<"core">; readonly path: string }[];
   readonly failed: readonly { readonly path: string; readonly issue: ValidationIssue }[];
-};
+}
 
 export interface PluginsApi<Entry> {
   replace(

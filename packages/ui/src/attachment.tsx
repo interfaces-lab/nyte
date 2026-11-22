@@ -1,8 +1,10 @@
 import { Button } from "@base-ui/react/button";
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 import type { ComponentProps } from "react";
-import { ChatButton, type ChatButtonProps } from "./chat-button.tsx";
+import { ChatButton } from "./chat-button.tsx";
+import type { ChatButtonProps } from "./chat-button.tsx";
 import { mergeStyleProps } from "./style.ts";
 
 const attachmentVariants = cva("cn-attachment", {

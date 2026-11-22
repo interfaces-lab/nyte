@@ -204,8 +204,9 @@ app.whenReady().then(async () => {
 });`,
     );
 
-    if (!Value.Check(Type.String(), electron))
+    if (!Value.Check(Type.String(), electron)) {
       throw new Error("Expected the Electron executable path");
+    }
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     await execute(

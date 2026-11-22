@@ -8,7 +8,7 @@ const stdin = args.includes("-") ? readFileSync(0, "utf8") : "";
 appendFileSync(`${file}.log`, `${JSON.stringify({ args, stdin })}\n`);
 
 const value = (name) => {
-  const flag = args.findIndex((arg) => arg === name);
+  const flag = args.indexOf(name);
 
   return flag < 0 ? undefined : args[flag + 1];
 };

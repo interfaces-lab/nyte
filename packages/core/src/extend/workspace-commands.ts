@@ -95,8 +95,9 @@ async function withNewChatPlugins<T>(
     },
   ) => Promise<T>,
 ): Promise<T> {
-  if ((await readWorkspace(kernel.store, workspace)) === null)
+  if ((await readWorkspace(kernel.store, workspace)) === null) {
     throw new SdkError("unknown", `Workspace ${workspace} is not registered.`);
+  }
 
   const session = asId<"session">(crypto.randomUUID());
   const ended = new AbortController();

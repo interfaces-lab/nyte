@@ -574,8 +574,9 @@ function shareValue(
   totals: Pick<UsageTotals, "cost" | "tokens">,
   measure: UsageMeasure,
 ): Pick<ShareRow, "value" | "absent"> {
-  if (measure === "tokens")
+  if (measure === "tokens") {
     return { value: `${formatTokens(totals.tokens)} tokens`, absent: false };
+  }
 
   return totals.cost === 0
     ? { value: "No price", absent: true }
@@ -667,8 +668,9 @@ function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
 
   const history = report[tool];
 
-  if (history.kind === "missing")
+  if (history.kind === "missing") {
     return { absent: "Not found", meta: `No local history in ${USAGE_TOOL_HOMES[tool]}` };
+  }
 
   if (history.kind === "failed") return { absent: "Couldn't read", meta: history.message };
 
@@ -785,8 +787,9 @@ function formatResetsIn(at: number, now: number): string {
 
   if (days > 0) return hours === 0 ? `${String(days)}d` : `${String(days)}d ${String(hours)}h`;
 
-  if (hours > 0)
+  if (hours > 0) {
     return minutes === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(minutes)}m`;
+  }
 
   return `${String(minutes)}m`;
 }
@@ -799,10 +802,11 @@ export function deriveAccount(usage: ProviderUsage, now: number): AccountLimits 
     account: usage.account?.label,
   };
 
-  if (usage.state.kind === "unavailable")
+  if (usage.state.kind === "unavailable") {
     return usage.state.reason === "failed"
       ? { ...base, meters: [], message: usage.state.message, failed: true }
       : null;
+  }
 
   const meters = usage.state.limits.map((window) => ({
     key: window.label,

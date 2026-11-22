@@ -95,7 +95,7 @@ async function call(params) {
   if (env.PLACES_CRASH === "call") process.exit(1);
   const token = params?._meta?.progressToken;
 
-  if (env.PLACES_PROGRESS === "1" && token !== undefined)
+  if (env.PLACES_PROGRESS === "1" && token !== undefined) {
     for (let step = 1; step <= 3; step += 1) {
       send({
         jsonrpc: "2.0",
@@ -104,13 +104,15 @@ async function call(params) {
       });
       await sleep(Number(env.PLACES_DELAY_MS ?? 0) / 3);
     }
-  else await sleep(env.PLACES_DELAY_MS);
+  } else await sleep(env.PLACES_DELAY_MS);
 
-  if (env.PLACES_ERROR === "1")
+  if (env.PLACES_ERROR === "1") {
     return { isError: true, content: [{ type: "text", text: "Upstream places API is down." }] };
+  }
 
-  if (env.PLACES_LOG_BYTES !== undefined)
+  if (env.PLACES_LOG_BYTES !== undefined) {
     return { content: [{ type: "text", text: log(Number(env.PLACES_LOG_BYTES)) }] };
+  }
   const places = PLACES.slice(0, Math.min(5, params?.arguments?.limit ?? 5));
 
   return {

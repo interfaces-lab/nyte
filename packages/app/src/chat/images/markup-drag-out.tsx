@@ -139,14 +139,15 @@ export function MarkupDragOut(input: {
 
     const lifted = preview.current;
 
-    if (lifted !== null && lifted.complete && lifted.src === ready.url)
+    if (lifted !== null && lifted.complete && lifted.src === ready.url) {
       event.dataTransfer.setDragImage(lifted, lifted.offsetWidth / 2, lifted.offsetHeight / 2);
-    else
+    } else {
       event.dataTransfer.setDragImage(
         event.currentTarget,
         event.currentTarget.offsetWidth / 2,
         event.currentTarget.offsetHeight / 2,
       );
+    }
 
     landed.current = undefined;
     window.addEventListener("drop", watchDrop, { capture: true, once: true });
@@ -163,8 +164,9 @@ export function MarkupDragOut(input: {
     lifting.current = undefined;
     input.onAway(false);
 
-    if (landed.current !== undefined && event.dataTransfer.dropEffect !== "none")
+    if (landed.current !== undefined && event.dataTransfer.dropEffect !== "none") {
       input.onDroppedInChat(landed.current);
+    }
   };
 
   return (

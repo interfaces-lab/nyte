@@ -274,7 +274,7 @@ export function createInput(
         view.getUint32(writer + layout.writer.write, true),
       );
 
-      if (!(write instanceof Function)) return 0;
+      if (typeof write !== "function") return 0;
 
       return write(
         view.getUint32(writer + layout.writer.userdata, true),

@@ -53,11 +53,13 @@ export async function doctorCommand(args: readonly string[], output: Output): Pr
   const help = { next: [{ label: "See the options", argv: ["nyte", "doctor", "--help"] }] };
   const extra = args.find((arg) => arg !== "--json");
 
-  if (extra?.startsWith("-") === true)
+  if (extra?.startsWith("-") === true) {
     throw new CliError("unknown_option", `Unknown option ${extra} for nyte doctor.`, help);
+  }
 
-  if (extra !== undefined)
+  if (extra !== undefined) {
     throw new CliError("invalid_arguments", "nyte doctor takes no arguments.", help);
+  }
   const report = await runDoctor(output.mode);
 
   if (args.includes("--json")) output.json(toJson(report));
@@ -67,8 +69,9 @@ export async function doctorCommand(args: readonly string[], output: Output): Pr
     output.mode.interactive &&
     existsSync(join(process.cwd(), "pnpm-workspace.yaml")) &&
     existsSync(join(process.cwd(), "packages", "tui"))
-  )
+  ) {
     output.say("Tip: This is a nyte checkout. Check the dev setup with npx nyte-ai init --check");
+  }
 
   return report.summary.fail > 0 ? 1 : 0;
 }
@@ -195,7 +198,7 @@ async function checkPath(): Promise<DoctorCheck> {
   const [resolved, running] = await Promise.all([realpath(found), realpath(process.execPath)]);
 
   if (resolved === running) return ok("path", `nyte resolves to ${tilde(found)}`);
-  const other = spawnSync(found, ["--version"], { encoding: "utf8", timeout: 5_000 });
+  const other = spawnSync(found, ["--version"], { encoding: "utf8", timeout: 5000 });
   const version = other.status === 0 ? ` (${other.stdout.trim()})` : "";
 
   return {
@@ -211,8 +214,9 @@ async function checkUpdate(): Promise<DoctorCheck> {
     (name) => process.env[name] !== undefined,
   );
 
-  if (off !== undefined)
+  if (off !== undefined) {
     return { id: "update", status: "skip", detail: `not checked: ${off} is set` };
+  }
 
   try {
     const notice = await findUpdate();
@@ -278,11 +282,12 @@ async function checkSecrets(): Promise<DoctorCheck> {
 async function checkHostAndProviders(): Promise<readonly DoctorCheck[]> {
   const running = await findRunningHost(hostFilePath());
 
-  if (running === null)
+  if (running === null) {
     return [
       { id: "host", status: "warn", detail: "not running", fix: "nyte host" },
       { id: "providers", status: "skip", detail: "not checked without a running host" },
     ];
+  }
 
   return askHost(running).catch((cause: unknown): readonly DoctorCheck[] => [
     {
@@ -339,21 +344,23 @@ function checkTerminal(stdoutTerminal: boolean): DoctorCheck {
     truecolor ? "truecolor" : "256 colors or fewer",
   ].join(", ");
 
-  if (term === "dumb")
+  if (term === "dumb") {
     return {
       id: "terminal",
       status: "warn",
       detail: `${detail}; the full-screen app can't draw`,
       fix: "Set TERM to your terminal's type, such as xterm-256color",
     };
+  }
 
-  if (stdoutTerminal && (stdout.columns ?? 80) < 80)
+  if (stdoutTerminal && (stdout.columns ?? 80) < 80) {
     return {
       id: "terminal",
       status: "warn",
       detail: `${detail}; the full-screen app needs 80 columns`,
       fix: "Widen the terminal to at least 80 columns",
     };
+  }
 
   return ok("terminal", detail);
 }

@@ -7,12 +7,12 @@ import { Type } from "typebox";
 import { compile, isJson } from "@nyte-ai/schema";
 import type { McpClient } from "./grants.ts";
 
-export type ClientMetadataAnswer = {
+export interface ClientMetadataAnswer {
   readonly status: number;
   readonly cacheControl: string | null;
   readonly expires: string | null;
   readonly body: string;
-};
+}
 
 export type ClientMetadataFetch = (url: URL) => Promise<ClientMetadataAnswer>;
 
@@ -20,11 +20,14 @@ export interface ClientDirectory {
   find(clientId: string): Promise<McpClient | null>;
 }
 
-type Cached = { readonly client: McpClient; readonly until: number };
+interface Cached {
+  readonly client: McpClient;
+  readonly until: number;
+}
 
 const MAX_BYTES = 5 * 1024;
 
-const TIMEOUT_MS = 5_000;
+const TIMEOUT_MS = 5000;
 
 const DEFAULT_CACHE_MS = 60_000;
 
@@ -73,15 +76,17 @@ export function createClientDirectory(fetchDocument: ClientMetadataFetch): Clien
       if (
         value.token_endpoint_auth_method !== undefined &&
         value.token_endpoint_auth_method !== "none"
-      )
+      ) {
         return null;
+      }
 
       if (!value.redirect_uris.every(allowsRedirect)) return null;
       const client = { id: clientId, name: value.client_name, redirectUris: value.redirect_uris };
       const lifetime = cacheLifetime(answer, now);
 
-      if (lifetime > 0 && cache.size < MAX_CACHED)
+      if (lifetime > 0 && cache.size < MAX_CACHED) {
         cache.set(clientId, { client, until: now + lifetime });
+      }
 
       return client;
     },
@@ -97,8 +102,9 @@ export const fetchClientMetadata: ClientMetadataFetch = async (url) => {
       : [{ address: host, family: isIP(host) }];
   const pinned = addresses[0];
 
-  if (pinned === undefined || addresses.some((entry) => blocked(entry)))
+  if (pinned === undefined || addresses.some((entry) => blocked(entry))) {
     throw new Error(`${url.hostname} resolves to an address this host does not fetch from.`);
+  }
 
   return new Promise<ClientMetadataAnswer>((answered, failed) => {
     const sent = request(

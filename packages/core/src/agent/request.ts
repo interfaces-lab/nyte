@@ -60,7 +60,7 @@ interface Asked {
 export const RETRY_POLICY: RetryPolicy = {
   enabled: true,
   maxRetries: 3,
-  baseDelayMs: 2_000,
+  baseDelayMs: 2000,
   maxAgentDelayMs: 60_000,
 };
 
@@ -130,8 +130,9 @@ export async function rideRef(kernel: Kernel, name: string, event: DurableEvent)
     if (
       (await commit(kernel, [{ name, target: ref.target, expect: ref.revision, events: [event] }]))
         .kind === "set"
-    )
+    ) {
       return;
+    }
   }
 }
 
@@ -164,13 +165,14 @@ export async function complete(
       where,
     );
 
-    if (unanswered(sent.message))
+    if (unanswered(sent.message)) {
       await chargeFailed(
         kernel,
         where,
         requestEvent(where.head, input.step, sent.usage, info),
         sent.usage,
       );
+    }
   });
 
   return { ...answered(message, model), info };
@@ -301,20 +303,22 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
         ? await answerAlone(kernel, models, asked)
         : await answerIn(kernel, models, session, asked);
 
-    if (sent === null)
+    if (sent === null) {
       throw new SdkError(
         "invalid",
         `No model ${input.model.provider}/${input.model.id} is in the catalog.`,
       );
+    }
 
     const { message, usage, failure } = sent;
     const raw = message.rawStopReason;
 
-    if (raw !== undefined && REFUSALS.some((reason) => raw === reason || raw.endsWith(reason)))
+    if (raw !== undefined && REFUSALS.some((reason) => raw === reason || raw.endsWith(reason))) {
       return {
         kind: "refused",
         reason: message.errorMessage ?? `The provider refused to answer (${raw}).`,
       };
+    }
 
     if (failure !== null) return { kind: "failed", failure };
     const stop = message.stopReason === "length" ? "length" : "end";
@@ -323,11 +327,12 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
     if (output === undefined) return { kind: "ok", value: said, usage, stop };
     const parsed = parseJson(said);
 
-    if (parsed === null)
+    if (parsed === null) {
       return { kind: "failed", failure: { class: "provider", message: "The answer is not JSON." } };
+    }
     const checked = await check(output, parsed.value);
 
-    if (checked.kind === "invalid")
+    if (checked.kind === "invalid") {
       return {
         kind: "failed",
         failure: {
@@ -335,6 +340,7 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
           message: `The answer fails the output schema: ${checked.issues.map((found) => found.message).join("; ")}`,
         },
       };
+    }
 
     return { kind: "ok", value: checked.value, usage, stop };
   }
@@ -356,8 +362,9 @@ async function answerIn(
     step: "plugin",
   });
 
-  if (sent !== null && sent.failure === null)
+  if (sent !== null && sent.failure === null) {
     await rideRef(kernel, sessionRef(session), requestEvent(null, "plugin", sent.usage, sent.info));
+  }
 
   return sent;
 }

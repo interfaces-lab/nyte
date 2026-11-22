@@ -117,7 +117,7 @@ export type MainCallPath = (typeof MAIN_OPERATION_PATHS)[number];
 
 export type HostCallPath = (typeof HOST_PROCESS_PATHS)[number];
 
-export type DesktopBridge = {
+export interface DesktopBridge {
   readonly clientSurface: NyteBridge["clientSurface"];
   readonly platform: NyteBridge["platform"];
   readonly machineName: NyteBridge["machineName"];
@@ -165,7 +165,7 @@ export type DesktopBridge = {
         | "setWorkspacePath"
       >
     >;
-};
+}
 
 type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
   ? Head extends keyof T

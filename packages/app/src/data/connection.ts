@@ -57,8 +57,9 @@ export async function connectHost(
 export async function mediaUrl(path: string): Promise<string> {
   await connected();
 
-  if (installedMedia === undefined)
+  if (installedMedia === undefined) {
     throw new SdkError("not_supported", "This connection streams no files.");
+  }
 
   return installedMedia(path);
 }

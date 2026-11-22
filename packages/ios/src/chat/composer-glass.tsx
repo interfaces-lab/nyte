@@ -1,19 +1,9 @@
 import { forwardRef, useSyncExternalStore } from "react";
-import {
-  AccessibilityInfo,
-  StyleSheet,
-  View,
-  useColorScheme,
-  type ViewInstance,
-  type ViewStyle,
-} from "react-native";
+import { AccessibilityInfo, StyleSheet, View, useColorScheme } from "react-native";
+import type { ViewInstance, ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
-import {
-  GlassView,
-  isGlassEffectAPIAvailable,
-  isLiquidGlassAvailable,
-  type GlassViewProps,
-} from "expo-glass-effect";
+import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "expo-glass-effect";
+import type { GlassViewProps } from "expo-glass-effect";
 import Animated from "react-native-reanimated";
 import { controls, useTheme } from "../theme.ts";
 

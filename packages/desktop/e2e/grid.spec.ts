@@ -139,10 +139,11 @@ async function windowSize(
     (size) => size.width <= workArea.width && size.height <= workArea.height,
   );
 
-  if (main === undefined)
+  if (main === undefined) {
     throw new Error(
       `The display's work area, ${String(workArea.width)}×${String(workArea.height)}, fits none of the grid's window sizes.`,
     );
+  }
 
   return { main, narrow: { width: NARROW_WIDTH, height: main.height }, workArea };
 }
@@ -266,7 +267,7 @@ async function quiet(page: Page): Promise<void> {
           now.startsWith("0|") && seen.slice(-3).every((entry) => entry === now) && seen.length >= 3
         );
       },
-      { message: "the chat kept streaming", intervals: [1_000], timeout: 30_000 },
+      { message: "the chat kept streaming", intervals: [1000], timeout: 30_000 },
     )
     .toBe(true);
 }

@@ -1,11 +1,11 @@
 import type { SnippetStop } from "@nyte-ai/schema";
 
-type Parse = {
+interface Parse {
   readonly source: readonly string[];
   index: number;
   text: string;
   readonly stops: { readonly number: number; readonly stop: SnippetStop }[];
-};
+}
 
 const ESCAPED = new Set(["$", "}", "\\", ",", "|"]);
 

@@ -161,7 +161,7 @@ describe("runs", () => {
     expect(patches).toHaveLength(1);
 
     const fenced = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
-    const stopping = fenced.findIndex((entry) => entry === "run:stopping");
+    const stopping = fenced.indexOf("run:stopping");
 
     expect(fenced.slice(stopping, stopping + 3)).toEqual([
       "run:stopping",
@@ -173,8 +173,8 @@ describe("runs", () => {
 
     const log = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
 
-    expect(log.findIndex((entry) => entry === "run:stopping")).toBe(stopping);
-    expect(log.findIndex((entry) => entry === "run:ended")).toBeGreaterThan(stopping + 2);
+    expect(log.indexOf("run:stopping")).toBe(stopping);
+    expect(log.indexOf("run:ended")).toBeGreaterThan(stopping + 2);
 
     for (const part of parts) {
       const ref = await kernel.store.refs.get(partRef(session.id, part));
@@ -376,17 +376,17 @@ describe("runs", () => {
       let waited = 0;
       let stopping = (await session.view()).execution;
 
-      while (waited < 4_000 && !(await landed())) {
+      while (waited < 4000 && !(await landed())) {
         await vi.advanceTimersByTimeAsync(10);
 
         for (let turn = 0; turn < 5; turn += 1) await new Promise((done) => setImmediate(done));
         waited += 10;
 
-        if (waited === 2_900) stopping = (await session.view()).execution;
+        if (waited === 2900) stopping = (await session.view()).execution;
       }
 
       expect(stopping).toMatchObject({ run: { id: run }, stopping: true });
-      expect({ ran: ran === (row.call !== null), waited: waited <= 3_200 }).toEqual({
+      expect({ ran: ran === (row.call !== null), waited: waited <= 3200 }).toEqual({
         ran: true,
         waited: true,
       });
@@ -396,10 +396,11 @@ describe("runs", () => {
 
       const calls = (await host.kernel.store.refs.list(`sessions/${session.id}/calls/`)).length;
 
-      if (row.id !== null)
+      if (row.id !== null) {
         expect(
           (await runCall(host.kernel, session.id, asId(`${run}:1:${row.id}`)))?.result,
         ).toEqual({ kind: "stopped" });
+      }
 
       const tail = await host.kernel.store.refs.tail(session.id);
       const requests = fake.requests.length;
@@ -496,7 +497,7 @@ describe("runs", () => {
       const run: RunId = turn.input.run.id;
       await livePart(a.kernel, child.id, run, asId(`${run}:1:0`), "Found it.");
 
-      if (row.awaited)
+      if (row.awaited) {
         expect(
           await awaitRun(a.kernel, parent.id, asId("task-call"), {
             kind: "run",
@@ -504,6 +505,7 @@ describe("runs", () => {
             run,
           }),
         ).toEqual({ kind: "parked" });
+      }
 
       killed.kill(row.kill(parent.id));
       turn.finish();
@@ -529,8 +531,9 @@ describe("runs", () => {
               : receipt.kind,
       }).toEqual(row.expected);
 
-      for (const report of reports)
+      for (const report of reports) {
         expect(report).toMatchObject({ content: "Found it.", delivery: "attach" });
+      }
     },
   );
 

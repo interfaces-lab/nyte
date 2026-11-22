@@ -1,8 +1,13 @@
-import { branchSummary, compaction, text, thinking, tool } from "@nyte-ai/plugin/client";
-import type { Renderer } from "@nyte-ai/plugin/client";
+import {
+  branchSummary,
+  compaction,
+  text,
+  thinking,
+  tool,
+  defineRenderer,
+} from "@nyte-ai/plugin/client";
+import type { Renderer, Plugin } from "@nyte-ai/plugin/client";
 import type { ReactNode } from "react";
-import type { Plugin } from "@nyte-ai/plugin/client";
-import { defineRenderer } from "@nyte-ai/plugin/client";
 
 const unreadable = (): ReactNode => null;
 

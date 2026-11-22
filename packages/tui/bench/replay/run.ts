@@ -35,7 +35,7 @@ const modes = values.modes.split(",").map((name) => {
   return found;
 });
 
-const PROFILED: readonly Mode[] = ["inprocess-prof", "source-prof"];
+const PROFILED: ReadonlySet<Mode> = new Set(["inprocess-prof", "source-prof"]);
 
 const INTERVAL_US = "250";
 
@@ -45,7 +45,7 @@ spawnSync(values.binary, ["--version"], { stdio: "ignore" });
 
 for (const scenario of scenarios) {
   for (const mode of modes) {
-    const count = PROFILED.includes(mode) ? 1 : runs;
+    const count = PROFILED.has(mode) ? 1 : runs;
 
     for (let run = 1; run <= count; run++) {
       const name = `${mode}-${scenario}-${String(run)}`;
@@ -63,7 +63,7 @@ for (const scenario of scenarios) {
 function runOnce(mode: Mode, scenario: Scenario, name: string): string | null {
   const out = join(values.out, `${name}.json`);
   const profiles = join(values.out, `${name}.prof`);
-  const profiled = PROFILED.includes(mode);
+  const profiled = PROFILED.has(mode);
 
   if (profiled) mkdirSync(profiles, { recursive: true });
 
@@ -96,7 +96,7 @@ function runOnce(mode: Mode, scenario: Scenario, name: string): string | null {
 
   if (profiled) keepOneProfile(profiles, join(values.out, `${name}.cpuprofile`));
 
-  return result.status === 0 ? null : result.stderr.slice(-3_000);
+  return result.status === 0 ? null : result.stderr.slice(-3000);
 }
 
 function keepOneProfile(directory: string, to: string): void {

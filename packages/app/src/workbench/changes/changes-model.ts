@@ -90,8 +90,9 @@ export function workingRows(
   snapshot: GitStatus | undefined,
   scope: WorkbenchChangesScope,
 ): readonly VcsChangeRow[] {
-  if (scope.kind !== "uncommitted" && scope.kind !== "staged" && scope.kind !== "unstaged")
+  if (scope.kind !== "uncommitted" && scope.kind !== "staged" && scope.kind !== "unstaged") {
     return EMPTY_ROWS;
+  }
 
   const files = scopeFiles(snapshot, scope.kind);
 
@@ -390,16 +391,18 @@ export function changesEmptyState(input: {
   readonly recorded: ReadState;
 }): ChangesEmptyState {
   if (input.resolved.rows === "recorded") {
-    if (input.recorded.isError)
+    if (input.recorded.isError) {
       return { text: "Couldn't read changes.", detail: queryError(input.recorded.error) };
+    }
 
     return {
       text: input.recorded.isLoading ? "Loading changes…" : emptyScopeText(input.resolved.scope),
     };
   }
 
-  if (input.manifest.isError)
+  if (input.manifest.isError) {
     return { text: "Couldn't read changes.", detail: queryError(input.manifest.error) };
+  }
 
   if (input.snapshot?.kind === "none") return { text: "Not a Git repository", icon: "git-branch" };
 

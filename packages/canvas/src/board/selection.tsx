@@ -33,8 +33,9 @@ function findNodes(host: HTMLElement, key: string): readonly Element[] {
   return [...host.querySelectorAll(SOURCE)].filter((node) => {
     if (!draws(node)) return false;
 
-    for (let up = node.parentElement; up !== null && up !== host; up = up.parentElement)
+    for (let up = node.parentElement; up !== null && up !== host; up = up.parentElement) {
       if (draws(up)) return false;
+    }
 
     return true;
   });

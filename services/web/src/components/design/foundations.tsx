@@ -3,10 +3,12 @@ import { platformRamps } from "@nyte-ai/ui/platform-ramps";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { intent, surfaceTheme, type Tint } from "@nyte-ai/ui/surface-theme";
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import type { Tint } from "@nyte-ai/ui/surface-theme";
 import { create, props, when } from "@stylexjs/stylex";
 import type { ReactNode } from "react";
-import { atDefaultSize, declaredToken, type DeclaredToken } from "~/lib/design-tokens";
+import { atDefaultSize, declaredToken } from "~/lib/design-tokens";
+import type { DeclaredToken } from "~/lib/design-tokens";
 import { motionRow } from "./markers.stylex";
 
 type RoleName = keyof typeof platformColors.light;
@@ -39,7 +41,7 @@ function roleGroup(name: RoleName): RoleGroup {
 }
 
 function kebab(name: string): string {
-  return name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+  return name.replaceAll(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
 
 function Chip({ color, backdrop }: { color: string; backdrop: string }) {

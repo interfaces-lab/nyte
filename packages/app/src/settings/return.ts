@@ -25,6 +25,7 @@ export function showNotifiedChat(sessionId: SessionId): void {
   windowTabs.openChat(sessionId, "permanent");
   const router = windowRouter;
 
-  if (router?.state.matches.some((match) => match.routeId === SETTINGS_ROUTE) === true)
+  if (router?.state.matches.some((match) => match.routeId === SETTINGS_ROUTE) === true) {
     closeSettings(router);
+  }
 }

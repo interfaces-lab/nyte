@@ -94,10 +94,11 @@ function QuestionForm({
                     }),
                   );
 
-                  if (!item.multiple)
+                  if (!item.multiple) {
                     setCustom((current) =>
                       current.map((typed, position) => (position === index ? "" : typed)),
                     );
+                  }
                 }}
               />
               <span>{option.label}</span>
@@ -114,10 +115,11 @@ function QuestionForm({
                   current.map((value, position) => (position === index ? typed : value)),
                 );
 
-                if (!item.multiple && typed.trim() !== "")
+                if (!item.multiple && typed.trim() !== "") {
                   setSelected((current) =>
                     current.map((choices, position) => (position === index ? [] : choices)),
                   );
+                }
               }}
             />
           </label>
@@ -139,7 +141,7 @@ export const questionRenderers: readonly Renderer[] = [
     (state, act) => {
       const phase = state.phase;
 
-      if (phase.kind === "answered" || phase.kind === "skipped")
+      if (phase.kind === "answered" || phase.kind === "skipped") {
         return (
           <div data-part="ask/question" aria-label="Answers">
             {state.questions.map((item, index) => (
@@ -156,6 +158,7 @@ export const questionRenderers: readonly Renderer[] = [
             ))}
           </div>
         );
+      }
 
       return (
         <QuestionForm key={JSON.stringify(state.questions)} questions={state.questions} act={act} />

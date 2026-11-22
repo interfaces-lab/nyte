@@ -126,7 +126,7 @@ export function Stage(input: {
   readonly onFreeze: (camera: Camera) => void;
 }): ReactElement {
   const id = useId();
-  const prefix = id.replace(/[^a-z0-9]/giu, "");
+  const prefix = id.replaceAll(/[^a-z0-9]/giu, "");
   const [keyboard, setKeyboard] = useState(false);
   const [cursor, setCursor] = useState<Point | undefined>(undefined);
   const keyed = useRef<Sample[] | undefined>(undefined);
@@ -267,7 +267,7 @@ export function Stage(input: {
     return () => element.removeEventListener("wheel", listener);
   };
 
-  const local = (event: PointerEvent<Element>): Point => {
+  const local = (event: PointerEvent): Point => {
     const box = event.currentTarget.closest("svg")?.getBoundingClientRect();
 
     return { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) };
@@ -564,21 +564,24 @@ export function Stage(input: {
     const first = points[0];
     const last = points.at(-1);
 
-    if (first === undefined || last === undefined || tool === "eraser" || tool === "move")
+    if (first === undefined || last === undefined || tool === "eraser" || tool === "move") {
       return undefined;
+    }
 
     const base = { id: input.nextId, ink: input.ink, width: input.width / scale };
 
-    if ((tool === "pen" || tool === "highlight") && pathLength(points) * scale < MIN_STROKE)
+    if ((tool === "pen" || tool === "highlight") && pathLength(points) * scale < MIN_STROKE) {
       return undefined;
+    }
 
-    if (tool === "highlight")
+    if (tool === "highlight") {
       return {
         ...base,
         kind: tool,
         axis,
         points: settleHighlight(shift ? [first, last] : points, axis, base.width),
       };
+    }
 
     if (tool === "pen") return { ...base, kind: tool, axis, points };
 
@@ -735,18 +738,25 @@ function draftMark(
   const first = draft.points[0];
   const last = draft.points.at(-1);
 
-  if (first === undefined || last === undefined || draft.tool === "eraser" || draft.tool === "move")
+  if (
+    first === undefined ||
+    last === undefined ||
+    draft.tool === "eraser" ||
+    draft.tool === "move"
+  ) {
     return undefined;
+  }
 
   const base = { id: -1, ink, width: width / scale };
 
-  if (draft.tool === "highlight")
+  if (draft.tool === "highlight") {
     return {
       ...base,
       kind: "highlight",
       axis,
       points: draft.straight ? [first, last] : draft.points,
     };
+  }
 
   if (draft.tool === "circle") return { ...base, kind: "pen", axis, points: draft.points };
 
@@ -802,7 +812,7 @@ function Nib(input: {
   readonly ink: Ink;
   readonly width: number;
 }): ReactElement | null {
-  if (input.tool === "eraser")
+  if (input.tool === "eraser") {
     return (
       <circle
         cx={input.at.x}
@@ -812,6 +822,7 @@ function Nib(input: {
         {...props(styles.ring)}
       />
     );
+  }
 
   if (input.tool === "highlight") {
     const length = input.width;
@@ -841,7 +852,7 @@ function Nib(input: {
     );
   }
 
-  if (input.tool === "pen")
+  if (input.tool === "pen") {
     return (
       <g {...props(styles.nib)}>
         <circle
@@ -859,6 +870,7 @@ function Nib(input: {
         />
       </g>
     );
+  }
 
   return null;
 }

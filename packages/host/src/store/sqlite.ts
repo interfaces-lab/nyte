@@ -276,8 +276,9 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           write(database, putBody, created.target, created.body);
           const revision = mintRevision();
 
-          if (Number(create.run(created.name, created.target, revision).changes) > 0)
+          if (Number(create.run(created.name, created.target, revision).changes) > 0) {
             updateSessionIndex(prepared, created.name, created.target, revision);
+          }
         }
 
         const relog = database.prepare(
@@ -292,11 +293,12 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           }
         }
 
-        if (change.reindexSessions)
+        if (change.reindexSessions) {
           for (const row of database.prepare("SELECT name, target, revision FROM refs").all()) {
             const ref = parseRef(row);
             updateSessionIndex(prepared, ref.name, ref.target, ref.revision);
           }
+        }
 
         for (const statement of change.indexed) database.exec(statement);
 
@@ -521,8 +523,9 @@ function connect(
             assertStoreVersion(parseNumber(readVersion.get()?.version ?? 0));
             const before = new Map<string, Ref | undefined>();
 
-            for (const update of updates)
+            for (const update of updates) {
               if (!before.has(update.name)) before.set(update.name, ref(update.name) ?? undefined);
+            }
             const fenced = fenceNames(updates).find((name) => ref(name) === null);
 
             if (fenced !== undefined) {
@@ -687,8 +690,9 @@ function updateSessionIndex(
     name,
     body === null ? null : decodeObject(body),
     revision,
-  ))
+  )) {
     prepared(change.text).run(...change.values);
+  }
 }
 
 function statementCache(database: DatabaseSync): (text: string) => StatementSync {

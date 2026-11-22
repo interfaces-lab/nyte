@@ -1,5 +1,6 @@
 import { HrefLink } from "~/components/site/href-link";
-import { designNav, docsNav, type NavSection } from "~/lib/docs";
+import { designNav, docsNav } from "~/lib/docs";
+import type { NavSection } from "~/lib/docs";
 import { releasesUrl } from "~/lib/releases";
 import { githubUrl } from "~/lib/shared";
 
@@ -20,6 +21,7 @@ export function SiteFooter() {
         { title: "Download", href: "#install" },
         { title: "Releases", href: releasesUrl },
         { title: "GitHub", href: githubUrl },
+        { title: "By the numbers", href: "/data" },
         { title: "llms.txt", href: "/llms.txt" },
       ],
     },

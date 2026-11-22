@@ -347,8 +347,9 @@ export function settleHighlight(points: readonly Sample[], axis: number, width: 
   const first = points[0];
   const last = points.at(-1);
 
-  if (first === undefined || last === undefined || distance(first, last) < width)
+  if (first === undefined || last === undefined || distance(first, last) < width) {
     return [...points];
+  }
 
   const chord = Math.atan2(last.y - first.y, last.x - first.x);
   const wander = Math.max(...points.map((point) => Math.abs(toFrame(point, first, chord).y)));
@@ -401,7 +402,7 @@ function markPoints(mark: Mark): Point[] {
 
   if (mark.kind === "arrow") return resample([mark.from, mark.to], 24);
 
-  if (mark.kind === "box")
+  if (mark.kind === "box") {
     return [
       { x: -1, y: -1 },
       { x: 1, y: -1 },
@@ -429,6 +430,7 @@ function markPoints(mark: Mark): Point[] {
         12,
       );
     });
+  }
 
   return mark.points.length === 2 ? resample(mark.points, 24) : [...mark.points];
 }
@@ -463,7 +465,7 @@ export function markBounds(mark: Mark, spine?: readonly Point[]) {
   return { x, y, width: Math.max(...xs) + pad - x, height: Math.max(...ys) + pad - y };
 }
 
-export function soften<T extends Point>(points: readonly T[]): Point[] {
+export function soften(points: readonly Point[]): Point[] {
   return points.map((point, index) => {
     const before = points[index - 1];
     const after = points[index + 1];
@@ -481,8 +483,9 @@ export function outline(points: readonly Point[], radii: readonly number[]): str
 
   const head = radii[0] ?? 0;
 
-  if (points.length === 1 || pathLength(points) < head * 0.25)
+  if (points.length === 1 || pathLength(points) < head * 0.25) {
     return `M ${first.x - head} ${first.y} a ${head} ${head} 0 1 0 ${head * 2} 0 a ${head} ${head} 0 1 0 ${-head * 2} 0 Z`;
+  }
 
   const normals = points.map((point, index) => {
     const before = points[Math.max(0, index - 1)] ?? point;

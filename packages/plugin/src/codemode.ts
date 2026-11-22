@@ -71,14 +71,14 @@ export function codemodePlugin(
   };
 }
 
-type ListingGroup = {
+interface ListingGroup {
   readonly namespace: ToolNamespace | undefined;
   readonly entries: readonly {
     readonly name: string;
     readonly section: string;
     readonly cost: number;
   }[];
-};
+}
 
 function listTools(definitions: readonly ToolDefinition[]): string | null {
   const sections = definitions.flatMap((definition) => {
@@ -147,7 +147,7 @@ function selectListed(groups: readonly ListingGroup[], budget: number): Readonly
   let remaining = budget;
   let active = queues.filter((queue) => queue.length > 0);
 
-  while (active.length > 0)
+  while (active.length > 0) {
     active = active.filter((queue) => {
       const next = queue[0];
 
@@ -158,6 +158,7 @@ function selectListed(groups: readonly ListingGroup[], budget: number): Readonly
 
       return queue.length > 0;
     });
+  }
 
   return shown;
 }
@@ -195,8 +196,9 @@ function codemode(
       );
       const stored = await invocation.api.storage.get("store");
 
-      if (stored !== undefined && !isJsonObject(stored))
+      if (stored !== undefined && !isJsonObject(stored)) {
         throw new SdkError("internal", "Codemode's stored values are not a JSON object.");
+      }
 
       const namespaces = new Map(
         invocation.api.registries.tools
@@ -235,16 +237,17 @@ function codemode(
       }
       dev("codemode", "end", { call: invocation.call, ok: result.ok, calls: result.calls.length });
 
-      if (!result.ok)
+      if (!result.ok) {
         throw new Error(
           `${result.error.kind === "script" ? (result.error.stack ?? result.error.message) : `Script ${result.error.kind}: ${result.error.message}`}\n${calls(result)}`,
         );
+      }
       const writes = Object.entries(result.storeWrites.set).flatMap(([key, value]) =>
         isJson(value) ? [[key, value] as const] : [],
       );
 
       if (writes.length > 0 || result.storeWrites.delete.length > 0) {
-        const next: { [key: string]: Json } = { ...stored, ...Object.fromEntries(writes) };
+        const next: Record<string, Json> = { ...stored, ...Object.fromEntries(writes) };
 
         for (const key of result.storeWrites.delete) delete next[key];
         await invocation.api.storage.set("store", next);
@@ -254,19 +257,21 @@ function codemode(
 
       for (const item of result.output) {
         if (item.type === "text") content.push({ kind: "text", text: item.text });
-        else
+        else {
           content.push(
             await attachFile(invocation.env.files, once(Uint8Array.fromBase64(item.data)), {
               mime: item.mimeType,
             }),
           );
+        }
       }
 
-      if (result.value !== undefined)
+      if (result.value !== undefined) {
         content.push({
           kind: "text",
           text: typeof result.value === "string" ? result.value : JSON.stringify(result.value),
         });
+      }
 
       return {
         content:
@@ -297,11 +302,12 @@ function bridge(info: ToolInfo, sample: string, invocation: ToolInvocation): Cod
 }
 
 function unwrapToolOutcome(outcome: ToolOutcome): Json {
-  if (outcome.kind === "ok")
+  if (outcome.kind === "ok") {
     return (
       outcome.output ??
       outcome.content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n")
     );
+  }
 
   throw new Error(
     outcome.kind === "failed"
@@ -328,17 +334,23 @@ function discovery(
         const limit = isJsonObject(options) ? (options.limit ?? null) : null;
         const namespace = isJsonObject(options) ? (options.namespace ?? null) : null;
 
-        if (limit !== null && (typeof limit !== "number" || !Number.isInteger(limit) || limit <= 0))
+        if (
+          limit !== null &&
+          (typeof limit !== "number" || !Number.isInteger(limit) || limit <= 0)
+        ) {
           throw new Error("searchTools() limit must be a positive integer");
+        }
 
-        if (namespace !== null && typeof namespace !== "string")
+        if (namespace !== null && typeof namespace !== "string") {
           throw new Error("searchTools() namespace must be a string");
+        }
 
         const documents = tools.flatMap((info) => {
           const found = namespaces.get(info.name);
 
-          if (namespace !== null && (found === undefined || !matchesNamespace(found, namespace)))
+          if (namespace !== null && (found === undefined || !matchesNamespace(found, namespace))) {
             return [];
+          }
 
           return [createToolSearchDocument(info, found)];
         });
@@ -365,8 +377,9 @@ function discovery(
     {
       name: "describeNamespace",
       execute(name) {
-        if (typeof name !== "string")
+        if (typeof name !== "string") {
           throw new Error("describeNamespace() expects a namespace name");
+        }
         const members = tools.filter((info) => {
           const found = namespaces.get(info.name);
 

@@ -48,7 +48,7 @@ const SKILL_REVISION = 4;
 
 const HOOK_COMMAND = "nyte skill hook";
 
-const HOOK_BUDGET_MS = 2_000;
+const HOOK_BUDGET_MS = 2000;
 
 const descriptions = Compile(HostDescriptionType);
 
@@ -94,7 +94,7 @@ export async function skillCommand(input: {
         parsed.agent === "all" ? existsSync(agent.home) : agent.name === parsed.agent,
       );
 
-      if (chosen.length === 0)
+      if (chosen.length === 0) {
         throw new CliError("missing_input", "Can't find a Claude Code or Codex config to set up.", {
           details: agents.map((agent) => ({ label: agent.label, value: agent.home })),
           next: [
@@ -104,6 +104,7 @@ export async function skillCommand(input: {
             },
           ],
         });
+      }
 
       const steps = (await Promise.all(chosen.map((agent) => planSetup(agent, rerun)))).flat();
 
@@ -124,8 +125,9 @@ export async function skillCommand(input: {
           steps.some((step) => step.path === agent.hooks && step.label !== "Unchanged"),
       );
 
-      if (codexHooked)
+      if (codexHooked) {
         output.status("warn", "Codex runs the new hook only after you approve it with /hooks.");
+      }
 
       return 0;
     }
@@ -294,8 +296,9 @@ async function applyStep(step: Step): Promise<void> {
   if (step.label === "Deleted") {
     await rm(step.path, { force: true });
 
-    for (const directory of step.prune)
+    for (const directory of step.prune) {
       if ((await readdir(directory)).length === 0) await rmdir(directory);
+    }
 
     return;
   }
@@ -352,11 +355,12 @@ async function readSettings(
   if (text === undefined) return undefined;
   const value = parseSettings(path, text, rerun);
 
-  if (!isJsonObject(value))
+  if (!isJsonObject(value)) {
     throw new CliError("failed", `Can't change ${basename(path)}: it isn't a JSON object.`, {
       details: [{ label: "File", value: path }],
       next: [{ label: "Fix the file, then run", argv: rerun }],
     });
+  }
 
   return value;
 }
@@ -477,8 +481,9 @@ function parseSkillArgs(args: readonly string[]) {
   const found = readAction("skill", args);
   const action = found.action;
 
-  if (action === "status")
+  if (action === "status") {
     return { action, json: parseCommandArgs("skill", found.args, 0, action).has("json") } as const;
+  }
 
   if (action === "hook") {
     parseCommandArgs("skill", found.args, 0, action);
@@ -489,10 +494,11 @@ function parseSkillArgs(args: readonly string[]) {
   const named = parseCommandArgs("skill", found.args, 0, action).value("agent") ?? "all";
   const agent = AGENTS.find((name) => name === named);
 
-  if (agent === undefined)
+  if (agent === undefined) {
     throw new CliError("invalid_arguments", "--agent takes claude, codex or all.", {
       next: [{ label: "See the options", argv: ["nyte", "skill", action, "--help"] }],
     });
+  }
 
   return { action, agent } as const;
 }

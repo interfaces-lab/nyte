@@ -1,7 +1,8 @@
 import { Input } from "@nyte-ai/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Slider } from "@nyte-ai/ui/slider";
-import { SwitchField, type SwitchFieldProps } from "@nyte-ai/ui/switch";
+import { SwitchField } from "@nyte-ai/ui/switch";
+import type { SwitchFieldProps } from "@nyte-ai/ui/switch";
 import {
   NumberField,
   NumberFieldDecrement,
@@ -12,9 +13,11 @@ import {
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { useSetting, type Setting } from "../preferences/index.ts";
+import { useSetting } from "../preferences/index.ts";
+import type { Setting } from "../preferences/index.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { available, type Capability } from "./capability.ts";
+import { available } from "./capability.ts";
+import type { Capability } from "./capability.ts";
 import { settingsStyles } from "./settings.stylex.ts";
 
 const ROW_MARK = { "data-settings-row": "" } as const;
@@ -238,7 +241,7 @@ export function StepsRow<T extends string>(
   );
 
   const first = input.options[0];
-  const last = input.options[input.options.length - 1] ?? first;
+  const last = input.options.at(-1) ?? first;
 
   return (
     <SettingsRow title={input.title} description={input.description}>

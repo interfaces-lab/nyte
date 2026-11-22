@@ -153,7 +153,7 @@ export const manifestEnums = {
 } as const;
 
 export const Mode = {
-  LINEFEED: 20 | 0x8000,
+  LINEFEED: 20 | 0x80_00,
   FOCUS_EVENT: 1004,
   ALT_SCROLL: 1007,
   SYNC_OUTPUT: 2026,

@@ -8,7 +8,7 @@ import type { Command, Transaction } from "@tiptap/pm/state";
 import { Value } from "typebox/value";
 import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 import type { CompletionTrigger } from "@nyte-ai/plugin/client/presentation";
-import type { ContentPart } from "../../references/message-references.ts";
+import type { ContentPart, MessageReference } from "../../references/message-references.ts";
 import type { MentionFile } from "../../data/files.ts";
 import {
   messageParts,
@@ -16,7 +16,6 @@ import {
   referencePart,
   referenceText,
 } from "../../references/message-references.ts";
-import type { MessageReference } from "../../references/message-references.ts";
 
 export const COMPOSER_RESTORE = "composerRestore";
 
@@ -247,8 +246,9 @@ function draftPosition(doc: ProseMirrorNode, offset: number): number {
   for (const child of doc.firstChild?.children ?? []) {
     const size = child.text === undefined ? draftLeafText(child).length : child.text.length;
 
-    if (remaining < size || (remaining === size && child.text !== undefined))
+    if (remaining < size || (remaining === size && child.text !== undefined)) {
       return position + (child.text === undefined ? Number(remaining > 0) : remaining);
+    }
     remaining -= size;
     position += child.nodeSize;
   }
@@ -281,8 +281,9 @@ export function composerCompletion(
   const offset = cursor.textOffset > 0 ? cursor.textOffset : node.text.length;
   const trigger = completionTrigger(node.text, offset);
 
-  if (trigger === undefined || (trigger.kind === "@" && trigger.query.startsWith("file://")))
+  if (trigger === undefined || (trigger.kind === "@" && trigger.query.startsWith("file://"))) {
     return undefined;
+  }
   const start = (caretOffset ?? draftOffset(state.doc, cursor.pos)) - offset;
 
   return { ...trigger, start: start + trigger.start, end: start + trigger.end };
@@ -430,8 +431,9 @@ function referenceTokens(
   const anchor = draftOffset(tr.doc, tr.selection.anchor);
   const head = draftOffset(tr.doc, tr.selection.head);
 
-  for (const { pos, text, content } of replacements)
+  for (const { pos, text, content } of replacements) {
     tr.replaceWith(pos, pos + text.length, Fragment.fromJSON(tr.doc.type.schema, content));
+  }
 
   return tr.setSelection(
     TextSelection.create(tr.doc, draftPosition(tr.doc, anchor), draftPosition(tr.doc, head)),
@@ -471,8 +473,9 @@ export function refreshComposerReferences(
     if (reference?.kind !== "file") return;
     const file = files.get(reference.file.url);
 
-    if (file !== undefined && file !== reference.file)
+    if (file !== undefined && file !== reference.file) {
       tr.setNodeMarkup(pos, undefined, { reference: { ...reference, file } });
+    }
   });
 
   return referenceTokens(tr, [{ from: 0, to: tr.doc.content.size }], {

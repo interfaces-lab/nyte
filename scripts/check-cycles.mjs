@@ -195,8 +195,9 @@ function readRuntimeImports(file) {
           ? statement.exportClause.elements
           : undefined;
 
-      if (elements !== undefined && elements.length > 0 && elements.every((e) => e.isTypeOnly))
+      if (elements !== undefined && elements.length > 0 && elements.every((e) => e.isTypeOnly)) {
         continue;
+      }
 
       specifiers.push({ text: statement.moduleSpecifier.text, node: statement });
     } else if (

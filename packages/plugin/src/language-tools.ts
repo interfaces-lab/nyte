@@ -15,7 +15,7 @@ import { Type } from "typebox";
 
 const FRESH_DIAGNOSTICS_MS = 10_000;
 
-const QUIET_DIAGNOSTICS_MS = 2_000;
+const QUIET_DIAGNOSTICS_MS = 2000;
 
 const path = Type.String({ description: "The file, relative to the workspace root." });
 
@@ -41,8 +41,9 @@ const Rename = standard(
 async function requireLanguage(invocation: ToolInvocation): Promise<LanguageApi> {
   const capability = await invocation.workspace.language();
 
-  if (capability.kind !== "available")
+  if (capability.kind !== "available") {
     throw new Error(`No language intelligence is available here: ${capability.reason}`);
+  }
 
   return capability.api;
 }
@@ -50,8 +51,9 @@ async function requireLanguage(invocation: ToolInvocation): Promise<LanguageApi>
 async function requireFiles(invocation: ToolInvocation): Promise<FilesApi> {
   const capability = await invocation.workspace.files();
 
-  if (capability.kind !== "available")
+  if (capability.kind !== "available") {
     throw new Error(`No files are available here: ${capability.reason}`);
+  }
 
   return capability.api;
 }
@@ -82,8 +84,9 @@ async function locate(files: FilesApi, input: SymbolAt): Promise<TextPosition> {
     new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`, "u").exec(line) ??
     new RegExp(escaped, "u").exec(line);
 
-  if (found === null)
+  if (found === null) {
     throw new Error(`Line ${input.line} of ${input.path} does not contain ${input.symbol}.`);
+  }
 
   return { line: input.line - 1, utf16Column: found.index };
 }
@@ -254,10 +257,11 @@ async function applyEdit(
         end: offset(offsets, change.range.end),
       }));
 
-      if (ranges.some((range) => !read.contents.slice(range.start, range.end).includes(old)))
+      if (ranges.some((range) => !read.contents.slice(range.start, range.end).includes(old))) {
         throw new Error(
           `${file.path} changed since the language server read it; nothing was renamed.`,
         );
+      }
 
       return {
         path: file.path,

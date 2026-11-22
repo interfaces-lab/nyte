@@ -109,8 +109,9 @@ export function supersedes(candidate: string, current: string): boolean {
 }
 
 function comparePrerelease(left: string | undefined, right: string | undefined): number {
-  if (left === undefined || right === undefined)
+  if (left === undefined || right === undefined) {
     return (left === undefined ? 1 : 0) - (right === undefined ? 1 : 0);
+  }
 
   const lefts = left.split(".");
   const rights = right.split(".");

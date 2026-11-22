@@ -75,8 +75,9 @@ export const composerHandlers = {
     );
   },
   "run-shell": (state, msg, now) => {
-    if (state.facts.shells.some((job) => job.state.kind === "running"))
+    if (state.facts.shells.some((job) => job.state.kind === "running")) {
       return refuse(state, "A command is already running", now);
+    }
     const minted = mint(state, "shell");
 
     return andThen(clearDraft(minted.state), (current) => ({
@@ -130,8 +131,9 @@ export const composerHandlers = {
       pasting: state.local.pasting + 1,
     });
 
-    if (msg.source.kind === "clipboard")
+    if (msg.source.kind === "clipboard") {
       return { state: next, effects: [{ kind: "read-clipboard", generation }] };
+    }
 
     return {
       state: next,
@@ -235,8 +237,9 @@ export const composerHandlers = {
       current.token.trigger !== "argument" ||
       current.token.command !== msg.name ||
       current.token.query !== msg.prefix
-    )
+    ) {
       return stay(state);
+    }
 
     return stay(withLocal(state, { completion: { ...current, suggestions: msg.items } }));
   },
@@ -248,8 +251,9 @@ export const composerHandlers = {
       current.token.trigger !== "@" ||
       current.token.query !== msg.query ||
       state.facts.workspace.cwd !== msg.cwd
-    )
+    ) {
       return stay(state);
+    }
 
     return stay(withLocal(state, { completion: { ...current, explicit: msg.file } }));
   },
@@ -273,8 +277,9 @@ function send(
 
   if (followed === null) return refuse(state, "Wait for the chat to open", now);
 
-  if (state.local.pasting > 0)
+  if (state.local.pasting > 0) {
     return stay(withLocal(state, { sendAfterPaste: { delivery, warning } }));
+  }
   const draft = draftModel(state.local.draft);
 
   if (draft.kind !== "message") return stay(state);
@@ -325,13 +330,15 @@ function saveEdit(state: State, delivery: Delivery, now: number): Step {
   if (editing === null || followed === null) return stay(state);
   const message = rowMessage(followed, editing.message);
 
-  if (message === null || message.status.kind === "landed")
+  if (message === null || message.status.kind === "landed") {
     return refuse(withLocal(state, { editing: null }), "Already sent", now);
+  }
   const edited = snapshot(state.local.draft);
   const restore = setDraft(withLocal(state, { editing: null }), editing.saved);
 
-  if (delivery === editing.delivery && sameSnapshot(edited, draftFromContent(message.content)))
+  if (delivery === editing.delivery && sameSnapshot(edited, draftFromContent(message.content))) {
     return restore;
+  }
   const minted = mint(restore.state, "submission");
 
   const submission = {
@@ -543,14 +550,16 @@ function insertPaste(
 
     const part = before === undefined ? undefined : draft.parts.get(before.marker);
 
-    if (before !== undefined && part?.kind === "paste" && part.text === insert.text)
+    if (before !== undefined && part?.kind === "paste" && part.text === insert.text) {
       return replaceRange(state, before.from, before.to, insert.text);
+    }
 
     if (
       insert.text.length <= PASTE_COLLAPSE_CHARS &&
       insert.text.split("\n").length <= PASTE_COLLAPSE_LINES
-    )
+    ) {
       return insertText(state, insert.text, "cursor");
+    }
     const added = addPart(draft.parts, { kind: "paste", text: insert.text });
 
     return insertText(

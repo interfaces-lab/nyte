@@ -1,10 +1,10 @@
 import type { ServerHost } from "@nyte-ai/core/server";
 
-export type Listeners = {
+export interface Listeners {
   addresses(): readonly string[];
   add(address: string): () => void;
   observe(listener: () => void): () => void;
-};
+}
 
 const shared = new WeakMap<ServerHost, Listeners>();
 

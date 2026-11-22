@@ -70,13 +70,13 @@ export const PAUSED_AT = Date.parse("2030-01-01T00:00:00.000Z");
 
 const FRAME_MS = 16;
 
-const PAST_EDIT_TIMERS_MS = 1_000;
+const PAST_EDIT_TIMERS_MS = 1000;
 
 const QUIET_STEPS = 3;
 
 const MAX_QUIET_STEPS = 120;
 
-const WAIT_MS = 3_000;
+const WAIT_MS = 3000;
 
 const INSTALL_SHELL = "pnpm --dir packages/app exec playwright install chromium-headless-shell";
 
@@ -160,8 +160,9 @@ async function launch(): Promise<Browser> {
   try {
     return await chromium.launch({ channel: "chromium-headless-shell", headless: true });
   } catch (error) {
-    if (!(error instanceof Error) || !error.message.includes("Executable doesn't exist"))
+    if (!(error instanceof Error) || !error.message.includes("Executable doesn't exist")) {
       throw error;
+    }
 
     throw new Error(
       `Playwright's headless shell is not installed. Install it once with \`${INSTALL_SHELL}\`, or set ${SKIP_VARIABLE}=1 to skip this suite.`,
@@ -186,8 +187,9 @@ async function openBoard(browser: Browser, origin: string): Promise<OpenBoard> {
     if (message.text().includes("Content Security Policy")) policyViolations.push(message.text());
   });
   page.on("response", (response) => {
-    if (response.url().endsWith("/canvas/board/board.html"))
+    if (response.url().endsWith("/canvas/board/board.html")) {
       policies.push(response.headers()["content-security-policy"]);
+    }
   });
 
   const waitForPost: OpenBoard["waitForPost"] = async (kind, pattern, since) => {
@@ -197,7 +199,7 @@ async function openBoard(browser: Browser, origin: string): Promise<OpenBoard> {
         pattern,
         since,
       })
-      .catch((error: Error) => {
+      .catch((error: unknown) => {
         throw new Error(
           `The board posted no ${kind} matching ${JSON.stringify(pattern)} after message ${String(since)}.`,
           { cause: error },
@@ -225,11 +227,13 @@ async function openBoard(browser: Browser, origin: string): Promise<OpenBoard> {
 
   if (frame === null) throw new Error("The board frame is not in the harness.");
 
-  if (policies.length !== 1 || policies[0] === undefined || policies[0] === "")
+  if (policies.length !== 1 || policies[0] === undefined || policies[0] === "") {
     throw new Error("The board document was served without its Content-Security-Policy.");
+  }
 
-  if ((await frame.evaluate(() => Date.now())) !== PAUSED_AT)
+  if ((await frame.evaluate(() => Date.now())) !== PAUSED_AT) {
     throw new Error("The paused clock did not reach the sandboxed board frame.");
+  }
 
   let fences = 0;
 
@@ -271,8 +275,9 @@ async function openBoard(browser: Browser, origin: string): Promise<OpenBoard> {
     waitForPost,
     advance: (milliseconds) => page.clock.runFor(milliseconds),
     settlePastEditTimersUntilQuiet: async (since) => {
-      for (let ran = 0; ran < PAST_EDIT_TIMERS_MS; ran += FRAME_MS)
+      for (let ran = 0; ran < PAST_EDIT_TIMERS_MS; ran += FRAME_MS) {
         await page.clock.runFor(FRAME_MS);
+      }
       let end = await fence();
 
       for (let quiet = 0, step = 0; quiet < QUIET_STEPS; step += 1) {

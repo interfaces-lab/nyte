@@ -109,8 +109,9 @@ async function run(): Promise<void> {
     'import { Text } from "nyte/canvas";\nexport default () => <Text>After the loop</Text>;',
   );
 
-  if (hung.kind === "failed" || plain.kind === "failed")
+  if (hung.kind === "failed" || plain.kind === "failed") {
     throw new Error("A probe did not compile.");
+  }
   const started = performance.now();
   const stuck = await preview(
     { module: { runtime: hung.runtime, code: hung.code, title: "Loop" }, theme: "light" },
@@ -142,8 +143,11 @@ run().then(
     writeFileSync(join(directory, "result.txt"), "passed");
     app.exit(0);
   },
-  (error: Error) => {
-    writeFileSync(join(directory, "result.txt"), error.stack ?? error.message);
+  (error: unknown) => {
+    writeFileSync(
+      join(directory, "result.txt"),
+      error instanceof Error ? (error.stack ?? error.message) : String(error),
+    );
     app.exit(0);
   },
 );

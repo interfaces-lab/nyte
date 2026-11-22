@@ -70,7 +70,10 @@ export function performs(client: Client): readonly JsonSchema[] {
 export async function failureCode(pending: Promise<Json>): Promise<string | null> {
   return pending.then(
     () => null,
-    (error: Error) => ("code" in error && typeof error.code === "string" ? error.code : null),
+    (error: unknown) =>
+      error instanceof Error && "code" in error && typeof error.code === "string"
+        ? error.code
+        : null,
   );
 }
 

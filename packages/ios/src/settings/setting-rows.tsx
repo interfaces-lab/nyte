@@ -1,6 +1,7 @@
 import { ActionSheetIOS, Switch } from "react-native";
 import { css, html } from "react-strict-dom";
-import { SymbolView, type SFSymbol } from "expo-symbols";
+import { SymbolView } from "expo-symbols";
+import type { SFSymbol } from "expo-symbols";
 import { GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
 import type { Setting } from "./preferences.ts";

@@ -76,10 +76,11 @@ function messageEntry(message: Message, tasks: readonly Task[]): MiniEntry | nul
 
   if (showsThinking(message)) return null;
 
-  if (showsText(message))
+  if (showsText(message)) {
     return message.state.markdown.trim() === ""
       ? null
       : { key: message.id, kind: "answer", markdown: message.state.markdown };
+  }
 
   if (showsTool(message)) {
     const heading = quietHeading(toolCard(message, tasks, true).heading);
@@ -110,8 +111,9 @@ export function projectMiniTranscript(model: TranscriptModel, tasks: readonly Ta
     if (
       (message.kind === "user" && message.status.kind === "landed") ||
       (message.kind === "part" && message.status.kind === "settled")
-    )
+    ) {
       path.push(message.id);
+    }
     const entry = messageEntry(message, tasks);
 
     if (entry === null) return;
@@ -120,8 +122,9 @@ export function projectMiniTranscript(model: TranscriptModel, tasks: readonly Ta
       (message.kind === "user" && message.status.kind !== "landed") ||
       (message.kind === "part" &&
         (message.status.kind === "live" || message.status.kind === "waiting"))
-    )
+    ) {
       holding = true;
+    }
 
     (holding ? held : ready).push(entry);
   };

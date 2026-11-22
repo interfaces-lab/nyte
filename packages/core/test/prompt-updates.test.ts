@@ -48,7 +48,7 @@ async function finish(receipt: { settled(): Promise<unknown> }): Promise<void> {
     done = true;
   });
 
-  while (!done) await vi.advanceTimersByTimeAsync(1_000);
+  while (!done) await vi.advanceTimersByTimeAsync(1000);
   await settled;
 }
 

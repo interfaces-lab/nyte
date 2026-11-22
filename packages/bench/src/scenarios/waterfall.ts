@@ -110,8 +110,9 @@ function parseSpan(value: unknown): Span | null {
     (trace !== null && typeof trace !== "string") ||
     typeof start !== "number" ||
     typeof duration !== "number"
-  )
+  ) {
     return null;
+  }
 
   return { name, trace, start, duration, detail: readDetail(detail) };
 }
@@ -120,14 +121,16 @@ function readDetail(value: unknown): SpanDetail {
   if (typeof value !== "object" || value === null) return {};
   const detail: Record<string, string | number | boolean | null> = {};
 
-  for (const [key, field] of Object.entries(value))
+  for (const [key, field] of Object.entries(value)) {
     if (
       field === null ||
       typeof field === "string" ||
       typeof field === "number" ||
       typeof field === "boolean"
-    )
+    ) {
       detail[key] = field;
+    }
+  }
 
   return detail;
 }

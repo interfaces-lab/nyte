@@ -14,15 +14,8 @@ import type {
 } from "../../src/types.ts";
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import { getAnthropicMessagesCompat, TOGETHER_REASONING_ONLY_MODELS } from "./compat-metadata.ts";
-import {
-  flatCost,
-  modelInput,
-  modelsDevCost,
-  modelsDevModel,
-  type ModelsDevCatalog,
-  type ModelsDevMetadata,
-  type ModelsDevProvider,
-} from "./models-dev.ts";
+import { flatCost, modelInput, modelsDevCost, modelsDevModel } from "./models-dev.ts";
+import type { ModelsDevCatalog, ModelsDevMetadata, ModelsDevProvider } from "./models-dev.ts";
 import { NVIDIA_BASE_URL, normalizeNvidiaModelId } from "./remote-catalogs.ts";
 
 const TOGETHER_BASE_URL = "https://api.together.ai/v1";
@@ -352,8 +345,9 @@ function getTogetherCompat(modelId: string, reasoning: boolean): OpenAICompletio
 
   if (TOGETHER_REASONING_EFFORT_MODELS.has(modelId)) return TOGETHER_REASONING_EFFORT_COMPAT;
 
-  if (TOGETHER_TOGGLE_REASONING_EFFORT_MODELS.has(modelId))
+  if (TOGETHER_TOGGLE_REASONING_EFFORT_MODELS.has(modelId)) {
     return TOGETHER_TOGGLE_REASONING_EFFORT_COMPAT;
+  }
 
   if (TOGETHER_REASONING_ONLY_MODELS.has(modelId)) return TOGETHER_BASE_COMPAT;
 
@@ -366,11 +360,13 @@ function getTogetherThinkingLevelMap(
 ): NonNullable<Model<Api>["thinkingLevelMap"]> | undefined {
   if (!reasoning) return undefined;
 
-  if (TOGETHER_REASONING_EFFORT_MODELS.has(modelId))
+  if (TOGETHER_REASONING_EFFORT_MODELS.has(modelId)) {
     return { ...TOGETHER_REASONING_EFFORT_LEVEL_MAP };
+  }
 
-  if (TOGETHER_TOGGLE_REASONING_EFFORT_MODELS.has(modelId))
+  if (TOGETHER_TOGGLE_REASONING_EFFORT_MODELS.has(modelId)) {
     return { ...TOGETHER_DEEPSEEK_V4_THINKING_LEVEL_MAP };
+  }
 
   if (TOGETHER_REASONING_ONLY_MODELS.has(modelId)) return { ...TOGETHER_FIXED_REASONING_LEVEL_MAP };
 
@@ -665,7 +661,7 @@ export function githubCopilotModels(
       reasoning: m.reasoning === true,
       input: modelInput(m),
       cost: modelsDevCost(m.cost),
-      contextWindow: m.limit?.context || 128000,
+      contextWindow: m.limit?.context || 128_000,
       maxTokens: m.limit?.output || 8192,
       headers: { ...GITHUB_COPILOT_HEADERS },
     };

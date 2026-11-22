@@ -15,7 +15,8 @@ import { navigationMenuAction } from "../ui/navigation-menu.tsx";
 import { toast } from "../ui/toast.tsx";
 import { TranscriptSkeleton } from "../ui/skeleton.tsx";
 import { spacing, textStyles, tokens } from "../theme.ts";
-import { chatMark, openQuestion, type AskedQuestion } from "../view-helpers.ts";
+import { chatMark, openQuestion } from "../view-helpers.ts";
+import type { AskedQuestion } from "../view-helpers.ts";
 import type { QueuedActions } from "./messages.tsx";
 import { useRemoteChat } from "./remote-chat.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "./merge-request.ts";
@@ -181,13 +182,14 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
                     .remove()
                     .then((outcome) => {
                       if (outcome.kind === "removed") router.back();
-                      else
+                      else {
                         toast.error(
                           "Couldn't delete",
                           outcome.kind === "busy"
                             ? "Stop the conversation first."
                             : "Its subagent conversations are still here.",
                         );
+                      }
                     })
                     .catch(report("Couldn't delete"));
                 },
@@ -229,7 +231,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
           workspace={info?.workspace}
           head={head ?? "main"}
           onSend={chat.send}
-          onStop={chat.stop}
+          onStop={() => void chat.stop()}
           question={question}
           onAnswer={answer}
           queued={queued}

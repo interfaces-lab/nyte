@@ -1,5 +1,6 @@
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import type { ThinkingLevelMap } from "../src/types.ts";
 
 export const ModelsDevReasoningOptionSchema = Type.Union([

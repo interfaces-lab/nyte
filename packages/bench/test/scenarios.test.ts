@@ -36,8 +36,9 @@ beforeAll(() => enableTracing());
 afterEach(async () => {
   clearSpans();
 
-  for (const folder of folders.splice(0))
+  for (const folder of folders.splice(0)) {
     await rm(folder, { recursive: true, force: true, maxRetries: 10 });
+  }
 });
 
 async function folder(): Promise<string> {
@@ -240,7 +241,7 @@ it("runs scenario D over the CI MCP server: log tail, canvas, test, fix, rerun, 
   assert(log !== undefined, "The job log never reached the model.");
   expect(log).toContain("-1 !== 3");
   expect(log).toContain("##[error]Process completed with exit code 1.");
-  expect(texts.filter((text) => text.endsWith("[exit code 1]")).at(-1)).toContain("ℹ fail 1");
+  expect(texts.findLast((text) => text.endsWith("[exit code 1]"))).toContain("ℹ fail 1");
   expect(texts.at(-1)).toMatch(/ℹ pass 1[^]*\[exit code 0\]$/);
 
   const info = await session.info();

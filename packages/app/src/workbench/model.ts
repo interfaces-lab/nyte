@@ -3,7 +3,8 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
 import { windowApp } from "../contract/nyte.ts";
-import { DEFAULT_WIDTH, type WorkbenchWidth } from "./width.ts";
+import { DEFAULT_WIDTH } from "./width.ts";
+import type { WorkbenchWidth } from "./width.ts";
 
 export type WorkbenchTabId = string;
 
@@ -181,7 +182,7 @@ const APP_LAUNCHERS = {
   nyte: LAUNCH_ORDER,
   code: ["editor", "changes", "browser", "terminal"],
   studio: ["design"],
-} as const satisfies { readonly [App in DesktopApp]: readonly LaunchKind[] };
+} as const satisfies Readonly<Record<DesktopApp, readonly LaunchKind[]>>;
 
 export function workbenchLaunchers(
   scope: WorkbenchScope,

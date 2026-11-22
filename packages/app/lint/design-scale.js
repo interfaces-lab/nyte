@@ -19,9 +19,7 @@ const BOX_HANDLES = tokenScale.boxes;
 const boxHandlesAt = (px) => BOX_HANDLES.flatMap(([size, handle]) => (size === px ? [handle] : []));
 
 const either = (items) =>
-  items.length < 3
-    ? items.join(" or ")
-    : `${items.slice(0, -1).join(", ")}, or ${items[items.length - 1]}`;
+  items.length < 3 ? items.join(" or ") : `${items.slice(0, -1).join(", ")}, or ${items.at(-1)}`;
 
 const SPACING_PROPERTIES = new Set([
   "padding",
@@ -206,7 +204,7 @@ const spacingMessage = (property, value) => {
   }
 
   const steps = [...SPACE_STEPS.keys()];
-  const top = steps[steps.length - 1];
+  const top = steps.at(-1);
 
   if (magnitude > top) {
     return (
@@ -421,12 +419,13 @@ const noRawFontWeight = {
         node: member,
         message:
           `"fontWeight: ${weight}" is a raw weight: type.weight* owns weight, so it follows ` +
-          `the UI font. ` +
-          (handle
-            ? `Use ${handle} from ${VARS_MODULE}.`
-            : `Use the nearest, ${WEIGHT_HANDLES.get(nearest)} (${nearest}), from ` +
-              `${VARS_MODULE}. Add a weight to ${TOKENS_PATH} with a handle in ${VARS_PATH} ` +
-              `only if the design calls for one.`),
+          `the UI font. ${
+            handle
+              ? `Use ${handle} from ${VARS_MODULE}.`
+              : `Use the nearest, ${WEIGHT_HANDLES.get(nearest)} (${nearest}), from ` +
+                `${VARS_MODULE}. Add a weight to ${TOKENS_PATH} with a handle in ${VARS_PATH} ` +
+                `only if the design calls for one.`
+          }`,
       });
     });
   },
@@ -509,8 +508,9 @@ const guardedHover = {
           node: member,
           message:
             `"${key}" ${hoverProblem(unguarded, missing)}. Write "${withExclusion(key, missing)}": ` +
-            `{ [media.hover]: … } with media from ${SCHEMA_MODULE}` +
-            (missing.length === 0 ? "." : `, as Button writes ":hover:not([data-disabled])".`),
+            `{ [media.hover]: … } with media from ${SCHEMA_MODULE}${
+              missing.length === 0 ? "." : `, as Button writes ":hover:not([data-disabled])".`
+            }`,
         });
       });
     });
@@ -603,13 +603,11 @@ const logicalProperties = {
           if (key === "left" && centres(member, object)) return;
           context.report({
             node: member,
-            message:
-              `"${key}" is a physical side, so it stays put in a right-to-left layout. Use ` +
-              `${logical}. ` +
-              (key === "left"
+            message: `"${key}" is a physical side, so it stays put in a right-to-left layout. Use ${logical}. ${
+              key === "left"
                 ? `To centre, keep left: "50%" beside a translate of -50%, which is symmetric. `
-                : "") +
-              `If this side is physical by design, disable the rule on this line and say why.`,
+                : ""
+            }If this side is physical by design, disable the rule on this line and say why.`,
           });
 
           return;

@@ -92,8 +92,9 @@ const handlers: Handlers = {
       return { ...current, phase: next };
     });
 
-    if (outcome.kind !== "updated")
+    if (outcome.kind !== "updated") {
       throw new Error(`The secret could not be recorded: ${outcome.kind}.`);
+    }
 
     if (saved?.phase.kind !== "saved" || saved.phase.head === null) return;
 
@@ -117,8 +118,9 @@ const handlers: Handlers = {
       return { ...current, phase: { kind: "skipped", late: phase.kind === "open" } };
     });
 
-    if (outcome.kind !== "updated")
+    if (outcome.kind !== "updated") {
       throw new Error(`The request could not be dismissed: ${outcome.kind}.`);
+    }
   },
 };
 
@@ -137,8 +139,9 @@ const request: ToolDefinition<Infer<typeof secretParameters>> = {
   asks: "never",
   rerun: "safe",
   async execute(args, invocation) {
-    if (await readsOnly(invocation.session, invocation.host))
+    if (await readsOnly(invocation.session, invocation.host)) {
       throw new SdkError("denied", "A side chat can't ask the user for a secret.");
+    }
 
     const part = await invocation.session.parts.create(secret, {
       state: {
@@ -214,8 +217,9 @@ const save: Command<"core"> = {
     const current =
       found?.partKind === secret.kind && found.status.kind === "live" ? readSecret(found) : null;
 
-    if (current === null || (current.phase.kind !== "asking" && current.phase.kind !== "open"))
+    if (current === null || (current.phase.kind !== "asking" && current.phase.kind !== "open")) {
       throw new SdkError("invalid", "This request is no longer waiting.");
+    }
 
     const directory = crypto.randomUUID().replaceAll("-", "");
     const expiresAt = input.days === null ? null : Date.now() + input.days * DAY_MS;
@@ -232,8 +236,9 @@ const save: Command<"core"> = {
 
     if (outcome.kind === "rejected") throw new SdkError("invalid", outcome.reason);
 
-    if (outcome.kind !== "ok")
+    if (outcome.kind !== "ok") {
       throw new Error(`The request could not take the secret: ${outcome.kind}.`);
+    }
 
     return path;
   },
@@ -242,8 +247,9 @@ const save: Command<"core"> = {
 async function parseSaveRequest(text: string): Promise<SaveRequest> {
   const checked = await saveRequest["~standard"].validate(JSON.parse(text));
 
-  if (checked.issues !== undefined)
+  if (checked.issues !== undefined) {
     throw new SdkError("invalid", "The secret request is malformed.");
+  }
 
   return checked.value;
 }
@@ -267,8 +273,9 @@ async function writeSecretFile(
 
   const end = await job.settled();
 
-  if (end.kind !== "exited" || end.code !== 0 || !output.startsWith("/"))
+  if (end.kind !== "exited" || end.code !== 0 || !output.startsWith("/")) {
     throw new Error(`Couldn't write the secret file: ${output.trim() || "the shell failed"}.`);
+  }
 
   return output;
 }
@@ -279,8 +286,9 @@ const remove: Command<"core"> = {
   description: "Deletes a secret file an agent asked for.",
   hidden: true,
   async run(text, { api }) {
-    if (!new RegExp(SECRET_DIRECTORY).test(text))
+    if (!new RegExp(SECRET_DIRECTORY).test(text)) {
       throw new SdkError("invalid", "That isn't a saved secret.");
+    }
 
     await removeSaved(api, [text]);
   },

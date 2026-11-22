@@ -80,7 +80,7 @@ type Sent = OperationOutput<"head.send">;
 
 type Landed = Pick<SessionView, "messages" | "queue" | "leadingPrompt">;
 
-type Held = {
+interface Held {
   entry: JournalEntry;
   attempts: number;
   retrying: { readonly at: number; readonly reason: string } | null;
@@ -89,7 +89,7 @@ type Held = {
   expired: boolean;
   discarded: AbortController;
   unanswered: Unanswered | null;
-};
+}
 
 /**
  * Returns a journal over `storage`, in memory by default. Each entry is stored under its host and
@@ -240,7 +240,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
     const all = [...held.values()];
 
     const later = all
-      .slice(all.findIndex((row) => row === current) + 1)
+      .slice(all.indexOf(current) + 1)
       .filter(
         ({ entry }) =>
           entry.session === current.entry.session &&
@@ -248,8 +248,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
           entry.options.replace === target,
       );
 
-    for (const row of later)
+    for (const row of later) {
       row.entry = { ...row.entry, options: { ...row.entry.options, replace: message } };
+    }
 
     await Promise.all(later.map((row) => journal.put(row.entry)));
   };
@@ -330,8 +331,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
       const slot = slots.get(target) ?? target;
       shown.set(slot, current);
 
-      if (current.answered !== null && current.answered !== target)
+      if (current.answered !== null && current.answered !== target) {
         slots.set(current.answered, slot);
+      }
     }
 
     return shown;
@@ -390,8 +392,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
           entry.session !== session ||
           entry.head !== head ||
           (!ids.has(answered) && answeredAfter !== null && seq <= answeredAfter)
-        )
+        ) {
           continue;
+        }
         held.delete(receipt);
         journal
           .remove(current.entry.id)

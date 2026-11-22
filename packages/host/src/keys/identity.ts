@@ -45,8 +45,9 @@ export async function seedSigner(
 async function identityKeys(
   seed: Uint8Array,
 ): Promise<{ readonly signing: CryptoKey; readonly publicKey: string }> {
-  if (seed.length !== 32)
+  if (seed.length !== 32) {
     throw new SdkError("invalid", `The identity seed is ${seed.length} bytes, not 32.`);
+  }
   const pkcs8 = new Uint8Array([...PKCS8_PREFIX, ...seed]);
   const readable = await crypto.subtle.importKey("pkcs8", pkcs8, "Ed25519", true, ["sign"]);
   const { x } = await crypto.subtle.exportKey("jwk", readable);

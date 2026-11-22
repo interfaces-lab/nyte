@@ -2,14 +2,14 @@ import { applyTextChange, SdkError } from "@nyte-ai/schema";
 import type { LanguageServerView, TextChange } from "@nyte-ai/schema";
 import type { LanguageApi } from "@nyte-ai/core";
 
-export type LanguageDocument = {
+export interface LanguageDocument {
   readonly path: string;
   /** The server that took the document when it was opened, or null for a file no language handles. */
   readonly server: LanguageServerView | null;
   /** Sends edits in the order they were made; a host that lost the document gets it again whole. */
   edit(changes: readonly TextChange[]): Promise<void>;
   close(): Promise<void>;
-};
+}
 
 /**
  * Keeps one editor buffer in sync with the host's language server: each `edit` waits for the one
@@ -43,8 +43,9 @@ export async function languageDocument(
     try {
       await language.change({ path, version, changes });
     } catch (error) {
-      if (!(error instanceof SdkError) || (error.code !== "unknown" && error.code !== "stale"))
+      if (!(error instanceof SdkError) || (error.code !== "unknown" && error.code !== "stale")) {
         throw error;
+      }
       version += 1;
       await language.open({ path, text: current, version });
     }

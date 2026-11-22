@@ -95,7 +95,7 @@ function luminance(color: Rgb): number {
   const [red, green, blue] = color.map((channel) => {
     const value = channel / 255;
 
-    return value <= 0.040_45 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   });
 
   return 0.2126 * (red ?? 0) + 0.7152 * (green ?? 0) + 0.0722 * (blue ?? 0);
@@ -145,23 +145,23 @@ const OUTPUT = mkdtempSync(join(tmpdir(), "nyte-tui-terminal-"));
 afterAll(() => rmSync(OUTPUT, { recursive: true, force: true }));
 
 class RecordingStdout extends WriteStream {
-  readonly #path: string;
+  private readonly path: string;
 
   constructor(path: string, columns: number, rows: number) {
     super(openSync(path, "w"));
-    this.#path = path;
+    this.path = path;
     this.columns = columns;
     this.rows = rows;
     this.isTTY = true;
   }
 
   text(): string {
-    return readFileSync(this.#path, "latin1");
+    return readFileSync(this.path, "latin1");
   }
 }
 
-for (const depth of ["truecolor", "ansi256", "ansi16"] as const)
-  for (const mode of ["dark", "light"] as const)
+for (const depth of ["truecolor", "ansi256", "ansi16"] as const) {
+  for (const mode of ["dark", "light"] as const) {
     test(`${depth} ${mode}: every text cell of a conversation stays legible once the terminal shows it`, async () => {
       const output = new RecordingStdout(join(OUTPUT, `${depth}-${mode}.out`), 100, 32);
 
@@ -189,7 +189,7 @@ for (const depth of ["truecolor", "ansi256", "ansi16"] as const)
       const cells: { text: string; fg: string; bg: string; ratio: number }[] = [];
       const onScreen = new Set<number>();
 
-      for (const line of tui.captureSpans().lines)
+      for (const line of tui.captureSpans().lines) {
         for (const span of line.spans) {
           const bg = over(span.bg, backdrop);
           const fg = over(span.fg, bg);
@@ -207,6 +207,7 @@ for (const depth of ["truecolor", "ansi256", "ansi16"] as const)
             ratio: Math.round(ratio * 100) / 100,
           });
         }
+      }
 
       const sgr = [...output.text().matchAll(SGR)].map((match) => match[1] ?? "");
       const direct = sgr.filter((codes) => /(?:^|;)[34]8;2;/u.test(codes)).length;
@@ -243,6 +244,8 @@ for (const depth of ["truecolor", "ansi256", "ansi16"] as const)
       if (depth === "ansi16") expect(direct).toBeGreaterThan(0);
       expect(failing).toEqual([]);
     });
+  }
+}
 
 const LINKED = "I picked **Luigi's**. [Open the menu](https://fixture.test/places/luigi).";
 
@@ -250,7 +253,7 @@ for (const [terminal, environment] of [
   ["kitty", { TERM: "xterm-kitty", COLORTERM: "truecolor" }],
   ["ghostty", { TERM: "xterm-ghostty", TERM_PROGRAM: "ghostty", COLORTERM: "truecolor" }],
   ["xterm", { TERM: "xterm-256color", COLORTERM: "truecolor" }],
-] as const)
+] as const) {
   test(`${terminal}: a markdown link ${terminal === "xterm" ? "prints its target after its text where the terminal takes no hyperlinks" : "is an OSC 8 hyperlink to its target"}`, async () => {
     const output = new RecordingStdout(join(OUTPUT, `link-${terminal}.out`), 100, 32);
 
@@ -266,7 +269,7 @@ for (const [terminal, environment] of [
     await tui.renderOnce();
     await saveFrame(tui, `link-${terminal}`);
 
-    const linked = output.text().includes("\x1b]8;id=");
+    const linked = output.text().includes("\u001B]8;id=");
 
     await saveProof(`link-${terminal}-output`, {
       environment,
@@ -281,13 +284,14 @@ for (const [terminal, environment] of [
       tui.captureCharFrame().includes("Open the menu (https://fixture.test/places/luigi)"),
     ).toBe(terminal === "xterm");
   });
+}
 
 const PATHED = "The final file is `out/film.mp4`. The old one is at `/tmp/film/old.mp4`.";
 
 for (const [terminal, environment] of [
   ["ghostty", { TERM: "xterm-ghostty", TERM_PROGRAM: "ghostty", COLORTERM: "truecolor" }],
   ["xterm", { TERM: "xterm-256color", COLORTERM: "truecolor" }],
-] as const)
+] as const) {
   test(`${terminal}: a file path in inline code ${terminal === "xterm" ? "stays plain text where the terminal takes no hyperlinks" : "links to the file under the workspace, without the closing period"}`, async () => {
     const output = new RecordingStdout(join(OUTPUT, `file-link-${terminal}.out`), 100, 32);
 
@@ -310,13 +314,14 @@ for (const [terminal, environment] of [
     await saveProof(`file-link-${terminal}-output`, {
       environment,
       hyperlinks: tui.renderer.capabilities?.hyperlinks ?? null,
-      film: written.includes(`;${film}\x1b\\`),
-      old: written.includes(`;${old}\x1b\\`),
+      film: written.includes(`;${film}\u001B\\`),
+      old: written.includes(`;${old}\u001B\\`),
     });
 
-    expect(written.includes(`;${film}\x1b\\`)).toBe(terminal !== "xterm");
-    expect(written.includes(`;${old}\x1b\\`)).toBe(terminal !== "xterm");
+    expect(written.includes(`;${film}\u001B\\`)).toBe(terminal !== "xterm");
+    expect(written.includes(`;${old}\u001B\\`)).toBe(terminal !== "xterm");
     expect(tui.captureCharFrame()).toContain(
       "The final file is out/film.mp4. The old one is at /tmp/film/old.mp4.",
     );
   });
+}

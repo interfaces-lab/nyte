@@ -13,20 +13,21 @@ export type DraftPart =
 
 export type DraftContent = string | readonly DraftPart[];
 
-export type StagedImage = {
+export interface StagedImage {
   readonly id: string;
   readonly uri: string;
   readonly image: Extract<DraftPart, { kind: "image" }>;
-};
+}
 
 export async function uploadDraft(
   workspace: Workspace,
   content: DraftContent,
 ): Promise<UserContent> {
-  if (typeof content === "string" || content.every((part) => part.kind === "text"))
+  if (typeof content === "string" || content.every((part) => part.kind === "text")) {
     return typeof content === "string"
       ? content
       : content.flatMap((part) => (part.kind === "text" ? [part] : []));
+  }
   const files = await workspace.files();
 
   if (files.kind !== "available") throw new Error(`Photos can't be sent here: ${files.reason}`);

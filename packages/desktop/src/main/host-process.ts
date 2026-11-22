@@ -70,9 +70,9 @@ export function followHostProcess(options: {
 
       set({ kind: update, version: link.version, startedAt });
 
-      if (retiresHost({ link, appVersion: options.appVersion, serving, job }))
+      if (retiresHost({ link, appVersion: options.appVersion, serving, job })) {
         retire = await requestRetire("launchd");
-      else await withdraw();
+      } else await withdraw();
     });
 
   const restart = async (): Promise<void> => {

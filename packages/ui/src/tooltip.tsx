@@ -4,9 +4,11 @@ import type { ReactElement } from "react";
 
 import { Kbd } from "./kbd.tsx";
 import { layer, radius, space } from "./styles/schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
-import { surfaceTheme, type Tint } from "./surface-theme.ts";
+import { surfaceTheme } from "./surface-theme.ts";
+import type { Tint } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { motion, role, shadow } from "./styles/vars.stylex.ts";
 

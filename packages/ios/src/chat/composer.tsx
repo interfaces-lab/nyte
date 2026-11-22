@@ -82,8 +82,9 @@ export function Composer({
     const selection = selectionOnCommit.current;
     selectionOnCommit.current = undefined;
 
-    if (selection !== undefined && draft === selection.draft)
+    if (selection !== undefined && draft === selection.draft) {
       fieldRef.current?.setSelection(selection.caret, selection.caret);
+    }
   }, [draft]);
   const keyboard = useReanimatedKeyboardAnimation();
   const attachmentsHeight = useSharedValue(0);

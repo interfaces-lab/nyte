@@ -14,14 +14,16 @@ import { main, setup, startRun } from "../src/harness.ts";
 async function storedRecords(kernel: Kernel): Promise<StoredRecord[]> {
   const records: StoredRecord[] = [];
 
-  for (const ref of await kernel.store.refs.list("sessions/"))
-    if (ref.target !== null)
+  for (const ref of await kernel.store.refs.list("sessions/")) {
+    if (ref.target !== null) {
       records.push({
         name: ref.name,
         target: ref.target,
         revision: ref.revision,
         body: JSON.stringify(await kernel.store.objects.get(ref.target)),
       });
+    }
+  }
 
   return records;
 }
@@ -99,8 +101,8 @@ it("moves a tool call's name and args to its part alone, which recovery then rep
     dialect: "sqlite",
     stamp: async () => ({ version: 10, empty: false }),
     records: async () => storedRecords(kernel),
-    logs: async function* () {},
-    objects: async function* () {},
+    async *logs() {},
+    async *objects() {},
     commit: async (change) => landChange(kernel, change),
   });
 
@@ -144,8 +146,8 @@ it("gives an older Nyte's unopened tool call position 0, so recovery still owes 
     dialect: "sqlite",
     stamp: async () => ({ version: 11, empty: false }),
     records: async () => storedRecords(kernel),
-    logs: async function* () {},
-    objects: async function* () {},
+    async *logs() {},
+    async *objects() {},
     commit: async (change) => landChange(kernel, change),
   });
 
@@ -189,8 +191,8 @@ it("keeps a before_tool hook call's principal and changed args alone, which its 
     dialect: "sqlite",
     stamp: async () => ({ version: 13, empty: false }),
     records: async () => storedRecords(kernel),
-    logs: async function* () {},
-    objects: async function* () {},
+    async *logs() {},
+    async *objects() {},
     commit: async (change) => landChange(kernel, change),
   });
 

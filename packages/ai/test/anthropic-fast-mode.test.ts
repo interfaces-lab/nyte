@@ -26,7 +26,7 @@ function createModel(
     input: ["text"],
     cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
     contextWindow: 1_000_000,
-    maxTokens: 8_192,
+    maxTokens: 8192,
     headers: { "anthropic-beta": "model-beta" },
     compat: { forceAdaptiveThinking: true },
   };

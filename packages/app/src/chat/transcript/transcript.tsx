@@ -11,6 +11,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+// oxlint-disable import/no-duplicates -- the hand-memo import stays on its own line so its suppression covers only that import
 import {
   createContext,
   useContext,
@@ -19,6 +20,7 @@ import {
   useRef,
   useState,
 } from "react";
+// oxlint-enable import/no-duplicates
 // oxlint-disable-next-line no-restricted-imports -- useVirtualizer keeps TranscriptContent out of the compiler, so its virtualizer options stay memoized by hand
 import { useCallback, useMemo } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
@@ -87,8 +89,9 @@ function stretchSpans(instance: TranscriptVirtualizer, ends: ReadonlyMap<number,
     const fill = span?.lastElementChild;
     const end = last === undefined ? undefined : instance.measurementsCache[last]?.end;
 
-    if (end === undefined || !(span instanceof HTMLElement) || !(fill instanceof HTMLElement))
+    if (end === undefined || !(span instanceof HTMLElement) || !(fill instanceof HTMLElement)) {
       continue;
+    }
     const extent = `${String(Math.max(0, end - item.end))}px`;
 
     if (fill.style.height === extent) continue;
@@ -304,8 +307,9 @@ export function TranscriptContent({
 
     if (settled.action.kind === "end") instance.scrollToEnd();
 
-    if (settled.action.kind === "offset")
+    if (settled.action.kind === "offset") {
       instance.scrollToOffset(scroll.scrollTop + settled.action.by);
+    }
   };
 
   const history = useRef<HistoryPager>(IDLE_HISTORY);
@@ -329,11 +333,12 @@ export function TranscriptContent({
 
     if (step.action === "next-frame") requestAnimationFrame(() => loadHistory(virtualizer));
 
-    if (step.action === "load")
+    if (step.action === "load") {
       void loadEarlier().then(
         (count) => pageHistory({ kind: "loaded", count }),
         () => pageHistory({ kind: "failed", now: performance.now() }),
       );
+    }
   };
 
   const loadHistory = (instance: TranscriptVirtualizer): void => {
@@ -368,8 +373,9 @@ export function TranscriptContent({
     if (
       options.history ||
       (opening && position.current.mode.kind === "following" && !position.current.mode.opening)
-    )
+    ) {
       loadHistory(instance);
+    }
   };
 
   const queued = useRef<{ readonly history: boolean } | null>(null);
@@ -420,12 +426,13 @@ export function TranscriptContent({
     scrollToFn: (offset, options, instance) => {
       const scroll = instance.scrollElement;
 
-      if (scroll !== null)
+      if (scroll !== null) {
         position.current = wroteScroll(
           position.current,
           offset + (options.adjustments ?? 0),
           scroll.scrollHeight - scroll.clientHeight,
         );
+      }
       elementScroll(offset, options, instance);
 
       if (scroll !== null) queueMicrotask(() => syncScrollButton(scroll, dock));
@@ -458,11 +465,12 @@ export function TranscriptContent({
       const index = virtualizer.indexFromElement(node);
       const key = virtualizer.options.getItemKey(index);
 
-      if (!virtualizer.itemSizeCache.has(key))
+      if (!virtualizer.itemSizeCache.has(key)) {
         virtualizer.resizeItem(
           index,
           virtualizer.options.measureElement(node, undefined, virtualizer),
         );
+      }
     },
     [virtualizer],
   );
@@ -485,8 +493,10 @@ export function TranscriptContent({
     lastPainted.current = true;
     requestAnimationFrame(() => {
       const channel = new MessageChannel();
-      channel.port1.onmessage = () =>
-        performance.mark("nyte:last-message-painted", { detail: sessionId });
+      channel.port1.addEventListener("message", () =>
+        performance.mark("nyte:last-message-painted", { detail: sessionId }),
+      );
+      channel.port1.start();
       channel.port2.postMessage(null);
     });
   });
@@ -499,8 +509,9 @@ export function TranscriptContent({
       viewport !== null &&
       initialMeasurements !== undefined &&
       viewport.clientWidth !== initialMeasurements.width
-    )
+    ) {
       virtualizer.measure();
+    }
   }, [initialMeasurements, viewport, virtualizer]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- measures virtual rows and syncs sticky headers before paint
@@ -612,8 +623,9 @@ export function TranscriptContent({
       }));
       measured.delete(sessionId);
 
-      if (width.current !== undefined)
+      if (width.current !== undefined) {
         measured.set(sessionId, { width: width.current, items: virtualizer.takeSnapshot() });
+      }
 
       for (const key of measured.keys()) {
         if (measured.size <= MEASURED_TRANSCRIPTS) break;
@@ -658,7 +670,7 @@ export function TranscriptContent({
         const mode = position.current.mode;
         virtualizer.scrollToOffset(viewport.scrollTop + by);
 
-        if (mode.kind === "reading" && mode.anchor !== null)
+        if (mode.kind === "reading" && mode.anchor !== null) {
           position.current = {
             ...position.current,
             mode: nextMode(mode, {
@@ -666,6 +678,7 @@ export function TranscriptContent({
               anchor: { ...mode.anchor, top: mode.anchor.top - by },
             }),
           };
+        }
       },
     };
 
@@ -687,8 +700,9 @@ export function TranscriptContent({
       row instanceof Element &&
       content.current?.contains(row) === true &&
       anchor?.element !== row
-    )
+    ) {
       hold(row);
+    }
   };
 
   return (

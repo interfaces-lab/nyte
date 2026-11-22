@@ -58,8 +58,9 @@ export function findSymbols(path: string, contents: string): readonly OutlineSym
     for (const [pattern, kind] of patterns) {
       const name = pattern.exec(text)?.[1];
 
-      if (name !== undefined)
+      if (name !== undefined) {
         return [{ name, kind, line: index + 1, depth: Math.floor(indent(text) / 2) }];
+      }
     }
 
     return [];

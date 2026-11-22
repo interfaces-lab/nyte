@@ -186,8 +186,9 @@ export function Pip({
           const element = card.current;
           const area = element?.parentElement?.getBoundingClientRect();
 
-          if (event.button !== 0 || handle === null || element == null || area === undefined)
+          if (event.button !== 0 || handle === null || element == null || area === undefined) {
             return;
+          }
           const rect = element.getBoundingClientRect();
 
           handle.setPointerCapture(event.pointerId);
@@ -224,8 +225,9 @@ export function Pip({
         onPointerUp={release}
         onPointerCancel={release}
         onMouseDown={(event) => {
-          if (event.target instanceof Element && event.target.closest("[data-pip-grip]") !== null)
+          if (event.target instanceof Element && event.target.closest("[data-pip-grip]") !== null) {
             event.preventDefault();
+          }
         }}
         onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
           moved.current = false;
@@ -234,8 +236,9 @@ export function Pip({
 
           if (next === null || !(target instanceof Element)) return;
 
-          if (target.closest("[data-pip-grip]") === null || target.closest("input, textarea"))
+          if (target.closest("[data-pip-grip]") === null || target.closest("input, textarea")) {
             return;
+          }
           event.preventDefault();
           settle(next, { x: 0, y: 0 });
         }}

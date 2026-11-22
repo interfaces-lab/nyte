@@ -39,8 +39,9 @@ export async function actionCommand(input: Input): Promise<number> {
   const parsed = parseCommandArgs("action", found.args, Number.POSITIVE_INFINITY, "run");
   const action = parsed.positionals[0];
 
-  if (action === undefined)
+  if (action === undefined) {
     throw new CliError("missing_input", "Name the action to run.", { next: [SEE_ACTIONS] });
+  }
 
   const given = readFields(action, parsed.positionals.slice(1));
   const hostUrl = readHostUrl("action", parsed.value("host-url"));
@@ -114,10 +115,11 @@ function readFields(action: string, fields: readonly string[]): Json {
     fields.map((field) => {
       const split = field.indexOf("=");
 
-      if (split < 1)
+      if (split < 1) {
         throw new CliError("invalid_arguments", `Can't read ${field} as KEY=VALUE.`, {
           next: [{ label: "See how input is passed", argv: ["nyte", "action", "run", "--help"] }],
         });
+      }
 
       return [field.slice(0, split), readValue(field.slice(split + 1))];
     }),
@@ -161,10 +163,11 @@ function chooseClient(
 
   const only = offering[0];
 
-  if (only === undefined)
+  if (only === undefined) {
     throw new CliError("not_found", `Couldn't find a connected client that offers ${action}.`, {
       next: [SEE_ACTIONS],
     });
+  }
 
   if (offering.length === 1) return only;
 

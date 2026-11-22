@@ -65,7 +65,7 @@ export function raceWithAbortSignal<T>(operation: Promise<T>, signal: AbortSigna
         cleanup();
         resolve(value);
       },
-      (error) => {
+      (error: unknown) => {
         if (settled) return;
         settled = true;
         cleanup();

@@ -4,15 +4,16 @@ import { AccessibilityInfo, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
-  type SharedValue,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { SymbolView, type SFSymbol } from "expo-symbols";
+import { SymbolView } from "expo-symbols";
+import type { SFSymbol } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { controls, list, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 
@@ -28,7 +29,7 @@ interface ToastItem {
 
 const VISIBLE_LIMIT = 3;
 
-const DURATION_MS = 4_000;
+const DURATION_MS = 4000;
 
 const ENTER_OFFSET = 20;
 

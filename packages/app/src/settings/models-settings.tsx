@@ -160,7 +160,7 @@ function modelSummary(models: readonly DesktopModelOption[]): string {
       ? `${models.length} ${models.length === 1 ? "model" : "models"}`
       : `${shown} of ${models.length} models shown`;
 
-  return favorites === 0 ? count : `${count} \u00b7 ${favorites} starred`;
+  return favorites === 0 ? count : `${count} \u00B7 ${favorites} starred`;
 }
 
 function ApiKeyForm({

@@ -44,19 +44,21 @@ import { startProjectChat } from "./start-project-chat.ts";
 export function ProjectOverview({ id }: { readonly id: ProjectId }): ReactElement {
   const result = useProject(id);
 
-  if (result.kind === "loading")
+  if (result.kind === "loading") {
     return (
       <div {...props(page.content, styles.placeholder)}>
         <Loader />
       </div>
     );
+  }
 
-  if (result.kind === "missing")
+  if (result.kind === "missing") {
     return (
       <div {...props(page.content, styles.placeholder)}>
         <p {...props(text.base, styles.quiet)}>Project not found.</p>
       </div>
     );
+  }
 
   return <ProjectPage project={result.project} />;
 }
@@ -99,7 +101,7 @@ function ProjectPage({ project }: { readonly project: ProjectInfo }): ReactEleme
                     variant="solid"
                     tone="primary"
                     onClick={() =>
-                      startProjectChat(project, "").catch((cause: unknown) =>
+                      void startProjectChat(project, "").catch((cause: unknown) =>
                         toast.add({ type: "error", title: errorMessage(cause) }),
                       )
                     }
@@ -413,7 +415,7 @@ function readReply(view: ChatView) {
 function Setup({ project }: { readonly project: ProjectInfo }): ReactNode {
   const docs = useWorkspaceCatalog(project.workspace).data?.docs ?? [];
 
-  if (project.instructions.trim() === "" && project.skills.length === 0 && docs.length === 0)
+  if (project.instructions.trim() === "" && project.skills.length === 0 && docs.length === 0) {
     return (
       <Section title="Setup">
         <Entry title="No instructions or skills yet">
@@ -423,6 +425,7 @@ function Setup({ project }: { readonly project: ProjectInfo }): ReactNode {
         </Entry>
       </Section>
     );
+  }
 
   return (
     <Section title="Setup">

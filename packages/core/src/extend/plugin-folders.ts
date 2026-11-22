@@ -53,8 +53,9 @@ export async function loadAssigned(
       if ("path" in entry) return entry;
       const plugin = known.find((candidate) => candidate.id === entry.id);
 
-      if (plugin === undefined)
+      if (plugin === undefined) {
         throw new SdkError("unavailable", `No plugin named ${entry.id} is loaded on this host.`);
+      }
 
       return plugin;
     }),
@@ -138,8 +139,9 @@ async function loadProjectPlugins(
 
   const issues = found.failed.map((entry) => entry.issue);
 
-  if (issues.length > 0 || kernel.host.current().plugins.some((row) => row.id === folder))
+  if (issues.length > 0 || kernel.host.current().plugins.some((row) => row.id === folder)) {
     kernel.host.report({ id: folder, source: "project", path: folder, issues });
+  }
 
   return found.loaded.map((entry) => entry.plugin);
 }
@@ -165,8 +167,9 @@ export async function reloadUserPlugins(kernel: Kernel): Promise<void> {
   for (const entry of found.loaded) sources.set(entry.plugin, { source: "user", path: entry.path });
   const report = await kernel.plugins.replace([...others, ...loaded]);
 
-  for (const plugin of sources.keys())
+  for (const plugin of sources.keys()) {
     if (!kernel.plugins.host.includes(plugin)) sources.delete(plugin);
+  }
 
   const refused = report.plugins.flatMap((outcome): PluginFailure[] => {
     const entry = found.loaded.find((candidate) => candidate.plugin.id === outcome.id);
@@ -188,11 +191,13 @@ export function reportUserPluginFailures(
   const rows = [...failed, ...refused];
   const failing = rows.map((row) => row.path);
 
-  for (const id of kernel.plugins.state.user.failing)
+  for (const id of kernel.plugins.state.user.failing) {
     if (!failing.includes(id)) kernel.host.report({ id, source: "user", path: id, issues: [] });
+  }
 
-  for (const row of rows)
+  for (const row of rows) {
     kernel.host.report({ id: row.path, source: "user", path: row.path, issues: row.issues });
+  }
   kernel.plugins.state.user = { plugins, refused, failing };
 }
 

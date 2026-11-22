@@ -177,8 +177,9 @@ function lastResult<Arguments extends readonly unknown[], Result>(
       last !== undefined &&
       last.input.length === input.length &&
       last.input.every((value, index) => value === input[index])
-    )
+    ) {
       return last.result;
+    }
     const result = run(...input);
     last = { input, result };
 

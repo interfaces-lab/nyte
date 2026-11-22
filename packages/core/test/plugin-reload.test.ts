@@ -245,8 +245,9 @@ describe("plugin reload (D4)", () => {
     const { kernel } = await setup();
     const ids = Array.from({ length: 50 }, () => asId<"session">(crypto.randomUUID()));
 
-    for (const id of ids)
+    for (const id of ids) {
       await expect(kernel.plugins.runtime(id).ready).rejects.toMatchObject({ code: "unknown" });
+    }
 
     await until(() => (kernel.plugins.runtimes().size === 0 ? true : undefined));
   });

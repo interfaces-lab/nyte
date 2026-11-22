@@ -3,11 +3,13 @@ import type { Delivery, HeldMessage, MessageId, ReceiptId, SessionId } from "@ny
 import { errorMessage } from "../../contract/errors.ts";
 import { connection, currentConnection, installedLive } from "../../data/connection.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
-import type { SessionViewStateStore } from "../../panes/session-view-state.ts";
+import type {
+  SessionViewStateStore,
+  ComposerImageAttachment,
+} from "../../panes/session-view-state.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import type { RefusedSend } from "@nyte-ai/sdk/client";
-import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { handedOff, keptSending, replayedDraft, shownDraft } from "./composer-draft.ts";

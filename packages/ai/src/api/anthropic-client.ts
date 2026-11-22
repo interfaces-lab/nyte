@@ -1,4 +1,5 @@
-import Anthropic, { type ClientOptions } from "@anthropic-ai/sdk";
+import Anthropic from "@anthropic-ai/sdk";
+import type { ClientOptions } from "@anthropic-ai/sdk";
 import {
   ANTHROPIC_FEDERATION_RULE_ID_ENV,
   ANTHROPIC_IDENTITY_TOKEN_FILE_ENV,

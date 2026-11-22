@@ -16,20 +16,20 @@ export interface Attachment {
   detach(): void;
 }
 
-export type FreshnessCell = {
+export interface FreshnessCell {
   readonly current: () => Freshness;
   readonly stale: (error: SdkError | null) => boolean;
   readonly fresh: (seq: number) => boolean;
-};
+}
 
-export type Retries = {
+export interface Retries {
   readonly failed: (run: () => void) => void;
   readonly reset: () => void;
-};
+}
 
 const HELD_REVISION = 27;
 
-const RETRY_BASE_MS = 1_000;
+const RETRY_BASE_MS = 1000;
 
 const RETRY_MAX_MS = 30_000;
 
@@ -137,11 +137,11 @@ export function sameJson<T>(left: T, right: T): boolean {
   return left === right || JSON.stringify(left) === JSON.stringify(right);
 }
 
-export type Listeners = {
+export interface Listeners {
   readonly subscribe: (listener: () => void) => Disposer;
   readonly notify: () => void;
   readonly clear: () => void;
-};
+}
 
 export function listenerSet(): Listeners {
   const listeners = new Set<() => void>();

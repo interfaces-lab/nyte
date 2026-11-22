@@ -368,14 +368,16 @@ function sessionPort(
 
       if (before.kind === "missing") return "gone";
 
-      if (before.kind === "settled")
+      if (before.kind === "settled") {
         return reportsWithdrawn(before.outcome) ? "gone" : "landed-first";
+      }
       const stopped = await receipt.stop();
 
       if (stopped.kind === "missing") return "gone";
 
-      if (stopped.kind === "settled")
+      if (stopped.kind === "settled") {
         return reportsWithdrawn(stopped.outcome) ? "withdrawn" : "landed-first";
+      }
       const after = await receipt.status();
 
       return after.kind === "settled" && reportsWithdrawn(after.outcome)
@@ -387,8 +389,9 @@ function sessionPort(
 
       if (status.kind === "missing") return "gone";
 
-      if (status.kind === "settled")
+      if (status.kind === "settled") {
         return reportsWithdrawn(status.outcome) ? "gone" : "landed-first";
+      }
       await session.send(content, { ...options, replace: message });
 
       return "revised";

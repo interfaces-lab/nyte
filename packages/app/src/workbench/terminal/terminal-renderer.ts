@@ -29,13 +29,9 @@ export interface Renderer {
 }
 
 function fontString(font: TerminalFont, ratio: number, bold: boolean, italic: boolean): string {
-  return (
-    (italic ? "italic " : "") +
-    (bold ? "bold " : "") +
-    String(font.size * ratio) +
-    "px " +
+  return `${(italic ? "italic " : "") + (bold ? "bold " : "") + String(font.size * ratio)}px ${
     font.family
-  );
+  }`;
 }
 
 export function measureCell(font: TerminalFont, ratio: number): CellMetrics {
@@ -70,7 +66,7 @@ export function measureCell(font: TerminalFont, ratio: number): CellMetrics {
 }
 
 function css(color: Rgb): string {
-  return "#" + color.toString(16).padStart(6, "0");
+  return `#${color.toString(16).padStart(6, "0")}`;
 }
 
 const ATLAS_SIZE = 1024;
@@ -258,7 +254,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 
     const key = cluster
       ? `${screen.text(index)}\u0000${String(color)}\u0000${String(face)}`
-      : (glyph * 8 + face) * 0x1000000 + color;
+      : (glyph * 8 + face) * 0x1_00_00_00 + color;
 
     const pad = Math.ceil(m.width / 2);
     const found = atlas.find(key);
@@ -329,8 +325,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
 
     if (style === UnderlineStyle.DASHED) {
-      for (let dash = 0; dash < width; dash += m.width)
+      for (let dash = 0; dash < width; dash += m.width) {
         context.fillRect(x + dash + Math.floor(m.width / 4), y, Math.ceil(m.width / 2), t);
+      }
     }
 
     if (style === UnderlineStyle.CURLY) {
@@ -341,8 +338,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       context.beginPath();
       context.moveTo(x, middle);
 
-      for (let step = 1; step <= width; step += 1)
+      for (let step = 1; step <= width; step += 1) {
         context.lineTo(x + step, middle + amplitude * Math.sin((step / m.width) * 2 * Math.PI));
+      }
       context.stroke();
     }
   };
@@ -360,12 +358,14 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     if ((flags & CellFlag.INVISIBLE) !== 0) return;
     const width = m.width * Math.max(1, screen.width[index] ?? 1);
 
-    if (screen.underline[index] !== UnderlineStyle.NONE)
+    if (screen.underline[index] !== UnderlineStyle.NONE) {
       drawUnderline(screen, index, x, top, width, color, m);
+    }
     setFill(color);
 
-    if ((flags & CellFlag.STRIKETHROUGH) !== 0)
+    if ((flags & CellFlag.STRIKETHROUGH) !== 0) {
       context.fillRect(x, top + m.strike, width, m.thickness);
+    }
 
     if ((flags & CellFlag.OVERLINE) !== 0) context.fillRect(x, top, width, m.thickness);
   };
@@ -374,8 +374,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const fg = screen.fg[index] ?? NO_COLOR;
     const bg = screen.bg[index] ?? NO_COLOR;
 
-    if ((screen.flags[index] ?? 0) & CellFlag.INVERSE)
+    if ((screen.flags[index] ?? 0) & CellFlag.INVERSE) {
       return bg === NO_COLOR ? frame.background : bg;
+    }
 
     return fg === NO_COLOR ? frame.foreground : fg;
   };
@@ -495,8 +496,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const ratio = metrics?.ratio ?? 1;
       canvas.width = width;
       canvas.height = height;
-      canvas.style.width = String(width / ratio) + "px";
-      canvas.style.height = String(height / ratio) + "px";
+      canvas.style.width = `${String(width / ratio)}px`;
+      canvas.style.height = `${String(height / ratio)}px`;
       onscreen.fill = -1;
       onscreen.font = "";
       painted = [];

@@ -86,8 +86,9 @@ describe("chatOnlyProvider", () => {
       files.upload((async function* () {})()),
       files.batch().put({ path: "a.txt", contents: "x" }).apply(),
       env.exec("ls"),
-    ])
+    ]) {
       await expect(refused).rejects.toMatchObject({ code: "unavailable" });
+    }
 
     const scanned = [];
 

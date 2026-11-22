@@ -291,10 +291,10 @@ export function Row({
             ? styles.bare
             : [
                 styles.root,
-                size === "lg" && styles.lg,
                 interactive && styles.interactive,
                 revealActions && styles.revealActions,
                 nav ? [styles.nav, focus.ringInset] : styles.primaryFocus,
+                size === "lg" && styles.lg,
                 (interactive || nav) && selected && styles.selected,
               ],
           xstyle,

@@ -79,11 +79,11 @@ function press(node: unknown): void {
   if ("children" in node) press(node.children);
 }
 
-type Shown = {
+interface Shown {
   readonly isView: boolean;
   readonly text: string;
   readonly press: () => Promise<void>;
-};
+}
 
 async function showReact(view: unknown): Promise<Shown> {
   return {
@@ -153,8 +153,9 @@ describe.each([
       Object.keys(states).map((kind) => [kind, framework]),
     );
 
-    for (const kind of Object.keys(states))
+    for (const kind of Object.keys(states)) {
       expect((await show(draw(renderers, kind, recorder().act))).isView).toBe(true);
+    }
 
     expect(
       (await show(draw(renderers, "ask/question", recorder().act, { prompt: 1 }))).text,

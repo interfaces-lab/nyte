@@ -14,9 +14,8 @@ import {
   projectUsageReport,
   readNyteUsage,
   shiftDay,
-  type UsageCell,
-  type UsageRecord,
 } from "../src/usage/store.ts";
+import type { UsageCell, UsageRecord } from "../src/usage/store.ts";
 
 const folders: string[] = [];
 

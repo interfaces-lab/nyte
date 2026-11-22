@@ -20,7 +20,8 @@ import type { ChatDraft } from "../panes/session-view-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { openProjectDialog } from "../projects/project-dialog.tsx";
 import { shellActions, useStagePage } from "../tabs/shell-state.ts";
-import { DraftRow, SessionRow, type SessionPlace } from "./sidebar-rows.tsx";
+import { DraftRow, SessionRow } from "./sidebar-rows.tsx";
+import type { SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   chatMark,
@@ -29,10 +30,9 @@ import {
   folderView,
   hasSessionFilters,
   sessionPage,
-  type SessionViewGroup,
-  type ShelfHold,
 } from "./sidebar-view.ts";
-import { type SessionShelf, type SessionViewSettings } from "../preferences/session-view.ts";
+import type { SessionViewGroup, ShelfHold } from "./sidebar-view.ts";
+import type { SessionShelf, SessionViewSettings } from "../preferences/session-view.ts";
 
 export interface ListedSession {
   readonly place: SessionPlace;
@@ -129,8 +129,9 @@ function EmptyList({
   readonly filtered: boolean;
   readonly onClearFilters: () => void;
 }): ReactElement {
-  if (!filtered)
+  if (!filtered) {
     return <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>No chats yet</div>;
+  }
 
   return (
     <>

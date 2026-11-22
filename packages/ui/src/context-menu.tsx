@@ -3,17 +3,14 @@ import { props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
-import { surfaceTheme, type Tint } from "./surface-theme.ts";
+import { surfaceTheme } from "./surface-theme.ts";
+import type { Tint } from "./surface-theme.ts";
 import { Icon } from "./icon.tsx";
-import {
-  MenuItemBody,
-  menuItemStyle,
-  menuStyles,
-  type MenuItemBodyProps,
-  type MenuItemVariant,
-} from "./menu.tsx";
+import { MenuItemBody, menuItemStyle, menuStyles } from "./menu.tsx";
+import type { MenuItemBodyProps, MenuItemVariant } from "./menu.tsx";
 
 export const ContextMenu = ContextMenuPrimitive.Root;
 

@@ -42,26 +42,29 @@ export const CanvasPreviewFindingType = Type.Intersect([
 
 export type CanvasPreviewFinding = Static<typeof CanvasPreviewFindingType>;
 
-export type CanvasPreviewRequest = {
+export interface CanvasPreviewRequest {
   readonly module: CanvasModule;
   readonly theme: "light" | "dark";
-};
+}
 
-export type CanvasPreviewError = {
+export interface CanvasPreviewError {
   readonly phase: "load" | "render";
   readonly message: string;
   readonly stack: string | null;
-};
+}
 
-export type CanvasPreviewLog = { readonly level: string; readonly text: string };
+export interface CanvasPreviewLog {
+  readonly level: string;
+  readonly text: string;
+}
 
-export type CanvasPreviewReport = {
+export interface CanvasPreviewReport {
   readonly png: Uint8Array;
   readonly heights: { readonly chat: number; readonly phone: number };
   readonly errors: readonly CanvasPreviewError[];
   readonly console: readonly CanvasPreviewLog[];
   readonly findings: readonly CanvasPreviewFinding[];
-};
+}
 
 export type CanvasPreviewOutcome =
   | { readonly kind: "rendered"; readonly report: CanvasPreviewReport }
@@ -72,11 +75,11 @@ export type CanvasPreviewer = (
   signal: AbortSignal,
 ) => Promise<CanvasPreviewOutcome>;
 
-export type CanvasPreviewPage = {
+export interface CanvasPreviewPage {
   evaluate(expression: string): Promise<unknown>;
   resize(width: number, height: number): Promise<void>;
   capture(): Promise<Uint8Array>;
-};
+}
 
 const settled = Type.Object({
   height: Type.Number(),
@@ -100,19 +103,19 @@ function hostContext(theme: "light" | "dark"): CanvasHostContext {
   };
 }
 
-type HarnessPage = {
+interface HarnessPage {
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
   postMessage(message: unknown, targetOrigin: string): void;
-};
+}
 
-type HarnessSetup = {
+interface HarnessSetup {
   readonly initialize: ReturnType<typeof initializeResult>;
   readonly render: ReturnType<typeof renderNotification>;
   readonly quietMs: number;
   readonly timeoutMs: number;
   readonly consoleKept: number;
   readonly layout: string;
-};
+}
 
 function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
   if ("__nytePreview" in globalThis) return true;
@@ -140,8 +143,9 @@ function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
   for (const level of ["log", "info", "warn", "error", "debug"] as const) {
     const original = console[level].bind(console);
     console[level] = (...values: unknown[]) => {
-      if (state.console.length < setup.consoleKept)
+      if (state.console.length < setup.consoleKept) {
         state.console.push({ level, text: values.map(text).join(" ").slice(0, 2000) });
+      }
       original(...values);
     };
   }
@@ -164,8 +168,9 @@ function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
       state.changed = performance.now();
     }
 
-    if (data.method === "notifications/message" && params !== null && "data" in params)
+    if (data.method === "notifications/message" && params !== null && "data" in params) {
       state.errors.push(params.data);
+    }
   });
   Object.defineProperty(globalThis, "__nytePreview", {
     value: {
@@ -179,9 +184,9 @@ function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
             if (
               (quiet && (state.height > 0 || state.errors.length > 0)) ||
               now - since > setup.timeoutMs
-            )
+            ) {
               resolve({ height: state.height, errors: state.errors, console: state.console });
-            else setTimeout(check, 50);
+            } else setTimeout(check, 50);
           };
           check();
         }),
@@ -194,8 +199,9 @@ function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
     layout !== null &&
     "arm" in layout &&
     typeof layout.arm === "function"
-  )
+  ) {
     layout.arm();
+  }
   this.postMessage(setup.initialize, "*");
 
   return true;
@@ -221,8 +227,9 @@ function harness(request: CanvasPreviewRequest): string {
 async function settle(page: CanvasPreviewPage) {
   const answer = await page.evaluate("globalThis.__nytePreview.settle()");
 
-  if (!Value.Check(settled, answer))
+  if (!Value.Check(settled, answer)) {
     throw new Error("The canvas preview harness answered something unreadable.");
+  }
 
   return answer;
 }
@@ -234,8 +241,9 @@ async function checkLayout(page: CanvasPreviewPage): Promise<readonly CanvasLayo
     `globalThis[${JSON.stringify(CANVAS_LAYOUT_GLOBAL)}]?.check() ?? []`,
   );
 
-  if (!Value.Check(checked, answer))
+  if (!Value.Check(checked, answer)) {
     throw new Error("The canvas shell answered its layout check with something unreadable.");
+  }
 
   return answer;
 }
@@ -245,7 +253,7 @@ function mergeFindings(
 ): CanvasPreviewFinding[] {
   const merged = new Map<string, CanvasPreviewFinding>();
 
-  for (const check of checks)
+  for (const check of checks) {
     for (const finding of check.findings) {
       const key = `${finding.rule} ${finding.message.replaceAll(/-?\d+(?:\.\d+)?(?= px| ×)/gu, "#")}`;
       const seen = merged.get(key);
@@ -259,6 +267,7 @@ function mergeFindings(
         widths: [...new Set([...(seen?.widths ?? []), check.width])],
       });
     }
+  }
 
   return [...merged.values()].slice(0, FINDINGS_KEPT);
 }
@@ -270,8 +279,9 @@ export async function runCanvasPreview(
   const { chat, phone } = CANVAS_PREVIEW_WIDTHS;
   await page.resize(chat, 900);
 
-  if ((await page.evaluate(harness(request))) !== true)
+  if ((await page.evaluate(harness(request))) !== true) {
     throw new Error("The canvas shell did not start in the preview.");
+  }
 
   const wide = await settle(page);
   await page.resize(chat, clampCanvasHeight(wide.height > 0 ? wide.height : 240));

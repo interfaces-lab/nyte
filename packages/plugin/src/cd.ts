@@ -7,7 +7,7 @@ import type { Command, Plugin } from "@nyte-ai/plugin/core";
 const SHELL_TIMEOUT_MS = 10_000;
 
 // eslint-disable-next-line no-control-regex -- rejecting control characters is the point
-const CONTROL_CHARACTERS = /[\x00-\x1f\x7f]/;
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
 
 const SHELL_SAFE = /^[\w./+-]+$/u;
 
@@ -24,8 +24,9 @@ const cdCommand: Command<"core"> = {
   async run(text, { api, signal }) {
     if (CONTROL_CHARACTERS.test(text)) throw new Error("Put /cd and its path on one line.");
 
-    if (process.platform === "win32")
+    if (process.platform === "win32") {
       throw new Error("/cd runs your shell's cd, and Windows hosts don't have one yet.");
+    }
     const path = await shellCd(api.env, text, signal);
 
     if (path === api.env.cwd) return `Already in ${path}`;
@@ -37,8 +38,9 @@ const cdCommand: Command<"core"> = {
 
     if (added.kind === "stale") throw new Error(`${path} changed while it was opened. Try again.`);
 
-    if (added.kind === "unavailable")
+    if (added.kind === "unavailable") {
       throw new Error(`Can't open ${path}. Check that Nyte has access to it.`);
+    }
 
     return { workspace: added.workspace, output: `Working directory: ${path}` };
   },
@@ -136,7 +138,7 @@ async function directorySuggestions(options: {
 }
 
 function shellWord(name: string): string {
-  return SHELL_SAFE.test(name) ? name : `'${name.replaceAll("'", "'\\''")}'`;
+  return SHELL_SAFE.test(name) ? name : `'${name.replaceAll("'", String.raw`'\''`)}'`;
 }
 
 export default {

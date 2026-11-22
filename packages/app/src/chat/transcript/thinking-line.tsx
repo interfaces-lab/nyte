@@ -42,13 +42,14 @@ export function ThinkingLine({
     </div>
   );
 
-  if (thought.kind === "unfolded")
+  if (thought.kind === "unfolded") {
     return (
       <div aria-busy={streaming || undefined} {...props(stepGroupStyles.root)}>
         <div {...props(stepGroupStyles.status)}>{label}</div>
         {prose}
       </div>
     );
+  }
 
   return (
     <Collapsible.Root

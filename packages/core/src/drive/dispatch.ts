@@ -25,8 +25,9 @@ export function dispatchHead(
 
   void (async () => {
     for (let tries = 0; tries <= DISPATCH_RETRIES; tries += 1) {
-      if (tries > 0)
+      if (tries > 0) {
         await new Promise((resolve) => setTimeout(resolve, DISPATCH_BACKOFF_MS * 2 ** tries));
+      }
       dev("execution", "dispatch", { session, head, tries });
 
       const dispatched = await Promise.resolve()

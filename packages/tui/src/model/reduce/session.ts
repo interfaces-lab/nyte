@@ -35,14 +35,17 @@ export const sessionHandlers = {
     const followed = state.facts.chat;
     const { pending } = state.local;
 
-    if (pending.some((op) => op.kind === "switch"))
+    if (pending.some((op) => op.kind === "switch")) {
       return refuse(state, "A chat switch is already in progress", now);
+    }
 
-    if (followed !== null && msg.session === followed.id)
+    if (followed !== null && msg.session === followed.id) {
       return refuse(state, `Already in ${shortId(followed.id)}`, now, "info");
+    }
 
-    if (followed?.kind === "blank" && msg.session === "new")
+    if (followed?.kind === "blank" && msg.session === "new") {
       return refuse(state, "Already in a new chat", now, "info");
+    }
     const draft = snapshot(state.local.draft);
 
     const drafts =
@@ -149,8 +152,9 @@ export const sessionHandlers = {
     ],
   }),
   "mcp-login": (state, msg, now) => {
-    if (state.local.pending.some((op) => op.kind === "auth"))
+    if (state.local.pending.some((op) => op.kind === "auth")) {
       return refuse(state, "An authentication command is already running.", now);
+    }
     const minted = mint(state, "dialog");
     const { id } = minted;
     const provider = `mcp:${msg.server}`;
@@ -207,7 +211,7 @@ export const sessionHandlers = {
 
     if (supported.length < 2) return stay(state);
 
-    const current = supported.findIndex((level) => level === followed.selection.effort);
+    const current = supported.indexOf(followed.selection.effort);
     const next = supported[(current + 1) % supported.length];
 
     return next === undefined ? stay(state) : configure(state, { effort: next }, now);
@@ -292,7 +296,7 @@ export const sessionHandlers = {
   "trust-loaded": (current, msg, now, reduce) => {
     const state = msg.ask === "always" ? current : trustSettled(current, msg.workspace);
 
-    if (msg.home)
+    if (msg.home) {
       return msg.ask === "always"
         ? stay(
             withNotice(
@@ -303,6 +307,7 @@ export const sessionHandlers = {
             ),
           )
         : stay(state);
+    }
 
     const folder = state.facts.chat === null ? null : chatFolder(state.facts.chat);
 
@@ -312,8 +317,9 @@ export const sessionHandlers = {
         msg.sources.length === 0 ||
         folder?.kind !== "folder" ||
         folder.id !== msg.workspace)
-    )
+    ) {
       return stay(state);
+    }
     const { workspace, path, decision, sources } = msg;
 
     return openDialog(
@@ -337,7 +343,7 @@ export const sessionHandlers = {
 
 function trustSettled(state: State, workspace: WorkspaceId): State {
   const { settlingTrust } = state.local;
-  const index = settlingTrust.findIndex((pending) => pending === workspace);
+  const index = settlingTrust.indexOf(workspace);
 
   return index < 0 ? state : withLocal(state, { settlingTrust: settlingTrust.toSpliced(index, 1) });
 }
@@ -358,11 +364,12 @@ function configure(state: State, selection: Partial<Selection>, now: number): St
 }
 
 function released(state: State, effect: string): State {
-  if (effect === "resolve-paste" || effect === "read-clipboard")
+  if (effect === "resolve-paste" || effect === "read-clipboard") {
     return withLocal(state, {
       pasting: Math.max(0, state.local.pasting - 1),
       sendAfterPaste: null,
     });
+  }
   const kind = HELD_BY_EFFECT.get(effect);
 
   return kind === undefined ? state : finished(state, kind);

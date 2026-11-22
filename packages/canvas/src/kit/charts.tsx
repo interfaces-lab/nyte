@@ -83,12 +83,16 @@ const styles = create({
 
 type Format<Value> = (value: Value) => string;
 
-type Keyed = { readonly id: string; readonly tint: Tint; readonly value?: string };
+interface Keyed {
+  readonly id: string;
+  readonly tint: Tint;
+  readonly value?: string;
+}
 
-type ReadoutContextValue = {
+interface ReadoutContextValue {
   readonly format: Format<number>;
   readonly layers: readonly { readonly key: string; readonly label: string; readonly tint: Tint }[];
-};
+}
 
 const ReadoutContext = createContext<ReadoutContextValue>({
   format: (value) => value.toLocaleString(),
@@ -386,11 +390,11 @@ function PieTip({ datum }: PieTooltipProps<PieDatum>): ReactElement {
   );
 }
 
-type LineSeriesInput = {
+interface LineSeriesInput {
   readonly id: string;
   readonly data: readonly { readonly x: number | string; readonly y: number }[];
   readonly tint?: Tint;
-};
+}
 
 export function LineChart({
   series,
@@ -664,12 +668,12 @@ export function BarChart({
   );
 }
 
-type PieDatum = {
+interface PieDatum {
   readonly id: string;
   readonly value: number;
   readonly label?: string;
   readonly tint?: Tint;
-};
+}
 
 export function PieChart({
   data,

@@ -124,7 +124,7 @@ describe("desktop updates", () => {
     expect(harness.events).toEqual(["cleanup", "install"]);
   });
 
-  test("running work turns the restart into a warning that defaults to Later", async () => {
+  test("running work is named as surviving the restart", async () => {
     const harness = setup();
     await harness.controller.check();
     harness.setActivity({ kind: "busy", taskCount: 2, terminalCommandCount: 1 });
@@ -134,9 +134,9 @@ describe("desktop updates", () => {
     expect(harness.checks()).toBe(1);
     expect(harness.dialogs).toMatchObject([
       {
-        type: "warning",
-        detail: "Restarting stops 2 running tasks and 1 terminal command.",
-        defaultId: 1,
+        type: "info",
+        detail: "Nyte restarts without stopping 2 running tasks and 1 terminal command.",
+        defaultId: 0,
       },
     ]);
     expect(harness.events).toEqual([]);

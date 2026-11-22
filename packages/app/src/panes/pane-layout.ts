@@ -29,7 +29,7 @@ export function sameSelection(left: PaneSelection, right: PaneSelection): boolea
   return left.sessionId === right.sessionId;
 }
 
-export function chatContent(selection: PaneSelection): PaneContent<"chat"> {
+export function chatContent(selection: PaneSelection): PaneContent {
   return { kind: "chat", fields: { selection } };
 }
 

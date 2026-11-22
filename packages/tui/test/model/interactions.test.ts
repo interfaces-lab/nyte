@@ -566,15 +566,15 @@ const DIALOG = [false, true] as const;
 const CORE: readonly CoreCommand[] = [ENTER, CTRL_ENTER, ESC, CTRL_C];
 
 function* matrix(): Generator<TableSpec> {
-  for (const run of RUNS)
-    for (const question of QUESTIONS)
-      for (const draft of DRAFTS)
-        for (const editing of EDITING)
-          for (const shell of SHELL)
-            for (const completion of COMPLETION)
-              for (const blocked of BLOCKED)
-                for (const followUp of FOLLOW_UP)
-                  for (const dialog of DIALOG)
+  for (const run of RUNS) {
+    for (const question of QUESTIONS) {
+      for (const draft of DRAFTS) {
+        for (const editing of EDITING) {
+          for (const shell of SHELL) {
+            for (const completion of COMPLETION) {
+              for (const blocked of BLOCKED) {
+                for (const followUp of FOLLOW_UP) {
+                  for (const dialog of DIALOG) {
                     yield {
                       run,
                       question,
@@ -586,6 +586,15 @@ function* matrix(): Generator<TableSpec> {
                       followUp,
                       dialog,
                     };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 function sends(interactions: Interactions, command: ChatCommand): boolean {
@@ -633,8 +642,9 @@ describe("invariants over every situation", () => {
         if (!interaction.hidden && interaction.label === "") fail(`${command} shows an empty hint`);
       }
 
-      if (spec.blocked !== undefined && sends(interactions, ENTER))
+      if (spec.blocked !== undefined && sends(interactions, ENTER)) {
         fail("Enter sends while blocked");
+      }
 
       if (
         spec.shell &&
@@ -642,22 +652,27 @@ describe("invariants over every situation", () => {
         !input.runsCommand &&
         input.draft.kind !== "empty" &&
         input.draft.kind !== "blank"
-      )
+      ) {
         fail("Enter sends a prompt while a shell runs");
+      }
 
       if (
         spec.blocked === undefined &&
         input.completion?.ownsEnter === true &&
         interactions[ENTER].intent?.kind !== "completion"
-      )
+      ) {
         fail("completion does not own Enter");
+      }
 
-      if (input.draft.kind === "empty" || input.draft.kind === "blank")
-        for (const command of CORE)
+      if (input.draft.kind === "empty" || input.draft.kind === "blank") {
+        for (const command of CORE) {
           if (interactions[command].intent?.kind === "send") fail(`${command} sends a blank draft`);
+        }
+      }
 
-      if (input.draft.kind !== "empty" && interactions[CTRL_C].intent?.kind === "quit")
+      if (input.draft.kind !== "empty" && interactions[CTRL_C].intent?.kind === "quit") {
         fail("Ctrl+C quits with text");
+      }
     }
 
     expect(broken.slice(0, 10)).toEqual([]);

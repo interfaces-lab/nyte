@@ -59,12 +59,13 @@ function stamp(
   props: Props,
   key: Key | undefined,
 ): ReactElement {
-  if (typeof type === "string")
+  if (typeof type === "string") {
     return make(
       type,
       chain.length === 0 ? props : { ...props, [DESIGN_ATTRIBUTE.via]: remember(chain) },
       key,
     );
+  }
   const src = props[DESIGN_ATTRIBUTE.source];
   const own = typeof src === "string" ? without(props, DESIGN_ATTRIBUTE.source) : props;
 

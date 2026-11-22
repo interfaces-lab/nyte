@@ -31,7 +31,7 @@ const model = (id: string, name: string): ModelInfo => ({
   variants: [],
   contextWindow: 128_000,
   compactAt: 100_000,
-  maxOutput: 8_000,
+  maxOutput: 8000,
   input: ["text"],
   capabilities: { steer: true },
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

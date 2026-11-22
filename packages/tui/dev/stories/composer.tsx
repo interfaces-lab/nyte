@@ -117,7 +117,7 @@ function withQueue(v: ViewBuilder, queue: Dimensions["queue"], now: number): Vie
     case "sending":
       return v.unsent("Run the tests after", { delivery: "queue" });
     case "retrying":
-      return v.unsent("Run the tests after", { retrying: { at: now + 5_000, reason: "offline" } });
+      return v.unsent("Run the tests after", { retrying: { at: now + 5000, reason: "offline" } });
     case "no host":
       return v.pending("Also update the changelog", { ...later, covered: false });
     case "several":

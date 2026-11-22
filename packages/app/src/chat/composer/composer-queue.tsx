@@ -133,8 +133,9 @@ export function ComposerQueue({
         editingId === item.id ||
         action?.kind === "sending" ||
         action?.kind === "cancelling"
-      )
+      ) {
         return;
+      }
       moving.current = item.id;
       onMove(item, after);
 
@@ -144,7 +145,7 @@ export function ComposerQueue({
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
       const rows = [...(listRef.current?.querySelectorAll("[data-queue-row]") ?? [])];
-      const index = rows.findIndex((row) => row === event.currentTarget);
+      const index = rows.indexOf(event.currentTarget);
       const step = event.key === "ArrowUp" ? -1 : 1;
       const next = rows[Math.max(0, Math.min(rows.length - 1, index + step))];
 
@@ -163,8 +164,9 @@ export function ComposerQueue({
     if (event.repeat) return;
     const action = rowActions.get(item.id);
 
-    if (editingId === item.id || action?.kind === "sending" || action?.kind === "cancelling")
+    if (editingId === item.id || action?.kind === "sending" || action?.kind === "cancelling") {
       return;
+    }
 
     const remove = mac
       ? event.metaKey && event.key === "Backspace"

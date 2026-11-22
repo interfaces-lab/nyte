@@ -61,8 +61,9 @@ const keyCommand: Command<"core"> = {
     const [named = "", key = ""] = text.split(/\s+(.*)/su);
     const chosen = PROVIDERS.find((known) => known.id === named.toLowerCase());
 
-    if (chosen === undefined)
+    if (chosen === undefined) {
       throw new Error(`Name a provider first: ${PROVIDERS.map((known) => known.id).join(", ")}.`);
+    }
 
     const outcome = await api.host.settings.apply(
       searchKeySetting(chosen.id),

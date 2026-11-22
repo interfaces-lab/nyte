@@ -12,10 +12,10 @@ import { sandboxProvider } from "@nyte-ai/host/providers";
 import manifest from "../../package.json" with { type: "json" };
 import { answerRepair } from "./repair.ts";
 
-type Served = {
+interface Served {
   readonly host: ServedHost;
   readonly listener: Listener;
-};
+}
 
 type Dispatch = Extract<
   NonNullable<OpenOptions["execution"]>,
@@ -43,8 +43,9 @@ export function vercelHost(dispatch: Dispatch): Promise<Served> {
 async function build(dispatch: Dispatch): Promise<Served> {
   const connectionString = process.env.DATABASE_URL;
 
-  if (connectionString === undefined || connectionString === "")
+  if (connectionString === undefined || connectionString === "") {
     throw new SdkError("unavailable", "Set DATABASE_URL to the Postgres database the host keeps.");
+  }
   const identityKey = process.env.NYTE_IDENTITY_KEY;
   const store = postgresStore({ connectionString });
   const secrets = secretsFrom(process.env.NYTE_SECRET_KEY);
@@ -90,12 +91,13 @@ async function build(dispatch: Dispatch): Promise<Served> {
 }
 
 function secretsFrom(key: string | undefined): NonNullable<OpenOptions["secrets"]> {
-  if (key === undefined || key === "")
+  if (key === undefined || key === "") {
     return {
       key: async () => {
         throw new SdkError("unavailable", "Set NYTE_SECRET_KEY to a base64 32-byte key.");
       },
     };
+  }
   const bytes = new Uint8Array(Buffer.from(key, "base64"));
 
   return { key: async () => bytes };

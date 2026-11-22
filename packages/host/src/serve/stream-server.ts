@@ -13,14 +13,14 @@ const DEFLATE_MIN_BYTES = 1024;
 const CANCELLED_LIMIT = 256;
 
 export function createStreamChannels() {
-  type Channel = {
+  interface Channel {
     readonly connection: Connection;
     readonly signal: AbortSignal;
     readonly deflate: boolean;
     readonly streams: Map<string, AbortController>;
     readonly cancelled: Set<string>;
     readonly push: (frame: StreamFrame, signal: AbortSignal) => Promise<void>;
-  };
+  }
 
   const channels = new Map<string, Channel>();
 
@@ -29,8 +29,9 @@ export function createStreamChannels() {
 
     if (channel === undefined) throw new SdkError("unavailable", "The stream channel is closed.");
 
-    if (channel.connection !== connection)
+    if (channel.connection !== connection) {
       throw new SdkError("denied", "The stream channel belongs to another connection.");
+    }
 
     return channel;
   };
@@ -40,7 +41,6 @@ export function createStreamChannels() {
       const id = crypto.randomUUID();
       const controller = new AbortController();
       const streams = new Map<string, AbortController>();
-      let timer: ReturnType<typeof setInterval> | undefined;
 
       const finish = (): void => {
         if (controller.signal.aborted) return;
@@ -79,7 +79,7 @@ export function createStreamChannels() {
           buffer.write(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`), signal),
       });
       buffer.push(encoder.encode(": connected\n\n"));
-      timer = setInterval(() => {
+      const timer = setInterval(() => {
         buffer.push(encoder.encode(": ping\n\n"));
       }, 15_000);
 
@@ -105,8 +105,9 @@ export function createStreamChannels() {
 
       if (channel.cancelled.delete(streamId)) return new Response(null, { status: 202 });
 
-      if (channel.streams.has(streamId))
+      if (channel.streams.has(streamId)) {
         throw new SdkError("invalid", "The stream identifier is already in use.");
+      }
       const controller = new AbortController();
       channel.streams.set(streamId, controller);
       const abortSetup = (): void => controller.abort(request.reason);
@@ -130,7 +131,7 @@ export function createStreamChannels() {
 
           if (signal.aborted) return;
 
-          if (reader !== undefined)
+          if (reader !== undefined) {
             for (;;) {
               const next = await reader.read();
 
@@ -151,10 +152,11 @@ export function createStreamChannels() {
                 );
               }
             }
+          }
 
           if (!signal.aborted) await channel.push({ kind: "end", stream: streamId }, signal);
         } catch (error) {
-          if (!signal.aborted)
+          if (!signal.aborted) {
             await channel.push(
               {
                 kind: "error",
@@ -163,6 +165,7 @@ export function createStreamChannels() {
               },
               signal,
             );
+          }
         } finally {
           request.removeEventListener("abort", abortSetup);
           signal.removeEventListener("abort", cancel);
@@ -187,8 +190,9 @@ export function createStreamChannels() {
       channel.cancelled.add(streamId);
       const oldest = channel.cancelled.values().next();
 
-      if (channel.cancelled.size > CANCELLED_LIMIT && oldest.done !== true)
+      if (channel.cancelled.size > CANCELLED_LIMIT && oldest.done !== true) {
         channel.cancelled.delete(oldest.value);
+      }
     },
   };
 }

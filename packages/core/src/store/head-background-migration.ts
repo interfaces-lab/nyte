@@ -7,8 +7,9 @@ export const headBackground: RewriteStep = {
   name: "2026-10-29-head-background",
   rewriteLog: (events) =>
     events.map((event) => {
-      if (!isJsonObject(event) || event.kind !== "session" || !isJsonObject(event.info))
+      if (!isJsonObject(event) || event.kind !== "session" || !isJsonObject(event.info)) {
         return null;
+      }
       const heads = Array.isArray(event.info.heads) ? event.info.heads : [];
 
       const counted = heads.map((head) =>

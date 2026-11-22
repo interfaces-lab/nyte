@@ -11,7 +11,8 @@ import {
   SORTS,
   STATUSES,
 } from "../preferences/session-view.ts";
-import { folderView, sessionPage, sessionsForView, type SessionViewGroup } from "./sidebar-view.ts";
+import { folderView, sessionPage, sessionsForView } from "./sidebar-view.ts";
+import type { SessionViewGroup } from "./sidebar-view.ts";
 
 const NONE = new Map<never, never>();
 
@@ -25,8 +26,8 @@ function names(groups: readonly SessionViewGroup[]): readonly (readonly [string,
 test("every view the Customize menu can choose is one the sidebar can store", () => {
   expect(Value.Check(SessionViewSchema, DEFAULT_SESSION_VIEW)).toBe(true);
 
-  for (const grouping of GROUPINGS)
-    for (const sort of SORTS)
+  for (const grouping of GROUPINGS) {
+    for (const sort of SORTS) {
       expect(
         Value.Check(SessionViewSchema, {
           grouping,
@@ -37,6 +38,8 @@ test("every view the Customize menu can choose is one the sidebar can store", ()
           archived: true,
         }),
       ).toBe(true);
+    }
+  }
 
   expect(Value.Check(SessionViewSchema, { ...DEFAULT_SESSION_VIEW, grouping: "folder" })).toBe(
     false,

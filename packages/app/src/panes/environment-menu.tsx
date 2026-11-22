@@ -2,7 +2,8 @@ import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { clientActions } from "../contract/client-actions.ts";
-import { ContextSelector, type ContextSize } from "./context-selector.tsx";
+import { ContextSelector } from "./context-selector.tsx";
+import type { ContextSize } from "./context-selector.tsx";
 
 export function EnvironmentMenu({
   active,

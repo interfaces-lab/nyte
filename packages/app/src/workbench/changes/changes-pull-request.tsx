@@ -61,8 +61,9 @@ function pullRequestState(pullRequest: GitHubPullRequest): string {
 export function checksSummary(checks: readonly GitHubCheck[]): string {
   if (checks.length === 0) return "No checks";
 
-  if (checks.every((check) => check.state === "passed"))
+  if (checks.every((check) => check.state === "passed")) {
     return checks.length === 1 ? "1 check passed" : `All ${String(checks.length)} checks passed`;
+  }
 
   return SUMMARY_ORDER.flatMap((state) => {
     const count = checks.filter((check) => check.state === state).length;

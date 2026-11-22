@@ -61,7 +61,7 @@ it("restores a settled fold from its checkpoint and replays only the log past it
   await receipt.settled();
 
   const checkpoint = await until(async () => {
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(1000);
 
     return (await connection.checkpoints?.read(session.id)) ?? undefined;
   });
@@ -78,7 +78,7 @@ it("restores a settled fold from its checkpoint and replays only the log past it
     plugins: [echoing],
   });
 
-  const view = await restored.session(session.id).head(main).view({ tail: 1_000 });
+  const view = await restored.session(session.id).head(main).view({ tail: 1000 });
 
   await using cold = await open(fakeModels(), {
     store: reading({ ...connection, checkpoints: undefined }, []),
@@ -90,7 +90,7 @@ it("restores a settled fold from its checkpoint and replays only the log past it
   expect(
     view.messages.map((message) => (message.kind === "user" ? message.content : message.partKind)),
   ).toEqual(["Echo a lot.", "thinking", "tool", "text", "Echo again.", "tool", "text"]);
-  expect(view).toEqual(await cold.session(session.id).head(main).view({ tail: 1_000 }));
+  expect(view).toEqual(await cold.session(session.id).head(main).view({ tail: 1000 }));
 });
 
 it("folds the log from its start past a checkpoint it cannot read", async () => {
@@ -141,7 +141,7 @@ it("counts no background work on a head restored from a checkpoint taken while a
 
   expect((await session.info()).heads[0]?.background).toEqual({ working: 1, waiting: 0 });
   await until(async () => {
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(1000);
 
     return (await connection.checkpoints?.read(session.id)) ?? undefined;
   });
@@ -189,6 +189,6 @@ it("writes a settled run's checkpoint when its host closes within the delay, and
   const closed = writes;
 
   expect((await checkpoints.read(session.id))?.seq).toBeGreaterThanOrEqual(settled.seq);
-  await vi.advanceTimersByTimeAsync(2_000);
+  await vi.advanceTimersByTimeAsync(2000);
   expect(writes).toBe(closed);
 });

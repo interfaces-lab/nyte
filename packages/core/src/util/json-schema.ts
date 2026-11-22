@@ -16,8 +16,9 @@ export function convertJsonSchema(
   if (known !== undefined) return known;
   const result = schema["~standard"].jsonSchema[direction]({ target: "draft-2020-12" });
 
-  if (!isJson(result) || !isJsonObject(result))
+  if (!isJson(result) || !isJsonObject(result)) {
     throw new SdkError("invalid", `The schema's ${direction} JSON Schema is not a JSON object.`);
+  }
 
   schemas.set(
     schema,

@@ -60,12 +60,12 @@ export const ToolCallSchema: Schema<ToolCall> = standard(withJson(ToolCallType))
 
 export const SubmitDraftSchema: Schema<SubmitDraft> = standard(SubmitDraftType);
 
-export type Transcript = {
+export interface Transcript {
   readonly messages: readonly ModelMessage[];
   readonly tools: readonly ToolInfo[];
-};
+}
 
-export type CompactionPlan = {
+export interface CompactionPlan {
   readonly model: ModelRef;
   readonly reason: "manual" | "threshold" | "overflow";
   readonly instructions: string | null;
@@ -83,7 +83,7 @@ export type CompactionPlan = {
         readonly usage: Usage | null;
       }
     | null;
-};
+}
 
 export type Decision<Value> =
   | { readonly action: "continue" }

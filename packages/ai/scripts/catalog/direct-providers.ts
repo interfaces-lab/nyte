@@ -7,15 +7,8 @@ import type {
 } from "../../src/types.ts";
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import { KIMI_CODING_IMPLIED_COSTS, KIMI_K3_COST, roundCost } from "./costs.ts";
-import {
-  flatCost,
-  modelInput,
-  modelsDevCost,
-  modelsDevModel,
-  type ModelsDevCatalog,
-  type ModelsDevMetadata,
-  type ModelsDevModel,
-} from "./models-dev.ts";
+import { flatCost, modelInput, modelsDevCost, modelsDevModel } from "./models-dev.ts";
+import type { ModelsDevCatalog, ModelsDevMetadata, ModelsDevModel } from "./models-dev.ts";
 
 const VERTEX_BASE_URL = "https://{location}-aiplatform.googleapis.com";
 
@@ -112,7 +105,7 @@ const CLAUDE_FABLE_52: ModelsDevModel = {
   reasoning: true,
   reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }],
   modalities: { input: ["text", "image", "pdf"], output: ["text"] },
-  limit: { context: 1000000, output: 128000 },
+  limit: { context: 1_000_000, output: 128_000 },
   cost: { input: 8, output: 40, cache_read: 0.2, cache_write: 10 },
 };
 
@@ -157,7 +150,7 @@ export function anthropicModels(data: ModelsDevCatalog, metadata: ModelsDevMetad
     reasoning: true,
     reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }],
     modalities: { input: ["text", "image", "pdf"], output: ["text"] },
-    limit: { context: 1000000, output: 128000 },
+    limit: { context: 1_000_000, output: 128_000 },
     cost: {
       input: 0.1,
       output: 0.5,
@@ -169,7 +162,7 @@ export function anthropicModels(data: ModelsDevCatalog, metadata: ModelsDevMetad
           output: 2.5,
           cache_read: 0.05,
           cache_write: 0.625,
-          tier: { type: "context", size: 100000 },
+          tier: { type: "context", size: 100_000 },
         },
       ],
     },

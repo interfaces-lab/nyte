@@ -85,8 +85,9 @@ export function argumentToken(
     argument === undefined ||
     document.selectionStart !== document.selectionEnd ||
     !commands.some((candidate) => candidate.name === argument.command && candidate.completes)
-  )
+  ) {
     return undefined;
+  }
 
   return { kind: "argument", ...argument, end: document.text.length };
 }
@@ -115,8 +116,9 @@ export function liveToken(
     document.selectionStart !== document.selectionEnd ||
     token.kind !== (menu.kind === "mention" ? "@" : "/") ||
     (token.kind === "@" && token.query.startsWith("file://"))
-  )
+  ) {
     return undefined;
+  }
 
   return { kind: menu.kind, start: menu.start, end: from + token.end, query: token.query };
 }
@@ -191,8 +193,9 @@ export function suggestionsFor(
   rawQuery: string,
   sources: SuggestionSources,
 ): readonly ComposerSuggestion[] {
-  if (kind === "mention")
+  if (kind === "mention") {
     return sources.mentions.rank(rawQuery, sources.hasConversationContext, sources.recency);
+  }
 
   return rankSuggestions(
     [
@@ -361,11 +364,13 @@ export function nextMenu(menu: MenuState, event: MenuEvent): MenuState {
 
       if (token === undefined) return unchanged(menu, CLOSED_MENU);
 
-      if (menu.dismissed?.kind === token.kind && menu.dismissed.start === token.start)
+      if (menu.dismissed?.kind === token.kind && menu.dismissed.start === token.start) {
         return unchanged(menu, { ...CLOSED_MENU, dismissed: menu.dismissed });
+      }
 
-      if (menu.token?.kind === token.kind && menu.token.start === token.start)
+      if (menu.token?.kind === token.kind && menu.token.start === token.start) {
         return { ...menu, token };
+      }
 
       return unchanged(menu, { ...CLOSED_MENU, token });
     }
@@ -421,10 +426,11 @@ export function menuKey(
 
   if (down || up) return { kind: "move", to: (position.index + (down ? 1 : -1) + count) % count };
 
-  if (key.key === "Home" || key.key === "End")
+  if (key.key === "Home" || key.key === "End") {
     return { kind: "move", to: key.key === "Home" ? 0 : count - 1 };
+  }
 
-  if (key.key === "PageDown" || key.key === "PageUp")
+  if (key.key === "PageDown" || key.key === "PageUp") {
     return {
       kind: "move",
       to: Math.max(
@@ -432,10 +438,12 @@ export function menuKey(
         Math.min(count - 1, position.index + (key.key === "PageDown" ? PAGE_ROWS : -PAGE_ROWS)),
       ),
     };
+  }
   const enter = composerEnterAction(key);
 
-  if (enter === "submit" || (key.key === "Tab" && !key.shiftKey))
+  if (enter === "submit" || (key.key === "Tab" && !key.shiftKey)) {
     return { kind: key.repeat ? "hold" : "pick" };
+  }
 
   return enter === "submit-alternate" ? { kind: "hold" } : { kind: "pass" };
 }

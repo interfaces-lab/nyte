@@ -91,6 +91,7 @@ export const queryClient = new QueryClient({
   },
 });
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- T names the cached data type, which QueryCache.get also takes only as its return type
 export function queryDataReader<T>(queryKey: QueryKey): () => T | undefined {
   const queryHash = hashKey(queryKey);
 

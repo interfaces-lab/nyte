@@ -43,8 +43,9 @@ export function parseFileStructure(input: {
         parent.startIndex <= declaration.startIndex &&
         parent.endIndex >= declaration.endIndex &&
         (parent.startIndex < declaration.startIndex || parent.endIndex > declaration.endIndex)
-      )
+      ) {
         break;
+      }
       parents.pop();
     }
 
@@ -119,7 +120,7 @@ function readFold(match: QueryMatch): CodeFoldRegion[] {
     );
   }
 
-  if (selected.name === "fold.section" && heading !== undefined)
+  if (selected.name === "fold.section" && heading !== undefined) {
     return foldRegion(
       heading.startPosition.row + 1,
       sourceSpan(node),
@@ -129,8 +130,9 @@ function readFold(match: QueryMatch): CodeFoldRegion[] {
       },
       "section",
     );
+  }
 
-  if (selected.name === "fold.key" && value !== undefined)
+  if (selected.name === "fold.key" && value !== undefined) {
     return foldRegion(
       node.startPosition.row + 1,
       sourceSpan(node),
@@ -143,8 +145,9 @@ function readFold(match: QueryMatch): CodeFoldRegion[] {
       },
       "code",
     );
+  }
 
-  if (selected.name === "fold.tail")
+  if (selected.name === "fold.tail") {
     return foldRegion(
       node.startPosition.row + 1,
       sourceSpan(node),
@@ -154,8 +157,9 @@ function readFold(match: QueryMatch): CodeFoldRegion[] {
       },
       "code",
     );
+  }
 
-  if (selected.name === "fold.comment")
+  if (selected.name === "fold.comment") {
     return foldRegion(
       node.startPosition.row + 1,
       sourceSpan(node),
@@ -165,13 +169,14 @@ function readFold(match: QueryMatch): CodeFoldRegion[] {
       },
       "comment",
     );
+  }
 
   if (
     selected.name === "fold.heredoc" &&
     open !== undefined &&
     close !== undefined &&
     body !== undefined
-  )
+  ) {
     return foldRegion(
       open.startPosition.row + 1,
       sourceSpan(node),
@@ -181,8 +186,9 @@ function readFold(match: QueryMatch): CodeFoldRegion[] {
       },
       "literal",
     );
+  }
 
-  if (selected.name === "fold.markup" && open !== undefined && close !== undefined)
+  if (selected.name === "fold.markup" && open !== undefined && close !== undefined) {
     return foldRegion(
       node.startPosition.row + 1,
       sourceSpan(node),
@@ -192,6 +198,7 @@ function readFold(match: QueryMatch): CodeFoldRegion[] {
       },
       node.type === "string" || node.type === "fenced_code_block" ? "literal" : "code",
     );
+  }
 
   if (selected.name !== "fold.delimited") return [];
 
@@ -214,8 +221,9 @@ function readFold(match: QueryMatch): CodeFoldRegion[] {
     last === null ||
     first.isMissing ||
     last.isMissing
-  )
+  ) {
     return [];
+  }
   const parent = node.parent;
 
   const owner =
@@ -267,15 +275,17 @@ function readSymbol(match: QueryMatch): (Omit<RangedOutlineSymbol, "depth"> & {
     kind !== "type" &&
     kind !== "variable" &&
     kind !== "heading"
-  )
+  ) {
     return [];
+  }
 
   if (
     kind === "variable" &&
     node.parent?.parent?.type !== "program" &&
     node.parent?.parent?.type !== "export_statement"
-  )
+  ) {
     return [];
+  }
   const parent = node.parent;
 
   const extent =

@@ -1,9 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { readGroups } from "./tokens.mjs";
 
-const packages = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const packages = join(import.meta.dirname, "../..");
 
 const outputPath = join(packages, "app/lint/design-scale.tokens.json");
 
@@ -22,8 +21,9 @@ const declared = new Map();
 
 for (const file of tokenFiles) {
   for (const [, { values }] of await readGroups(join(packages, file))) {
-    for (const [property, value] of Object.entries(values))
+    for (const [property, value] of Object.entries(values)) {
       declared.set(property, value.default ?? value);
+    }
   }
 }
 
@@ -80,8 +80,9 @@ function px(value) {
   const sum = () => {
     let total = product();
 
-    while (peek() === "+" || peek() === "-")
+    while (peek() === "+" || peek() === "-") {
       total = next() === "+" ? total + product() : total - product();
+    }
 
     return total;
   };
@@ -89,8 +90,9 @@ function px(value) {
   const product = () => {
     let total = unit();
 
-    while (peek() === "*" || peek() === "/")
+    while (peek() === "*" || peek() === "/") {
       total = next() === "*" ? total * unit() : total / unit();
+    }
 
     return total;
   };
@@ -122,7 +124,7 @@ function px(value) {
 }
 
 function expand(value) {
-  return value.replace(/var\((--nyte-[\w-]+)\)/g, (_, property) =>
+  return value.replaceAll(/var\((--nyte-[\w-]+)\)/g, (_, property) =>
     declared.has(property) ? `(${expand(declared.get(property))})` : "?",
   );
 }

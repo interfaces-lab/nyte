@@ -17,19 +17,20 @@ import { runRef } from "../store/refs.ts";
 import { attempt, load, put, STALE } from "../store/session.ts";
 import { commit } from "../watch/commit.ts";
 
+// oxlint-disable-next-line typescript/consistent-type-definitions -- stored as Json, which needs the implicit index signature only a type alias has
 export type ToolBaseline = {
   readonly snapshot: SnapshotId;
   readonly seq: Seq;
   readonly contended: boolean;
 };
 
-export type ToolChanges = {
+export interface ToolChanges {
   readonly files: readonly FileChange[] | null;
   readonly thread: readonly FileChange[] | null;
   readonly snapshot: SnapshotId | null;
   readonly path: string | null;
   readonly unattributed: boolean;
-};
+}
 
 export const NO_CHANGES: ToolChanges = {
   files: null,

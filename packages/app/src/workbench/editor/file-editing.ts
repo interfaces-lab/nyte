@@ -106,8 +106,9 @@ export function formatPosition(position: FilePosition): string {
   const at = `Ln ${String(position.line)}, Col ${String(position.column)}`;
   const selected = `${String(position.selected)} selected`;
 
-  if (position.selections > 1)
+  if (position.selections > 1) {
     return `${at} (${String(position.selections)} selections${position.selected > 0 ? `, ${selected}` : ""})`;
+  }
 
   if (position.lines > 1) return `${at} (${selected}, ${String(position.lines)} lines)`;
 

@@ -292,8 +292,9 @@ export async function run(): Promise<string> {
                 caret === anchor &&
                 placed.selectionStart === anchor &&
                 placed.selectionEnd === anchor
-              )
+              ) {
                 return placed;
+              }
               selection.setBaseAndExtent(point.node, point.offset, point.node, point.offset);
 
               return null;
@@ -322,10 +323,11 @@ export async function run(): Promise<string> {
             state.selectionStart === start &&
             state.selectionEnd === end;
 
-          if (!correct)
+          if (!correct) {
             failures.push(
               `${variant.name}/${name}/${shift ? "shift" : "plain"}: owner=${owner?.tagName}, editable=${owner instanceof HTMLElement && owner.isContentEditable}, selected=${JSON.stringify(selection.toString())}, anchor=${String(actualAnchor)}, focus=${String(actualFocus)}, draft=${JSON.stringify(state)}`,
             );
+          }
         };
 
         if (variant.name !== "compact") {

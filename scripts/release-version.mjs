@@ -54,8 +54,9 @@ function bump(kind) {
 function nightly() {
   const run = process.env["GITHUB_RUN_NUMBER"];
 
-  if (run === undefined || !/^[1-9]\d*$/u.test(run))
+  if (run === undefined || !/^[1-9]\d*$/u.test(run)) {
     throw new Error("Set GITHUB_RUN_NUMBER to the nightly workflow run number.");
+  }
   const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
 
   return `${bump("patch")}-nightly.${date}.${run}`;
@@ -88,16 +89,18 @@ function prepare(version, check) {
     entries.map(({ manifest }) => manifest.version).filter((source) => source !== version),
   );
 
-  if (sources.size > 1)
+  if (sources.size > 1) {
     throw new Error(
       `The release packages must share one version; found ${[...sources].join(", ")}.`,
     );
+  }
 
   if (check) return;
 
   for (const { file, manifest } of entries) {
-    if (manifest.version !== version)
+    if (manifest.version !== version) {
       writeFileSync(file, `${JSON.stringify({ ...manifest, version }, null, 2)}\n`);
+    }
   }
 }
 
@@ -133,8 +136,9 @@ if (command === "resolve") {
 
   const chosen = [values.bump, values.version, values.nightly].filter((value) => value);
 
-  if (positionals.length > 0 || chosen.length !== 1)
+  if (positionals.length > 0 || chosen.length !== 1) {
     fail("resolve takes exactly one of --bump, --version or --nightly.");
+  }
 
   const version =
     values.version ?? (values.nightly === true ? nightly() : bump(values.bump ?? "patch"));

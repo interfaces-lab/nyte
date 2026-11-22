@@ -21,8 +21,8 @@ import type { BundledCli } from "@nyte-ai/app/contract/bridge.ts";
 const execute = promisify(execFile);
 
 const MACH_O_CPUS = new Map([
-  [0x0100000c, "arm64"],
-  [0x01000007, "x64"],
+  [0x01_00_00_0c, "arm64"],
+  [0x01_00_00_07, "x64"],
 ]);
 
 const ELF_MACHINES = new Map([
@@ -44,7 +44,7 @@ export async function stageCli(options: {
   readonly stages: string;
 }): Promise<string> {
   const version = (await readFile(join(options.resources, "nyte.version"), "utf8")).trim();
-  const directory = join(options.stages, `${version}-${process.arch}`.replace(/[^\w.-]/gu, "-"));
+  const directory = join(options.stages, `${version}-${process.arch}`.replaceAll(/[^\w.-]/gu, "-"));
   const staged = join(directory, "nyte");
 
   if ((await stat(staged).catch(() => undefined))?.isFile() === true) return staged;
@@ -73,11 +73,13 @@ export async function inspectBundledCli(options: {
   readonly packaged: boolean;
   readonly appVersion: string;
 }): Promise<BundledCli> {
-  if (!options.packaged)
+  if (!options.packaged) {
     return { kind: "unavailable", problem: "Development builds don't include the CLI." };
+  }
 
-  if (process.platform === "win32")
+  if (process.platform === "win32") {
     return { kind: "unavailable", problem: "Nyte for Windows doesn't include the CLI." };
+  }
   const path = join(options.resources, "nyte");
 
   const file = await stat(path).catch((cause: unknown) => {
@@ -86,54 +88,67 @@ export async function inspectBundledCli(options: {
     throw cause;
   });
 
-  if (file?.isFile() !== true)
+  if (file?.isFile() !== true) {
     return { kind: "unavailable", problem: `${path} is missing. Reinstall Nyte to restore it.` };
+  }
   const architecture = await nativeArchitecture(path);
 
-  if (architecture === undefined)
+  if (architecture === undefined) {
     return {
       kind: "unavailable",
       problem: `${path} isn't a native executable. Reinstall Nyte to restore it.`,
     };
+  }
 
-  if (architecture !== process.arch)
+  if (architecture !== process.arch) {
     return {
       kind: "unavailable",
       problem: `The included CLI is built for ${architecture}, but Nyte runs as ${process.arch}. Reinstall Nyte.`,
     };
+  }
 
   const ran = await execute(path, ["--version"], { timeout: 10_000 }).catch(
     (cause: unknown) => new Error(failure(cause)),
   );
 
-  if (ran instanceof Error)
+  if (ran instanceof Error) {
     return { kind: "unavailable", problem: `The included CLI doesn't run: ${ran.message}` };
+  }
   const version = ran.stdout.trim();
 
-  if (version !== options.appVersion)
+  if (version !== options.appVersion) {
     return {
       kind: "unavailable",
       problem: `The included CLI is ${version}, but Nyte is ${options.appVersion}. Reinstall Nyte to match them.`,
     };
+  }
   const signature = await codeSignature(path);
 
-  if (signature instanceof Error)
+  if (signature instanceof Error) {
     return {
       kind: "unavailable",
       problem: `The included CLI's signature isn't valid: ${signature.message}`,
     };
+  }
 
   return { kind: "ready", version, path, architecture, signature };
 }
 
 async function nativeArchitecture(path: string): Promise<string | undefined> {
   const file = await open(path);
-  const { buffer } = await file.read(Buffer.alloc(20), 0, 20, 0).finally(() => file.close());
+  const buffer = Buffer.alloc(20);
 
-  if (buffer.readUInt32BE(0) === 0xcffaedfe) return MACH_O_CPUS.get(buffer.readUInt32LE(4));
+  try {
+    await file.read(buffer, 0, 20, 0);
+  } finally {
+    await file.close();
+  }
 
-  if (buffer.readUInt32BE(0) === 0x7f454c46 && buffer[5] === 1)
+  if (buffer.readUInt32BE(0) === 0xcf_fa_ed_fe) return MACH_O_CPUS.get(buffer.readUInt32LE(4));
+
+  if (buffer.readUInt32BE(0) === 0x7f_45_4c_46 && buffer[5] === 1) {
     return ELF_MACHINES.get(buffer.readUInt16LE(18));
+  }
 
   return undefined;
 }
@@ -169,9 +184,11 @@ export async function adoptStagedCli(home: string, staged: string): Promise<void
 
   if (linked?.startsWith(`${stages}/`) === true) await linkCli(home, staged);
 
-  for (const entry of await readdir(stages))
-    if (join(stages, entry) !== current)
+  for (const entry of await readdir(stages)) {
+    if (join(stages, entry) !== current) {
       await rm(join(stages, entry), { recursive: true, force: true });
+    }
+  }
 }
 
 export async function installCli(

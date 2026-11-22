@@ -9,7 +9,8 @@ import type { CSSProperties, ReactElement } from "react";
 import { radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
-import { surfaceTheme, type Tint } from "./surface-theme.ts";
+import { surfaceTheme } from "./surface-theme.ts";
+import type { Tint } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { role, shadow, type } from "./styles/vars.stylex.ts";
 

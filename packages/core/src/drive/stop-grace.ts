@@ -13,7 +13,7 @@ import { partRef } from "../store/refs.ts";
 import { load, readCalls } from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
 
-const STOP_GRACE_MS = 3_000;
+const STOP_GRACE_MS = 3000;
 
 export const OVERDUE = Symbol("overdue");
 

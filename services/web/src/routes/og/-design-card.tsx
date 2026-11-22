@@ -1,6 +1,4 @@
-// oxlint-disable-next-line import/default -- Vite's ?inline query makes the file a data URL.
 import pixelFace from "~/fonts/GeistPixel-Square.woff2?inline";
-// oxlint-disable-next-line import/default -- Vite's ?inline query makes the file a data URL.
 import monoFace from "@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?inline";
 import type { ReactNode } from "react";
 import { findEntry } from "~/lib/design-catalog";

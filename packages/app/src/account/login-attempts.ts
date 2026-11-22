@@ -45,8 +45,9 @@ function set(key: string, running: Running | undefined): void {
 function patch(key: string, attempt: string, change: Partial<LoginAttemptView>): void {
   const current = attempts.get(key);
 
-  if (current?.view.attempt === attempt)
+  if (current?.view.attempt === attempt) {
     set(key, { ...current, view: { ...current.view, ...change } });
+  }
 }
 
 type LoginMethod =
@@ -119,8 +120,9 @@ export async function runLogin(
           else {
             const browser = attempts.get(key)?.view.browser;
 
-            if (browser !== undefined)
+            if (browser !== undefined) {
               patch(key, attempt, { browser: { ...browser, acceptsCode: true } });
+            }
           }
 
           break;

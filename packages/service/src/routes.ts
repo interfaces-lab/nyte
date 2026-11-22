@@ -33,8 +33,9 @@ export function serviceRoutes(
 
     const presented = request.headers.get("authorization");
 
-    if (presented === null || !timingSafeEqual(sha256(presented), digest))
+    if (presented === null || !timingSafeEqual(sha256(presented), digest)) {
       return Response.json({ message: "Unauthorized" }, { status: 401 });
+    }
 
     return route(request, pathname);
   };

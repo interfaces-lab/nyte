@@ -34,8 +34,9 @@ function kept(connection: Connection): Connection {
 async function lastLink(views: AsyncIterator<HostView>): Promise<HostView["link"] | null> {
   let link: HostView["link"] | null = null;
 
-  for (let next = await views.next(); next.done !== true; next = await views.next())
+  for (let next = await views.next(); next.done !== true; next = await views.next()) {
     link = next.value.link;
+  }
 
   return link;
 }
@@ -159,8 +160,9 @@ describe("connect", () => {
     const sent: string[] = [];
 
     host.intercept((request, next) => {
-      if (new URL(request.url).pathname !== "/.nyte/identity")
+      if (new URL(request.url).pathname !== "/.nyte/identity") {
         sent.push(request.headers.get("Authorization")?.split(" ")[0] ?? "");
+      }
 
       return next(request);
     });

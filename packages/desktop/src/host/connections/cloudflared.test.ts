@@ -156,9 +156,9 @@ function alive(pid: number): boolean {
 
 const FAST: ConnectorTiming = {
   retryDelaysMs: [10, 10],
-  ingressTimeoutMs: 5_000,
+  ingressTimeoutMs: 5000,
   stableMs: 60_000,
-  stopTimeoutMs: 1_000,
+  stopTimeoutMs: 1000,
 };
 
 function connector(
@@ -310,7 +310,7 @@ connectorTest("stop ends a cloudflared that ignores SIGTERM by its deadline", as
 
   const began = Date.now();
   await tunnel.stop();
-  assert.ok(Date.now() - began < 3_000, "stop outlived its deadline");
+  assert.ok(Date.now() - began < 3000, "stop outlived its deadline");
   await vi.waitFor(() => assert.equal(alive(pid), false));
 });
 
@@ -327,7 +327,7 @@ connectorTest("a supervisor killed on its own still takes cloudflared with it", 
   assert.ok(supervisor > 1);
 
   process.kill(supervisor, "SIGKILL");
-  await vi.waitFor(() => assert.equal(alive(pid), false), { timeout: 3_000 });
+  await vi.waitFor(() => assert.equal(alive(pid), false), { timeout: 3000 });
   await vi.waitFor(() => assert.equal(tunnel.status().kind, "retrying"));
 });
 
@@ -372,7 +372,7 @@ setInterval(() => {}, 1000);`,
     assert.equal(alive(pid), true);
 
     desktopMain.kill("SIGKILL");
-    await vi.waitFor(() => assert.equal(alive(pid), false), { timeout: 3_000 });
+    await vi.waitFor(() => assert.equal(alive(pid), false), { timeout: 3000 });
   },
 );
 

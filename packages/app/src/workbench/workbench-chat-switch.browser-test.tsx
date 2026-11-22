@@ -1,5 +1,5 @@
 import { selectSession, tabPanes } from "../../test/panes.ts";
-import "../chat/transcript/transcript-render-counter.ts";
+import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
 import "./panels.deferred.tsx";
 import { CodeView } from "@nyte-ai/ui/diffs/react";
@@ -32,7 +32,6 @@ import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
-import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
 import { ChangesPanel } from "./changes/changes-panel.tsx";
 import { ChangesToolbar } from "./changes/changes-toolbar.tsx";
 import { workbenchViewKey } from "./paths.ts";
@@ -57,7 +56,7 @@ const WORKSPACE = { id: asId<"workspace">("fixture"), path: "/repo", name: "repo
 const FILE = mentionFile(WORKSPACE.path, { path: "src/large.ts", kind: "file" });
 
 const CONTENTS = Array.from(
-  { length: 5_000 },
+  { length: 5000 },
   (_, line) => `export const value${String(line)} = ${String(line)};`,
 ).join("\n");
 
@@ -167,7 +166,7 @@ function chat(name: Name): Chat {
     seenThrough: null,
     background: [],
     configuration: { selected: configuration, effective: configuration },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   } as const satisfies Omit<SessionView, "messages">;
@@ -201,7 +200,7 @@ const files: FilesApi = {
     scope: "workspace",
     mime: "text/plain",
     contents: CONTENTS,
-    encoding: "utf-8",
+    encoding: "utf8",
     version: asId("v1"),
   }),
   bytes: refuse,
@@ -217,7 +216,7 @@ const files: FilesApi = {
     throw new SdkError("unavailable", "Not scripted.");
   },
   format: refuse,
-  scan: async function* () {
+  async *scan() {
     yield {
       kind: "entries",
       entries: [{ path: "src/large.ts", kind: "file", size: 1, version: null }],
@@ -225,10 +224,10 @@ const files: FilesApi = {
     yield { kind: "complete" };
   },
   find: refuse,
-  search: async function* () {
+  async *search() {
     yield { kind: "complete" };
   },
-  watch: async function* () {
+  async *watch() {
     yield* [];
     await new Promise<never>(() => undefined);
   },

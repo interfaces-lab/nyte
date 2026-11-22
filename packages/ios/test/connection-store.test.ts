@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createConnectionStore } from "../src/connection/connection-store.ts";
-import {
-  parseStoredConnection,
-  serializeConnection,
-  type ManagedConnection,
-  type SavedConnection,
-} from "../src/connection/connection.ts";
+import { parseStoredConnection, serializeConnection } from "../src/connection/connection.ts";
+import type { ManagedConnection, SavedConnection } from "../src/connection/connection.ts";
 
 const POLICY = { origin: "https://connect.example.com" };
 const MAC_ID = "0b8c9f3e-5d7a-4c1b-9e2f-3a4b5c6d7e8f";
@@ -98,8 +94,9 @@ describe("saved connections", () => {
       ` ${MAC_URL}`,
       "https://abcdefghijklmnopqrst.nyte.example",
       "http://127.0.0.1:8787",
-    ])
+    ]) {
       expect(() => parseStoredConnection(stored({ url }), POLICY), url).toThrow();
+    }
   });
 
   it("refuses an account connection from another broker, or with no account configured", () => {

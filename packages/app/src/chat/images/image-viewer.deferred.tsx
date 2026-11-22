@@ -387,12 +387,13 @@ function ImageViewerPopup(input: {
         if (!input.signal.aborted) input.onClose(target);
       }
     } catch (failure) {
-      if (!input.signal.aborted)
+      if (!input.signal.aborted) {
         setError(
           failure instanceof Error
             ? failure.message
             : "The marked image could not be attached. Try again.",
         );
+      }
     }
 
     if (!input.signal.aborted) setSaving(false);

@@ -41,14 +41,15 @@ function fakeServer(drop = false): McpTransport {
   const { client, server } = createInMemoryTransportPair();
 
   const answer = (method: string, params: unknown): unknown => {
-    if (method === "initialize")
+    if (method === "initialize") {
       return {
         protocolVersion: LATEST_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: "fake", version: "0" },
       };
+    }
 
-    if (method === "tools/list")
+    if (method === "tools/list") {
       return {
         tools: [
           {
@@ -62,6 +63,7 @@ function fakeServer(drop = false): McpTransport {
           },
         ],
       };
+    }
 
     const text =
       typeof params === "object" && params !== null && "arguments" in params

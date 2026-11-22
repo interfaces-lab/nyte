@@ -75,27 +75,20 @@ export function simpleReasoningEffort(
 
 const MIN_ANSWER_TOKENS = 1024;
 
-const DEFAULT_THINKING_BUDGETS: ThinkingBudgets = {
+const DEFAULT_THINKING_BUDGETS = {
   minimal: 1024,
   low: 2048,
   medium: 8192,
-  high: 16384,
-};
-
-function clampReasoning(
-  effort: ThinkingLevel | undefined,
-): Exclude<ThinkingLevel, "xhigh" | "max"> | undefined {
-  return effort === "xhigh" || effort === "max" ? "high" : effort;
-}
+  high: 16_384,
+} satisfies Required<ThinkingBudgets>;
 
 export function thinkingBudgetForLevel(
   reasoningLevel: ThinkingLevel,
   customBudgets?: ThinkingBudgets,
 ): number {
-  const budgets = { ...DEFAULT_THINKING_BUDGETS, ...customBudgets };
-  const level = clampReasoning(reasoningLevel)!;
+  const level = reasoningLevel === "xhigh" || reasoningLevel === "max" ? "high" : reasoningLevel;
 
-  return budgets[level]!;
+  return customBudgets?.[level] ?? DEFAULT_THINKING_BUDGETS[level];
 }
 
 export function clampThinkingBudgetToAnswerRoom(thinkingBudget: number, ceiling: number): number {

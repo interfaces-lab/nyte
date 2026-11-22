@@ -45,8 +45,9 @@ export async function designWorkspace(
     ["config", "user.email", "e2e@example.test"],
     ["add", "--", "."],
     ["commit", "-qm", "Seed designs"],
-  ])
+  ]) {
     await run("git", args, { cwd: root });
+  }
 
   stack.defer(async () => {
     await using host = await sdk.connect({

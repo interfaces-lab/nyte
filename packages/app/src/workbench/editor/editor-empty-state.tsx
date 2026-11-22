@@ -1,5 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
-import { useId, useState, type ReactElement } from "react";
+import { useId, useState } from "react";
+import type { ReactElement } from "react";
 import type { MentionFile } from "../../data/files.ts";
 import type { WorktreeFile } from "./worktree-files.ts";
 import { Icon } from "@nyte-ai/ui/icon";

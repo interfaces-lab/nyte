@@ -8,7 +8,7 @@ const REPLAY_LIMIT = 2 * 1024 * 1024;
 
 const LONGEST = 4096;
 
-const ESC = "\u001b";
+const ESC = "\u001B";
 
 type Sequence = { readonly kind: "osc"; readonly body: string } | { readonly kind: "reset" };
 
@@ -120,7 +120,7 @@ function findEnd(text: string, from: number): End {
   for (let at = from; at < limit; at += 1) {
     const char = text[at];
 
-    if (char === "\u0007" || char === "\u009c") return { kind: "ended", at, next: at + 1 };
+    if (char === "\u0007" || char === "\u009C") return { kind: "ended", at, next: at + 1 };
 
     if (char !== ESC) continue;
 

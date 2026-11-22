@@ -75,8 +75,9 @@ const updates: readonly (readonly [string, HostLinkState, HostUpdate])[] = [
 ];
 
 test("a host on another build reads as stale, and the app never restarts it", () => {
-  for (const [name, link, update] of updates)
+  for (const [name, link, update] of updates) {
     assert.equal(readHostUpdate({ link, appVersion: APP }), update, name);
+  }
 });
 
 const SERVING = 41;

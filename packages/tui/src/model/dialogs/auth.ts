@@ -109,15 +109,17 @@ export function reduceAuth(dialog: AuthDialog, command: DialogCommand): DialogSt
     case "waiting":
       return unchanged(dialog);
     case "link":
-      if (submit || command.name === "auth.open")
+      if (submit || command.name === "auth.open") {
         return { dialog, intents: [{ kind: "open-external", target: step.url }], push: null };
+      }
 
-      if (command.name === "auth.copy")
+      if (command.name === "auth.copy") {
         return {
           dialog,
           intents: [{ kind: "copy-text", text: step.code ?? step.url }],
           push: null,
         };
+      }
 
       return unchanged(dialog);
     case "secret":
@@ -135,17 +137,19 @@ export function reduceAuth(dialog: AuthDialog, command: DialogCommand): DialogSt
 
       if (count === 0) return unchanged(dialog);
 
-      if (command.name === "picker.previous")
+      if (command.name === "picker.previous") {
         return unchanged({
           ...dialog,
           step: { ...step, highlighted: (step.highlighted - 1 + count) % count },
         });
+      }
 
-      if (command.name === "picker.next")
+      if (command.name === "picker.next") {
         return unchanged({
           ...dialog,
           step: { ...step, highlighted: (step.highlighted + 1) % count },
         });
+      }
 
       return unchanged(dialog);
     }

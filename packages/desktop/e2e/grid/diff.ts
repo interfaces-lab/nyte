@@ -59,7 +59,7 @@ function pair(before: Static<typeof Report>, after: Static<typeof Report>): Pair
       const line = `${violation.rule} ${violation.region} ${violation.element.key} ${violation.property} ${violation.value}, expected ${violation.expected} [${violation.id}]`;
       const old = wasIds.get(violation.id);
 
-      if (old !== undefined)
+      if (old !== undefined) {
         return old.value === violation.value && old.expected === violation.expected
           ? { label: "kept", state, line, changed: false }
           : {
@@ -68,6 +68,7 @@ function pair(before: Static<typeof Report>, after: Static<typeof Report>): Pair
               line: `${line} (was ${old.value}, expected ${old.expected})`,
               changed: true,
             };
+      }
 
       const hidden = masked.get(violation.id);
 

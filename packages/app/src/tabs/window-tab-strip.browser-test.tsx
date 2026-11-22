@@ -136,8 +136,9 @@ export async function run(): Promise<string> {
     const tabs = [...container.querySelectorAll('[role="tab"]')];
     const [first, alpha, beta] = tabs;
 
-    if (first === undefined || alpha === undefined || beta === undefined)
+    if (first === undefined || alpha === undefined || beta === undefined) {
       throw new Error("Missing tabs");
+    }
     check(first.getAttribute("aria-selected") === "true", "The active tab is not selected");
 
     await drag(beta, -600);
@@ -185,8 +186,9 @@ export async function run(): Promise<string> {
     const [short, long] = boxes.map((box) => box?.getBoundingClientRect().width ?? 0);
     const longBox = boxes.at(1);
 
-    if (short === undefined || long === undefined || longBox === null || longBox === undefined)
+    if (short === undefined || long === undefined || longBox === null || longBox === undefined) {
       throw new Error("Missing sized tabs");
+    }
     const cap = Number.parseFloat(getComputedStyle(longBox).maxWidth);
     check(short >= 72 && short < 120, `A short title's tab is ${String(short)} px wide`);
     check(

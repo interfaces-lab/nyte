@@ -130,8 +130,9 @@ export function createModelState(changed: () => void): ModelState {
     const account = JSON.stringify(own.map(({ id, type, active }) => [id, type, active]));
     const known = slots.get(provider.id);
 
-    if (known?.provider === provider && known.models === models && known.account === account)
+    if (known?.provider === provider && known.models === models && known.account === account) {
       return known;
+    }
     known?.controller.abort();
     const active = own.find((entry) => entry.active);
 
@@ -199,8 +200,9 @@ export function createModelState(changed: () => void): ModelState {
 
           return found === undefined ? ("missing" as const) : ("configured" as const);
         } catch {
-          if (!closed.signal.aborted && !slot.controller.signal.aborted)
+          if (!closed.signal.aborted && !slot.controller.signal.aborted) {
             publish(slot, "failed", revision);
+          }
 
           return "failed" as const;
         }
@@ -227,9 +229,11 @@ export function createModelState(changed: () => void): ModelState {
       const entries = models.getProviders().map((provider) => prepare(models, provider, accounts));
       const result = new Map(entries.map((slot) => [slot.provider.id, slot.credential]));
 
-      for (const slot of entries)
-        if (slot.checkedAt === null || Date.now() - slot.checkedAt >= CHECK_INTERVAL_MS)
+      for (const slot of entries) {
+        if (slot.checkedAt === null || Date.now() - slot.checkedAt >= CHECK_INTERVAL_MS) {
           void check(slot);
+        }
+      }
 
       return result;
     },

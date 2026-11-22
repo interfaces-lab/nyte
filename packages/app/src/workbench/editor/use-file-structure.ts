@@ -61,8 +61,9 @@ export function useFileStructure(input: {
         message.generation !== current.generation ||
         message.language !== current.language ||
         message.contents !== current.contents
-      )
+      ) {
         return;
+      }
       setReport({
         request: current,
         result:
@@ -101,8 +102,9 @@ export function useFileStructure(input: {
 
   if (language === undefined) return { kind: "unsupported" };
 
-  if (report?.request.contents !== input.contents || report.request.language !== language)
+  if (report?.request.contents !== input.contents || report.request.language !== language) {
     return { kind: "pending" };
+  }
 
   return report.result;
 }

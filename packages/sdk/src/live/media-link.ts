@@ -27,8 +27,9 @@ export async function mediaLink(
   if (!response.ok) throw decodeError(isJson(answer) ? answer : null, response.status);
   const link = isJson(answer) && isJsonObject(answer) ? answer["path"] : undefined;
 
-  if (typeof link !== "string" || !link.startsWith(`${MEDIA_PATH}/`))
+  if (typeof link !== "string" || !link.startsWith(`${MEDIA_PATH}/`)) {
     throw new SdkError("invalid", "The host answered no media link.");
+  }
 
   return hostUrl(address, link, "http");
 }

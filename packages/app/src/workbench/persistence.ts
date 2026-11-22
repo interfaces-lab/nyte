@@ -3,17 +3,16 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
-import { type Persisted, persisted, type StorageArea } from "../lib/storage.ts";
+import { persisted } from "../lib/storage.ts";
+import type { Persisted, StorageArea } from "../lib/storage.ts";
 import {
   FIRST_GROUP,
   FOLLOW_BROWSE,
   MAXIMIZED_WORKBENCH_LAYOUT,
   SPLIT_LAYOUT,
-  type WorkbenchSnapshot,
-  type WorkbenchTab,
-  type WorkbenchViewState,
   workbenchTabAvailable,
 } from "./model.ts";
+import type { WorkbenchSnapshot, WorkbenchTab, WorkbenchViewState } from "./model.ts";
 import { DEFAULT_WIDTH } from "./width.ts";
 
 export type WorkbenchPersistence = Pick<

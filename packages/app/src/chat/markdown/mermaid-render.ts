@@ -1,7 +1,7 @@
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { renderMermaidSVG } from "beautiful-mermaid";
 
-const MAX_SOURCE_LENGTH = 8_000;
+const MAX_SOURCE_LENGTH = 8000;
 
 const MAX_SOURCE_LINES = 120;
 
@@ -28,7 +28,7 @@ export function renderDiagram(source: string): DiagramResult {
       padding: 24,
       transparent: true,
     })
-      .replace(/^ *@import .*\n/gm, "")
+      .replaceAll(/^ *@import .*\n/gm, "")
       .replace(/^ *text \{ font-family: .*\n/m, "")
       .replace(/(\.mono \{ font-family: )[^;]*/, `$1${type.fontMono}`)
       .replace(/<svg\b[^>]*>/, wholePixelSize);
@@ -40,7 +40,7 @@ export function renderDiagram(source: string): DiagramResult {
 }
 
 function wholePixelSize(tag: string): string {
-  return tag.replace(
+  return tag.replaceAll(
     /\b(width|height)="(\d+(?:\.\d+)?)"/g,
     (_match, name: string, value: string) =>
       `${name}="${String(2 * Math.ceil(Number(value) / 2))}"`,

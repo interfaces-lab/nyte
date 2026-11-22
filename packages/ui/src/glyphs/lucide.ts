@@ -114,8 +114,8 @@ import {
   UserKey,
   X,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { createElement } from "react";
 import {
   siAmp,
@@ -142,8 +142,8 @@ import {
   siReact,
   siTypescript,
   siVercel,
-  type SimpleIcon,
 } from "simple-icons";
+import type { SimpleIcon } from "simple-icons";
 
 import type { FilledIconName, Glyph, GlyphProps, IconName } from "../icon-names.ts";
 import { NyteGlyph } from "./nyte.ts";

@@ -51,7 +51,7 @@ export type Served =
 
 type Claim = Served | { readonly kind: "claimed"; readonly release: () => void };
 
-const STANDBY_POLL_MS = 1_000;
+const STANDBY_POLL_MS = 1000;
 
 export async function serveHost(options: ServeHostOptions): Promise<Served> {
   if (!options.log) return serve(options, options.output);
@@ -104,8 +104,9 @@ async function claimHost(path: string, options: ServeHostOptions, output: Output
       return { kind: "taken", by: holder ?? (await findRunningHost(path)) };
     }
 
-    if (!standing)
+    if (!standing) {
       output.write(`${JSON.stringify({ type: "standby", holder: holder?.pid ?? null })}\n`);
+    }
     standing = true;
     await sleep(STANDBY_POLL_MS, undefined, { signal: options.signal }).catch(() => undefined);
 
@@ -143,10 +144,11 @@ async function serveClaimed(
 
   const port = Number(new URL(thread.address).port);
 
-  if (conflict !== undefined)
+  if (conflict !== undefined) {
     process.stderr.write(
       `${conflict} Listening on port ${String(port)} instead; clients that knew the old address need ${thread.address}.\n`,
     );
+  }
 
   await saveHostAddress(addressPath, { port, token });
 

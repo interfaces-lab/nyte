@@ -582,7 +582,7 @@ describe("connection", () => {
         health: {
           kind: "retrying",
           attempt: 1,
-          at: 5_000,
+          at: 5000,
           error: new SdkError("unavailable", "gone"),
         },
       },
@@ -590,18 +590,18 @@ describe("connection", () => {
         kind: "view",
         session: S1,
         view: working,
-        freshness: { kind: "stale", since: 4_000, error: null },
+        freshness: { kind: "stale", since: 4000, error: null },
       },
     );
 
     expect(deriveScreen(dropped.state, null)).toMatchObject({
-      health: { kind: "reconnecting", at: 5_000 },
-      updated: 4_000,
+      health: { kind: "reconnecting", at: 5000 },
+      updated: 4000,
     });
 
     const resumed = play(
       dropped.state,
-      { kind: "health", health: { kind: "open", since: 6_000 } },
+      { kind: "health", health: { kind: "open", since: 6000 } },
       { kind: "view", session: S1, view: working, freshness: FRESH },
     );
 

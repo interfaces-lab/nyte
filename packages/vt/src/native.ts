@@ -80,20 +80,14 @@ const procedures = [
   "ghostty_formatter_free",
 ] as const;
 
-export type Native = {
-  readonly [Name in (typeof functions)[number]]: (...args: number[]) => number;
-} & {
-  readonly [Name in (typeof rowReaders)[number]]: (
-    row: bigint,
-    data: number,
-    out: number,
-  ) => number;
-} & {
-  readonly [Name in (typeof procedures)[number]]: (...args: number[]) => void;
-} & {
-  readonly memory: WebAssembly.Memory;
-  readonly __indirect_function_table: WebAssembly.Table;
-};
+export type Native = Readonly<Record<(typeof functions)[number], (...args: number[]) => number>> &
+  Readonly<
+    Record<(typeof rowReaders)[number], (row: bigint, data: number, out: number) => number>
+  > &
+  Readonly<Record<(typeof procedures)[number], (...args: number[]) => void>> & {
+    readonly memory: WebAssembly.Memory;
+    readonly __indirect_function_table: WebAssembly.Table;
+  };
 
 export function checkExports(module: WebAssembly.Module) {
   const exported = new Map(
@@ -108,8 +102,9 @@ export function checkExports(module: WebAssembly.Module) {
 
   const missing = required.find((entry) => exported.get(entry[0]) !== entry[1]);
 
-  if (missing !== undefined)
+  if (missing !== undefined) {
     throw new Error(`libghostty-vt is missing the ${missing[1]} export ${missing[0]}`);
+  }
 }
 
 export function requireNative(
@@ -117,7 +112,7 @@ export function requireNative(
 ): asserts exports is WebAssembly.Exports & Native {
   const complete =
     [...functions, ...rowReaders, ...procedures].every(
-      (name) => exports[name] instanceof Function,
+      (name) => typeof exports[name] === "function",
     ) &&
     exports.memory instanceof WebAssembly.Memory &&
     exports.__indirect_function_table instanceof WebAssembly.Table;

@@ -93,11 +93,13 @@ export function resolveBrowserShortcut(
 
   if (event.key === "F12" && !modified && !event.shiftKey) return "toggle-devtools";
 
-  if (!mac && event.key === "F5" && !event.altKey && !event.metaKey)
+  if (!mac && event.key === "F5" && !event.altKey && !event.metaKey) {
     return event.ctrlKey || event.shiftKey ? "hard-reload" : "reload";
+  }
 
-  if (!mac && event.key === "F3" && !modified)
+  if (!mac && event.key === "F3" && !modified) {
     return event.shiftKey ? "find-previous" : "find-next";
+  }
 
   if (!mac && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
     if (event.key === "ArrowLeft") return "back";
@@ -115,8 +117,9 @@ export function resolveBrowserShortcut(
 
   const name = keyName(event);
 
-  if (event.altKey)
+  if (event.altKey) {
     return mac && !event.shiftKey && name === "KeyI" ? "toggle-devtools" : undefined;
+  }
 
   if (event.shiftKey) return !mac && name === "KeyI" ? "toggle-devtools" : PRIMARY_SHIFT.get(name);
 

@@ -153,8 +153,9 @@ export function AddressField({
 
     if (field === null || field.value.length <= typedText.length) return;
 
-    if (field.value.toLowerCase().startsWith(typedText.toLowerCase()))
+    if (field.value.toLowerCase().startsWith(typedText.toLowerCase())) {
       field.setSelectionRange(typedText.length, field.value.length);
+    }
   };
 
   const close = (): void => {
@@ -241,9 +242,6 @@ export function AddressField({
         onDraftChange(undefined);
         event.currentTarget.blur();
         onDismiss();
-
-        return;
-      default:
     }
   };
 

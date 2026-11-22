@@ -320,8 +320,9 @@ describe("plugin storage", () => {
       kvRef(`session:${session.id}`, "keeper", "seen"),
       kvRef("host", "keeper", "seen"),
       kvRef(`workspace:${workspace}`, "keeper", "seen"),
-    ])
+    ]) {
       expect(await kernel.store.refs.get(name)).not.toBeNull();
+    }
 
     await host.sessions.start({ content: "Hi." });
     const other = storages[1];

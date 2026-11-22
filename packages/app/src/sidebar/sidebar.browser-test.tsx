@@ -318,8 +318,9 @@ async function hoverButtonsSitBesideTheAge(): Promise<void> {
   const age = quiet.querySelector<HTMLElement>('[data-slot="row-meta"]');
   const actions = quiet.querySelector<HTMLElement>('[data-slot="row-actions"]');
 
-  if (pin === null || age === null || actions === null)
+  if (pin === null || age === null || actions === null) {
     throw new Error("Missing the hover buttons or the age");
+  }
   const box = pin.getBoundingClientRect();
   check(box.width === 24 && box.height === 24, `pin is ${String(box.width)} px, not 24`);
   check(age.checkVisibility() && age.getBoundingClientRect().width > 0, "the age stays visible");

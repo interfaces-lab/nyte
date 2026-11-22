@@ -75,8 +75,9 @@ interface SocketChannel {
 function copyHeaders(response: IncomingMessage): Headers {
   const headers = new Headers();
 
-  for (const [name, value] of Object.entries(response.headers))
+  for (const [name, value] of Object.entries(response.headers)) {
     if (value !== undefined && !Array.isArray(value)) headers.set(name, value);
+  }
 
   return headers;
 }
@@ -209,8 +210,9 @@ export class RelayConnection {
   private retry(): void {
     if (this.stopped || this.current.kind === "failed") return;
 
-    if (this.readyAt !== undefined && Date.now() - this.readyAt >= this.timing.pingMs)
+    if (this.readyAt !== undefined && Date.now() - this.readyAt >= this.timing.pingMs) {
       this.attempt = 0;
+    }
     this.readyAt = undefined;
     this.attempt += 1;
 
@@ -236,8 +238,9 @@ export class RelayConnection {
       (previous.kind === "retrying" &&
         next.kind === "retrying" &&
         previous.attempt !== next.attempt)
-    )
+    ) {
       this.options.onChange();
+    }
   }
 
   private send(frame: DesktopFrame): void {
@@ -284,9 +287,9 @@ export class RelayConnection {
         this.channels.has(frame.ch) ||
         this.sockets.has(frame.ch) ||
         this.channels.size + this.sockets.size >= RELAY_CHANNEL_LIMIT
-      )
+      ) {
         this.drop(socket, RELAY_CLOSE.invalid);
-      else if (frame.t === "open") this.open(frame);
+      } else if (frame.t === "open") this.open(frame);
       else this.openSocket(frame);
 
       return;
@@ -304,8 +307,9 @@ export class RelayConnection {
 
     if (channel === undefined) return;
 
-    if (frame.t === "message" || frame.t === "close" || !this.channelFrame(channel, frame))
+    if (frame.t === "message" || frame.t === "close" || !this.channelFrame(channel, frame)) {
       this.drop(socket, RELAY_CLOSE.invalid);
+    }
   }
 
   private openSocket(frame: Extract<RelayFrame, { t: "socket" }>): void {
@@ -352,8 +356,9 @@ export class RelayConnection {
         if (
           bytes === undefined ||
           channel.inboundBytes + bytes.byteLength > RELAY_MESSAGE_LIMIT_BYTES
-        )
+        ) {
           return false;
+        }
         channel.inbound.push(bytes);
         channel.inboundBytes += bytes.byteLength;
         this.send({ t: "credit", ch: channel.id, bytes: bytes.byteLength });
@@ -481,8 +486,9 @@ export class RelayConnection {
           channel.requestEnded ||
           bytes === undefined ||
           channel.unreturned + bytes.byteLength > RELAY_WINDOW_BYTES
-        )
+        ) {
           return false;
+        }
         channel.unreturned += bytes.byteLength;
         channel.received += bytes.byteLength;
 

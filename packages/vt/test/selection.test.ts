@@ -58,17 +58,17 @@ describe("selection", () => {
   });
 
   test("a cursor-line mark follows its row until scrollback drops it", async () => {
-    const session = await openTerminal({ cols: 40, rows: 5, scrollback: 1_000 });
+    const session = await openTerminal({ cols: 40, rows: 5, scrollback: 1000 });
     const terminal = session.terminal;
 
-    session.write("$ ls\r\nREADME.md\r\n\u001b[1m$ make\u001b[0m   ");
+    session.write("$ ls\r\nREADME.md\r\n\u001B[1m$ make\u001B[0m   ");
     const mark = terminal.markCursorLine();
 
     expect(mark?.text).toBe("$ make");
     expect(mark?.row()).toBe(2);
     session.write(`\r\n${Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\r\n")}`);
     expect(mark?.row()).toBe(2);
-    terminal.scroll(-1_000);
+    terminal.scroll(-1000);
     terminal.select(at("press", 0, 2, 1000));
     terminal.select(at("drag", 5, 2, 1010));
     expect(terminal.selectionText()).toBe("$ make");
@@ -84,7 +84,7 @@ describe("selection", () => {
     const session = await openTerminal({ cols: 40, rows: 5 });
 
     expect(session.terminal.markCursorLine()).toBeNull();
-    session.write("\u001b[?1049hvim");
+    session.write("\u001B[?1049hvim");
     expect(session.terminal.markCursorLine()).toBeNull();
   });
 });

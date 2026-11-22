@@ -8,7 +8,7 @@ const LISTS = [
   "https://easylist.to/easylist/easyprivacy.txt",
 ];
 
-const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const output = join(import.meta.dirname, "..", "resources", "adblock.generated.bin");
 
@@ -45,6 +45,6 @@ if (!force && (await fresh())) {
   const bytes = engine.serialize();
   await writeFile(output, bytes);
   process.stdout.write(
-    `adblock: wrote ${output} (${(bytes.byteLength / 1_024).toFixed(0)} KiB, engine ${String(ENGINE_VERSION)})\n`,
+    `adblock: wrote ${output} (${(bytes.byteLength / 1024).toFixed(0)} KiB, engine ${String(ENGINE_VERSION)})\n`,
   );
 }

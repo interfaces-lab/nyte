@@ -82,7 +82,7 @@ function record(requestId = "request", output = 20) {
 async function history(configDir: string, path: string, records: readonly unknown[]) {
   const file = join(configDir, "projects", path);
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, records.map((value) => JSON.stringify(value)).join("\n") + "\n");
+  await writeFile(file, `${records.map((value) => JSON.stringify(value)).join("\n")}\n`);
 
   return file;
 }
@@ -410,9 +410,7 @@ test("validates numeric usage once and continues after malformed records", async
 
   await appendFile(
     file,
-    "not json\n" +
-      JSON.stringify(valid).replace('"input_tokens":100', '"input_tokens":1e400') +
-      "\n",
+    `not json\n${JSON.stringify(valid).replace('"input_tokens":100', '"input_tokens":1e400')}\n`,
   );
   const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");

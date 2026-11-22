@@ -98,8 +98,9 @@ async function saveBrowserScreenshot({
     filters: [{ name: "PNG image", extensions: ["png"] }],
   });
 
-  if (!result.canceled && result.filePath !== undefined)
+  if (!result.canceled && result.filePath !== undefined) {
     await writeFile(result.filePath, image.toPNG());
+  }
 }
 
 export async function performBrowserAction({
@@ -125,8 +126,9 @@ export async function performBrowserAction({
     return;
   }
 
-  if (contents === undefined || contents.isDestroyed())
+  if (contents === undefined || contents.isDestroyed()) {
     throw new Error("This browser tab is closed");
+  }
 
   switch (action) {
     case "copy-url":

@@ -38,7 +38,7 @@ describe("unified patches", () => {
         " a",
         "-b",
         "++++ c",
-        "\\ No newline at end of file",
+        String.raw`\ No newline at end of file`,
         "@@ -9,1 +9,0 @@",
         "-",
         "",

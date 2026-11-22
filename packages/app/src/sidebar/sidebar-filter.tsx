@@ -36,10 +36,12 @@ import {
   SHOW_FIELDS,
   SORTS,
   STATUSES,
-  type SessionEnvironment,
-  type SessionShowField,
-  type SessionStatus,
-  type SessionViewSettings,
+} from "../preferences/session-view.ts";
+import type {
+  SessionEnvironment,
+  SessionShowField,
+  SessionStatus,
+  SessionViewSettings,
 } from "../preferences/session-view.ts";
 
 const SHOW_FIELD_ICONS = {

@@ -252,8 +252,9 @@ test("a new session's first message lands in the transcript at once at the level
   await tui.until(() => {
     const frame = tui.captureCharFrame();
 
-    for (const line of frame.split("\n"))
+    for (const line of frame.split("\n")) {
       if (/^\s*[↑↓…] first message/u.test(line)) pending.add(line.trim());
+    }
 
     return frame.includes("A new session answered.");
   });
@@ -270,17 +271,20 @@ test("a background subagent's report wakes the finished parent and shows as a re
   const route = (request: ProviderRequest) => {
     const seen = transcript(request);
 
-    if (!seen.includes("start a background helper"))
+    if (!seen.includes("start a background helper")) {
       return {
         content: [{ type: "text" as const, text: "Child finished the task." }],
         until: release.promise,
       };
+    }
 
-    if (seen.includes("Child finished the task."))
+    if (seen.includes("Child finished the task.")) {
       return { content: [{ type: "text" as const, text: "The helper reported back." }] };
+    }
 
-    if (seen.includes("Started subagent"))
+    if (seen.includes("Started subagent")) {
       return { content: [{ type: "text" as const, text: "Helper started in the background." }] };
+    }
 
     return toolCall("create", { title: "Helper", prompt: "do the child task" });
   };
@@ -403,8 +407,9 @@ function heartbeat(signal: AbortSignal | undefined, stopped: PromiseWithResolver
     key: null,
     write: async () => undefined,
     async *output() {
-      for (const tick of [1, 2])
+      for (const tick of [1, 2]) {
         yield { kind: "bytes", data: new TextEncoder().encode(`tick ${String(tick)}\n`) };
+      }
       await ended.promise;
       yield { kind: "exit", code: null };
     },

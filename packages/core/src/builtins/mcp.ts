@@ -28,8 +28,9 @@ export function mcpPlugin(
 
       void (async () => {
         try {
-          for (let next = await changes.next(); next.done !== true; next = await changes.next())
+          for (let next = await changes.next(); next.done !== true; next = await changes.next()) {
             api.reload();
+          }
         } catch (error) {
           if (api.signal.aborted) return;
           api.report({
@@ -44,8 +45,9 @@ export function mcpPlugin(
         contribute: {
           tools: [
             (draft) => {
-              for (const tool of hub.tools(workspace))
+              for (const tool of hub.tools(workspace)) {
                 if (!disabled.has(tool.name.split("__")[1] ?? "")) draft.set(tool.name, tool);
+              }
             },
           ],
           prompt: [
@@ -63,15 +65,15 @@ export function mcpPlugin(
   };
 }
 
-type ServerLine = {
+interface ServerLine {
   readonly head: string;
   readonly reach: "direct" | "codemode" | "tool_search" | null;
   readonly summary: string;
-};
+}
 
 function describeServers(briefs: readonly McpServerBrief[]): string | null {
   const servers = briefs.flatMap((brief): readonly ServerLine[] => {
-    if (brief.unavailable === "failed")
+    if (brief.unavailable === "failed") {
       return [
         {
           head: `- ${brief.name}: not connected; it failed to start, so it has no tools here. Tell the user when the task needs it.`,
@@ -79,8 +81,9 @@ function describeServers(briefs: readonly McpServerBrief[]): string | null {
           summary: "",
         },
       ];
+    }
 
-    if (brief.unavailable === "needs-sign-in")
+    if (brief.unavailable === "needs-sign-in") {
       return [
         {
           head: `- ${brief.name}: not connected; the user has to sign in to it in the MCP settings before its tools appear.`,
@@ -88,6 +91,7 @@ function describeServers(briefs: readonly McpServerBrief[]): string | null {
           summary: "",
         },
       ];
+    }
     const reach = brief.exposures.includes("code")
       ? "codemode"
       : brief.exposures.includes("deferred")

@@ -195,11 +195,13 @@ describe("@ mentions", () => {
   });
 
   test("queries spelled as paths are resolved on disk", () => {
-    for (const query of ["./a", "../a", "~/a", "/a", "C:\\a", ".\\a"])
+    for (const query of ["./a", "../a", "~/a", "/a", String.raw`C:\a`, String.raw`.\a`]) {
       expect(explicitMentionQuery(query)).toBe(true);
+    }
 
-    for (const query of ["", "a/b", ".a", "~a", "C:a"])
+    for (const query of ["", "a/b", ".a", "~a", "C:a"]) {
       expect(explicitMentionQuery(query)).toBe(false);
+    }
   });
 
   test("a resolved path comes first unless the index already lists it", () => {

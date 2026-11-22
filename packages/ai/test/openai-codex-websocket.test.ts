@@ -377,7 +377,7 @@ describe("openai-codex websocket streaming", () => {
     ]);
   });
 
-  it.each(["websocket", "sse"] satisfies ReadonlyArray<"websocket" | "sse">)(
+  it.each(["websocket", "sse"] satisfies readonly ("websocket" | "sse")[])(
     "recovers a missing cached websocket continuation via %s",
     async (recoveryTransport) => {
       const sessionId = `missing-continuation-${recoveryTransport}`;
@@ -394,9 +394,9 @@ describe("openai-codex websocket streaming", () => {
                 limit_reached: false,
                 primary: {
                   used_percent: 7,
-                  window_minutes: 10080,
-                  reset_after_seconds: 556112,
-                  reset_at: 1785269351,
+                  window_minutes: 10_080,
+                  reset_after_seconds: 556_112,
+                  reset_at: 1_785_269_351,
                 },
                 secondary: null,
               },

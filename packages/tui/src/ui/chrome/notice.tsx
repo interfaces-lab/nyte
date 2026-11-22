@@ -56,7 +56,7 @@ export function NoticeLine(): JSX.Element {
   );
 }
 
-const CLOCK_INTERVAL_MS = 1_000;
+const CLOCK_INTERVAL_MS = 1000;
 
 function HealthText(props: { readonly health: HealthNotice }): JSX.Element {
   const app = useApp();
@@ -82,7 +82,7 @@ function HealthText(props: { readonly health: HealthNotice }): JSX.Element {
 function healthText(health: HealthNotice, now: number): string {
   switch (health.kind) {
     case "reconnecting":
-      return `Reconnecting in ${String(Math.max(1, Math.ceil((health.at - now) / 1_000)))}s`;
+      return `Reconnecting in ${String(Math.max(1, Math.ceil((health.at - now) / 1000)))}s`;
     case "unreachable":
       return "Can't reach host";
     case "signed-out":

@@ -49,8 +49,9 @@ export async function applyBatch(
     const known = await readReceipt(kernel.store, session, id);
 
     if (known !== null) {
-      if (known.record.kind !== "batch" || known.record.digest !== digest)
+      if (known.record.kind !== "batch" || known.record.digest !== digest) {
         throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+      }
 
       return receipt;
     }
@@ -69,8 +70,9 @@ export async function applyBatch(
   const replayed = receipts.get(id);
 
   if (replayed !== undefined) {
-    if (replayed.workspace !== scope.workspace || replayed.digest !== digest)
+    if (replayed.workspace !== scope.workspace || replayed.digest !== digest) {
       throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+    }
 
     return replayed.receipt;
   }
@@ -135,8 +137,9 @@ async function execute(
     try {
       const current = (await files.stat(entry.path))?.version ?? null;
 
-      if (entry.expect === "absent" ? current !== null : current !== entry.expect)
+      if (entry.expect === "absent" ? current !== null : current !== entry.expect) {
         stale.push(entry.path);
+      }
     } catch {
       stale.push(entry.path);
     }

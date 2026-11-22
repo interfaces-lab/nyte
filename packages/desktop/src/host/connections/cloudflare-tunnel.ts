@@ -25,7 +25,7 @@ import type { RemoteAccessPlugin, RemoteExposure } from "./remote-access-plugin.
 
 const PENDING_LIMIT = 5;
 
-const PAIRING_WINDOW_MS = 10 * 60 * 1_000;
+const PAIRING_WINDOW_MS = 10 * 60 * 1000;
 
 const DEVICE_AUTHORITY: ReadonlySet<Authority> = new Set(["participant", "owner"]);
 
@@ -69,8 +69,9 @@ interface Exposed {
 }
 
 function standardBase64(text: string): Buffer | undefined {
-  if (text === "" || text.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(text))
+  if (text === "" || text.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(text)) {
     return undefined;
+  }
   const bytes = Buffer.from(text, "base64");
 
   return bytes.toString("base64") === text ? bytes : undefined;
@@ -153,16 +154,19 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     const hostname = settings.hostname.trim().toLowerCase();
     const tunnelToken = settings.tunnelToken.trim();
 
-    if (!HOSTNAME.test(hostname))
+    if (!HOSTNAME.test(hostname)) {
       throw invalid("Enter the public hostname alone, such as nyte.example.com.");
+    }
 
-    if (!Number.isInteger(settings.port) || settings.port < 1024 || settings.port > 65_535)
+    if (!Number.isInteger(settings.port) || settings.port < 1024 || settings.port > 65_535) {
       throw invalid("Choose a port from 1024 to 65535.");
+    }
 
-    if (!cloudflaredAccepts(tunnelToken))
+    if (!cloudflaredAccepts(tunnelToken)) {
       throw invalid(
         "That isn't a tunnel token. Copy it again from the tunnel's page in Cloudflare.",
       );
+    }
 
     await this.change((file) => ({
       file: {
@@ -199,8 +203,9 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
 
     const name = input.name.trim();
 
-    if (name === "" || name.length > DEVICE_NAME_LIMIT)
+    if (name === "" || name.length > DEVICE_NAME_LIMIT) {
       throw invalid(`Name the device in 1 to ${String(DEVICE_NAME_LIMIT)} characters.`);
+    }
     const token = randomBytes(32).toString("base64url");
     const now = Date.now();
     const expiresAt = now + (this.options.pairingWindowMs ?? PAIRING_WINDOW_MS);
@@ -239,8 +244,9 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
 
   async revoke(input: { readonly deviceId: string }): Promise<void> {
     await this.change((file) => {
-      if (file === undefined || !file.devices.some((device) => device.id === input.deviceId))
+      if (file === undefined || !file.devices.some((device) => device.id === input.deviceId)) {
         return { file, result: undefined };
+      }
 
       return {
         file: { ...file, devices: file.devices.filter((device) => device.id !== input.deviceId) },

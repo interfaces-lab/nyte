@@ -12,7 +12,7 @@ export function byCodePoint(left: string, right: string): number {
     const difference = point - (right.codePointAt(index) ?? 0);
 
     if (difference !== 0) return difference;
-    index += point > 0xffff ? 2 : 1;
+    index += point > 0xff_ff ? 2 : 1;
   }
 
   return left.length - right.length;

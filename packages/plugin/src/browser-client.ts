@@ -170,10 +170,10 @@ const answers = {
   capture: compile(CaptureAnswerType),
 };
 
-const UNICODE_FORGERY = /[\u2028\u2029\u202a-\u202e]/g;
+const UNICODE_FORGERY = /[\u2028\u2029\u202A-\u202E]/g;
 
 // oxlint-disable-next-line no-control-regex -- stripping control characters is the point
-const CONTROL_CHARACTERS = /[\x00-\x1f\x7f-\x9f]/g;
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/g;
 
 /**
  * Returns page text fit for one line of a tool result: no control
@@ -183,7 +183,7 @@ const CONTROL_CHARACTERS = /[\x00-\x1f\x7f-\x9f]/g;
  * @since 0.1.0
  */
 export function sanitizeLine(text: string): string {
-  return text.replace(CONTROL_CHARACTERS, "").replace(UNICODE_FORGERY, "");
+  return text.replaceAll(CONTROL_CHARACTERS, "").replaceAll(UNICODE_FORGERY, "");
 }
 
 export function sessionSurfaceId(sessionId: SessionId): string {
@@ -214,10 +214,11 @@ export function clientBrowserPlugins(actions: ClientActions, home: string): read
         api.signal.addEventListener(
           "abort",
           () => {
-            if (actions.offered(BROWSER_ACTION.name))
+            if (actions.offered(BROWSER_ACTION.name)) {
               void ask(actions, { method: "release", session: api.session.sessionId }).catch(
                 () => undefined,
               );
+            }
           },
           { once: true },
         );
@@ -284,8 +285,9 @@ function sessionBrowser(
     async snapshot(input) {
       const answer = await act({ method: "snapshot", session, ref: input?.ref });
 
-      if (answer.kind === "failed")
+      if (answer.kind === "failed") {
         throw new SdkError("unavailable", `The page cannot be read: ${answer.failure.kind}.`);
+      }
       state = answer.state;
 
       return toPageSnapshot(answer.state);
@@ -331,10 +333,11 @@ function sessionBrowser(
         }),
       ),
     async wait(condition) {
-      if (condition.kind === "loaded")
+      if (condition.kind === "loaded") {
         return settle(await act({ method: "wait", session, wait: { until: "load" } }));
+      }
 
-      if (condition.kind === "delay")
+      if (condition.kind === "delay") {
         return settle(
           await act({
             method: "wait",
@@ -342,6 +345,7 @@ function sessionBrowser(
             wait: { until: "time", seconds: Math.max(0.1, condition.ms / 1000) },
           }),
         );
+      }
 
       return settle(
         await act({
@@ -394,8 +398,9 @@ function sessionBrowser(
     async open(input) {
       const outcome = settle(await act({ method: "open", session, owner, url: input.url }));
 
-      if (outcome.kind !== "applied")
+      if (outcome.kind !== "applied") {
         throw new SdkError("unavailable", `The page did not open: ${outcome.kind}.`);
+      }
 
       return page;
     },
@@ -435,8 +440,9 @@ function unavailable(): SdkError {
 }
 
 function decode<T>(checker: { Check(value: unknown): value is T }, value: Json): T {
-  if (!checker.Check(value))
+  if (!checker.Check(value)) {
     throw new SdkError("invalid", "The app answered a browser call with something unreadable.");
+  }
 
   return value;
 }

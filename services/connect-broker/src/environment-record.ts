@@ -193,14 +193,14 @@ function refused<T>(code: ErrorCode, effects: readonly Effect[] = []): Outcome<T
 }
 
 export class EnvironmentRecord {
-  readonly #id: string;
-  readonly #storage: DurableObjectSql;
-  readonly #directory: D1Database;
-  readonly #config: Config;
-  readonly #log: Logger;
-  readonly #exchange: DesktopExchange;
-  #loading: Promise<void> | undefined;
-  #relayWindow = { start: 0, count: 0 };
+  private readonly id: string;
+  private readonly storage: DurableObjectSql;
+  private readonly directory: D1Database;
+  private readonly config: Config;
+  private readonly log: Logger;
+  private readonly exchange: DesktopExchange;
+  private loading: Promise<void> | undefined;
+  private relayWindow = { start: 0, count: 0 };
 
   constructor(input: {
     readonly id: string;
@@ -210,52 +210,53 @@ export class EnvironmentRecord {
     readonly log: Logger;
     readonly exchange: DesktopExchange;
   }) {
-    this.#id = input.id;
-    this.#storage = input.storage;
-    this.#directory = input.directory;
-    this.#config = input.config;
-    this.#log = input.log;
-    this.#exchange = input.exchange;
+    this.id = input.id;
+    this.storage = input.storage;
+    this.directory = input.directory;
+    this.config = input.config;
+    this.log = input.log;
+    this.exchange = input.exchange;
   }
 
   async lease(proof: Proven): Promise<Outcome<LeaseResponse>> {
-    const served = await this.#load();
+    const served = await this.load();
 
     if (served === undefined) return refused("unauthorized");
 
-    const claims = await this.#spend(served, proof, {
+    const claims = await this.spend(served, proof, {
       method: "POST",
-      path: BROKER_ROUTES.lease(this.#id),
+      path: BROKER_ROUTES.lease(this.id),
       kind: "lease",
     });
 
     if (claims === undefined) return refused("unauthorized");
 
     if (parseJson(EmptyObject, proof.body) === undefined) return refused("invalid");
-    const current = this.#served() ?? served;
+    const current = this.served() ?? served;
 
-    if (current.state === "revoked" || current.owner_status === "deleted")
+    if (current.state === "revoked" || current.owner_status === "deleted") {
       return refused("revoked");
+    }
 
-    if (!this.#within("lease")) return refused("rate_limited");
+    if (!this.within("lease")) return refused("rate_limited");
 
     if (current.owner_status === "disabled") return refused("owner_disabled");
     const now = Date.now();
 
     const devices = many(
       IdRow,
-      this.#exec(
+      this.exec(
         "SELECT id FROM devices WHERE state = 'active' ORDER BY created_at, id LIMIT ?1",
         DEVICE_LIMIT,
       ),
     ).map((device) => device.id);
 
-    this.#exec("UPDATE environment SET last_seen_at = ?1", now);
+    this.exec("UPDATE environment SET last_seen_at = ?1", now);
     const iat = nowSeconds(now);
 
     const lease: LeaseClaims = {
-      iss: this.#config.origin,
-      aud: this.#id,
+      iss: this.config.origin,
+      aud: this.id,
       sub: current.owner_id,
       iat,
       exp: iat + LEASE_LIFETIME_SECONDS,
@@ -267,7 +268,7 @@ export class EnvironmentRecord {
 
     return ok({
       lease: await signClaims({
-        key: this.#config.signing.active,
+        key: this.config.signing.active,
         typ: TOKEN_TYPES.lease,
         claims: lease,
       }),
@@ -279,18 +280,19 @@ export class EnvironmentRecord {
     readonly sessionId: string;
     readonly body: EnrollRequest;
   }): Promise<Outcome<EnrollResponse>> {
-    const served = await this.#load();
+    const served = await this.load();
 
-    if (served === undefined || served.owner_id !== input.ownerId || served.state !== "active")
+    if (served === undefined || served.owner_id !== input.ownerId || served.state !== "active") {
       return refused("not_found");
+    }
 
     if (served.owner_status !== "active") return refused("owner_disabled");
     const reservedAt = Date.now();
     const iat = nowSeconds(reservedAt);
 
     const grant: EnrollmentClaims = {
-      iss: this.#config.origin,
-      aud: this.#id,
+      iss: this.config.origin,
+      aud: this.id,
       sub: served.owner_id,
       iat,
       exp: iat + ENROLLMENT_LIFETIME_SECONDS,
@@ -304,51 +306,52 @@ export class EnvironmentRecord {
       ...(input.body.role === undefined ? {} : { role: input.body.role }),
     };
 
-    if (!this.#reserve(grant, { sessionId: input.sessionId, now: reservedAt }))
+    if (!this.reserve(grant, { sessionId: input.sessionId, now: reservedAt })) {
       return refused("limit");
+    }
 
     const authorization = await signClaims({
-      key: this.#config.signing.active,
+      key: this.config.signing.active,
       typ: TOKEN_TYPES.enrollment,
       claims: grant,
     });
 
-    const receipt = await this.#forwardEnrollment(authorization);
+    const receipt = await this.forwardEnrollment(authorization);
 
     if (
       receipt === undefined ||
-      !(await this.#receiptConfirms({ receipt, publicKey: served.public_key, grant }))
+      !(await this.receiptConfirms({ receipt, publicKey: served.public_key, grant }))
     ) {
-      this.#unreserve(grant.deviceId);
+      this.unreserve(grant.deviceId);
 
       return refused("unreachable");
     }
 
-    const denied = await sessionDenied(this.#directory, {
+    const denied = await sessionDenied(this.directory, {
       sessionId: input.sessionId,
       now: Date.now(),
     });
 
-    if (!this.#activate(grant, { sessionId: input.sessionId, denied })) {
-      this.#unreserve(grant.deviceId);
+    if (!this.activate(grant, { sessionId: input.sessionId, denied })) {
+      this.unreserve(grant.deviceId);
 
       return refused("conflict");
     }
 
-    return ok({ environmentId: this.#id, deviceId: grant.deviceId });
+    return ok({ environmentId: this.id, deviceId: grant.deviceId });
   }
 
   async release(input: {
     readonly proof: Proven;
     readonly deviceId: string;
   }): Promise<Outcome<null>> {
-    const served = await this.#load();
+    const served = await this.load();
 
     if (served === undefined) return refused("unauthorized");
 
-    const claims = await this.#spend(served, input.proof, {
+    const claims = await this.spend(served, input.proof, {
       method: "POST",
-      path: BROKER_ROUTES.release(this.#id, input.deviceId),
+      path: BROKER_ROUTES.release(this.id, input.deviceId),
       kind: "revoke",
     });
 
@@ -356,20 +359,20 @@ export class EnvironmentRecord {
 
     if (input.proof.body !== "{}") return refused("invalid");
 
-    if (!this.#within("revoke")) return refused("rate_limited");
+    if (!this.within("revoke")) return refused("rate_limited");
 
-    if (this.#device(input.deviceId) === undefined) return refused("not_found");
+    if (this.device(input.deviceId) === undefined) return refused("not_found");
     const now = Date.now();
 
-    this.#storage.transactionSync(() => {
-      const ended = this.#exec(
+    this.storage.transactionSync(() => {
+      const ended = this.exec(
         `UPDATE devices SET state = 'revoked', revoke_reason = 'released', revoked_at = ?2
          WHERE id = ?1 AND state != 'revoked' RETURNING id`,
         input.deviceId,
         now,
       );
 
-      if (ended.length > 0) this.#exec("UPDATE environment SET policy = policy + 1");
+      if (ended.length > 0) this.exec("UPDATE environment SET policy = policy + 1");
     });
 
     return ok(null, [{ kind: "end-device", deviceId: input.deviceId }]);
@@ -379,34 +382,35 @@ export class EnvironmentRecord {
     readonly actor: Actor;
     readonly deviceId: string;
   }): Promise<Outcome<{ readonly sessionId: string }>> {
-    const served = await this.#load();
+    const served = await this.load();
 
-    if (served === undefined)
+    if (served === undefined) {
       return refused(input.actor.kind === "owner" ? "not_found" : "unauthorized");
+    }
 
-    const refusal = await this.#authorize(served, input.actor, {
+    const refusal = await this.authorize(served, input.actor, {
       method: "DELETE",
-      path: BROKER_ROUTES.device(this.#id, input.deviceId),
+      path: BROKER_ROUTES.device(this.id, input.deviceId),
     });
 
     if (refusal !== undefined) return refused(refusal);
-    const device = this.#device(input.deviceId);
+    const device = this.device(input.deviceId);
 
     if (device === undefined) return refused("not_found");
     const now = Date.now();
     const owed = `deny:${device.session_id}`;
 
-    this.#storage.transactionSync(() => {
-      const before = this.#device(input.deviceId);
+    this.storage.transactionSync(() => {
+      const before = this.device(input.deviceId);
 
-      if (before?.state !== "revoked") this.#exec("UPDATE environment SET policy = policy + 1");
-      this.#exec(
+      if (before?.state !== "revoked") this.exec("UPDATE environment SET policy = policy + 1");
+      this.exec(
         `UPDATE devices SET state = 'revoked', revoke_reason = 'revoked', revoked_at = coalesce(revoked_at, ?2)
          WHERE id = ?1 AND (state != 'revoked' OR revoke_reason != 'revoked')`,
         input.deviceId,
         now,
       );
-      this.#exec(
+      this.exec(
         `INSERT INTO outbox (key, kind, session_id, owner_id, at, attempts, next_at)
          VALUES (?1, 'deny', ?2, ?3, ?4, 0, ?4) ON CONFLICT (key) DO NOTHING`,
         owed,
@@ -418,24 +422,25 @@ export class EnvironmentRecord {
     await this.drain();
     const effects: Effect[] = [{ kind: "end-device", deviceId: input.deviceId }];
 
-    if (this.#exec("SELECT 1 FROM outbox WHERE key = ?1", owed).length > 0)
+    if (this.exec("SELECT 1 FROM outbox WHERE key = ?1", owed).length > 0) {
       return refused("internal", effects);
+    }
 
     return ok({ sessionId: device.session_id }, effects);
   }
 
   async revoke(actor: Actor): Promise<Outcome<null>> {
-    const served = await this.#load();
+    const served = await this.load();
 
     if (served === undefined) return refused(actor.kind === "owner" ? "not_found" : "unauthorized");
 
-    const refusal = await this.#authorize(served, actor, {
+    const refusal = await this.authorize(served, actor, {
       method: "DELETE",
-      path: BROKER_ROUTES.environment(this.#id),
+      path: BROKER_ROUTES.environment(this.id),
     });
 
     if (refusal !== undefined) return refused(refusal);
-    const ended = this.#storage.transactionSync(() => this.#end(Date.now()));
+    const ended = this.storage.transactionSync(() => this.end(Date.now()));
 
     await this.drain();
 
@@ -443,18 +448,18 @@ export class EnvironmentRecord {
   }
 
   setOwner(standing: OwnerStanding): Outcome<null> {
-    const served = this.#served();
+    const served = this.served();
 
     if (served === undefined || served.owner_status === "deleted") return ok(null);
 
     if (standing.status === "deleted") {
-      const ended = this.#storage.transactionSync(() => {
-        this.#exec(
+      const ended = this.storage.transactionSync(() => {
+        this.exec(
           "UPDATE environment SET owner_status = 'deleted', owner_version = max(owner_version, ?1)",
           standing.version,
         );
 
-        return this.#end(Date.now());
+        return this.end(Date.now());
       });
 
       return ok(null, ended ? [{ kind: "close" }] : []);
@@ -463,9 +468,10 @@ export class EnvironmentRecord {
     if (
       standing.version < served.owner_version ||
       (standing.version === served.owner_version && standing.status === served.owner_status)
-    )
+    ) {
       return ok(null);
-    this.#exec(
+    }
+    this.exec(
       "UPDATE environment SET owner_status = ?1, owner_version = ?2",
       standing.status,
       standing.version,
@@ -480,11 +486,12 @@ export class EnvironmentRecord {
   }
 
   status(ownerId: string, connected: boolean): Presence | null {
-    if (!this.#loaded()) return { online: false, lastSeenAt: null };
-    const served = this.#served();
+    if (!this.loaded()) return { online: false, lastSeenAt: null };
+    const served = this.served();
 
-    if (served === undefined || served.owner_id !== ownerId || served.state === "revoked")
+    if (served === undefined || served.owner_id !== ownerId || served.state === "revoked") {
       return null;
+    }
 
     const recent =
       served.last_seen_at !== null &&
@@ -497,16 +504,17 @@ export class EnvironmentRecord {
     readonly bearer: string | undefined;
     readonly admission: RelayAdmission;
   }): Promise<Admitted> {
-    if (input.admission === "none") return this.#counted(undefined);
+    if (input.admission === "none") return this.counted(undefined);
 
-    if (input.bearer === undefined || this.#served() === undefined)
+    if (input.bearer === undefined || this.served() === undefined) {
       return { ok: false, code: "unauthorized" };
+    }
     const digest = await sha256(input.bearer);
-    const served = this.#served();
+    const served = this.served();
 
     const device = one(
       DeviceRow,
-      this.#exec(
+      this.exec(
         `SELECT id, session_id, state, grant_expires_at FROM devices WHERE digest = ?1
          ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'reserved' THEN 1 ELSE 2 END, created_at DESC
          LIMIT 1`,
@@ -519,27 +527,28 @@ export class EnvironmentRecord {
 
     if (input.admission === "reserved-or-active" && !live) return { ok: false, code: "forbidden" };
 
-    if (input.admission === "active" && (!live || device.state !== "active"))
+    if (input.admission === "active" && (!live || device.state !== "active")) {
       return { ok: false, code: "unauthorized" };
+    }
 
     if (served.owner_status !== "active") return { ok: false, code: "closed" };
 
-    return this.#counted(device.id);
+    return this.counted(device.id);
   }
 
   async authenticate(token: string): Promise<"ready" | "revoked" | "unauthorized"> {
-    const served = await this.#load();
+    const served = await this.load();
 
     if (served === undefined) return "unauthorized";
 
-    const claims = await this.#spend(
+    const claims = await this.spend(
       served,
       { token, body: "" },
-      { method: "GET", path: BROKER_ROUTES.relay(this.#id), kind: "relay" },
+      { method: "GET", path: BROKER_ROUTES.relay(this.id), kind: "relay" },
     );
 
     if (claims === undefined) return "unauthorized";
-    const current = this.#served() ?? served;
+    const current = this.served() ?? served;
 
     if (current.state === "revoked" || current.owner_status === "deleted") return "revoked";
 
@@ -547,11 +556,11 @@ export class EnvironmentRecord {
   }
 
   async drain(): Promise<void> {
-    if (!this.#loaded()) return;
+    if (!this.loaded()) return;
 
     const due = many(
       OutboxRow,
-      this.#exec(
+      this.exec(
         "SELECT key, kind, session_id, owner_id, at, attempts FROM outbox WHERE next_at <= ?1 ORDER BY next_at",
         Date.now(),
       ),
@@ -559,22 +568,22 @@ export class EnvironmentRecord {
 
     for (const row of due) {
       try {
-        if (row.kind === "deny")
-          await denySession(this.#directory, {
+        if (row.kind === "deny") {
+          await denySession(this.directory, {
             sessionId: row.session_id,
             userId: row.owner_id,
             at: row.at,
           });
-        else await retireEnvironment(this.#directory, { id: this.#id, at: row.at });
-        this.#exec("DELETE FROM outbox WHERE key = ?1", row.key);
+        } else await retireEnvironment(this.directory, { id: this.id, at: row.at });
+        this.exec("DELETE FROM outbox WHERE key = ?1", row.key);
       } catch (error) {
-        this.#log.warn("outbox.deferred", {
-          environmentId: this.#id,
+        this.log.warn("outbox.deferred", {
+          environmentId: this.id,
           kind: row.kind,
           attempts: row.attempts,
           error: errorName(error),
         });
-        this.#exec(
+        this.exec(
           "UPDATE outbox SET attempts = attempts + 1, next_at = ?2 WHERE key = ?1",
           row.key,
           Date.now() + Math.min(1000 * 2 ** Math.min(row.attempts, 12), 3_600_000),
@@ -584,55 +593,55 @@ export class EnvironmentRecord {
   }
 
   nextDue(): number | undefined {
-    if (!this.#loaded()) return undefined;
+    if (!this.loaded()) return undefined;
 
-    return one(DueRow, this.#exec("SELECT min(next_at) AS due FROM outbox")[0])?.due ?? undefined;
+    return one(DueRow, this.exec("SELECT min(next_at) AS due FROM outbox")[0])?.due ?? undefined;
   }
 
-  #exec(query: string, ...bindings: SqlValue[]): Record<string, SqlValue>[] {
-    return this.#storage.sql.exec(query, ...bindings).toArray();
+  private exec(query: string, ...bindings: SqlValue[]): Record<string, SqlValue>[] {
+    return this.storage.sql.exec(query, ...bindings).toArray();
   }
 
-  #loaded(): boolean {
+  private loaded(): boolean {
     return (
-      this.#exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'environment'")
+      this.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'environment'")
         .length > 0
     );
   }
 
-  #served(): Served | undefined {
-    if (!this.#loaded()) return undefined;
+  private served(): Served | undefined {
+    if (!this.loaded()) return undefined;
 
     return one(
       Served,
-      this.#exec(
+      this.exec(
         "SELECT owner_id, public_key, state, policy, owner_status, owner_version, last_seen_at FROM environment",
       )[0],
     );
   }
 
-  async #load(): Promise<Served | undefined> {
-    const local = this.#served();
+  private async load(): Promise<Served | undefined> {
+    const local = this.served();
 
     if (local !== undefined) return local;
-    this.#loading ??= this.#copy().finally(() => {
-      this.#loading = undefined;
+    this.loading ??= this.copy().finally(() => {
+      this.loading = undefined;
     });
-    await this.#loading;
+    await this.loading;
 
-    return this.#served();
+    return this.served();
   }
 
-  async #copy(): Promise<void> {
-    const found = await loadEnvironment(this.#directory, this.#id);
+  private async copy(): Promise<void> {
+    const found = await loadEnvironment(this.directory, this.id);
 
     if (found === undefined) return;
-    this.#storage.transactionSync(() => {
-      for (const statement of SCHEMA) this.#exec(statement);
-      this.#exec(
+    this.storage.transactionSync(() => {
+      for (const statement of SCHEMA) this.exec(statement);
+      this.exec(
         `INSERT INTO environment (id, owner_id, public_key, state, policy, owner_status, owner_version, last_seen_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL) ON CONFLICT (id) DO NOTHING`,
-        this.#id,
+        this.id,
         found.environment.owner_id,
         found.environment.public_key,
         found.environment.state,
@@ -643,7 +652,7 @@ export class EnvironmentRecord {
     });
   }
 
-  async #spend(
+  private async spend(
     served: Served,
     proof: Proven,
     request: {
@@ -658,8 +667,8 @@ export class EnvironmentRecord {
       claims = await verifyProof({
         token: proof.token,
         key: { kty: "OKP", crv: "Ed25519", x: served.public_key },
-        issuer: this.#id,
-        audience: this.#config.origin,
+        issuer: this.id,
+        audience: this.config.origin,
         method: request.method,
         path: request.path,
         body: proof.body,
@@ -671,9 +680,9 @@ export class EnvironmentRecord {
 
     const now = Date.now();
 
-    this.#exec("DELETE FROM proofs WHERE expires_at < ?1 AND at < ?2", now, now - PROOF_WINDOW_MS);
+    this.exec("DELETE FROM proofs WHERE expires_at < ?1 AND at < ?2", now, now - PROOF_WINDOW_MS);
 
-    const spent = this.#exec(
+    const spent = this.exec(
       `INSERT INTO proofs (jti, kind, at, expires_at) VALUES (?1, ?2, ?3, ?4)
        ON CONFLICT (jti) DO NOTHING RETURNING jti`,
       claims.jti,
@@ -685,11 +694,11 @@ export class EnvironmentRecord {
     return spent.length === 1 ? claims : undefined;
   }
 
-  #within(kind: keyof typeof PROOF_LIMITS): boolean {
+  private within(kind: keyof typeof PROOF_LIMITS): boolean {
     const count =
       one(
         CountRow,
-        this.#exec(
+        this.exec(
           "SELECT count(*) AS count FROM proofs WHERE kind = ?1 AND at > ?2",
           kind,
           Date.now() - PROOF_WINDOW_MS,
@@ -699,43 +708,43 @@ export class EnvironmentRecord {
     return count <= PROOF_LIMITS[kind];
   }
 
-  async #authorize(
+  private async authorize(
     served: Served,
     actor: Actor,
     request: { readonly method: "DELETE"; readonly path: string },
   ): Promise<ErrorCode | undefined> {
     if (actor.kind === "owner") return actor.ownerId === served.owner_id ? undefined : "not_found";
-    const claims = await this.#spend(served, actor.proof, { ...request, kind: "revoke" });
+    const claims = await this.spend(served, actor.proof, { ...request, kind: "revoke" });
 
     if (claims === undefined) return "unauthorized";
 
-    return this.#within("revoke") ? undefined : "rate_limited";
+    return this.within("revoke") ? undefined : "rate_limited";
   }
 
-  #device(deviceId: string): Static<typeof DeviceRow> | undefined {
+  private device(deviceId: string): Static<typeof DeviceRow> | undefined {
     return one(
       DeviceRow,
-      this.#exec(
+      this.exec(
         "SELECT id, session_id, state, grant_expires_at FROM devices WHERE id = ?1",
         deviceId,
       )[0],
     );
   }
 
-  #end(now: number): boolean {
-    const ended = this.#exec(
+  private end(now: number): boolean {
+    const ended = this.exec(
       "UPDATE environment SET state = 'revoked', policy = policy + 1 WHERE state = 'active' RETURNING owner_id",
     );
 
     const owner = one(Type.Object({ owner_id: Type.String() }), ended[0]);
 
     if (owner === undefined) return false;
-    this.#exec(
+    this.exec(
       `UPDATE devices SET state = 'revoked', revoke_reason = 'environment', revoked_at = ?1
        WHERE state != 'revoked'`,
       now,
     );
-    this.#exec(
+    this.exec(
       `INSERT INTO outbox (key, kind, session_id, owner_id, at, attempts, next_at)
        VALUES ('retire', 'retire', NULL, ?1, ?2, 0, ?2) ON CONFLICT (key) DO NOTHING`,
       owner.owner_id,
@@ -745,12 +754,12 @@ export class EnvironmentRecord {
     return true;
   }
 
-  #reserve(
+  private reserve(
     grant: EnrollmentClaims,
     input: { readonly sessionId: string; readonly now: number },
   ): boolean {
-    return this.#storage.transactionSync(() => {
-      this.#exec(
+    return this.storage.transactionSync(() => {
+      this.exec(
         `UPDATE devices SET state = 'revoked', revoke_reason = 'expired', revoked_at = ?1
          WHERE state = 'reserved' AND grant_expires_at < ?2`,
         input.now,
@@ -760,7 +769,7 @@ export class EnvironmentRecord {
       const taken =
         one(
           CountRow,
-          this.#exec(
+          this.exec(
             `SELECT count(*) AS count FROM devices
              WHERE state = 'reserved' OR (state = 'active' AND client_id != ?1)`,
             grant.clientId,
@@ -768,7 +777,7 @@ export class EnvironmentRecord {
         )?.count ?? 0;
 
       if (taken >= DEVICE_LIMIT) return false;
-      this.#exec(
+      this.exec(
         `INSERT INTO devices
            (id, client_id, client_name, digest, session_id, state, grant_id, nonce, grant_expires_at, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, 'reserved', ?6, ?7, ?8, ?9)`,
@@ -787,8 +796,8 @@ export class EnvironmentRecord {
     });
   }
 
-  #unreserve(deviceId: string): void {
-    this.#exec(
+  private unreserve(deviceId: string): void {
+    this.exec(
       `UPDATE devices SET state = 'revoked', revoke_reason = 'unconfirmed', revoked_at = ?2
        WHERE id = ?1 AND state = 'reserved'`,
       deviceId,
@@ -796,13 +805,13 @@ export class EnvironmentRecord {
     );
   }
 
-  #activate(
+  private activate(
     grant: EnrollmentClaims,
     input: { readonly sessionId: string; readonly denied: boolean },
   ): boolean {
-    return this.#storage.transactionSync(() => {
-      const served = this.#served();
-      const device = this.#device(grant.deviceId);
+    return this.storage.transactionSync(() => {
+      const served = this.served();
+      const device = this.device(grant.deviceId);
       const now = Date.now();
 
       if (
@@ -811,45 +820,46 @@ export class EnvironmentRecord {
         served.owner_status !== "active" ||
         device?.state !== "reserved" ||
         device.grant_expires_at < now ||
-        this.#exec(
+        this.exec(
           "SELECT 1 FROM devices WHERE session_id = ?1 AND revoke_reason = 'revoked' LIMIT 1",
           input.sessionId,
         ).length > 0
-      )
+      ) {
         return false;
-      this.#exec(
+      }
+      this.exec(
         `UPDATE devices SET state = 'revoked', revoke_reason = 'replaced', revoked_at = ?1
          WHERE client_id = ?2 AND state = 'active' AND id != ?3`,
         now,
         grant.clientId,
         grant.deviceId,
       );
-      this.#exec("UPDATE devices SET state = 'active' WHERE id = ?1", grant.deviceId);
-      this.#exec("UPDATE environment SET policy = policy + 1");
+      this.exec("UPDATE devices SET state = 'active' WHERE id = ?1", grant.deviceId);
+      this.exec("UPDATE environment SET policy = policy + 1");
 
       return true;
     });
   }
 
-  async #forwardEnrollment(authorization: string): Promise<string | undefined> {
+  private async forwardEnrollment(authorization: string): Promise<string | undefined> {
     const envelope: EnrollEnvelope = { authorization };
     let response: Response;
 
     try {
-      response = await this.#exchange({
+      response = await this.exchange({
         path: DESKTOP_ROUTES.enroll,
         body: JSON.stringify(envelope),
         signal: AbortSignal.timeout(ENROLL_TIMEOUT_MS),
       });
     } catch {
-      this.#log.warn("enroll.unreachable", { environmentId: this.#id, status: 0 });
+      this.log.warn("enroll.unreachable", { environmentId: this.id, status: 0 });
 
       return undefined;
     }
 
     if (response.status < 200 || response.status > 299) {
       await response.body?.cancel().catch(() => undefined);
-      this.#log.warn("enroll.unreachable", { environmentId: this.#id, status: response.status });
+      this.log.warn("enroll.unreachable", { environmentId: this.id, status: response.status });
 
       return undefined;
     }
@@ -859,7 +869,7 @@ export class EnvironmentRecord {
     return text === undefined ? undefined : parseJson(ReceiptEnvelope, text)?.receipt;
   }
 
-  async #receiptConfirms(input: {
+  private async receiptConfirms(input: {
     readonly receipt: string;
     readonly publicKey: string;
     readonly grant: EnrollmentClaims;
@@ -869,8 +879,8 @@ export class EnvironmentRecord {
         token: input.receipt,
         key: { kty: "OKP", crv: "Ed25519", x: input.publicKey },
         typ: TOKEN_TYPES.receipt,
-        issuer: this.#id,
-        audience: this.#config.origin,
+        issuer: this.id,
+        audience: this.config.origin,
         schema: ReceiptClaims,
         lifetime: ENROLLMENT_LIFETIME_SECONDS,
         now: Date.now(),
@@ -887,14 +897,14 @@ export class EnvironmentRecord {
     }
   }
 
-  #counted(deviceId: string | undefined): Admitted {
+  private counted(deviceId: string | undefined): Admitted {
     const now = Date.now();
     const start = now - (now % RELAY_LIMIT.windowMs);
 
-    if (this.#relayWindow.start !== start) this.#relayWindow = { start, count: 0 };
-    this.#relayWindow.count += 1;
+    if (this.relayWindow.start !== start) this.relayWindow = { start, count: 0 };
+    this.relayWindow.count += 1;
 
-    return this.#relayWindow.count <= RELAY_LIMIT.limit
+    return this.relayWindow.count <= RELAY_LIMIT.limit
       ? { ok: true, deviceId }
       : { ok: false, code: "closed" };
   }

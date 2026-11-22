@@ -17,14 +17,17 @@ import { commit } from "../watch/commit.ts";
 import { promptRef } from "../store/refs.ts";
 import { attempt, load, put, readRefExpectation, STALE } from "../store/session.ts";
 
-type SystemSection = { readonly id: string; readonly text: string };
+interface SystemSection {
+  readonly id: string;
+  readonly text: string;
+}
 
 export type FixedSection = PromptSection & { readonly text: string };
 
-type SystemPrompt = {
+interface SystemPrompt {
   readonly head: SystemMessage | null;
   readonly updates: ReadonlyMap<CommitId, readonly SystemMessage[]>;
-};
+}
 
 type Update = PromptRecord["updates"][number];
 
@@ -70,11 +73,12 @@ export async function resolveSections(
       if (typeof section.text === "string") return [{ ...section, text: section.text }];
       const api = runtime.api(entry.owner);
 
-      if (api === undefined)
+      if (api === undefined) {
         throw new SdkError(
           "internal",
           `Plugin ${entry.owner} is not active, so its prompt section ${section.id} has no API.`,
         );
+      }
 
       const text = await Promise.resolve(section.text({ model, api })).catch((error: unknown) => {
         throw new SdkError(
@@ -117,8 +121,9 @@ export async function settleSystemPrompt(
       input.run === null ? null : { session: input.session, run: input.run },
     );
 
-    if (outcome.kind === "fenced")
+    if (outcome.kind === "fenced") {
       throw new SdkError("stale", `Run ${input.run} stopped while its request was built.`);
+    }
 
     return outcome.kind === "set" ? next : STALE;
   });

@@ -5,7 +5,7 @@ import { openaiCodexOAuth } from "../src/auth/oauth/openai-codex.ts";
 
 const neverAbortedSignal = new AbortController().signal;
 
-function jsonResponse(body: unknown, status: number = 200): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -45,12 +45,12 @@ function deviceAuthPendingResponse(): Response {
   );
 }
 
-type DeviceInfo = {
+interface DeviceInfo {
   userCode: string;
   verificationUri: string;
   intervalSeconds?: number;
   expiresInSeconds?: number;
-};
+}
 
 function loginOpenAICodexDeviceCodeForTest(options: {
   onDeviceCode(info: DeviceInfo): void;

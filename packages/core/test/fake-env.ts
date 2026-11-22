@@ -341,8 +341,9 @@ export function kernelOver(
 export async function addWorkspace(host: Omit<Host, "listen">, path = "/work/project") {
   const added = await host.workspaces.add({ kind: "local", path }, { projectResources: true });
 
-  if (added.kind !== "added" && added.kind !== "exists")
+  if (added.kind !== "added" && added.kind !== "exists") {
     throw new Error(`Not added: ${added.kind}.`);
+  }
 
   return added.workspace;
 }
@@ -366,7 +367,7 @@ function env(
     cwd: root,
     files: filesAt(provider.disk, root, confined),
     async exec(command, options) {
-      const pid = 4_000 + provider.processes.length;
+      const pid = 4000 + provider.processes.length;
 
       const process = startProcess(
         command,
@@ -387,8 +388,9 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
   const resolve = (path: string): string => {
     const resolved = normalize(path.startsWith("/") ? path : `${root}/${path}`);
 
-    if (confined && resolved !== root && !resolved.startsWith(`${root}/`))
+    if (confined && resolved !== root && !resolved.startsWith(`${root}/`)) {
       throw new Error(`${path} is outside the sandbox.`);
+    }
 
     return resolved;
   };
@@ -405,8 +407,9 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
     const source = resolve(from);
     const target = resolve(to);
 
-    if (!disk.files.has(source) && !hasDirectory(source))
+    if (!disk.files.has(source) && !hasDirectory(source)) {
       return { kind: "stale", reason: "missing" };
+    }
 
     if (disk.files.has(target) || hasDirectory(target)) return { kind: "stale", reason: "exists" };
 
@@ -437,7 +440,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
             scope,
             mime: "text/plain",
             contents: file.contents,
-            encoding: "utf-8",
+            encoding: "utf8",
             version: file.version,
           }
         : {
@@ -468,12 +471,13 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
     async stat(path) {
       const file = disk.files.get(resolve(path));
 
-      if (file !== undefined)
+      if (file !== undefined) {
         return {
           kind: "file",
           size: typeof file.contents === "string" ? file.contents.length : file.contents.byteLength,
           version: file.version,
         };
+      }
 
       return hasDirectory(resolve(path))
         ? { kind: "directory", size: 0, version: asId<"file-version">("directory") }
@@ -490,8 +494,9 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
         options?.expect !== undefined &&
         options.expect !== "absent" &&
         options.expect !== current
-      )
+      ) {
         return { kind: "stale", current };
+      }
       const parent = target.slice(0, target.lastIndexOf("/")) || "/";
 
       if (!options?.parents && !hasDirectory(parent)) return { kind: "missing-parent" };
@@ -507,8 +512,9 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
       const target = resolve(path);
       const current = disk.files.get(target)?.version ?? null;
 
-      if (current === null || (options?.expect !== undefined && options.expect !== current))
+      if (current === null || (options?.expect !== undefined && options.expect !== current)) {
         return { kind: "stale", current };
+      }
       disk.files.delete(target);
 
       return { kind: "saved", version: current };

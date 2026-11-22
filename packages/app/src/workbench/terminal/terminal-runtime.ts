@@ -271,7 +271,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
     focus: focusInput,
     redraw: () => surface.draw(true),
     clear() {
-      terminal.write(encoder.encode("\u001b[H\u001b[2J\u001b[3J"));
+      terminal.write(encoder.encode("\u001B[H\u001B[2J\u001B[3J"));
       terminal.clearSelection();
       disposeMarks();
       notifySelection(id);
@@ -452,7 +452,7 @@ export function clearTerminal(id: string): void {
 export function copyTerminal(id: string): void {
   const selection = views.get(id)?.surface.terminal.selectionText();
 
-  if (selection)
+  if (selection) {
     void navigator.clipboard.writeText(selection).catch((cause: unknown) =>
       toast.add({
         type: "error",
@@ -460,6 +460,7 @@ export function copyTerminal(id: string): void {
         description: errorMessage(cause),
       }),
     );
+  }
 }
 
 function terminalExcerpt(id: string): ExcerptReference | undefined {

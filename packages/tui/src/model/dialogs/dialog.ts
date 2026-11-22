@@ -202,8 +202,9 @@ export function reduceDialog(dialog: Dialog, input: DialogInput): DialogStep<Dia
     if (field === null) return { dialog, intents: [], push: null };
     const next = editField(field, input.edit);
 
-    if (next.text === field.text && next.caret === field.caret && next.anchor === field.anchor)
+    if (next.text === field.text && next.caret === field.caret && next.anchor === field.anchor) {
       return { dialog, intents: [], push: null };
+    }
 
     const step =
       next.text === field.text

@@ -6,12 +6,15 @@ import { focus } from "./styles/a11y.stylex.ts";
 import { hairline } from "./styles/hairline.stylex.ts";
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
 import { control, glyph, layer, menu, radius, row, space } from "./styles/schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
-import { surfaceTheme, type Tint } from "./surface-theme.ts";
+import { surfaceTheme } from "./surface-theme.ts";
+import type { Tint } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, type } from "./styles/vars.stylex.ts";
-import { PickerTrigger, type PickerTriggerProps } from "./button.tsx";
+import { PickerTrigger } from "./button.tsx";
+import type { PickerTriggerProps } from "./button.tsx";
 import { Icon } from "./icon.tsx";
 
 const styles = create({

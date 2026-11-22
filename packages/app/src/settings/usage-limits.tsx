@@ -11,7 +11,8 @@ import { providerIcon } from "../chat/composer/model-picker-state.ts";
 import { useAccountLimits } from "../data/usage.ts";
 import { Bone, focusRing } from "./usage-parts.tsx";
 import { usageStyles } from "./usage-settings.stylex.ts";
-import { deriveAccount, type AccountLimits, type LimitMeter } from "./usage-view.ts";
+import { deriveAccount } from "./usage-view.ts";
+import type { AccountLimits, LimitMeter } from "./usage-view.ts";
 
 const figure = { fontVariantNumeric: "tabular-nums" } as const;
 

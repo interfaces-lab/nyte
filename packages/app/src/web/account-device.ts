@@ -11,7 +11,8 @@ import type { AccountConfig } from "@nyte-ai/connect/account-config";
 import type { DeviceCrypto } from "@nyte-ai/connect/enrollment";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { readStored, removeStored, type StorageArea, writeStored } from "../lib/storage.ts";
+import { readStored, removeStored, writeStored } from "../lib/storage.ts";
+import type { StorageArea } from "../lib/storage.ts";
 
 const DEVICE_KEY = "nyte:account:device";
 

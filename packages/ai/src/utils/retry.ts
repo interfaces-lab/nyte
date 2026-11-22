@@ -127,8 +127,9 @@ export async function retryAssistantCall(
         : assistantRetryDelayMs(policy, attempt + 1, failure.retryAfterMs);
 
     if (delayMs === null) {
-      if (lastRetry)
+      if (lastRetry) {
         await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
+      }
 
       return response;
     }

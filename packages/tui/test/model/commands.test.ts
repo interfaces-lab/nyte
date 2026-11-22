@@ -109,8 +109,9 @@ describe("built-in commands", () => {
   test("every built-in from lib/slash.ts is in the registry as a built-in", () => {
     const registry = commandRegistry(ready(view));
 
-    for (const builtin of SLASH_COMMANDS)
+    for (const builtin of SLASH_COMMANDS) {
       expect(registry.find((entry) => entry.name === builtin.name)?.source).toBe("builtin");
+    }
   });
 
   test("a command that takes no argument refuses one", () => {

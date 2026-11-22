@@ -442,8 +442,9 @@ test.each<{
       );
     };
 
-    for (const event of [{ kind: "shown" } as const, edit, held(1), typed("Edited."), save])
+    for (const event of [{ kind: "shown" } as const, edit, held(1), typed("Edited."), save]) {
       drive("closing", event);
+    }
     drive("closing", { kind: "closed" });
     drive("reopened", { kind: "shown" });
 

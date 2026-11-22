@@ -530,12 +530,13 @@ export async function replacePlugins(
   const outcomes = checked.map(({ plugin, issues, ok }, index): PluginLoadOutcome => {
     const { id } = plugin;
 
-    if (!ok)
+    if (!ok) {
       return {
         kind: before.some((known) => known.id === id) ? "kept-previous" : "rejected",
         id,
         issues,
       };
+    }
 
     const each = sessions.flatMap((load) =>
       load.kind === "loaded" ? (load.outcomes[index] ?? []) : [],
@@ -569,7 +570,7 @@ export async function replacePlugins(
   await publishViews(kernel);
 
   const reported = outcomes.map((outcome, index): PluginLoadOutcome =>
-    failed.length === 0 || checked[index]?.ok !== true
+    failed.length === 0 || !checked[index]?.ok
       ? outcome
       : {
           kind: "rejected",
@@ -651,11 +652,13 @@ async function activate(instance: PluginInstance): Promise<void> {
   if (plugin.activate === undefined) return;
   const returned: unknown = await bounded(plugin.activate(instance.api));
 
-  if (typeof returned !== "object" || returned === null)
+  if (typeof returned !== "object" || returned === null) {
     throw new Error("activate returned nothing. Return what the plugin adds, or {} for nothing.");
+  }
   instance.add(returned);
 }
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- N ties input.hooks[name] to register's name, so the entry type-checks against its own hook rather than the union of all hooks.
 function installHook<N extends HookName<"core">>(
   to: InstanceHost,
   api: PluginApi<"core">,
@@ -664,8 +667,9 @@ function installHook<N extends HookName<"core">>(
 ): void {
   const entry = input.hooks[name];
 
-  if (entry !== undefined)
+  if (entry !== undefined) {
     untilAborted(input.signal, to.hooks.register(input.owner, api, name, entry));
+  }
 }
 
 function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Disposer {
@@ -689,9 +693,11 @@ function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Di
     holds.delete(definition);
     held.dispose();
 
-    for (const runtime of kernel.plugins.runtimes().values())
-      if (runtime.registries.parts.entries().some((entry) => entry.item.kind === definition.kind))
+    for (const runtime of kernel.plugins.runtimes().values()) {
+      if (runtime.registries.parts.entries().some((entry) => entry.item.kind === definition.kind)) {
         runtime.registries.reload();
+      }
+    }
   };
 }
 
@@ -735,13 +741,15 @@ function createInstance(
 
     for (const entry of given.agents ?? []) registries.agents.owned(owner, signal).add(entry);
 
-    for (const entry of given.modelContext ?? [])
+    for (const entry of given.modelContext ?? []) {
       registries.modelContext.owned(owner, signal).add(entry);
+    }
 
     for (const entry of given.skills ?? []) registries.skills.owned(owner, signal).add(entry);
 
-    for (const entry of given.searchProviders ?? [])
+    for (const entry of given.searchProviders ?? []) {
       registries.searchProviders.owned(owner, signal).add(entry);
+    }
 
     for (const entry of given.parts ?? []) registries.parts.owned(owner, signal).add(entry);
 
@@ -750,8 +758,9 @@ function createInstance(
     for (const entry of given.settings ?? []) registries.settings.owned(owner, signal).add(entry);
     const hooks = additions.hooks ?? {};
 
-    for (const name of Object.keys(hooks))
+    for (const name of Object.keys(hooks)) {
       if (namesCoreHook(name)) installHook(to, api, { owner, signal, hooks }, name);
+    }
   };
 
   const read = <T>(pick: (registries: RegistrySet) => Registry<T>): Registry<T> => ({
@@ -798,8 +807,9 @@ function createInstance(
     add(additions) {
       added.push(additions);
 
-      for (const name of Object.keys(additions.hooks ?? {}))
+      for (const name of Object.keys(additions.hooks ?? {})) {
         if (!namesCoreHook(name)) reportUnknownHook(api, name);
+      }
 
       for (const to of hosts.keys()) apply(to, additions);
     },

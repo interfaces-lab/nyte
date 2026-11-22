@@ -4,7 +4,7 @@ import { fileActions, scheduleSave } from "./file-store.ts";
 
 const DRAFT_MS = 300;
 
-const AUTOSAVE_MS = 1_000;
+const AUTOSAVE_MS = 1000;
 
 export function mirrorDraft(input: {
   readonly buffer: FileBuffer;

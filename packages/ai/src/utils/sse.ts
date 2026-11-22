@@ -93,8 +93,9 @@ export async function* iterateServerSentEvents(
 ): AsyncGenerator<ServerSentEvent> {
   const reader = body.getReader();
   const cancel = () => reader.cancel().catch(() => undefined);
+  const onAbort = () => void cancel();
 
-  signal?.addEventListener("abort", cancel, { once: true });
+  signal?.addEventListener("abort", onAbort, { once: true });
   const decoder = new TextDecoder();
   const state: DecoderState = { event: null, data: [], raw: [] };
   const buffer: LineBuffer = { fragments: [], pendingCr: false };
@@ -140,7 +141,7 @@ export async function* iterateServerSentEvents(
     if (last) yield last;
   } finally {
     clearTimeout(idleTimer);
-    signal?.removeEventListener("abort", cancel);
+    signal?.removeEventListener("abort", onAbort);
     await cancel();
     reader.releaseLock();
   }

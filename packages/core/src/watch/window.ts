@@ -57,9 +57,15 @@ const TABLES: readonly Table[] = [
   "background",
 ];
 
-type Placed = { readonly message: Message; readonly position: number };
+interface Placed {
+  readonly message: Message;
+  readonly position: number;
+}
 
-type Covered = { readonly seq: Seq; readonly before: number };
+interface Covered {
+  readonly seq: Seq;
+  readonly before: number;
+}
 
 export function readWindow(
   state: FoldState,
@@ -211,8 +217,9 @@ export function changesSince(state: FoldState, seq: Seq): SessionChange {
 export function changesAfter(state: FoldState, cursor: ChangeCursor): SessionChange {
   const steps = state[INDEX].ring.steps;
 
-  if ((steps[0]?.mark ?? 0) > cursor.mark + 1)
+  if ((steps[0]?.mark ?? 0) > cursor.mark + 1) {
     return changesSince(state, asSeq(Math.max(0, cursor.seq - 1)));
+  }
   let first = steps.length;
 
   while (first > 0 && steps[first - 1].mark > cursor.mark) first -= 1;
@@ -231,12 +238,13 @@ function readChange(state: FoldState, touched: Touched): SessionChange {
 function readShown(path: Path, spec: WindowSpec, execution: Execution): readonly Placed[] {
   const start = "from" in spec ? readShownAt(path, spec.from, execution) : undefined;
 
-  if (start !== undefined)
+  if (start !== undefined) {
     return path.messages
       .slice(start)
       .flatMap((message, offset) =>
         belongsInQueue(message, execution) ? [] : [{ message, position: start + offset }],
       );
+  }
   const tail = "tail" in spec ? spec.tail : DEFAULT_TAIL;
   const shown: Placed[] = [];
 
@@ -373,8 +381,9 @@ function merge(steps: readonly Step[]): Touched {
       for (const key of step.drop[table]) touched.drop[table].add(key);
     }
 
-    for (const [head, position] of step.paths)
+    for (const [head, position] of step.paths) {
       touched.paths.set(head, Math.min(position, touched.paths.get(head) ?? position));
+    }
   }
 
   return touched;
@@ -384,8 +393,9 @@ function scan(state: FoldState, seq: Seq): Touched {
   const index = state[INDEX];
   const touched = newTouched();
 
-  for (const table of TABLES)
+  for (const table of TABLES) {
     for (const [key, stamp] of index.stamps[table]) if (stamp > seq) touched.upsert[table].add(key);
+  }
 
   for (const [head, path] of index.paths) {
     const edit = path.edits.find((entry) => entry.seq > seq);
@@ -393,9 +403,11 @@ function scan(state: FoldState, seq: Seq): Touched {
     if (edit !== undefined) touched.paths.set(head, edit.position);
   }
 
-  for (const [head, stamp] of index.stamps.heads)
-    if (stamp > seq && !index.paths.has(asId<"head">(head)))
+  for (const [head, stamp] of index.stamps.heads) {
+    if (stamp > seq && !index.paths.has(asId<"head">(head))) {
       touched.paths.set(asId<"head">(head), 0);
+    }
+  }
 
   return touched;
 }

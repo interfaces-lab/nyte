@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createModels } from "../src/models.ts";
 import { InMemoryModelsStore } from "../src/models-store.ts";
 import { nyteProviders } from "../src/providers/nyte-catalog.ts";

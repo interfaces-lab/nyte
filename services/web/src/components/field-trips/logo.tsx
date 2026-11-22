@@ -1,4 +1,5 @@
-import { useId, type ReactNode } from "react";
+import { useId } from "react";
+import type { ReactNode } from "react";
 import {
   apart,
   cell,
@@ -19,7 +20,7 @@ import {
 
 const deepBlue = night.ramp[0];
 
-const nyteBlue = night.ramp[night.ramp.length - 1];
+const nyteBlue = night.ramp.at(-1) ?? deepBlue;
 
 const lines = Array.from({ length: 7 }, (_, index) => (index + 1) * cell);
 

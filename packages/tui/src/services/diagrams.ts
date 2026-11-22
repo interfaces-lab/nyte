@@ -4,7 +4,7 @@ import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { compiled } from "../compiled.ts";
 
-const MAX_SOURCE_CHARS = 8_000;
+const MAX_SOURCE_CHARS = 8000;
 
 const MAX_SOURCE_LINES = 120;
 
@@ -64,8 +64,9 @@ export function createDiagrams(): Diagrams {
   };
 
   const render = async (source: string): Promise<string> => {
-    if (source.length > MAX_SOURCE_CHARS || source.split("\n").length > MAX_SOURCE_LINES)
+    if (source.length > MAX_SOURCE_CHARS || source.split("\n").length > MAX_SOURCE_LINES) {
       throw new RangeError("Diagram is too large");
+    }
     worker ??= start();
     const id = (sequence += 1);
     const pending = Promise.withResolvers<string>();
@@ -74,8 +75,9 @@ export function createDiagrams(): Diagrams {
     worker.postMessage({ id, source } satisfies DiagramRequest);
     const text = await pending.promise;
 
-    if (text.length > MAX_DIAGRAM_CHARS || text.split("\n").length > MAX_DIAGRAM_LINES)
+    if (text.length > MAX_DIAGRAM_CHARS || text.split("\n").length > MAX_DIAGRAM_LINES) {
       throw new RangeError("Diagram is too large");
+    }
 
     return text;
   };

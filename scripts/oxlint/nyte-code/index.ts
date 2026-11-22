@@ -3,6 +3,7 @@ import { eslintCompatPlugin } from "@oxlint/plugins";
 import { declarativeCommentsRule } from "./rules/declarative-comments.ts";
 import { noCrossPackageRelativeImportsRule } from "./rules/no-cross-package-relative-imports.ts";
 import { noDirectEffectRule } from "./rules/no-direct-effect.ts";
+import { noHashPrivateRule } from "./rules/no-hash-private.ts";
 import { noIsHelperNamesRule } from "./rules/no-is-helper-names.ts";
 import { noLabImportsRule } from "./rules/no-lab-imports.ts";
 import { noOfLookupNamesRule } from "./rules/no-of-lookup-names.ts";
@@ -16,6 +17,7 @@ const nyteCodePlugin = eslintCompatPlugin({
     "declarative-comments": declarativeCommentsRule,
     "no-cross-package-relative-imports": noCrossPackageRelativeImportsRule,
     "no-direct-effect": noDirectEffectRule,
+    "no-hash-private": noHashPrivateRule,
     "no-is-helper-names": noIsHelperNamesRule,
     "no-lab-imports": noLabImportsRule,
     "no-of-lookup-names": noOfLookupNamesRule,

@@ -37,8 +37,9 @@ export function recallStep(
   position: number | undefined,
   direction: RecallDirection,
 ): number | undefined {
-  if (direction === "newer")
+  if (direction === "newer") {
     return position === undefined || position === 0 ? undefined : position - 1;
+  }
 
   if (count === 0) return undefined;
 
@@ -51,8 +52,13 @@ function morePrompts(history: PromptHistory, page: PromptPage): PromptHistory {
 
   const earlier = (leading === null ? page.messages : [leading, ...page.messages]).flatMap(
     (message) => {
-      if (message.kind !== "user" || message.source.kind !== "user" || !turnPrompts.has(message.id))
+      if (
+        message.kind !== "user" ||
+        message.source.kind !== "user" ||
+        !turnPrompts.has(message.id)
+      ) {
         return [];
+      }
       const prompt = contentDraftText(message.content);
 
       return prompt === "" ? [] : [prompt];

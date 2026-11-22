@@ -64,7 +64,7 @@ interface Described {
 }
 
 function oneLine(text: string): string {
-  return text.replace(/\s+/gu, " ").trim().slice(0, MAX_TEXT_CHARS);
+  return text.replaceAll(/\s+/gu, " ").trim().slice(0, MAX_TEXT_CHARS);
 }
 
 function describe(node: TreeNode): Described {
@@ -78,12 +78,13 @@ function describe(node: TreeNode): Described {
     case "branchSummary":
       return { role: "summary", label: "[branch summary]:", text };
     case "part":
-      if (node.partKind === "text")
+      if (node.partKind === "text") {
         return {
           role: "assistant",
           label: "assistant:",
           text: text === "" ? "(no content)" : text,
         };
+      }
 
       if (node.partKind === "thinking") return { role: "assistant", label: "thinking:", text };
 
@@ -204,11 +205,11 @@ function layoutTree(
       const gutter = gutters.find((candidate) => candidate.position === level);
 
       if (gutter !== undefined) cells.push(offset === 0 && gutter.show ? "│" : " ");
-      else if (connector && level === connectorPosition)
+      else if (connector && level === connectorPosition) {
         cells.push(
           offset === 0 ? (isLast ? "└" : "├") : offset === 1 ? foldGlyph(foldable, isFolded) : " ",
         );
-      else cells.push(" ");
+      } else cells.push(" ");
     }
 
     rows.push({
@@ -236,7 +237,7 @@ function layoutTree(
       ? [...gutters, { position: Math.max(0, displayIndent - 1), show: !isLast }]
       : gutters;
 
-    for (const [index, child] of ordered.entries())
+    for (const [index, child] of ordered.entries()) {
       visit(
         child,
         childIndent,
@@ -246,13 +247,14 @@ function layoutTree(
         childGutters,
         false,
       );
+    }
   };
 
   const orderedRoots = visible.toSorted(
     (left, right) => Number(containsActive(right)) - Number(containsActive(left)),
   );
 
-  for (const [index, root] of orderedRoots.entries())
+  for (const [index, root] of orderedRoots.entries()) {
     visit(
       root,
       multipleRoots ? 1 : 0,
@@ -262,6 +264,7 @@ function layoutTree(
       [],
       true,
     );
+  }
 
   return rows;
 }
@@ -324,14 +327,15 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
   if (dialog.tree.kind !== "ready" || row === undefined) return unchanged(dialog);
   const { load } = dialog.tree;
 
-  if (row.oid === load.tip && row.node.kind !== "user")
+  if (row.oid === load.tip && row.node.kind !== "user") {
     return {
       dialog,
       intents: [{ kind: "refuse", reason: "Already at that point in the chat", tone: "info" }],
       push: null,
     };
+  }
 
-  if (row.node.kind === "user" && row.node.parent === null)
+  if (row.node.kind === "user" && row.node.parent === null) {
     return {
       dialog,
       intents: [
@@ -343,17 +347,19 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
       ],
       push: null,
     };
+  }
 
-  if (row.node.kind === "user" && !dialog.composerEmpty)
+  if (row.node.kind === "user" && !dialog.composerEmpty) {
     return {
       dialog,
       intents: [{ kind: "refuse", reason: "Clear the composer before editing a message" }],
       push: null,
     };
+  }
 
   const expect = load.view.revision ?? undefined;
 
-  if (descendsFromTip(load, row.oid))
+  if (descendsFromTip(load, row.oid)) {
     return {
       dialog: null,
       intents: [
@@ -366,6 +372,7 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
       ],
       push: null,
     };
+  }
 
   return {
     dialog: { ...dialog, selected: row.oid },
@@ -409,7 +416,7 @@ function toggleFilter(dialog: TreeDialog, filter: TreeFilter): TreeDialog {
 }
 
 function cycleFilter(dialog: TreeDialog, step: 1 | -1): TreeDialog {
-  const at = FILTER_CYCLE.findIndex((filter) => filter === dialog.filter);
+  const at = FILTER_CYCLE.indexOf(dialog.filter);
 
   return {
     ...dialog,
@@ -420,13 +427,15 @@ function cycleFilter(dialog: TreeDialog, step: 1 | -1): TreeDialog {
 export function reduceTree(dialog: TreeDialog, command: DialogCommand): DialogStep<TreeDialog> {
   if (command.kind === "close") return { dialog: null, intents: [], push: null };
 
-  if (command.kind === "query")
+  if (command.kind === "query") {
     return unchanged({ ...dialog, query: command.text, folded: new Set() });
+  }
   const rows = treeRows(dialog);
   const index = selectedIndex(dialog, rows);
 
-  if (command.kind === "pick")
+  if (command.kind === "pick") {
     return accept(select(dialog, rows, command.index), rows[command.index]);
+  }
 
   if (command.kind === "highlight") return unchanged(select(dialog, rows, command.index));
   const row = rows[index];
@@ -466,8 +475,9 @@ export function reduceTree(dialog: TreeDialog, command: DialogCommand): DialogSt
     case "tree.fold": {
       if (row === undefined) return unchanged(dialog);
 
-      if (row.foldable && !row.folded)
+      if (row.foldable && !row.folded) {
         return unchanged({ ...dialog, folded: new Set([...dialog.folded, row.oid]) });
+      }
 
       const start = rows.findLastIndex(
         (candidate, position) => position < index && candidate.connector,
@@ -479,11 +489,12 @@ export function reduceTree(dialog: TreeDialog, command: DialogCommand): DialogSt
     case "tree.unfold": {
       if (row === undefined) return unchanged(dialog);
 
-      if (row.folded)
+      if (row.folded) {
         return unchanged({
           ...dialog,
           folded: new Set([...dialog.folded].filter((oid) => oid !== row.oid)),
         });
+      }
       const next = rows.findIndex((candidate, position) => position > index && candidate.connector);
 
       return next === -1 ? unchanged(dialog) : unchanged(select(dialog, rows, next));

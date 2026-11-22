@@ -25,14 +25,15 @@ import {
   useForgetWorkspace,
   useHomeWorkspace,
   useWorkspaces,
-  type RailWorkspace,
 } from "../data/workspaces.ts";
+import type { RailWorkspace } from "../data/workspaces.ts";
 import { useHostHealth, useHostState, useServerState } from "../data/host.ts";
 import { sessionActions, useRootRows } from "../data/session-rows.ts";
 import { groupByWorkspace, localSessions } from "../data/session-list.ts";
 import { useChats } from "../chats/index.ts";
 import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
-import { firstSettingsSection, type SettingsSection } from "../settings/index.ts";
+import { firstSettingsSection } from "../settings/index.ts";
+import type { SettingsSection } from "../settings/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { SidebarFooter } from "../account/account-footer.tsx";
 import { folderPicker } from "../panes/open-workspace.tsx";
@@ -51,11 +52,11 @@ import {
   useDrafts,
   useListReveal,
   WorkspaceRow,
-  type ListContext,
-  type ListedSession,
 } from "./sidebar-lists.tsx";
+import type { ListContext, ListedSession } from "./sidebar-lists.tsx";
 import { moveSidebarFocus } from "./sidebar-navigation.ts";
-import { NeighbourWarm, type SessionPlace } from "./sidebar-rows.tsx";
+import { NeighbourWarm } from "./sidebar-rows.tsx";
+import type { SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   clearSessionFilters,
@@ -64,8 +65,8 @@ import {
   sessionsForNavigation,
   sessionsForView,
   deriveShelf,
-  type ShelfHold,
 } from "./sidebar-view.ts";
+import type { ShelfHold } from "./sidebar-view.ts";
 import { activateWorkspace } from "./use-show-session.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 
@@ -195,7 +196,7 @@ export function Sidebar(): ReactElement {
           ?.flatMap((workspaceGroup) => workspaceGroup.sessions)
           .find((session) => session.id === paneSessionId);
 
-  if (selection.kind === "blank" && listedWhenBlank === undefined && workspaceGroups)
+  if (selection.kind === "blank" && listedWhenBlank === undefined && workspaceGroups) {
     setListedWhenBlank(
       new Set(
         workspaceGroups.flatMap((workspaceGroup) =>
@@ -203,6 +204,7 @@ export function Sidebar(): ReactElement {
         ),
       ),
     );
+  }
 
   if (hold?.sessionId !== paneSession?.id) {
     setHold(
@@ -248,9 +250,7 @@ export function Sidebar(): ReactElement {
     activeSessionId,
     openWorkspace: openPlace,
     unavailable: new Set(
-      (workspaces.data ?? []).flatMap((workspace) =>
-        workspace.available === false ? [workspace.id] : [],
-      ),
+      (workspaces.data ?? []).flatMap((workspace) => (!workspace.available ? [workspace.id] : [])),
     ),
     chats,
     unread,
@@ -372,7 +372,7 @@ export function Sidebar(): ReactElement {
         key={entry.kind === "home" ? "home" : entry.id}
         name={name}
         path={entry.kind === "home" ? name : entry.path}
-        available={entry.kind === "home" || entry.available !== false}
+        available={entry.kind === "home" || entry.available}
         active={place.workspace === openPlace}
         expanded={expanded}
         onExpandedChange={(next) => setExpanded(place.workspace, next)}

@@ -121,12 +121,14 @@ async function embed(image: HTMLImageElement, size: Size): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = () => {
+    reader.addEventListener("load", () => {
       if (typeof reader.result === "string") resolve(reader.result);
       else reject(new Error("The image could not be read. Try opening it again."));
-    };
+    });
 
-    reader.onerror = () => reject(reader.error ?? new Error("The image could not be read."));
+    reader.addEventListener("error", () =>
+      reject(reader.error ?? new Error("The image could not be read.")),
+    );
     reader.readAsDataURL(blob);
   });
 }
@@ -138,8 +140,9 @@ export function imageTone(image: HTMLImageElement): Tone {
   sample.height = 32;
   const context = sample.getContext("2d", { willReadFrequently: true });
 
-  if (context === null)
+  if (context === null) {
     throw new Error("Image pixels are unavailable. Try opening the image again.");
+  }
 
   context.drawImage(image, 0, 0, sample.width, sample.height);
   const pixels = context.getImageData(0, 0, sample.width, sample.height).data;

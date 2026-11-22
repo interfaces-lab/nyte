@@ -39,6 +39,7 @@ export async function openPty(options: {
   const height = options.height ?? 32;
   const setup = await createTestRenderer({ width, height });
   const written: Buffer[] = [];
+  // oxlint-disable-next-line eslint/prefer-const -- assigned after spawn; the emulator's onData closure, created first, reads it
   let pty: Bun.Terminal | undefined;
 
   const emulator = new EmbeddedTerminalRenderable(setup.renderer, {

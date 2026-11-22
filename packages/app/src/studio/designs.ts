@@ -208,8 +208,9 @@ function createDesignStore(workspace: SelectedWorkspace): Omit<Opened, "holders"
       let next = await events.next();
       next.done !== true && !released;
       next = await events.next()
-    )
+    ) {
       for (const event of next.value) heard(event);
+    }
   };
 
   const scan = async (): Promise<void> => {
@@ -218,8 +219,9 @@ function createDesignStore(workspace: SelectedWorkspace): Omit<Opened, "holders"
     for await (const frame of files.scan({ directory: "design", ignored: "include" })) {
       if (released) return;
 
-      if (frame.kind === "entries")
+      if (frame.kind === "entries") {
         for (const entry of frame.entries) if (entry.kind === "file") list(onDisk(entry.path));
+      }
     }
   };
 
@@ -242,8 +244,14 @@ function createDesignStore(workspace: SelectedWorkspace): Omit<Opened, "holders"
   };
 
   const list = (path: string): void => {
-    if (released || !path.startsWith(`${root}/`) || !designFile(fromRoot(path)) || listed.has(path))
+    if (
+      released ||
+      !path.startsWith(`${root}/`) ||
+      !designFile(fromRoot(path)) ||
+      listed.has(path)
+    ) {
       return;
+    }
     listed.add(path);
     publish();
     void open(path);
@@ -358,8 +366,9 @@ function createDesignStore(workspace: SelectedWorkspace): Omit<Opened, "holders"
       useEffect(() => {
         agents.notice(made);
 
-        for (const edit of made ?? [])
+        for (const edit of made ?? []) {
           if (edit.patches.some((patch) => patch.at >= since)) list(onDisk(relative(edit.path)));
+        }
       }, [made]);
 
       return useSyncExternalStore(subscribe, () => designs);
@@ -412,8 +421,9 @@ function createDesignStore(workspace: SelectedWorkspace): Omit<Opened, "holders"
 
       if (file === undefined) return;
 
-      if (file.buffer.getSnapshot().status.kind === "saving")
+      if (file.buffer.getSnapshot().status.kind === "saving") {
         throw new Error("Wait for the current save to finish.");
+      }
       const document = await (await connected()).documents.read(path, { as: "document" });
 
       if (document.kind !== "text") throw new Error("The file can no longer be read as text.");

@@ -43,7 +43,7 @@ interface Detail {
   readonly tone: "muted" | "ok" | "warning" | "error";
 }
 
-const CLOCK_INTERVAL_MS = 1_000;
+const CLOCK_INTERVAL_MS = 1000;
 
 export function revealRow(box: ScrollBoxRenderable | undefined, index: number): void {
   if (box === undefined) return;
@@ -88,8 +88,9 @@ function ListRow(props: {
     const shown = cut(text, room);
     const lead = text.length - (status?.text.length ?? 0);
 
-    if (status === null || status.tone === "muted" || shown.length <= lead)
+    if (status === null || status.tone === "muted" || shown.length <= lead) {
       return { head: shown, tail: "", tone: "muted" as const };
+    }
 
     return { head: shown.slice(0, lead), tail: shown.slice(lead), tone: status.tone };
   });
@@ -237,8 +238,9 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
     on(detailSequence, () => {
       const request = props.dialog.detailScroll;
 
-      if (request !== undefined && detail !== undefined)
+      if (request !== undefined && detail !== undefined) {
         detail.scrollBy(request.by * Math.max(1, detail.viewport.height / 2));
+      }
     }),
   );
 

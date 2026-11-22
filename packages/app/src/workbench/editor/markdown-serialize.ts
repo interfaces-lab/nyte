@@ -108,12 +108,13 @@ function serializeBlock(node: ProseMirrorNode, origin: MarkdownOrigin): string {
       const level = Number(node.attrs["level"]);
       const underline = attribute(node, "underline", "");
 
-      if (underline !== "" && level <= 2)
+      if (underline !== "" && level <= 2) {
         return `${serializeInline(node, { origin, singleLine: false, table: false })}\n${
           underline.startsWith(level === 1 ? "=" : "-")
             ? underline
             : (level === 1 ? "=" : "-").repeat(3)
         }`;
+      }
       const content = serializeInline(node, { origin, singleLine: true, table: false });
 
       return `${"#".repeat(level)}${content === "" ? "" : ` ${content}`}${attribute(node, "close", "")}`;
@@ -193,11 +194,12 @@ function joinBlocks(container: ProseMirrorNode, blocks: readonly string[]): stri
 function serializeCode(node: ProseMirrorNode): string {
   const code = node.textContent;
 
-  if (node.attrs["indented"] === true && code !== "")
+  if (node.attrs["indented"] === true && code !== "") {
     return code
       .split("\n")
       .map((line) => (line === "" ? "" : `    ${line}`))
       .join("\n");
+  }
   const fence = attribute(node, "fence", "```");
   const character = fence.charAt(0);
 
@@ -225,8 +227,9 @@ function serializeTable(table: ProseMirrorNode, origin: MarkdownOrigin): string 
   const lines = rows.map((row) => {
     const source = index(row.attrs["inlineOrigin"]);
 
-    if (source !== undefined && origin.inlines.get(source)?.eq(row.content) === true)
+    if (source !== undefined && origin.inlines.get(source)?.eq(row.content) === true) {
       return origin.layout.inlines[source] ?? "";
+    }
 
     const cells = children(row).map((cell, column) => {
       const content = serializeInline(cell, { origin, singleLine: true, table: true });
@@ -268,8 +271,9 @@ function pad(text: string, width: number, align: string | undefined): string {
 
   if (align === "right") return " ".repeat(space) + text;
 
-  if (align === "center")
+  if (align === "center") {
     return " ".repeat(Math.floor(space / 2)) + text + " ".repeat(Math.ceil(space / 2));
+  }
 
   return text + " ".repeat(space);
 }
@@ -278,8 +282,9 @@ function serializeInline(node: ProseMirrorNode, context: InlineContext): string 
   const source = index(node.attrs["inlineOrigin"]);
   const original = source === undefined ? undefined : context.origin.inlines.get(source);
 
-  if (source !== undefined && original?.eq(node.content) === true)
+  if (source !== undefined && original?.eq(node.content) === true) {
     return context.origin.layout.inlines[source] ?? "";
+  }
   const nodes = children(node);
   const plain = node.textContent;
 
@@ -303,7 +308,7 @@ function serializeInline(node: ProseMirrorNode, context: InlineContext): string 
 
   nodes.forEach((child, position) => {
     const marks = child.marks;
-    const shared = marks.findIndex((mark, at) => open[at]?.eq(mark) !== true);
+    const shared = marks.findIndex((mark, at) => !open[at]?.eq(mark));
     const keep = shared === -1 ? Math.min(marks.length, open.length) : shared;
     parts.push(...open.slice(keep).toReversed().map(close));
 
@@ -365,8 +370,9 @@ function serializeLeaf(node: ProseMirrorNode, context: InlineContext, lineStart:
     case "text": {
       const text = node.text ?? "";
 
-      if (node.marks.some((mark) => mark.type.name === "code"))
-        return context.table ? text.replaceAll("|", "\\|") : text;
+      if (node.marks.some((mark) => mark.type.name === "code")) {
+        return context.table ? text.replaceAll("|", String.raw`\|`) : text;
+      }
 
       return escapeText(text, lineStart, context);
     }
@@ -392,24 +398,24 @@ function escapeText(text: string, lineStart: boolean, context: InlineContext): s
   const paired = context.paired ?? "";
 
   const escaped = text
-    .replaceAll(/\\(?=[!-/:-@[-`{-~]|$)/gu, "\\\\")
+    .replaceAll(/\\(?=[!-/:-@[-`{-~]|$)/gu, String.raw`\\`)
     .replaceAll("`", "\\`")
     .replaceAll(/\*(?!\s)|(?<!\s)\*/gu, (match) => (paired.includes("*") ? `\\${match}` : match))
     .replaceAll(/~(?!\s)|(?<!\s)~/gu, (match) => (paired.includes("~") ? `\\${match}` : match))
     .replaceAll(/(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu, (match) =>
       paired.includes("_") ? `\\${match}` : match,
     )
-    .replaceAll(/\[(?=[^\]]*\][([])/gu, "\\[")
-    .replaceAll(/<(?=[A-Za-z/!?])/gu, "\\<")
-    .replaceAll(/&(?=#?\w+;)/gu, "\\&")
-    .replaceAll("|", context.table ? "\\|" : "|");
+    .replaceAll(/\[(?=[^\]]*\][([])/gu, String.raw`\[`)
+    .replaceAll(/<(?=[A-Za-z/!?])/gu, String.raw`\<`)
+    .replaceAll(/&(?=#?\w+;)/gu, String.raw`\&`)
+    .replaceAll("|", context.table ? String.raw`\|` : "|");
 
   if (!lineStart) return escaped;
 
   return escaped
-    .replace(/^\[(?=[^\]]*\]:)/u, "\\[")
-    .replace(/^(#{1,6})(?=\s|$)/u, "\\$1")
-    .replace(/^([>+-])(?=\s|$)/u, "\\$1")
-    .replace(/^(\d+)([.)])(?=\s|$)/u, "$1\\$2")
-    .replace(/^(=+|-+)(?=\s*$)/u, "\\$1");
+    .replace(/^\[(?=[^\]]*\]:)/u, String.raw`\[`)
+    .replace(/^(#{1,6})(?=\s|$)/u, String.raw`\$1`)
+    .replace(/^([>+-])(?=\s|$)/u, String.raw`\$1`)
+    .replace(/^(\d+)([.)])(?=\s|$)/u, String.raw`$1\$2`)
+    .replace(/^(=+|-+)(?=\s*$)/u, String.raw`\$1`);
 }

@@ -43,8 +43,9 @@ export async function settleFolder(chat: BlankChat, context: HandlerContext): Pr
   const workspace = context.ports.host.workspace(await blankWorkspace(chat, context));
   const cwd = await workspace.cwd();
 
-  if (cwd !== null && !context.signal.aborted)
+  if (cwd !== null && !context.signal.aborted) {
     await refreshWorkspace(context, cwd, { mentions: workspace, signal: context.signal });
+  }
 }
 
 export async function blankWorkspace(
@@ -150,8 +151,9 @@ export async function follow(
     const shown = toSelection(configurator.selected, readCatalog(read()));
     const current = read().facts.chat;
 
-    if (current?.id === id && !sameSelection(current.selection, shown))
+    if (current?.id === id && !sameSelection(current.selection, shown)) {
       dispatch({ kind: "selection", session: id, selection: shown });
+    }
 
     if (!first) return;
     first = false;
@@ -161,12 +163,13 @@ export async function follow(
 
     scope.previous = id;
 
-    if (announce)
+    if (announce) {
       dispatch({
         kind: "inform",
         tone: "info",
         text: `Resumed ${shortId(id)} · ${String(view.turns.length)} turns`,
       });
+    }
   });
 
   const tasks = each(ports.host.tasks(id), controller.signal, (list) => {
@@ -188,8 +191,9 @@ export async function follow(
 
   const workspace = await port.workspace();
 
-  if (workspace.cwd !== null && !controller.signal.aborted)
+  if (workspace.cwd !== null && !controller.signal.aborted) {
     await refreshWorkspace(context, workspace.cwd, { mentions: port, signal: controller.signal });
+  }
 
   unavailable(info.activation, dispatch);
 }
@@ -276,7 +280,7 @@ export async function watchHost(context: HandlerContext): Promise<void> {
 
 export function watchRefused(context: HandlerContext): Promise<void> {
   return each(context.ports.host.refusedSends(), context.signal, (refused) => {
-    for (const send of refused)
+    for (const send of refused) {
       context.dispatch({
         kind: "send-refused",
         submission: null,
@@ -284,6 +288,7 @@ export function watchRefused(context: HandlerContext): Promise<void> {
         reason: `Message not sent: ${send.reason}. It is back in the composer.`,
         snapshot: draftFromContent(send.content),
       });
+    }
   });
 }
 
@@ -470,7 +475,7 @@ function unavailable(
   activation: SessionInfo["activation"],
   dispatch: HandlerContext["dispatch"],
 ): void {
-  if (activation.kind === "unavailable")
+  if (activation.kind === "unavailable") {
     dispatch({
       kind: "inform",
       tone: "warning",
@@ -479,11 +484,13 @@ function unavailable(
           ? "Couldn't reach this session's workspace"
           : "Can't open this session's workspace",
     });
+  }
 
-  if (activation.kind === "failed")
+  if (activation.kind === "failed") {
     dispatch({
       kind: "inform",
       tone: "error",
       text: `Workspace failed to activate: ${activation.message}`,
     });
+  }
 }

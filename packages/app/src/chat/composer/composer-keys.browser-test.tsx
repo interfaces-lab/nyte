@@ -137,7 +137,7 @@ const scripted = scriptedConnection({
 installScripted(scripted);
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
     const value = read();
@@ -187,8 +187,9 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
 
   const recallReads = historyReads.filter((id) => id.startsWith("prompt-")).join();
 
-  if (recallReads !== "prompt-1,prompt-0")
+  if (recallReads !== "prompt-1,prompt-0") {
     throw new Error(`recall read the history before ${recallReads || "nothing"}`);
+  }
 }
 
 async function editRecalledPrompt(editor: HTMLElement): Promise<void> {
@@ -231,8 +232,9 @@ async function typeWhileRecalling(editor: HTMLElement): Promise<void> {
   await until(() => (historyPending === 0 ? true : null), "the late recall to answer");
   await nextFrame();
 
-  if (editor.innerText !== typed)
+  if (editor.innerText !== typed) {
     throw new Error(`a late recall replaced the typed text with "${editor.innerText}"`);
+  }
   document.execCommand("selectAll");
   document.execCommand("insertText", false, DRAFT);
   await until(() => (editor.innerText === DRAFT ? true : null), "the draft to come back");
@@ -245,8 +247,9 @@ async function openModelPicker(editor: HTMLElement): Promise<void> {
     .closest("[data-composer-frame]")
     ?.querySelector("button[aria-keyshortcuts]");
 
-  if (trigger?.getAttribute("aria-keyshortcuts") !== "Control+/")
+  if (trigger?.getAttribute("aria-keyshortcuts") !== "Control+/") {
     throw new Error("the model button does not advertise Ctrl+/");
+  }
 
   for (const start of ["the composer", "no field"]) {
     if (start === "no field") blur();
@@ -268,8 +271,9 @@ async function pasteFromNowhere(editor: HTMLElement): Promise<void> {
   blur();
   press(document.body, "v", { ctrlKey: true });
 
-  if (document.activeElement !== editor)
+  if (document.activeElement !== editor) {
     throw new Error("Ctrl+V outside a field left the composer");
+  }
   const clipboard = new DataTransfer();
   clipboard.setData("text/plain", "Pasted from nowhere");
   editor.dispatchEvent(
@@ -315,10 +319,11 @@ async function enterBeforeTheDraw(editor: HTMLElement): Promise<void> {
   );
   const content = scripted.sent.at(-1)?.content;
 
-  if (steered.length > 0 || content !== "Now.")
+  if (steered.length > 0 || content !== "Now.") {
     throw new Error(
       `Enter right after "Now." ${steered.length > 0 ? "steered the queued message" : `sent ${JSON.stringify(content)}`}`,
     );
+  }
 }
 
 export async function run(): Promise<string> {

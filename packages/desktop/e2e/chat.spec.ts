@@ -89,15 +89,17 @@ test("a steer sent during a response shows in the transcript, never in the queue
     const tray = 'section[aria-label="Queued messages"]';
 
     new MutationObserver((records) => {
-      for (const record of records)
+      for (const record of records) {
         for (const node of record.addedNodes) {
           const queued =
             (record.target instanceof Element && record.target.closest(tray) !== null) ||
             (node instanceof Element && (node.matches(tray) || node.querySelector(tray) !== null));
 
-          if (queued && node.textContent?.includes("Steer in") === true)
+          if (queued && node.textContent?.includes("Steer in") === true) {
             document.body.dataset.queuedSteer = "seen";
+          }
         }
+      }
     }).observe(document.body, { childList: true, subtree: true });
   });
 

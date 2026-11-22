@@ -119,8 +119,9 @@ export function usePageFrames(input: {
           press.clientX <= inside.right &&
           press.clientY >= inside.top &&
           press.clientY <= inside.bottom)
-      )
+      ) {
         return false;
+      }
       setEntered(null);
 
       return true;

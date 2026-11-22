@@ -61,14 +61,16 @@ const handlers: {
       ].slice(-CANVAS_REVISIONS_KEPT),
     }));
 
-    if (outcome.kind !== "updated")
+    if (outcome.kind !== "updated") {
       throw new Error(`The canvas could not be replaced: ${outcome.kind}.`);
+    }
   },
   async report(input, context) {
     const outcome = await context.part.update((current) => ({ ...current, error: input.message }));
 
-    if (outcome.kind !== "updated")
+    if (outcome.kind !== "updated") {
       throw new Error(`The canvas error could not be reported: ${outcome.kind}.`);
+    }
   },
 };
 
@@ -120,11 +122,12 @@ const libraryFamilies = [
 
 const KIT_GUIDE = [
   'Layout: Stack {direction, gap 0-6, align, justify, wrap}, Grid {columns | "auto", minWidth, gap}, Card {title, description, padding}, Section {title, description}, Panes {areas: string[], rows} with Pane {area, title, height}, Divider',
-  'Text: Heading {level}, Text {size, tone: "primary" | "secondary" | "tertiary", weight, mono}, Code {block}, FileLink {path, line}, Badge {tone}, Callout {tone, title}, Kbd {keys}',
+  'Text: Heading {level}, Text {size, tone: "primary" | "secondary" | "tertiary", weight, mono}, Code {block}, FileLink {path, line}, Badge {tone}, Callout {tone, title}, Kbd {keys}, Icon {name, size}',
   "Facts: Stat {label, value, detail, delta, trend: number[]}, KeyValue {items: {label, value}[]}, Table {columns: {key, label, align}[], rows: {[key]: node}[]}, Meter {value, max, label}, Delta {value}, DiffStat {added, removed}, Steps {items: {title, body, status}[]}, Tracker {label, data: {tone, label}[]}",
   'Charts; yFormat, valueFormat and format are functions (n) => string that carry units: LineChart {series: {id, data: {x, y}[]}[], yFormat, area}, BarChart {data: object[], keys: string[], indexBy, layout: "vertical" | "horizontal", mode: "grouped" | "stacked", valueFormat}, PieChart {data: {id, value}[], donut} for up to 5 parts, BarList {data: {label, value}[], format}, StackedBars {label, series: {key, label, tint}[], buckets: {key, label, values}[], format}, Sparkline {values}',
   "Controls: Button, Tabs, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ToggleGroup, Toggle, Switch, Checkbox, Slider, Tooltip, TooltipTrigger, TooltipContent, Collapsible, Spinner. useNivoTheme() gives a @nivo chart its {theme, colors}; useColorScheme()",
   'Other tone props: "neutral" | "info" | "success" | "warning" | "danger". tint: a colour name such as "blue" or "green".',
+  'Icon names are the app\'s icon set in kebab-case, such as "git-branch", "warning" or "circle-check"; a name it lacks logs the closest ones, which canvas_preview shows.',
 ].join("\n");
 
 export const CANVAS_PROMPT = {
@@ -172,16 +175,17 @@ async function compile(
     () => compileCanvas(args.source, args.files),
   );
 
-  if (compiled.kind === "failed")
+  if (compiled.kind === "failed") {
     throw new Error(`The canvas did not compile:\n${describeErrors(compiled.errors)}`);
+  }
 
   return compiled;
 }
 
-type Measured = {
+interface Measured {
   readonly heights: NonNullable<CanvasState["heights"]>;
   readonly findings: readonly CanvasPreviewFinding[];
-};
+}
 
 type MeasuredPreview = Measured & { readonly digest: string };
 
@@ -199,7 +203,10 @@ function rememberPreview(previews: Previews, session: SessionId, preview: Measur
   if (oldest !== undefined) previews.delete(oldest);
 }
 
-type Measuring = { readonly preview: CanvasPreviewer; readonly previews: Previews };
+interface Measuring {
+  readonly preview: CanvasPreviewer;
+  readonly previews: Previews;
+}
 
 const MEASURE_TIMEOUT_MS = 10_000;
 
@@ -221,8 +228,9 @@ async function measureCanvas(
   if (measuring === undefined) return { heights: [], findings: [] };
   const previewed = measuring.previews.get(invocation.session.id);
 
-  if (previewed !== undefined && previewed.digest === (await digestCode(module.code)))
+  if (previewed !== undefined && previewed.digest === (await digestCode(module.code))) {
     return previewed;
+  }
 
   const outcome = await previewWithin(
     measuring.preview,
@@ -308,8 +316,9 @@ function renderTool(measuring: Measuring | undefined): ToolDefinition<Infer<type
         .part(asId(args.canvas))
         .act("replace", { ...drawn, code: compiled.code, blob });
 
-      if (outcome.kind !== "ok")
+      if (outcome.kind !== "ok") {
         throw new Error(`Canvas ${args.canvas} was not replaced: ${outcome.kind}.`);
+      }
 
       return {
         content: [
@@ -388,7 +397,7 @@ function previewTool(measuring: Measuring): ToolDefinition<Infer<typeof previewP
         PREVIEW_TIMEOUT_MS,
       );
 
-      if (outcome.kind === "unavailable")
+      if (outcome.kind === "unavailable") {
         return {
           content: [
             {
@@ -397,16 +406,18 @@ function previewTool(measuring: Measuring): ToolDefinition<Infer<typeof previewP
             },
           ],
         };
+      }
       const { png } = outcome.report;
 
       const heights = previewHeights(outcome.report);
 
-      if (heights.length > 0)
+      if (heights.length > 0) {
         rememberPreview(measuring.previews, invocation.session.id, {
           digest: await digestCode(compiled.code),
           heights,
           findings: outcome.report.findings,
         });
+      }
 
       return {
         content: [
@@ -425,11 +436,12 @@ function previewTool(measuring: Measuring): ToolDefinition<Infer<typeof previewP
 }
 
 export function canvasPlugin(preview?: CanvasPreviewer): Plugin {
-  if (preview === undefined)
+  if (preview === undefined) {
     return {
       id: "canvas",
       contribute: { parts: [canvas], tools: [renderTool(undefined)], prompt: [CANVAS_PROMPT] },
     };
+  }
   const measuring: Measuring = { preview, previews: new Map() };
 
   return {

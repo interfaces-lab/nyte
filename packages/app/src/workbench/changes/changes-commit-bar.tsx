@@ -151,8 +151,9 @@ function commitActionDisabledReason(
 ): string | undefined {
   const plan = commitActionPlan(action);
 
-  if (plan.pullRequest && !readsWorkingTree(state.scope))
+  if (plan.pullRequest && !readsWorkingTree(state.scope)) {
     return "Pull requests apply to the working tree";
+  }
 
   const blocker = plan.pullRequest ? pullRequestBlocker(state.account, state.github) : undefined;
 
@@ -160,11 +161,13 @@ function commitActionDisabledReason(
 
   if (plan.branch) return undefined;
 
-  if (plan.push && state.branch?.kind === "detached")
+  if (plan.push && state.branch?.kind === "detached") {
     return "HEAD is detached, so there is no branch";
+  }
 
-  if (plan.push && !plan.commit && state.branch?.kind === "unborn")
+  if (plan.push && !plan.commit && state.branch?.kind === "unborn") {
     return "This branch has no commits yet";
+  }
 
   return undefined;
 }
@@ -265,11 +268,12 @@ function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarRe
 const trustRefusal = Type.Object({ cause: Type.Object({ code: Type.Literal("forbidden") }) });
 
 function actionFailureMessage(cause: unknown): CommitBarResult {
-  if (Value.Check(trustRefusal, cause))
+  if (Value.Check(trustRefusal, cause)) {
     return {
       tone: "error",
       text: "Trust this workspace to let Nyte write to Git, then try again.",
     };
+  }
 
   return { tone: "error", text: "The action didn’t go through.", detail: errorMessage(cause) };
 }

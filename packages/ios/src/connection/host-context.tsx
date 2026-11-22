@@ -18,21 +18,21 @@ import { RELEASE_TIMEOUT_MS, releaseOnHost } from "../account/revocation.ts";
 import { toast } from "../ui/toast.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 
-type HostTarget = {
+interface HostTarget {
   saved: SavedConnection;
   connection: Connection;
   client: ClientConnection;
   scope: string;
   key: string;
-};
+}
 
-export type HostRecovery = {
+export interface HostRecovery {
   readonly saved: SavedConnection;
   readonly failure: Exclude<ConnectFailure, { kind: "cancelled" }>;
   readonly retry: () => void;
   readonly repair: (() => void) | undefined;
   readonly disconnect: () => Promise<void>;
-};
+}
 
 type HostConnectionState =
   | { kind: "loading" }
@@ -40,13 +40,13 @@ type HostConnectionState =
   | { kind: "recovery"; recovery: HostRecovery }
   | ({ kind: "connected" } & HostTarget);
 
-export type HostSession = {
+export interface HostSession {
   readonly client: ClientConnection;
   readonly connection: Connection;
   readonly saved: SavedConnection;
   readonly scope: string;
   readonly disconnect: () => Promise<void>;
-};
+}
 
 export type ConnectedHost = HostSession & { readonly newerHost: boolean };
 
@@ -145,11 +145,12 @@ export function useHostConnection() {
           : Promise.resolve(undefined),
     });
 
-    if (removed?.released !== undefined)
+    if (removed?.released !== undefined) {
       toast.show(
         "Disconnected",
         releaseCopy(removed.saved.connection.name, { host: removed.released, broker: "skipped" }),
       );
+    }
   }
 
   const host: HostConnectionState =

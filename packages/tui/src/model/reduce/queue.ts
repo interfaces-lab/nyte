@@ -17,11 +17,13 @@ type QueueIntent = Extract<
 export const queueHandlers = {
   "edit-queued": (state, msg, now) =>
     queued(state, msg, now, (row, message) => {
-      if (state.local.editing !== null)
+      if (state.local.editing !== null) {
         return refuse(state, "Save or cancel the current queue edit first.", now);
+      }
 
-      if (!row.editable)
+      if (!row.editable) {
         return refuse(state, `"${row.text}" is an action; it can't be edited.`, now);
+      }
 
       const editing = {
         message: row.id,
@@ -58,13 +60,14 @@ export const queueHandlers = {
     }),
   withdraw: (state, msg, now) =>
     queued(state, msg, now, (row, _message, session) => {
-      if (!row.withdrawable)
+      if (!row.withdrawable) {
         return refuse(
           state,
           "That message is still sending; it can't be removed yet.",
           now,
           "info",
         );
+      }
 
       return { state, effects: [{ kind: "withdraw", session, message: row.id }] };
     }),
@@ -103,8 +106,9 @@ export const queueHandlers = {
     return msg.result === "gone" ? refuse(state, "No longer queued", now, "info") : stay(state);
   },
   withdrawn: (state, msg, now) => {
-    if (msg.result === "withdrawn")
+    if (msg.result === "withdrawn") {
       return stay(withNotice(state, "Removed from the queue", "info", now));
+    }
 
     return msg.result === "landed-first"
       ? refuse(state, "Already sent", now)

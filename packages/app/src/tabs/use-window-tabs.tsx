@@ -85,8 +85,9 @@ export function useWindowTabsSync(): void {
         .then(() => (follow.wanted === folder ? activateWorkspace(folder) : true))
         .then(
           (opened) => {
-            if (!opened && preferences.draftFolder.get() === folder)
+            if (!opened && preferences.draftFolder.get() === folder) {
               preferences.draftFolder.set(null);
+            }
 
             return undefined;
           },
@@ -185,18 +186,21 @@ function forgetGoneChats(): () => void {
   const read = (): void => {
     const shown = watchedChats(windowTabs.getSnapshot());
 
-    for (const [id, leave] of reads)
+    for (const [id, leave] of reads) {
       if (!shown.has(id)) {
         leave();
         reads.delete(id);
       }
+    }
 
-    for (const id of shown)
-      if (!reads.has(id))
+    for (const id of shown) {
+      if (!reads.has(id)) {
         reads.set(
           id,
           subscribeSessionRow(id, () => forget()),
         );
+      }
+    }
   };
 
   read();

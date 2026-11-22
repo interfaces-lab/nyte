@@ -175,7 +175,7 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
   maxRetryDelayMs?: number;
 }
 
-export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
+export interface StreamOptions extends ProviderRequestOptions {
   /**
    * Optional callback invoked after an HTTP response is received and before
    * its body stream is consumed.
@@ -213,7 +213,7 @@ export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
 
 export type ProviderStreamOptions = StreamOptions & Record<string, unknown>;
 
-export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>> {
+export interface DeferredFetchOptions extends ProviderRequestOptions {
   /**
    * Maximum provider long-poll duration in milliseconds.
    * Defaults to 0, which performs one status check.
@@ -221,7 +221,7 @@ export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>>
   wait?: number;
 }
 
-export type DeferredCancelOptions = ProviderRequestOptions<Model<Api>>;
+export type DeferredCancelOptions = ProviderRequestOptions;
 
 export interface ProviderStreams {
   stream(

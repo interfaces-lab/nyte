@@ -60,22 +60,7 @@ const files = new Map([
   [`/${zip}`, [zip, "application/zip"]],
 ]);
 
-const server = createServer(async (request, response) => {
-  const file = files.get(new URL(request.url ?? "/", "http://127.0.0.1").pathname);
-
-  if (file === undefined || (request.method !== "GET" && request.method !== "HEAD")) {
-    response.writeHead(404).end();
-
-    return;
-  }
-
-  const path = join(desktop, "dist", file[0]);
-  const size = (await stat(path)).size;
-  response.writeHead(200, { "Content-Type": file[1], "Content-Length": size });
-
-  if (request.method === "HEAD") response.end();
-  else await pipeline(createReadStream(path), response).catch(() => response.destroy());
-});
+const server = createServer((request, response) => void serve(request, response));
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
 
@@ -171,7 +156,7 @@ async function until(label, timeout, done) {
 
   while (!done()) {
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
-    await sleep(1_000);
+    await sleep(1000);
   }
 }
 
@@ -204,4 +189,21 @@ function run(command, args, env = {}) {
   if (result.error) throw result.error;
 
   if (result.status !== 0) throw new Error(`${command} failed with exit code ${result.status}`);
+}
+
+async function serve(request, response) {
+  const file = files.get(new URL(request.url ?? "/", "http://127.0.0.1").pathname);
+
+  if (file === undefined || (request.method !== "GET" && request.method !== "HEAD")) {
+    response.writeHead(404).end();
+
+    return;
+  }
+
+  const path = join(desktop, "dist", file[0]);
+  const size = (await stat(path)).size;
+  response.writeHead(200, { "Content-Type": file[1], "Content-Length": size });
+
+  if (request.method === "HEAD") response.end();
+  else await pipeline(createReadStream(path), response).catch(() => response.destroy());
 }

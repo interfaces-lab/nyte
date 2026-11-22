@@ -110,8 +110,9 @@ export function smallestChange(before: string, next: string): Change {
     tail < before.length - head &&
     tail < next.length - head &&
     before[before.length - 1 - tail] === next[next.length - 1 - tail]
-  )
+  ) {
     tail += 1;
+  }
 
   return { start: head, end: before.length - tail, text: next.slice(head, next.length - tail) };
 }
@@ -197,8 +198,9 @@ function readWords(node: Node, text: string): Range | null {
     !inner.every(
       (child) => child?.type === "jsx_text" || child?.type === "html_character_reference",
     )
-  )
+  ) {
     return null;
+  }
   const between = text.slice(open.endIndex, close.startIndex);
   const lead = between.length - between.trimStart().length;
   const trail = between.length - between.trimEnd().length;

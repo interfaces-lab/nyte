@@ -128,8 +128,9 @@ export async function run(): Promise<string> {
     const seen: (string | null)[] = [];
 
     const until = async (text: string): Promise<void> => {
-      for (let frame = 0; frame < 100 && unlisted.textContent !== text; frame += 1)
+      for (let frame = 0; frame < 100 && unlisted.textContent !== text; frame += 1) {
         await nextFrame();
+      }
       seen.push(unlisted.textContent);
     };
 

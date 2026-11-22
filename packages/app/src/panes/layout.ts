@@ -206,8 +206,13 @@ function setContent<Content extends TabContent>(
 ): Layout<Content> {
   const pane = paneOfTab(layout, tabId);
 
-  if (pane === undefined || pane.tab.content === content || pane.tab.content.kind !== content.kind)
+  if (
+    pane === undefined ||
+    pane.tab.content === content ||
+    pane.tab.content.kind !== content.kind
+  ) {
     return layout;
+  }
 
   return replacePane(layout, { ...pane, tab: { id: tabId, content } });
 }
@@ -280,8 +285,9 @@ function besidePane<Content extends TabContent>(
   side: "before" | "after",
   rules: LayoutRules<Content>,
 ): Layout<Content> {
-  if (layoutPanes(layout.root).length >= MAX_PANES || findPane(layout, target) === undefined)
+  if (layoutPanes(layout.root).length >= MAX_PANES || findPane(layout, target) === undefined) {
     return layout;
+  }
 
   const pane: Pane<Content> = { kind: "pane", id: asId<"pane">(rules.newId()), tab };
 

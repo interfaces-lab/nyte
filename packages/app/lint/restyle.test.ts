@@ -1,14 +1,13 @@
 import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
 const run = promisify(execFile);
 
-const here = dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 
 const repoRoot = join(here, "../../..");
 
@@ -16,9 +15,12 @@ const fixture = join(here, "fixtures/restyle-fixture.tsx");
 
 const configDirectory = mkdtempSync(join(tmpdir(), "nyte-restyle-"));
 
-type Violation = { line: number; message: string };
+interface Violation {
+  line: number;
+  message: string;
+}
 
-let violations: Array<Violation> = [];
+let violations: Violation[] = [];
 
 const findLine = (needle: string): number => {
   const index = readFileSync(fixture, "utf8")
@@ -51,12 +53,20 @@ beforeAll(async () => {
     "--format",
     "json",
     fixture,
-  ]).catch((error: { stdout?: string }) => ({ stdout: error.stdout ?? "" }));
+  ]).catch((error: unknown) => ({
+    stdout:
+      typeof error === "object" &&
+      error !== null &&
+      "stdout" in error &&
+      typeof error.stdout === "string"
+        ? error.stdout
+        : "",
+  }));
 
   if (!result.stdout.startsWith("{")) throw new Error(`oxlint did not report: ${result.stdout}`);
 
   const report: {
-    diagnostics?: Array<{ message: string; labels?: Array<{ span: { line: number } }> }>;
+    diagnostics?: { message: string; labels?: { span: { line: number } }[] }[];
   } = JSON.parse(result.stdout);
 
   violations = (report.diagnostics ?? []).map((diagnostic) => ({

@@ -110,7 +110,7 @@ export function MarkArt(input: {
     );
   }
 
-  if (mark.kind === "highlight")
+  if (mark.kind === "highlight") {
     return (
       <Highlight
         mark={mark}
@@ -122,6 +122,7 @@ export function MarkArt(input: {
         box={box}
       />
     );
+  }
 
   if (mark.kind === "circle") {
     const points = input.spine ?? circleSpine(mark);
@@ -141,7 +142,7 @@ export function MarkArt(input: {
     );
   }
 
-  if (mark.kind === "box")
+  if (mark.kind === "box") {
     return (
       <g data-image-mark="box" opacity={fade}>
         <defs>{shadowFilter}</defs>
@@ -155,6 +156,7 @@ export function MarkArt(input: {
         />
       </g>
     );
+  }
 
   const arrow = arrowPaths(mark.from, mark.to, mark.width);
 
@@ -278,7 +280,7 @@ function farEnd(first: Point, last: Point, width: number): Point {
 }
 
 function wobble(seed: number, index: number): number {
-  const value = Math.sin(seed * 12.9898 + index * 78.233) * 43758.5453;
+  const value = Math.sin(seed * 12.9898 + index * 78.233) * 43_758.5453;
 
   return value - Math.floor(value);
 }

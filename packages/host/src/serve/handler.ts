@@ -83,10 +83,11 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
   return async (request) => {
     const cors = corsHeaders(request, options.origins);
 
-    if (cors === null)
+    if (cors === null) {
       return errorResponse(new SdkError("denied", "This origin may not call the host."), {});
+    }
 
-    if (request.method === "OPTIONS")
+    if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: {
@@ -96,6 +97,7 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
           "Access-Control-Max-Age": "600",
         },
       });
+    }
 
     try {
       const path = new URL(request.url).pathname.slice(1);
@@ -110,8 +112,9 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
         name !== CANCEL_PATH &&
         "local" in OPERATIONS[name] &&
         options.local !== true
-      )
+      ) {
         throw new SdkError("denied", `${name} answers only on the host's local socket.`);
+      }
 
       const authenticated = await options.connection(request);
 
@@ -128,8 +131,9 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
       if (name === CANCEL_PATH) {
         const value = await readBody(request, limit);
 
-        if (!cancellations.Check(value))
+        if (!cancellations.Check(value)) {
           throw new SdkError("invalid", "A stream cancellation needs its channel and stream.");
+        }
         channels.cancel(authenticated.connection, value.channel, value.stream);
 
         return withHeaders(new Response(null, { status: 204 }), {
@@ -140,16 +144,18 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
 
       const needed = OPERATIONS[name].authority;
 
-      if (!authenticated.authority.has(needed))
+      if (!authenticated.authority.has(needed)) {
         throw new SdkError("denied", `${name} needs ${needed} authority.`);
+      }
       const binding = bind(authenticated.connection);
       let response: Response;
       const channel = request.headers.get(CHANNEL_HEADER);
       const stream = request.headers.get(STREAM_HEADER);
 
       if (channel !== null || stream !== null) {
-        if (channel === null || stream === null)
+        if (channel === null || stream === null) {
           throw new SdkError("invalid", "A shared stream needs its channel and identifier.");
+        }
         const value = await readBody(request, limit);
 
         response = await channels.start(
@@ -199,16 +205,18 @@ async function answer(
 
   if (answersOnce(name)) return json(await callBinding(binding, name, value, context));
 
-  if (name === "job.output")
+  if (name === "job.output") {
     return new Response(
       outputFrames(
         abortable(await binding["job.output"](decodeInput(name, value), context), signal),
       ),
       { status: 200, headers: { "Content-Type": "application/octet-stream" } },
     );
+  }
 
-  if (answersBytes(name))
+  if (answersBytes(name)) {
     return octetStream(await bytes(binding, name, value, context), request.signal);
+  }
 
   return new Response(sseFrames(ending(await frames(binding, name, value, context), signal)), {
     status: 200,
@@ -216,6 +224,7 @@ async function answer(
   });
 }
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- N ties binding[name] to decodeInput(name) so the call typechecks
 export async function callBinding<N extends CallName>(
   binding: CallBinding,
   name: N,
@@ -225,6 +234,7 @@ export async function callBinding<N extends CallName>(
   return encodeOutput(name, await binding[name](decodeInput(name, value), request));
 }
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- N ties binding[name] to decodeInput(name) so the call typechecks
 async function bytes<N extends ByteName>(
   binding: ByteBinding,
   name: N,
@@ -234,6 +244,7 @@ async function bytes<N extends ByteName>(
   return binding[name](decodeInput(name, value), request);
 }
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- N ties binding[name] to decodeInput(name) so the call typechecks
 async function frames<N extends FrameName>(
   binding: FrameBinding,
   name: N,
@@ -354,8 +365,9 @@ function readOperation(request: Request): OperationName {
   const path = new URL(request.url).pathname;
   const name = path.slice(1);
 
-  if (request.method !== "POST" || !namesOperation(name))
+  if (request.method !== "POST" || !namesOperation(name)) {
     throw new SdkError("unknown", `No operation answers ${request.method} ${path}.`);
+  }
 
   return name;
 }

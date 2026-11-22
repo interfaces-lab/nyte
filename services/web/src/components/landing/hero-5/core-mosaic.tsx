@@ -1,5 +1,6 @@
 import { HrefLink } from "~/components/site/href-link";
-import { useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useRef, useState } from "react";
+import type { FocusEvent, KeyboardEvent, PointerEvent } from "react";
 import { githubUrl } from "~/lib/shared";
 import { AsciiArt } from "./ascii-art";
 import { ASCII_LOGOS } from "./ascii-logos";

@@ -85,7 +85,7 @@ function registry<T>(key: (item: T) => string, siblings: () => ClientRegistries)
     list() {
       const draft = new Map<string, T>([...items].map((item) => [key(item), item]));
 
-      for (const derive of derivations)
+      for (const derive of derivations) {
         derive(
           {
             set: (id, item) => void draft.set(id, item),
@@ -100,6 +100,7 @@ function registry<T>(key: (item: T) => string, siblings: () => ClientRegistries)
           },
           siblings(),
         );
+      }
 
       return [...draft.values()];
     },
@@ -223,7 +224,7 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
 
   const context = (api: PluginApi, session: SessionId | null, run: RunId | null) => ({
     api,
-    signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]),
+    signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
     session,
     head: null,
     run,
@@ -278,24 +279,29 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
       for (const entry of [
         ...(additions.contribute?.commands ?? []),
         ...(additions.contribute?.settings ?? []),
-      ])
-        if (!callable(entry) && entry.when !== undefined)
+      ]) {
+        if (!callable(entry) && entry.when !== undefined) {
           options.report(
             plugin.id,
             "A client plugin's `when` is never asked, so its item is always there.",
           );
+        }
+      }
 
       for (const entry of additions.contribute?.renderers ?? []) registries.renderers.add(entry);
 
-      for (const entry of additions.contribute?.keybindings ?? [])
+      for (const entry of additions.contribute?.keybindings ?? []) {
         registries.keybindings.add(entry);
+      }
       const hooks = additions.hooks ?? {};
 
-      if (hooks.run_ended_anywhere !== undefined)
+      if (hooks.run_ended_anywhere !== undefined) {
         register(api, "run_ended_anywhere", hooks.run_ended_anywhere);
+      }
 
-      if (hooks.attention_changed_anywhere !== undefined)
+      if (hooks.attention_changed_anywhere !== undefined) {
         register(api, "attention_changed_anywhere", hooks.attention_changed_anywhere);
+      }
 
       if (hooks.app_ready !== undefined) register(api, "app_ready", hooks.app_ready);
 
@@ -342,13 +348,16 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
 
   const renderers = new Map<string, Renderer>();
 
-  for (const { api } of apis)
-    for (const renderer of api.registries.renderers.list())
+  for (const { api } of apis) {
+    for (const renderer of api.registries.renderers.list()) {
       if (
         options.client.frameworks.includes(renderer.framework) &&
         !renderers.has(renderer.kind.kind)
-      )
+      ) {
         renderers.set(renderer.kind.kind, renderer);
+      }
+    }
+  }
 
   const ends = new Map<string, RunId>();
   const attention = new Map<SessionId, string>();
@@ -386,21 +395,23 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
           if (last === null || ends.get(key) === last.id) continue;
           ends.set(key, last.id);
 
-          if (seeded)
+          if (seeded) {
             void observe(
               handlers.run_ended_anywhere,
               { session: info.id, run: last.id, end: last.end },
               info.id,
               last.id,
             );
+          }
         }
       }
 
       seeded = true;
     },
     async switched(previous, next) {
-      if (previous !== null)
+      if (previous !== null) {
         await observe(handlers.session_closed, { session: previous }, previous.id);
+      }
       await observe(handlers.session_opened, { session: next }, next.id);
     },
     async beforeSubmit(draft) {

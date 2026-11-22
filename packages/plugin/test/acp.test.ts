@@ -105,7 +105,7 @@ async function openHost(gate: Plugin<"core">) {
       id: "crash",
       name: "Crash Agent",
       command: process.execPath,
-      args: ["-e", "process.stderr.write('no config found\\n'); process.exit(3)"],
+      args: ["-e", String.raw`process.stderr.write('no config found\n'); process.exit(3)`],
       env: {},
     },
   ]);

@@ -42,7 +42,7 @@ export const HISTORY: Readonly<Record<Scenario, number>> = {
 /** Turns `soak` streams into one session, measuring memory after each. */
 export const SOAK_TURNS = 30;
 
-const SOAK_FIRST = 1_000;
+const SOAK_FIRST = 1000;
 
 /** The reply to soak turn `turn`, and what its last line shows once painted. */
 export function soakReply(turn: number): { readonly reply: Reply; readonly shown: string } {
@@ -140,7 +140,7 @@ function bigFileEnvironment(kind: string): Plugin<"core"> {
               scope: "workspace",
               mime: "text/plain",
               contents: bigBefore(),
-              encoding: "utf-8",
+              encoding: "utf8",
               version: asId("v1"),
             }),
             write: async () => ({ kind: "saved", version: asId("v2") }),

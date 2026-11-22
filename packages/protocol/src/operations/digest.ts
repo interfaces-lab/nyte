@@ -1,7 +1,7 @@
 import { OPERATIONS } from "@nyte-ai/schema";
 import type { Declaration } from "@nyte-ai/schema";
 
-const rows: { readonly [name: string]: Declaration<unknown, unknown> } = OPERATIONS;
+const rows: Readonly<Record<string, Declaration<unknown, unknown>>> = OPERATIONS;
 
 const encoder = new TextEncoder();
 

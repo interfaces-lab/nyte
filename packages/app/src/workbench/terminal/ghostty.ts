@@ -7,8 +7,9 @@ let ghostty: Promise<Engine> | undefined;
 async function fetchEngine(): Promise<Engine> {
   const response = await fetch(wasmUrl);
 
-  if (!response.ok)
+  if (!response.ok) {
     throw new Error(`Couldn't load the terminal engine (${String(response.status)})`);
+  }
 
   return loadEngine(await response.arrayBuffer());
 }

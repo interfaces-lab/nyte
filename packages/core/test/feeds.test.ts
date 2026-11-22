@@ -174,8 +174,9 @@ describe("the store is the truth", () => {
             updates
               .flatMap((update) => update.events ?? [])
               .some((event) => event.kind === "commit")
-          )
+          ) {
             gate = true;
+          }
 
           return outcome;
         },

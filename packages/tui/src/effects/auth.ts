@@ -308,7 +308,7 @@ async function recoverModel(
 
   const first = candidates[0];
 
-  if (first === undefined)
+  if (first === undefined) {
     return {
       tone: "warning",
       text:
@@ -316,6 +316,7 @@ async function recoverModel(
           ? "No authenticated models available. /login connects a provider; /model refreshes the catalog."
           : "No models available for this provider. /model selects another.",
     };
+  }
 
   const result = await followed.configurator.request({ model: first.ref });
 

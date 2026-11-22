@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { recentEntries, renderDoctor, type DoctorReport } from "../src/doctor-command.ts";
+import { recentEntries, renderDoctor } from "../src/doctor-command.ts";
+import type { DoctorReport } from "../src/doctor-command.ts";
 import { holdsSecrets, readShareable, secretFilesIn } from "../src/secrets.ts";
 
 const FILES: readonly (readonly [string, boolean])[] = [

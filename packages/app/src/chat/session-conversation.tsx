@@ -1,5 +1,5 @@
-import { runStatus, type UserMessage } from "@nyte-ai/plugin/client/presentation";
-import type { RunStatus } from "@nyte-ai/plugin/client/presentation";
+import { runStatus } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage, RunStatus } from "@nyte-ai/plugin/client/presentation";
 import { sessionScreenStyles } from "../panes/session-screen.stylex.ts";
 import { modelConfiguration } from "../panes/model-configuration.ts";
 import { PaneHeader } from "../panes/pane-header.tsx";
@@ -34,7 +34,8 @@ import { QuestionTray } from "./trays/questions.tsx";
 import { SecretTray } from "./trays/secrets.tsx";
 import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { listAgents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
+import { listAgents, SubagentTray } from "./trays/agents.tsx";
+import type { SubagentTrayView } from "./trays/agents.tsx";
 import { modelRefFor, sessionModel } from "./composer/model-picker-state.ts";
 import { StartupReadsHold } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -71,8 +72,9 @@ async function applyMessageEdit({
   readonly content: UserContent;
   readonly choice: BranchModelChoice;
 }): Promise<void> {
-  if (revision == null)
+  if (revision == null) {
     throw new Error("The conversation is updating. Try editing this message again.");
+  }
 
   const session = connection().session(sessionId);
 
@@ -81,8 +83,9 @@ async function applyMessageEdit({
       modelConfiguration(modelRefFor(choice.model, choice.modes), choice.thinkingLevel),
     );
 
-    if (configured.kind !== "configured")
+    if (configured.kind !== "configured") {
       throw new Error("That model setting is no longer available");
+    }
   }
 
   const receipt = await session.send(content, {
@@ -195,8 +198,9 @@ function TranscriptColumn({
         (event.key !== "PageUp" && event.key !== "PageDown") ||
         !(event.target instanceof Element) ||
         event.target.closest("[data-composer-frame]") === null
-      )
+      ) {
         return;
+      }
       event.preventDefault();
       controls.page(event.key === "PageDown" ? 1 : -1);
     };

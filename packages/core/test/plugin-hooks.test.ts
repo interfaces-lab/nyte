@@ -292,7 +292,7 @@ describe("hooks", () => {
       message: "Plugin slow's after_tool handler failed: exceeded its 5 s budget",
     });
 
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5000);
     await observed;
     await failed;
 
@@ -314,8 +314,9 @@ describe("hooks", () => {
         contribute: { tools: [echo] },
         hooks: {
           before_tool: (call) => {
-            if (JSON.stringify(call.args) === JSON.stringify({ text: "forbidden" }))
+            if (JSON.stringify(call.args) === JSON.stringify({ text: "forbidden" })) {
               return { action: "reject", reason: "Not that." };
+            }
 
             return call.args === null
               ? { action: "modify", value: { ...call, args: { text: "filled" } } }

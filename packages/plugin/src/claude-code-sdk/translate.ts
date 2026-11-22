@@ -13,12 +13,12 @@ import type {
 
 type StreamEvent = SDKPartialAssistantMessage["event"];
 
-type ApiUsage = {
+interface ApiUsage {
   readonly input_tokens?: number | null;
   readonly output_tokens?: number | null;
   readonly cache_read_input_tokens?: number | null;
   readonly cache_creation_input_tokens?: number | null;
-};
+}
 
 export const CLAUDE_CODE_PROVIDER = "claude-code";
 
@@ -57,81 +57,83 @@ function stopReason(reason: string): StopReason {
 }
 
 export class Translator {
-  readonly #blocks = new Map<number, { readonly index: number; json: string }>();
-  readonly #model: Model<Api>;
-  readonly #output: AssistantMessage;
-  readonly #stream: AssistantMessageEventStream;
-  #spent = 0;
-  #current = 0;
-  #started = false;
+  private readonly blocks = new Map<number, { readonly index: number; json: string }>();
+  private readonly model: Model<Api>;
+  private readonly output: AssistantMessage;
+  private readonly stream: AssistantMessageEventStream;
+  private spent = 0;
+  private current = 0;
+  private started = false;
 
   constructor(model: Model<Api>, output: AssistantMessage, stream: AssistantMessageEventStream) {
-    this.#model = model;
-    this.#output = output;
-    this.#stream = stream;
+    this.model = model;
+    this.output = output;
+    this.stream = stream;
   }
 
   apply(event: StreamEvent): string | undefined {
     switch (event.type) {
       case "message_start":
-        this.#started = true;
-        this.#blocks.clear();
-        this.#output.responseId = event.message.id;
+        this.started = true;
+        this.blocks.clear();
+        this.output.responseId = event.message.id;
 
-        if (event.message.model !== this.#model.id)
-          this.#output.responseModel = event.message.model;
-        this.#usage(event.message.usage);
+        if (event.message.model !== this.model.id) {
+          this.output.responseModel = event.message.model;
+        }
+        this.usage(event.message.usage);
 
         return undefined;
       case "content_block_start":
-        this.#start(event.index, event.content_block);
+        this.start(event.index, event.content_block);
 
         return undefined;
       case "content_block_delta":
-        this.#delta(event.index, event.delta);
+        this.delta(event.index, event.delta);
 
         return undefined;
       case "content_block_stop":
-        return this.#stop(event.index);
+        return this.stop(event.index);
       case "message_delta":
         if (event.delta.stop_reason !== null) {
-          this.#output.rawStopReason = event.delta.stop_reason;
-          this.#output.stopReason = stopReason(event.delta.stop_reason);
+          this.output.rawStopReason = event.delta.stop_reason;
+          this.output.stopReason = stopReason(event.delta.stop_reason);
 
-          if (event.delta.stop_reason === "refusal")
-            this.#output.errorMessage = "The model refused to complete the request.";
+          if (event.delta.stop_reason === "refusal") {
+            this.output.errorMessage = "The model refused to complete the request.";
+          }
         }
 
-        this.#usage(event.usage);
+        this.usage(event.usage);
 
         return undefined;
       case "message_stop":
-        this.#spent += this.#current;
-        this.#current = 0;
+        this.spent += this.current;
+        this.current = 0;
 
-        return this.#output.rawStopReason ?? "end_turn";
+        return this.output.rawStopReason ?? "end_turn";
       default:
         return undefined;
     }
   }
 
-  #usage(usage: ApiUsage): void {
-    const usageOutput = this.#output.usage;
+  private usage(usage: ApiUsage): void {
+    const usageOutput = this.output.usage;
 
-    if (this.#started) {
+    if (this.started) {
       usageOutput.input = usage.input_tokens ?? usageOutput.input;
       usageOutput.cacheRead = usage.cache_read_input_tokens ?? usageOutput.cacheRead;
       usageOutput.cacheWrite = usage.cache_creation_input_tokens ?? usageOutput.cacheWrite;
     }
 
-    this.#current = usage.output_tokens ?? this.#current;
-    usageOutput.output = this.#spent + this.#current;
+    this.current = usage.output_tokens ?? this.current;
+    usageOutput.output = this.spent + this.current;
     usageOutput.totalTokens =
       usageOutput.input + usageOutput.output + usageOutput.cacheRead + usageOutput.cacheWrite;
-    calculateCost(this.#model, usageOutput);
+    calculateCost(this.model, usageOutput);
   }
 
-  #start(
+  private start(
     native: number,
     block: Extract<StreamEvent, { type: "content_block_start" }>["content_block"],
   ) {
@@ -157,10 +159,10 @@ export class Translator {
               : undefined;
 
     if (content === undefined) return;
-    const index = this.#output.content.push(content) - 1;
-    this.#blocks.set(native, { index, json: "" });
+    const index = this.output.content.push(content) - 1;
+    this.blocks.set(native, { index, json: "" });
 
-    this.#stream.push({
+    this.stream.push({
       type:
         content.type === "text"
           ? "text_start"
@@ -168,77 +170,80 @@ export class Translator {
             ? "thinking_start"
             : "toolcall_start",
       contentIndex: index,
-      partial: this.#output,
+      partial: this.output,
     });
   }
 
-  #delta(native: number, delta: Extract<StreamEvent, { type: "content_block_delta" }>["delta"]) {
-    const slot = this.#blocks.get(native);
+  private delta(
+    native: number,
+    delta: Extract<StreamEvent, { type: "content_block_delta" }>["delta"],
+  ) {
+    const slot = this.blocks.get(native);
 
     if (slot === undefined) return;
-    const content = this.#output.content[slot.index];
+    const content = this.output.content[slot.index];
     const contentIndex = slot.index;
 
     if (delta.type === "text_delta" && content?.type === "text") {
       content.text += delta.text;
-      this.#stream.push({
+      this.stream.push({
         type: "text_delta",
         contentIndex,
         delta: delta.text,
-        partial: this.#output,
+        partial: this.output,
       });
     } else if (delta.type === "thinking_delta" && content?.type === "thinking") {
       content.thinking += delta.thinking;
-      this.#stream.push({
+      this.stream.push({
         type: "thinking_delta",
         contentIndex,
         delta: delta.thinking,
-        partial: this.#output,
+        partial: this.output,
       });
     } else if (delta.type === "signature_delta" && content?.type === "thinking") {
       content.thinkingSignature = (content.thinkingSignature ?? "") + delta.signature;
     } else if (delta.type === "input_json_delta" && content?.type === "toolCall") {
       slot.json += delta.partial_json;
       content.arguments = parseStreamingJson(slot.json);
-      this.#stream.push({
+      this.stream.push({
         type: "toolcall_delta",
         contentIndex,
         delta: delta.partial_json,
-        partial: this.#output,
+        partial: this.output,
       });
     }
   }
 
-  #stop(native: number): string | undefined {
-    const slot = this.#blocks.get(native);
+  private stop(native: number): string | undefined {
+    const slot = this.blocks.get(native);
 
     if (slot === undefined) return undefined;
-    this.#blocks.delete(native);
-    const content = this.#output.content[slot.index];
+    this.blocks.delete(native);
+    const content = this.output.content[slot.index];
     const contentIndex = slot.index;
 
-    if (content?.type === "text")
-      this.#stream.push({
+    if (content?.type === "text") {
+      this.stream.push({
         type: "text_end",
         contentIndex,
         content: content.text,
-        partial: this.#output,
+        partial: this.output,
       });
-    else if (content?.type === "thinking")
-      this.#stream.push({
+    } else if (content?.type === "thinking") {
+      this.stream.push({
         type: "thinking_end",
         contentIndex,
         content: content.thinking,
-        partial: this.#output,
+        partial: this.output,
       });
-    else if (content?.type === "toolCall") {
-      this.#stream.push({
+    } else if (content?.type === "toolCall") {
+      this.stream.push({
         type: "toolcall_end",
         contentIndex,
         toolCall: content,
-        partial: this.#output,
+        partial: this.output,
       });
-      this.#output.stopReason = "toolUse";
+      this.output.stopReason = "toolUse";
 
       return "tool_use";
     }

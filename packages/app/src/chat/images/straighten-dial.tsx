@@ -189,8 +189,7 @@ export function StraightenDial(input: {
     if (!drag.picked) return;
 
     const resting = rubber(drag.last);
-    const recent = drag.samples.filter((sample) => event.timeStamp - sample.time < 90);
-    const first = recent[0];
+    const first = drag.samples.find((sample) => event.timeStamp - sample.time < 90);
 
     const velocity =
       first === undefined || event.timeStamp === first.time
@@ -198,9 +197,9 @@ export function StraightenDial(input: {
         : (drag.last - first.angle) / (event.timeStamp - first.time);
 
     if (Math.abs(velocity) < 0.02) {
-      if (resting !== clamp(resting, -MAX_ANGLE, MAX_ANGLE))
+      if (resting !== clamp(resting, -MAX_ANGLE, MAX_ANGLE)) {
         settleTo(resting, clamp(resting, -MAX_ANGLE, MAX_ANGLE), 380);
-      else end();
+      } else end();
 
       return;
     }

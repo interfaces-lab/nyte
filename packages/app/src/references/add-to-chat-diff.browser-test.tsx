@@ -62,8 +62,9 @@ async function click(element: Element, shift: boolean): Promise<void> {
 function deepQuery(root: ParentNode, selector: string): readonly Element[] {
   const found = [...root.querySelectorAll(selector)];
 
-  for (const element of root.querySelectorAll("*"))
+  for (const element of root.querySelectorAll("*")) {
     if (element.shadowRoot !== null) found.push(...deepQuery(element.shadowRoot, selector));
+  }
 
   return found;
 }

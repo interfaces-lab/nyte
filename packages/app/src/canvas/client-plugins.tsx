@@ -98,13 +98,14 @@ export function watchClientPlugins(
     const previous = focused;
     focused = next;
 
-    if (next !== undefined)
+    if (next !== undefined) {
       void mounting?.then((plugins) =>
         plugins.switched(
           previous === undefined ? null : connection().session(previous),
           connection().session(next),
         ),
       );
+    }
   };
 
   const stopRemount = onInstall((replaced) => {
@@ -182,12 +183,13 @@ function PluginPart({
 
   if (isValidElement(drawn)) return <PartOrigin value={origin}>{drawn}</PartOrigin>;
 
-  if (view !== undefined)
+  if (view !== undefined) {
     return (
       <PartOrigin value={origin}>
         <PartView sessionId={sessionId} message={message} view={view} />
       </PartOrigin>
     );
+  }
 
   return <RawPartView message={message} />;
 }

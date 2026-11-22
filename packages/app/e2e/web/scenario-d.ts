@@ -33,19 +33,19 @@ export const HOP_BUDGETS: ReadonlyMap<string, number> = new Map([
   ["sdk.send", 250],
   ["host.admit", 100],
   ["turn.start", 150],
-  ["model.stream", 1_000],
-  ["mcp.connect", 1_500],
+  ["model.stream", 1000],
+  ["mcp.connect", 1500],
   ["mcp.call:list_check_runs", 250],
   ["mcp.call:get_job_logs", 500],
   ["mcp.serve", 250],
   ["tool.run", 500],
   ["tool.run:read", 50],
   ["tool.run:mcp__ci__get_job_logs", 750],
-  ["tool.run:bash", 2_000],
+  ["tool.run:bash", 2000],
   ["canvas.compile", 100],
-  ["canvas.paint", 1_500],
+  ["canvas.paint", 1500],
   ["pty.spawn", 250],
-  ["pty.output", 1_000],
+  ["pty.output", 1000],
   ["part.publish", 50],
   ["client.paint", 400],
 ]);
@@ -64,7 +64,7 @@ export interface HopRow {
 export async function press(target: Locator, key = "Enter"): Promise<void> {
   await expect(async () => {
     await target.focus();
-    await expect(target).toBeFocused({ timeout: 1_000 });
+    await expect(target).toBeFocused({ timeout: 1000 });
   }).toPass({ timeout: 15_000 });
   await target.page().keyboard.press(key);
 }
@@ -72,11 +72,11 @@ export async function press(target: Locator, key = "Enter"): Promise<void> {
 export async function pressUntilGone(button: Locator): Promise<void> {
   await expect(async () => {
     if ((await button.count()) > 0) {
-      await button.focus({ timeout: 1_000 });
+      await button.focus({ timeout: 1000 });
       await button.page().keyboard.press("Enter");
     }
 
-    await expect(button).toHaveCount(0, { timeout: 1_000 });
+    await expect(button).toHaveCount(0, { timeout: 1000 });
   }).toPass({ timeout: 15_000 });
 }
 
@@ -123,8 +123,9 @@ export async function readRendererSpans(page: Page): Promise<readonly Span[]> {
 export function submitTrace(spans: readonly Span[]): string {
   const trace = spans.findLast((span) => span.name === "composer.submit")?.trace;
 
-  if (trace === null || trace === undefined)
+  if (trace === null || trace === undefined) {
     throw new Error("No composer.submit span was recorded.");
+  }
 
   return trace;
 }
@@ -292,8 +293,9 @@ export async function countChangedPixels(
         second === undefined ||
         first.width !== second.width ||
         first.height !== second.height
-      )
+      ) {
         return -1;
+      }
       let changed = 0;
 
       for (let index = 0; index < first.data.length; index += 4) {

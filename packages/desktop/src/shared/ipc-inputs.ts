@@ -56,7 +56,7 @@ const designView = strict({
 
 const remotePlugin = Type.Literal("cloudflare");
 
-const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
+const usageDay = Type.String({ pattern: String.raw`^\d{4}-\d{2}-\d{2}$` });
 
 const usageWindow = compile(
   strict({ sinceDay: Type.Union([usageDay, Type.Null()]), untilDay: usageDay }),
@@ -73,8 +73,9 @@ const checkedUsageWindow: typeof usageWindow = {
       return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === day;
     });
 
-    if (!valid || (window.sinceDay !== null && window.sinceDay > window.untilDay))
+    if (!valid || (window.sinceDay !== null && window.sinceDay > window.untilDay)) {
       throw new ExpectedHostError({ code: "invalid", message: "The usage window is invalid." });
+    }
 
     return window;
   },

@@ -38,7 +38,7 @@ export class CliError extends Error {
   readonly reason: Reason;
   readonly next: readonly NextStep[];
   readonly details: readonly DetailRow[];
-  readonly data: { readonly [key: string]: Json } | undefined;
+  readonly data: Readonly<Record<string, Json>> | undefined;
 
   constructor(
     reason: Reason,
@@ -46,7 +46,7 @@ export class CliError extends Error {
     options: {
       readonly next?: readonly NextStep[];
       readonly details?: readonly DetailRow[];
-      readonly data?: { readonly [key: string]: Json };
+      readonly data?: Readonly<Record<string, Json>>;
     } = {},
   ) {
     super(message);
@@ -86,8 +86,9 @@ export function suggest(word: string, names: readonly string[]): string | undefi
       distance <= 2 &&
       distance < typed.length &&
       (best === undefined || distance < best.distance)
-    )
+    ) {
       best = { name, distance };
+    }
   }
 
   return best?.name;
@@ -96,7 +97,7 @@ export function suggest(word: string, names: readonly string[]): string | undefi
 export function shellCommand(argv: readonly string[]): string {
   return argv
     .map((arg) =>
-      /^[A-Za-z0-9_./=:@%+,-]+$/u.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`,
+      /^[A-Za-z0-9_./=:@%+,-]+$/u.test(arg) ? arg : `'${arg.replaceAll("'", String.raw`'\''`)}'`,
     )
     .join(" ");
 }

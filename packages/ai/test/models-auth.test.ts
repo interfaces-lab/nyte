@@ -8,14 +8,8 @@ import type {
   ProviderAuth,
 } from "../src/auth/types.ts";
 import { createModels } from "../src/models.ts";
-import {
-  testModel,
-  type ProviderCall,
-  testProvider,
-  context,
-  envKeyAuth,
-  testOAuth,
-} from "./models-fixture.ts";
+import { testModel, testProvider, context, envKeyAuth, testOAuth } from "./models-fixture.ts";
+import type { ProviderCall } from "./models-fixture.ts";
 
 describe("Models runtime auth", () => {
   it("passes caller signals to provider auth callbacks", async () => {
@@ -481,8 +475,9 @@ describe("Models runtime auth", () => {
             }),
           },
           refreshModels: async (context) => {
-            if (context.allowNetwork && context.credential?.type === "oauth")
+            if (context.allowNetwork && context.credential?.type === "oauth") {
               catalogAccess = context.credential.access;
+            }
           },
         }),
       );
@@ -495,11 +490,12 @@ describe("Models runtime auth", () => {
       );
       resume.resolve();
 
-      if (auth)
+      if (auth) {
         expect(await auth).toMatchObject({
           accountId: "personal",
           auth: { apiKey: "personal-old-fresh" },
         });
+      }
       if (refresh) {
         expect((await refresh).errors.size).toBe(0);
         expect(catalogAccess).toBe("personal-old-fresh");

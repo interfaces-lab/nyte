@@ -24,7 +24,7 @@ const ACCEPT = {
     "text/markdown;q=1.0, text/x-markdown;q=0.9, text/plain;q=0.8, text/html;q=0.7, */*;q=0.1",
   text: "text/plain;q=1.0, text/markdown;q=0.9, text/html;q=0.8, */*;q=0.1",
   html: "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1",
-} satisfies { readonly [F in Format]: string };
+} satisfies Readonly<Record<Format, string>>;
 
 export function webFetch(fetch: Fetch): ToolDefinition<Infer<typeof fetchParameters>> {
   return {
@@ -38,8 +38,9 @@ export function webFetch(fetch: Fetch): ToolDefinition<Infer<typeof fetchParamet
     async execute(args, invocation) {
       const url = URL.parse(args.url);
 
-      if (url === null || (url.protocol !== "http:" && url.protocol !== "https:"))
+      if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) {
         throw new Error(`Fetch an http:// or https:// URL; ${args.url} isn't one.`);
+      }
       const format = args.format ?? "markdown";
       const seconds = args.timeout ?? DEFAULT_FETCH_SECONDS;
 
@@ -97,15 +98,17 @@ export function webFetch(fetch: Fetch): ToolDefinition<Infer<typeof fetchParamet
 
           return { kind: "text", text: clipText(text, "head") };
         } catch (error) {
-          if (deadline.aborted && !invocation.signal.aborted)
+          if (deadline.aborted && !invocation.signal.aborted) {
             throw new Error(`${url.href} didn't answer within ${seconds} s.`, { cause: error });
+          }
 
           throw error;
         }
       });
 
-      if (page.kind === "image")
+      if (page.kind === "image") {
         return { content: [{ kind: "file", blob: page.blob, mime: page.mime }] };
+      }
 
       return {
         content: [{ kind: "text", text: page.text === "" ? "The page is empty." : page.text }],
@@ -137,8 +140,9 @@ async function follow(
     await response.body?.cancel();
     const next = new URL(location, url);
 
-    if (next.protocol !== "http:" && next.protocol !== "https:")
+    if (next.protocol !== "http:" && next.protocol !== "https:") {
       throw new Error(`${url.href} redirects to ${next.href}, which isn't http(s).`);
+    }
     url = next;
   }
 
@@ -159,8 +163,9 @@ async function get(fetch: Fetch, url: URL, format: Format, signal: AbortSignal):
 
   const response = await send(USER_AGENT);
 
-  if (response.status !== 403 || response.headers.get("cf-mitigated") !== "challenge")
+  if (response.status !== 403 || response.headers.get("cf-mitigated") !== "challenge") {
     return response;
+  }
   await response.body?.cancel();
 
   return send("nyte");

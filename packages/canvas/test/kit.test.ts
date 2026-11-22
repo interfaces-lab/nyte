@@ -33,8 +33,9 @@ async function readFixtures() {
 it("exports exactly the names the plugin advertises, in order", () => {
   expect(Object.keys(kit)).toEqual(KIT_EXPORTS);
 
-  for (const name of KIT_EXPORTS)
+  for (const name of KIT_EXPORTS) {
     expect(Object.getOwnPropertyDescriptor(kit, name)?.value, name).toBeDefined();
+  }
 });
 
 it("backs every react, react-dom and jsx-runtime name the compiler lets a canvas import", () => {

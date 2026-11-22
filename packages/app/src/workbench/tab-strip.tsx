@@ -328,11 +328,12 @@ export function WorkbenchTabStrip({
 
     const tab = tabs.find((entry) => entry.id === id);
 
-    if (tab !== undefined)
+    if (tab !== undefined) {
       workbench.dispatch(viewKey, {
         kind: "activate",
         id: tab.kind === "editor" ? tab.target : tab.id,
       });
+    }
   };
 
   const focusSelectedTab = (): void => {
@@ -359,8 +360,9 @@ export function WorkbenchTabStrip({
     void closeTab(viewKey, tab.id).then(
       (outcome) => {
         if (outcome.kind === "closed") focusSelectedTab();
-        else if (outcome.reason === "running")
+        else if (outcome.reason === "running") {
           setTerminalClose({ kind: "confirming", id: tab.id, error: undefined });
+        }
       },
       (cause: unknown) =>
         setTerminalClose({ kind: "confirming", id: tab.id, error: errorMessage(cause) }),
@@ -404,7 +406,7 @@ export function WorkbenchTabStrip({
             listRef={listRef}
             onPick={activateTab}
             onReorder={(order, id) => {
-              const after = order[order.findIndex((entry) => entry === id) + 1];
+              const after = order[order.indexOf(id) + 1];
 
               workbench.dispatch(viewKey, {
                 kind: "move-slot",
@@ -544,8 +546,9 @@ export function WorkbenchTabStrip({
                           <ContextMenuItem
                             icon="arrow-left"
                             onClick={() => {
-                              if (terminal.session !== null)
+                              if (terminal.session !== null) {
                                 windowTabs.openChat(terminal.session, "permanent");
+                              }
                             }}
                           >
                             Open Chat

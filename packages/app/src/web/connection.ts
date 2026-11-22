@@ -37,11 +37,13 @@ function checkConnection(value: Connection): CheckedConnection {
     url.hostname === "[::1]" ||
     /^127(\.\d{1,3}){3}$/u.test(url.hostname);
 
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback))
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
     return invalid("Use the HTTPS address Nyte shows on your computer.");
+  }
 
-  if (url.username || url.password || url.search || url.hash)
+  if (url.username || url.password || url.search || url.hash) {
     return invalid("Enter only the address. The token has its own field.");
+  }
 
   return { kind: "valid", connection: { url: url.href.replace(/\/$/, ""), token } };
 }

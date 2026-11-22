@@ -110,7 +110,7 @@ export function completionToken(
 ): CompletionToken | null {
   const argument = findCommandArgument(draft.text, draft.cursor);
 
-  if (argument !== undefined && completing.has(argument.command))
+  if (argument !== undefined && completing.has(argument.command)) {
     return {
       trigger: "argument",
       command: argument.command,
@@ -118,6 +118,7 @@ export function completionToken(
       from: argument.start,
       to: draft.text.length,
     };
+  }
   const trigger = completionTrigger(draft.text, draft.cursor);
 
   if (trigger === undefined) return null;
@@ -144,8 +145,9 @@ export function nextCompletion(
 
   if (state.kind === "closed") return state.dismissed === tokenKey(token) ? state : opened;
 
-  if (tokenKey(state.token) === tokenKey(token) && state.token.query === token.query)
+  if (tokenKey(state.token) === tokenKey(token) && state.token.query === token.query) {
     return { ...state, token };
+  }
 
   return opened;
 }
@@ -181,8 +183,9 @@ export function mentionSuggestions(
     if (
       file.label.toLowerCase().startsWith(needle) ||
       file.display.toLowerCase().startsWith(needle)
-    )
+    ) {
       prefixed.push(file);
+    }
   }
 
   if (prefixed.length === MAX_MENTIONS) return prefixed;
@@ -319,8 +322,9 @@ export function completionEdit(
 ): CompletionEdit | null {
   const { from, to } = model.token;
 
-  if (model.token.trigger === "@")
+  if (model.token.trigger === "@") {
     return { kind: "file", from, to, path: item.id, directory: item.id.endsWith("/") };
+  }
 
   if (model.token.trigger === "argument") return { kind: "replace", from, to, text: item.id };
   const command = sources.commands.find((candidate) => candidate.name === item.id);
@@ -330,8 +334,9 @@ export function completionEdit(
   const leading = draft.text.slice(0, from).trim() === "";
   const acceptance = acceptSlashCommand(command, via, leading ? draft.text.slice(to).trim() : "");
 
-  if (acceptance.action === "complete")
+  if (acceptance.action === "complete") {
     return { kind: "replace", from, to, text: acceptance.token };
+  }
 
   return { kind: "execute", name: command.name, leading, from, to };
 }

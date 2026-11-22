@@ -17,7 +17,9 @@ export function pdfQuery(
 
       for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
 
-      return openPdf(await new Blob(chunks).bytes(), (close) => releaseWithQuery(context, close));
+      return await openPdf(await new Blob(chunks).bytes(), (close) =>
+        releaseWithQuery(context, close),
+      );
     },
     gcTime: 0,
     placeholderData: (previous) => previous,

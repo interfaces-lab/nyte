@@ -99,9 +99,15 @@ export interface ChatParts {
   readonly journal: JournalLoop;
 }
 
-type Opened = { readonly head: HeadStore; readonly stops: readonly Disposer[] };
+interface Opened {
+  readonly head: HeadStore;
+  readonly stops: readonly Disposer[];
+}
 
-type Ask = { readonly run: RunId; readonly health: Health };
+interface Ask {
+  readonly run: RunId;
+  readonly health: Health;
+}
 
 const NO_MESSAGES: readonly MessageId[] = [];
 
@@ -140,8 +146,9 @@ export function openChat(parts: ChatParts): Chat {
       freshness === snapshot.freshness &&
       expired === snapshot.expired &&
       stopping === snapshot.stopping
-    )
+    ) {
       return;
+    }
     const seq = freshness.kind === "fresh" ? freshness.seq : snapshot.seq;
     snapshot = { view, seq, freshness, expired, stopping };
 
@@ -226,8 +233,9 @@ export function openChat(parts: ChatParts): Chat {
     stop() {
       const execution = snapshot.view?.execution;
 
-      if (execution === undefined || execution.kind === "idle" || snapshot.stopping !== "no")
+      if (execution === undefined || execution.kind === "idle" || snapshot.stopping !== "no") {
         return Promise.resolve();
+      }
       const ask = { run: execution.run.id, health: parts.health.snapshot() };
       asked = ask;
       redraw();

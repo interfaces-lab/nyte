@@ -408,11 +408,12 @@ export function readMarkdown(value: Static<typeof MarkupType> | undefined): stri
 
   if (typeof value === "string") return value;
 
-  if (Array.isArray(value))
+  if (Array.isArray(value)) {
     return value
       .map((part) => readMarkdown(part))
       .filter((part) => part !== "")
       .join("\n\n");
+  }
 
   if ("language" in value) return `\`\`\`${value.language}\n${value.value}\n\`\`\``;
 
@@ -425,8 +426,9 @@ export function readCompletionAnswer(value: unknown): {
   readonly defaults: CompletionDefaults | null;
   readonly incomplete: boolean;
 } {
-  if (!CompletionAnswer.Check(value) || value === null)
+  if (!CompletionAnswer.Check(value) || value === null) {
     return { items: [], defaults: null, incomplete: false };
+  }
 
   if (Array.isArray(value)) return { items: value, defaults: null, incomplete: false };
 
@@ -539,9 +541,9 @@ function closingParenthesis(text: string): number {
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
 
-    if (character === "(" || character === "<" || character === "[" || character === "{")
+    if (character === "(" || character === "<" || character === "[" || character === "{") {
       depth += 1;
-    else if (character === ")" || character === ">" || character === "]" || character === "}") {
+    } else if (character === ")" || character === ">" || character === "]" || character === "}") {
       depth -= 1;
 
       if (depth === 0 && character === ")") return index;
@@ -561,8 +563,9 @@ export function readHover(value: unknown): Hover | null {
 }
 
 export function readSignatureHelp(value: unknown): SignatureHelp | null {
-  if (!SignatureHelpLsp.Check(value) || value === null || value.signatures.length === 0)
+  if (!SignatureHelpLsp.Check(value) || value === null || value.signatures.length === 0) {
     return null;
+  }
   const active = value.activeSignature ?? 0;
 
   return {
@@ -570,8 +573,9 @@ export function readSignatureHelp(value: unknown): SignatureHelp | null {
       label: signature.label,
       documentation: readMarkdown(signature.documentation),
       parameters: (signature.parameters ?? []).flatMap((parameter) => {
-        if (Array.isArray(parameter.label))
+        if (Array.isArray(parameter.label)) {
           return [{ utf16Start: parameter.label[0], utf16End: parameter.label[1] }];
+        }
         const start = signature.label.indexOf(parameter.label);
 
         return start < 0 ? [] : [{ utf16Start: start, utf16End: start + parameter.label.length }];
@@ -590,7 +594,7 @@ export function readSymbols(value: unknown): readonly DocumentSymbol[] {
 
 function walkSymbols(nodes: readonly unknown[], depth: number): DocumentSymbol[] {
   const rows = nodes.flatMap((node) => {
-    if (DocumentSymbolLsp.Check(node))
+    if (DocumentSymbolLsp.Check(node)) {
       return [
         {
           row: {
@@ -605,8 +609,9 @@ function walkSymbols(nodes: readonly unknown[], depth: number): DocumentSymbol[]
           children: node.children ?? [],
         },
       ];
+    }
 
-    if (SymbolInformationLsp.Check(node))
+    if (SymbolInformationLsp.Check(node)) {
       return [
         {
           row: {
@@ -621,6 +626,7 @@ function walkSymbols(nodes: readonly unknown[], depth: number): DocumentSymbol[]
           children: [],
         },
       ];
+    }
 
     return [];
   });
@@ -660,15 +666,17 @@ export function readWorkspaceEdit(
 ):
   | { readonly kind: "edit"; readonly edit: WorkspaceEdit }
   | { readonly kind: "refused"; readonly reason: string } {
-  if (!WorkspaceEditLsp.Check(value) || value === null)
+  if (!WorkspaceEditLsp.Check(value) || value === null) {
     return { kind: "edit", edit: { files: [] } };
+  }
   const operation = (value.documentChanges ?? []).find((change) => "kind" in change);
 
-  if (operation !== undefined && "kind" in operation)
+  if (operation !== undefined && "kind" in operation) {
     return {
       kind: "refused",
       reason: `This change would ${operation.kind} a file, which a returned edit cannot do yet.`,
     };
+  }
 
   const documents = (value.documentChanges ?? []).flatMap((change) =>
     "textDocument" in change ? [{ uri: change.textDocument.uri, edits: change.edits }] : [],
@@ -691,7 +699,7 @@ export function readWorkspaceEdit(
   };
 }
 
-export type ActionPlan = {
+export interface ActionPlan {
   readonly title: string;
   readonly kind: CodeActionKind;
   readonly preferred: boolean;
@@ -700,13 +708,13 @@ export type ActionPlan = {
   readonly command: unknown;
   readonly raw: unknown;
   readonly resolvable: boolean;
-};
+}
 
 export function readCodeActions(value: unknown): readonly ActionPlan[] {
   if (!SymbolAnswer.Check(value) || value === null) return [];
 
   return value.flatMap((entry): ActionPlan[] => {
-    if (CommandLsp.Check(entry))
+    if (CommandLsp.Check(entry)) {
       return [
         {
           title: entry.title,
@@ -719,6 +727,7 @@ export function readCodeActions(value: unknown): readonly ActionPlan[] {
           resolvable: false,
         },
       ];
+    }
 
     if (!CodeActionLsp.Check(entry)) return [];
     const kind = entry.kind ?? "";

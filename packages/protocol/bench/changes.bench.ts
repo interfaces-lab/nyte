@@ -8,7 +8,7 @@ import { Value } from "typebox/value";
 import { recordLong, recordSessions } from "../test/sessions.ts";
 import type { Recorded } from "../test/sessions.ts";
 
-const SIZES = [100, 1_000, 10_000];
+const SIZES = [100, 1000, 10_000];
 
 const REPETITIONS = 200;
 
@@ -35,10 +35,10 @@ const TOTALS_ONLY: ReadonlyMap<Kind, string> = new Map([
   ["input", "a path change names messages by id where today's frame used positions"],
 ]);
 
-type Weighed = {
+interface Weighed {
   readonly kind: Kind | null;
   readonly change: number;
-};
+}
 
 const FramesSchema = Type.Object({
   count: Type.Number(),
@@ -65,8 +65,9 @@ const baseline = Value.Parse(
 
 const long = await recordLong(TURNS);
 
-if (long.events.length < (SIZES.at(-1) ?? 0) + REPETITIONS)
+if (long.events.length < (SIZES.at(-1) ?? 0) + REPETITIONS) {
   throw new Error(`The recorded session has only ${long.events.length} events.`);
+}
 
 for (const size of SIZES) measure(long, size);
 
@@ -80,7 +81,7 @@ console.log(`events recorded: ${long.events.length}\n`);
 
 console.log("prior events | median µs | p90 µs");
 
-for (const timing of timings)
+for (const timing of timings) {
   console.log(
     [
       String(timing.size).padStart(12),
@@ -88,6 +89,7 @@ for (const timing of timings)
       micro(timing.p90).padStart(6),
     ].join(" | "),
   );
+}
 
 console.log(
   `${SIZES.at(-1)} / ${SIZES[0]}: ${ratio.toFixed(2)}× (gate 2×) ${scaled ? "pass" : "FAIL"}\n`,
@@ -126,10 +128,11 @@ console.log("\nlog     | events | change B total | head.watch B total | gate");
 const totals = weighed.map((log) => {
   const recorded = baseline.logs[log.name];
 
-  if (recorded?.events !== log.steps.length)
+  if (recorded?.events !== log.steps.length) {
     throw new Error(
       `The ${log.name} log has ${log.steps.length} events where head-watch-frames.json recorded ${recorded?.events ?? "none"}.`,
     );
+  }
   const change = sum(log.steps.map((step) => step.change));
   const frame = recorded.total;
   const pass = change <= frame;

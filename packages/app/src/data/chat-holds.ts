@@ -16,7 +16,7 @@ const KEPT_CHATS = 8;
 
 const WARM_SESSIONS = 3;
 
-const WARM_MS = 5_000;
+const WARM_MS = 5000;
 
 export const NO_HOLDS: ChatHolds = { kept: [], warm: [] };
 

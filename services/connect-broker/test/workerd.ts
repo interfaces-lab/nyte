@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import {
   BROKER_ROUTES,
   ENROLLMENT_LIFETIME_SECONDS,
@@ -118,12 +117,13 @@ export class RelayDesktop {
     match: (frame: Extract<RelayFrame, { t: T }>) => boolean = () => true,
   ): Promise<Extract<RelayFrame, { t: T }>> {
     for (;;) {
-      for (const [index, frame] of this.unread.entries())
+      for (const [index, frame] of this.unread.entries()) {
         if (taggedAs(frame, t) && match(frame)) {
           this.unread.splice(index, 1);
 
           return frame;
         }
+      }
 
       await new Promise<void>((resolve) => this.waiters.push(resolve));
     }
@@ -213,19 +213,21 @@ export class RelayDesktop {
 
     this.send({ t: "head", ch, status: response.status, headers: response.headers ?? {} });
 
-    if (!hasNullBody(response.status))
+    if (!hasNullBody(response.status)) {
       for (const data of encodeChunks(body)) {
         const size = decodeChunk(data)?.byteLength ?? RELAY_CHUNK_BYTES;
 
-        while (channel.credit < size && !channel.reset)
+        while (channel.credit < size && !channel.reset) {
           await new Promise<void>((resolve) => {
             channel.creditArrived = resolve;
           });
+        }
 
         if (channel.reset) return;
         channel.credit -= size;
         this.send({ t: "data", ch, data });
       }
+    }
 
     this.send({ t: "end", ch });
     this.served.delete(ch);
@@ -248,8 +250,9 @@ export function enrollmentHandler(input: {
   readonly grants?: EnrollmentClaims[];
 }): RelayHandler {
   return async (request) => {
-    if (request.path !== "/_nyte/connect/enroll")
+    if (request.path !== "/_nyte/connect/enroll") {
       return input.fallback === undefined ? { status: 404 } : input.fallback(request);
+    }
     const envelope: unknown = JSON.parse(new TextDecoder().decode(request.body));
 
     if (!Value.Check(EnrollEnvelope, envelope)) return { status: 400 };
@@ -340,7 +343,7 @@ export async function startWorkerdBroker(
     keys: [{ kty: "OKP", crv: "Ed25519", x: signingKey.x, kid: signingKey.kid }],
   };
   const server = createTestHarness({
-    root: fileURLToPath(new URL(".", import.meta.url)),
+    root: import.meta.dirname,
     workers: [
       {
         configPath: "./workerd.jsonc",
@@ -374,8 +377,9 @@ export async function startWorkerdBroker(
   globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
 
-    if (url.origin === "https://api.clerk.com")
+    if (url.origin === "https://api.clerk.com") {
       return clerk.handle(url, input instanceof Request ? input : (init ?? {}));
+    }
 
     if (url.origin === origin) return broker.fetch(input, init);
 
@@ -393,8 +397,9 @@ export async function startWorkerdBroker(
     async fetch(input, init) {
       const body = init?.body;
 
-      if (body instanceof Blob || body instanceof FormData)
+      if (body instanceof Blob || body instanceof FormData) {
         return broker.fetch(new Request(input, init));
+      }
       const url = new URL(input instanceof Request ? input.url : input);
 
       if (url.origin !== origin) return original(input, init);
@@ -473,13 +478,14 @@ export async function startWorkerdBroker(
     logs: () => server.getLogs(),
 
     async link(input) {
-      if (!clerk.users.has(input.userId))
+      if (!clerk.users.has(input.userId)) {
         clerk.users.set(input.userId, {
           banned: false,
           locked: false,
           updated_at: 1,
           email: `${input.userId}@example.com`,
         });
+      }
       const key = input.key ?? (await generateMachineKey());
       const body = JSON.stringify({
         publicKey: toPublicJwk(key),
@@ -503,8 +509,9 @@ export async function startWorkerdBroker(
       });
       const link: unknown = await response.json();
 
-      if (response.status !== 201 || !Value.Check(LinkResponse, link))
+      if (response.status !== 201 || !Value.Check(LinkResponse, link)) {
         throw new Error(`Linking failed with ${response.status}`);
+      }
 
       return { environmentId: link.environment.id, key, link };
     },

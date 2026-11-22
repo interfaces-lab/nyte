@@ -19,7 +19,7 @@ export function workspacePath(workspace: WorkspaceInfo): string {
 }
 
 export function workspaceName(workspace: WorkspaceInfo): string {
-  return workspacePath(workspace).split("/").filter(Boolean).at(-1) ?? workspacePath(workspace);
+  return workspacePath(workspace).split("/").findLast(Boolean) ?? workspacePath(workspace);
 }
 
 export function workspaceMenu(folders: RegistryFolders, onChange: () => void): WorkspaceMenu {

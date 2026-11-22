@@ -156,7 +156,7 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
     input: ["text"],
     cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 100_000,
-    maxTokens: 4_096,
+    maxTokens: 4096,
     ...overrides,
   };
 }
@@ -422,11 +422,12 @@ function streamReply(
     if (aborted()) return;
     stream.push({ type: "start", partial: message });
 
-    if (reply.limits !== undefined)
+    if (reply.limits !== undefined) {
       await options?.onAccountLimits?.(
         { providerId: model.provider, windows: reply.limits, observedAt: clock.now() },
         model,
       );
+    }
 
     for (const [index, block] of (reply.content ?? []).entries()) {
       if (aborted()) return;
@@ -498,8 +499,9 @@ function streamReply(
 
         if (block.signature !== undefined) content.textSignature = block.signature;
 
-        if (reply.error === undefined || index < (reply.content ?? []).length - 1)
+        if (reply.error === undefined || index < (reply.content ?? []).length - 1) {
           stream.push({ type: "text_end", contentIndex: index, content: body, partial: message });
+        }
         continue;
       }
 

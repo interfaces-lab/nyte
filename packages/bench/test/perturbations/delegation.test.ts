@@ -236,7 +236,7 @@ it("stops a waiting subagent's run when the user stops the parent", async () => 
 
       return view.execution.kind === "idle" ? view : undefined;
     },
-    3_000,
+    3000,
     "the subagent to stop",
   );
 
@@ -246,7 +246,7 @@ it("stops a waiting subagent's run when the user stops the parent", async () => 
   expect(settledTool(final.messages, "task").outcome.kind).toBe("stopped");
   expect(childView.execution).toMatchObject({ lastRun: { end: { kind: "stopped" } } });
   expect(settledTool(childView.messages, "mcp__ci__get_job_logs").outcome.kind).toBe("stopped");
-  expect(wall).toBeLessThan(5_000);
+  expect(wall).toBeLessThan(5000);
   expect(final.messages.at(-1)).toMatchObject({
     kind: "user",
     source: { kind: "child", session: child.id, end: "stopped" },

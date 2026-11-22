@@ -174,8 +174,9 @@ export function attachPointer(host: PointerHost): () => void {
   const lines = (delta: number, mode: number, remainder: number, size: number) => {
     if (mode === WheelEvent.DOM_DELTA_LINE) return { whole: Math.trunc(delta), remainder: 0 };
 
-    if (mode === WheelEvent.DOM_DELTA_PAGE)
+    if (mode === WheelEvent.DOM_DELTA_PAGE) {
       return { whole: Math.trunc(delta * terminal.rows), remainder: 0 };
+    }
     const total = remainder + delta / size;
 
     return { whole: Math.trunc(total), remainder: total - Math.trunc(total) };

@@ -1,7 +1,8 @@
 import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { expect, test } from "vitest";
-import { stream, type AnthropicOptions } from "../src/api/anthropic-messages.ts";
+import { stream } from "../src/api/anthropic-messages.ts";
+import type { AnthropicOptions } from "../src/api/anthropic-messages.ts";
 import { transformMessages } from "../src/api/transform-messages.ts";
 import type { AccountLimits, JsonValue, Model } from "../src/types.ts";
 
@@ -14,7 +15,7 @@ const model = {
   reasoning: true,
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 100000,
+  contextWindow: 100_000,
   maxTokens: 4096,
 } satisfies Model<"anthropic-messages">;
 
@@ -313,9 +314,9 @@ test("unknown event and content variants do not interrupt known content", async 
             label: "5-hour",
             usedPercent: 50,
             windowMinutes: 300,
-            resetsAt: 1790898600000,
+            resetsAt: 1_790_898_600_000,
           },
-          { id: "seven_day", label: "Weekly", usedPercent: 16, windowMinutes: 10080 },
+          { id: "seven_day", label: "Weekly", usedPercent: 16, windowMinutes: 10_080 },
         ],
       },
     ],

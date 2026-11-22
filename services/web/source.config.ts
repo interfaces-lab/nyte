@@ -9,8 +9,9 @@ interface MarkdownNode {
 }
 
 function fillModel(node: MarkdownNode) {
-  if ((node.type === "code" || node.type === "inlineCode") && node.value !== undefined)
+  if ((node.type === "code" || node.type === "inlineCode") && node.value !== undefined) {
     node.value = node.value.replaceAll("{{model}}", model).replaceAll("{{modelId}}", modelId);
+  }
   for (const child of node.children ?? []) fillModel(child);
 }
 

@@ -27,12 +27,13 @@ export type Place =
 function placeMessage(message: QueuedMessage): Place {
   const { status } = message;
 
-  if (status.kind === "unsent")
+  if (status.kind === "unsent") {
     return {
       kind: "sending",
       retryAt: status.retrying?.at ?? null,
       reason: status.retrying?.reason ?? null,
     };
+  }
 
   if (!status.covered) return { kind: "uncovered" };
   const { schedule } = status;

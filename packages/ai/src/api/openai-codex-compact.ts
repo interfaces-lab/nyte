@@ -2,7 +2,8 @@ import type {
   ResponseCompactionItemParam,
   ResponseInputItem,
 } from "openai/resources/responses/responses.js";
-import { type Static, Type } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { applyServiceTierPricing } from "../model-pricing.ts";
 import { calculateCost } from "../model-capabilities.ts";
@@ -20,11 +21,11 @@ import {
   compressRequestBodyZstd,
   DEFAULT_MAX_RETRIES,
   extractCodexEventError,
-  type OpenAICodexResponsesOptions,
   parseSSE,
   resolveCodexServiceTier,
   retryableCodexRequest,
 } from "./openai-codex-protocol.ts";
+import type { OpenAICodexResponsesOptions } from "./openai-codex-protocol.ts";
 import {
   buildSSEHeaders,
   CodexFrameJson,

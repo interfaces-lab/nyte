@@ -27,7 +27,7 @@ interface PendingChange {
 
 type HideSession = (sessionId: SessionId) => () => void;
 
-const SHOWN_WITHIN_MS = 2_000;
+const SHOWN_WITHIN_MS = 2000;
 
 export interface HeldDeletes {
   read(): readonly SessionId[];
@@ -107,20 +107,20 @@ export async function forkChat(sessionId: SessionId, from?: CommitId): Promise<v
 }
 
 export class SessionActions {
-  readonly #client: QueryClient;
-  readonly #findRow: (sessionId: SessionId) => SessionInfo | undefined;
-  readonly #hosted: HostedRows;
-  readonly #connection: () => Pick<Connection, "session">;
-  readonly #toasts: ActionToasts;
-  readonly #held: HeldDeletes;
-  #resumed: readonly PendingChange[];
-  readonly #listeners = new Set<() => void>();
-  readonly #queues = keyedSerial<SessionId>();
-  readonly #archives = new Map<
+  private readonly client: QueryClient;
+  private readonly findRow: (sessionId: SessionId) => SessionInfo | undefined;
+  private readonly hosted: HostedRows;
+  private readonly connection: () => Pick<Connection, "session">;
+  private readonly toasts: ActionToasts;
+  private readonly held: HeldDeletes;
+  private resumed: readonly PendingChange[];
+  private readonly listeners = new Set<() => void>();
+  private readonly queues = keyedSerial<SessionId>();
+  private readonly archives = new Map<
     SessionId,
     { readonly change: PendingChange; readonly discard: () => void }
   >();
-  #pending: readonly PendingChange[] = [];
+  private pending: readonly PendingChange[] = [];
 
   constructor({
     client,
@@ -137,73 +137,74 @@ export class SessionActions {
     toasts?: ActionToasts;
     held?: HeldDeletes;
   }) {
-    this.#client = client;
-    this.#findRow = findRow;
-    this.#hosted = hosted;
-    this.#connection = sessions;
-    this.#toasts = toasts;
-    this.#held = held;
-    this.#resumed = held.read().map((sessionId) => this.#add(sessionId, { kind: "delete" }));
+    this.client = client;
+    this.findRow = findRow;
+    this.hosted = hosted;
+    this.connection = sessions;
+    this.toasts = toasts;
+    this.held = held;
+    this.resumed = held.read().map((sessionId) => this.add(sessionId, { kind: "delete" }));
   }
 
   commitHeld(): void {
-    const resumed = this.#resumed;
-    this.#resumed = [];
+    const resumed = this.resumed;
+    this.resumed = [];
 
     for (const pending of resumed) {
-      this.#release(pending.sessionId);
-      void this.#run(pending);
+      this.release(pending.sessionId);
+      void this.run(pending);
     }
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
-    this.#listeners.add(listener);
+    this.listeners.add(listener);
 
-    return () => this.#listeners.delete(listener);
+    return () => this.listeners.delete(listener);
   };
 
-  readonly getSnapshot = (): readonly PendingChange[] => this.#pending;
+  readonly getSnapshot = (): readonly PendingChange[] => this.pending;
 
-  projectSession(session: SessionInfo, changes = this.#pending): SessionInfo | null {
+  projectSession(session: SessionInfo, changes = this.pending): SessionInfo | null {
     let projected: SessionInfo | null = session;
 
     for (const pending of changes) {
-      if (pending.sessionId === session.id && projected !== null)
+      if (pending.sessionId === session.id && projected !== null) {
         projected = applyChange(projected, pending.change);
+      }
     }
 
     return projected;
   }
 
   rename(input: { sessionId: SessionId; name: string }): Promise<boolean> {
-    return this.#run(this.#add(input.sessionId, { kind: "rename", name: input.name }));
+    return this.run(this.add(input.sessionId, { kind: "rename", name: input.name }));
   }
 
   pin(input: { sessionId: SessionId; pinned: boolean }): void {
-    void this.#run(this.#add(input.sessionId, { kind: "pin", pinned: input.pinned }));
+    void this.run(this.add(input.sessionId, { kind: "pin", pinned: input.pinned }));
   }
 
   archive(sessionIds: readonly SessionId[], archived: boolean): void {
     for (const sessionId of new Set(sessionIds)) {
-      const session = this.#find(sessionId);
+      const session = this.find(sessionId);
 
       if (session === undefined || session.archived === archived) continue;
-      this.#archives.get(sessionId)?.discard();
-      const pending = this.#add(sessionId, { kind: "archive", archived });
+      this.archives.get(sessionId)?.discard();
+      const pending = this.add(sessionId, { kind: "archive", archived });
       const closed = Promise.withResolvers<void>();
 
-      const removeToastEntry = this.#toasts.add(archived ? "archived" : "restored", {
+      const removeToastEntry = this.toasts.add(archived ? "archived" : "restored", {
         undo: () => {
-          if (this.#archives.get(sessionId)?.change !== pending) {
+          if (this.archives.get(sessionId)?.change !== pending) {
             closed.resolve();
 
             return;
           }
 
-          const inverse = this.#add(sessionId, { kind: "archive", archived: session.archived });
-          this.#archives.set(sessionId, { change: inverse, discard });
-          void this.#run(inverse).then(() => {
-            if (this.#archives.get(sessionId)?.change === inverse) this.#archives.delete(sessionId);
+          const inverse = this.add(sessionId, { kind: "archive", archived: session.archived });
+          this.archives.set(sessionId, { change: inverse, discard });
+          void this.run(inverse).then(() => {
+            if (this.archives.get(sessionId)?.change === inverse) this.archives.delete(sessionId);
             closed.resolve();
           });
         },
@@ -215,88 +216,89 @@ export class SessionActions {
         closed.resolve();
       };
 
-      this.#archives.set(sessionId, { change: pending, discard });
+      this.archives.set(sessionId, { change: pending, discard });
 
-      const work = this.#run(pending).then((saved) => {
+      const work = this.run(pending).then((saved) => {
         if (!saved) discard();
       });
 
       void Promise.all([work, closed.promise]).then(() => {
-        if (this.#archives.get(sessionId)?.discard === discard) this.#archives.delete(sessionId);
+        if (this.archives.get(sessionId)?.discard === discard) this.archives.delete(sessionId);
       });
     }
   }
 
   restore(sessionId: SessionId): void {
-    if (this.#find(sessionId)?.archived !== true) return;
-    this.#archives.get(sessionId)?.discard();
-    this.#archives.delete(sessionId);
-    void this.#run(this.#add(sessionId, { kind: "archive", archived: false }));
+    if (this.find(sessionId)?.archived !== true) return;
+    this.archives.get(sessionId)?.discard();
+    this.archives.delete(sessionId);
+    void this.run(this.add(sessionId, { kind: "archive", archived: false }));
   }
 
   delete(sessionId: SessionId, hide: HideSession): void {
     if (
-      this.#pending.some(
+      this.pending.some(
         (pending) => pending.sessionId === sessionId && pending.change.kind === "delete",
       )
-    )
+    ) {
       return;
-    this.#archives.get(sessionId)?.discard();
-    this.#archives.delete(sessionId);
-    const pending = this.#add(sessionId, { kind: "delete" });
+    }
+    this.archives.get(sessionId)?.discard();
+    this.archives.delete(sessionId);
+    const pending = this.add(sessionId, { kind: "delete" });
     const restore = hide(sessionId);
-    this.#held.write([...this.#held.read(), sessionId]);
-    this.#toasts.add("deleted", {
+    this.held.write([...this.held.read(), sessionId]);
+    this.toasts.add("deleted", {
       undo: () => {
-        this.#release(sessionId);
-        this.#remove(pending);
+        this.release(sessionId);
+        this.remove(pending);
         restore();
       },
       commit: () => {
-        this.#release(sessionId);
-        void this.#run(pending).then((saved) => {
+        this.release(sessionId);
+        void this.run(pending).then((saved) => {
           if (!saved) restore();
         });
       },
     });
   }
 
-  #release(sessionId: SessionId): void {
-    this.#held.write(this.#held.read().filter((held) => held !== sessionId));
+  private release(sessionId: SessionId): void {
+    this.held.write(this.held.read().filter((held) => held !== sessionId));
   }
 
-  #find(sessionId: SessionId): SessionInfo | undefined {
-    const read = this.#client.getQueryData<SessionInfo | null>(keys.session(sessionId));
+  private find(sessionId: SessionId): SessionInfo | undefined {
+    const read = this.client.getQueryData<SessionInfo | null>(keys.session(sessionId));
 
     return (
-      this.#findRow(sessionId) ??
+      this.findRow(sessionId) ??
       (read === undefined || read === null ? undefined : (this.projectSession(read) ?? undefined))
     );
   }
 
-  #add(sessionId: SessionId, change: SessionChange): PendingChange {
+  private add(sessionId: SessionId, change: SessionChange): PendingChange {
     const pending = { sessionId, change };
-    this.#pending = [...this.#pending, pending];
-    this.#emit();
+    this.pending = [...this.pending, pending];
+    this.emit();
 
     return pending;
   }
 
-  #remove(pending: PendingChange): void {
-    this.#pending = this.#pending.filter((item) => item !== pending);
-    this.#emit();
+  private remove(pending: PendingChange): void {
+    this.pending = this.pending.filter((item) => item !== pending);
+    this.emit();
   }
 
-  #emit(): void {
-    for (const listener of this.#listeners) listener();
+  private emit(): void {
+    for (const listener of this.listeners) listener();
   }
 
-  #run(pending: PendingChange): Promise<boolean> {
-    return this.#queues.run(pending.sessionId, async () => {
+  private run(pending: PendingChange): Promise<boolean> {
+    return this.queues.run(pending.sessionId, async () => {
       try {
         const { sessionId, change } = pending;
 
-        const session = this.#connection().session(sessionId);
+        const session = this.connection().session(sessionId);
 
         const outcome =
           change.kind === "delete"
@@ -309,14 +311,15 @@ export class SessionActions {
                     : { name: change.name },
               );
 
-        if (outcome.kind !== "updated" && outcome.kind !== "removed")
+        if (outcome.kind !== "updated" && outcome.kind !== "removed") {
           throw new Error(`The host answered ${outcome.kind}`);
-        this.#commit(pending);
-        this.#keepUntilShown(pending);
+        }
+        this.commit(pending);
+        this.keepUntilShown(pending);
 
         return true;
       } catch {
-        this.#remove(pending);
+        this.remove(pending);
 
         const verb =
           pending.change.kind === "archive" && !pending.change.archived
@@ -334,7 +337,7 @@ export class SessionActions {
     });
   }
 
-  #keepUntilShown(pending: PendingChange): void {
+  private keepUntilShown(pending: PendingChange): void {
     let kept = true;
 
     const drop = (): void => {
@@ -342,34 +345,34 @@ export class SessionActions {
       kept = false;
       clearTimeout(timer);
       leave();
-      const at = this.#pending.indexOf(pending);
+      const at = this.pending.indexOf(pending);
 
-      this.#pending = this.#pending.filter(
+      this.pending = this.pending.filter(
         (item, index) =>
           index > at ||
           item.sessionId !== pending.sessionId ||
           item.change.kind !== pending.change.kind,
       );
-      this.#emit();
+      this.emit();
     };
 
     const check = (): void => {
-      if (reflects(this.#hosted.row(pending.sessionId), pending.change)) drop();
+      if (reflects(this.hosted.row(pending.sessionId), pending.change)) drop();
     };
 
     const timer = setTimeout(drop, SHOWN_WITHIN_MS);
-    const leave = this.#hosted.subscribe(() => queueMicrotask(check));
+    const leave = this.hosted.subscribe(() => queueMicrotask(check));
     check();
   }
 
-  #commit({ sessionId, change }: PendingChange): void {
+  private commit({ sessionId, change }: PendingChange): void {
     if (change.kind === "delete") {
-      this.#client.removeQueries({ queryKey: keys.session(sessionId), exact: true });
+      this.client.removeQueries({ queryKey: keys.session(sessionId), exact: true });
 
       return;
     }
 
-    this.#client.setQueryData<SessionInfo | null>(keys.session(sessionId), (session) =>
+    this.client.setQueryData<SessionInfo | null>(keys.session(sessionId), (session) =>
       session === undefined || session === null
         ? session
         : (applyChange(session, change) ?? session),

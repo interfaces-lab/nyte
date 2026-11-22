@@ -99,7 +99,7 @@ test("all answers go to the question part in one action", async () => {
           return { kind: "ok", output: undefined };
         },
         answer: async () => null,
-        watch: async function* () {
+        async *watch() {
           yield* [];
         },
         close: async () => undefined,
@@ -122,7 +122,7 @@ test("a question nobody waits on any more says so", async () => {
         update: async () => ({ kind: "missing" }),
         act: async () => ({ kind: "closed" }),
         answer: async () => null,
-        watch: async function* () {
+        async *watch() {
           yield* [];
         },
         close: async () => undefined,

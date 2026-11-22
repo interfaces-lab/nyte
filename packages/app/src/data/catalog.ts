@@ -50,13 +50,14 @@ export function applyListings(
     providers: view.providers.map((provider) => {
       const listings = new Map(Object.entries(provider.listings));
 
-      for (const { models, listing } of changes)
+      for (const { models, listing } of changes) {
         for (const model of models) {
           if (model.provider !== provider.id) continue;
 
           if (listing === "shown") listings.delete(model.id);
           else listings.set(model.id, listing);
         }
+      }
 
       return { ...provider, listings: Object.fromEntries(listings) };
     }),

@@ -78,7 +78,8 @@ export class AssistantMessageEventStream extends EventStream<
       (event) => {
         if (event.type === "done") {
           return event.message;
-        } else if (event.type === "error") {
+        }
+        if (event.type === "error") {
           return event.error;
         }
 

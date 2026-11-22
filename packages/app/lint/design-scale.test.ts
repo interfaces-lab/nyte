@@ -1,14 +1,13 @@
 import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
 const run = promisify(execFile);
 
-const here = dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 
 const repoRoot = join(here, "../../..");
 
@@ -18,9 +17,14 @@ const foreignFixture = join(here, "fixtures/foreign-create-fixture.ts");
 
 const configDirectory = mkdtempSync(join(tmpdir(), "nyte-design-scale-"));
 
-type Violation = { file: string; line: number; rule: string; message: string };
+interface Violation {
+  file: string;
+  line: number;
+  rule: string;
+  message: string;
+}
 
-let violations: Array<Violation> = [];
+let violations: Violation[] = [];
 
 const pluginOnlyConfig = {
   categories: {},
@@ -47,7 +51,7 @@ const findLine = (needle: string): number => {
   return index + 1;
 };
 
-const rulesOn = (needle: string): Array<string> =>
+const rulesOn = (needle: string): string[] =>
   violations
     .filter((entry) => entry.line === findLine(needle))
     .map((entry) => entry.rule)
@@ -65,17 +69,25 @@ beforeAll(async () => {
     "json",
     fixture,
     foreignFixture,
-  ]).catch((error: { stdout?: string }) => ({ stdout: error.stdout ?? "" }));
+  ]).catch((error: unknown) => ({
+    stdout:
+      typeof error === "object" &&
+      error !== null &&
+      "stdout" in error &&
+      typeof error.stdout === "string"
+        ? error.stdout
+        : "",
+  }));
 
   if (!result.stdout.startsWith("{")) throw new Error(`oxlint did not report: ${result.stdout}`);
 
   const report: {
-    diagnostics?: Array<{
+    diagnostics?: {
       code?: string;
       filename?: string;
       message: string;
-      labels?: Array<{ span: { line: number } }>;
-    }>;
+      labels?: { span: { line: number } }[];
+    }[];
   } = JSON.parse(result.stdout);
 
   violations = (report.diagnostics ?? []).map((diagnostic) => ({

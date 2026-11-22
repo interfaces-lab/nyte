@@ -91,8 +91,9 @@ export async function summarizedMove(
     signal: kernel.executionState.closing.signal,
   });
 
-  if (summary.kind === "failed")
+  if (summary.kind === "failed") {
     return { kind: "failed", outcome: { kind: "summary-failed", reason: summary.reason } };
+  }
 
   const written = await summaryUpdates(kernel.store, {
     session,
@@ -125,10 +126,11 @@ export async function summarizedMove(
       })),
     ]);
 
-    if (outcome.kind !== "set")
+    if (outcome.kind !== "set") {
       return outcome.name === headRef(session, head)
         ? { kind: "failed", outcome: await staleHead(kernel.store, session, head) }
         : STALE;
+    }
 
     return {
       kind: "moved",

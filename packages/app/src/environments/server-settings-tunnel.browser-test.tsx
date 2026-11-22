@@ -29,7 +29,7 @@ const nextFrame = () =>
   );
 
 async function until(condition: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 3_000;
+  const deadline = performance.now() + 3000;
 
   while (performance.now() < deadline) {
     if (condition()) return;
@@ -130,8 +130,7 @@ export async function run() {
     );
 
     await until(
-      () =>
-        container.textContent?.includes("You can pair devices once the tunnel connects.") === true,
+      () => container.textContent?.includes("You can pair devices once the tunnel connects."),
       "the connecting note",
     );
 
@@ -150,8 +149,9 @@ export async function run() {
 
     if (code() === null) throw new Error("A stale device list dropped the new code");
 
-    if (!dialogText().includes("Anyone with this code can connect as Phone"))
+    if (!dialogText().includes("Anyone with this code can connect as Phone")) {
       throw new Error("The code's note does not say what it grants");
+    }
 
     if (dialogText().includes("once")) throw new Error("The note implies a one-use code");
 

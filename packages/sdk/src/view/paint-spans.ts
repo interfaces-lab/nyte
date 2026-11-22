@@ -12,10 +12,10 @@ type Painted = Pick<SessionView, "messages" | "queue">;
  * user message is its own submit's trace (its id is the receipt id); a part joins the submit the
  * session last followed. With tracing off when called, the step does nothing.
  */
-export function paintSpans<V extends Painted>(
+export function paintSpans(
   session: SessionId,
   painted: () => Promise<void>,
-): (view: V) => void {
+): (view: Painted) => void {
   return tracing.enabled ? timePaints(session, painted) : () => undefined;
 }
 
@@ -29,7 +29,7 @@ export function tracePaints<V extends Painted>(
 
   return {
     [Symbol.asyncIterator]() {
-      const step = timePaints<V>(session, painted);
+      const step = timePaints(session, painted);
 
       return mapped(views, (view) => {
         step(view);
@@ -40,11 +40,8 @@ export function tracePaints<V extends Painted>(
   };
 }
 
-function timePaints<V extends Painted>(
-  session: SessionId,
-  painted: () => Promise<void>,
-): (view: V) => void {
-  let shown: V | null = null;
+function timePaints(session: SessionId, painted: () => Promise<void>): (view: Painted) => void {
+  let shown: Painted | null = null;
 
   return (view) => {
     if (view.messages === shown?.messages && view.queue === shown.queue) return;

@@ -1,5 +1,5 @@
 import { relayAddress } from "@nyte-ai/connect";
-import type { BrokerClient, EnvironmentSummary } from "@nyte-ai/connect";
+import type { BrokerClient, EnvironmentSummary, DeviceRole } from "@nyte-ai/connect";
 import type { AccountConfig } from "@nyte-ai/connect/account-config";
 import {
   awaitAcceptance,
@@ -8,7 +8,6 @@ import {
   releaseOnHost,
   RELEASE_TIMEOUT_MS,
 } from "@nyte-ai/connect/enrollment";
-import type { DeviceRole } from "@nyte-ai/connect";
 import { AcceptanceError } from "./account-copy.ts";
 import {
   accountConnection,

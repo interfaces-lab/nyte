@@ -31,12 +31,12 @@ import type {
   WaitTarget,
 } from "../../src/index.ts";
 
-export type Case = {
+export interface Case {
   readonly schema: Schema<unknown>;
   readonly good: unknown;
   readonly bad: unknown;
   readonly decoded?: unknown;
-};
+}
 
 export function sample<T>(schema: Schema<T>, good: NoInfer<T>, bad: unknown): Case {
   return { schema, good, bad };
@@ -222,7 +222,7 @@ export const catalog: SessionCatalogView = {
   ],
 };
 
-export const contextView: ContextView = { tokens: 100, window: 200000, lastRequest: usage };
+export const contextView: ContextView = { tokens: 100, window: 200_000, lastRequest: usage };
 
 export const fileChange: FileChange = {
   path: "a.ts",
@@ -292,9 +292,9 @@ export const modelInfo: ModelInfo = {
   thinking: ["off", "high"],
   defaultThinking: "high",
   variants: [],
-  contextWindow: 200000,
-  compactAt: 160000,
-  maxOutput: 64000,
+  contextWindow: 200_000,
+  compactAt: 160_000,
+  maxOutput: 64_000,
   input: ["text", "image"],
   capabilities: { steer: true },
   cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },

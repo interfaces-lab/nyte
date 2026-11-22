@@ -434,12 +434,14 @@ export interface PluginState {
   viewFailures: readonly string[];
 }
 
-export type PluginFailure = {
+export interface PluginFailure {
   readonly path: string;
   readonly issues: HostView["plugins"][number]["issues"];
-};
+}
 
-export type Attached = { readonly env: ExecutionEnv | null };
+export interface Attached {
+  readonly env: ExecutionEnv | null;
+}
 
 export interface OwnedRegistry<T> extends Registry<T> {
   add(entry: T | Derive<T, "core">): Disposer;
@@ -475,10 +477,10 @@ export interface RegistrySet extends CoreRegistries {
   reload(): void;
 }
 
-export type Contributions = {
+export interface Contributions {
   readonly agents: readonly Agent[];
   readonly settings: readonly SettingDefinition[];
-};
+}
 
 export type CoreHook<Phase extends HookTable[keyof HookTable]["phase"]> = {
   [N in HookName<"core">]: HookTable[N & keyof HookTable]["phase"] extends Phase ? N : never;

@@ -6,10 +6,9 @@ import process from "node:process";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { asId, compile, standard } from "@nyte-ai/schema";
-import type { ToolDefinition } from "@nyte-ai/core";
+import type { ToolDefinition, Host, Listener } from "@nyte-ai/core";
 import { openApprovals, PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { memoryStore } from "@nyte-ai/core/store";
-import type { Host, Listener } from "@nyte-ai/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { localProvider, openHost } from "../src/index.ts";
 import { fetchClientMetadata } from "../src/mcp-server/client-metadata.ts";
@@ -55,11 +54,11 @@ const TOOL_LIST = Type.Object({
   }),
 });
 
-type Opened = {
+interface Opened {
   readonly host: Host;
   readonly http: Listener;
   readonly local: Listener;
-};
+}
 
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -436,8 +435,9 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
       "https://[::1]/client.json",
       "https://10.1.2.3/client.json",
       "https://localhost/client.json",
-    ])
+    ]) {
       await expect(fetchClientMetadata(new URL(url))).rejects.toThrow(/does not fetch from/);
+    }
   });
 
   it("refuses an authorization without PKCE or for another resource", async () => {
@@ -599,7 +599,7 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
 
         return found;
       },
-      { timeout: 5_000 },
+      { timeout: 5000 },
     );
 
     expect(pending).toEqual([expect.objectContaining({ tool: "shell", reason: "shell" })]);
@@ -657,7 +657,7 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
       arguments: { id: "s1", content: "Hi." },
     });
 
-    expect(await called.json()).toMatchObject({ error: { code: -32602 } });
+    expect(await called.json()).toMatchObject({ error: { code: -32_602 } });
     expect(await opened.host.sessions.list({ limit: 10 })).toMatchObject({ items: [] });
   });
 

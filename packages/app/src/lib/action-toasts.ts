@@ -12,43 +12,43 @@ interface ActionBatch {
 }
 
 export class ActionToasts {
-  readonly #batches = new Map<string, ActionBatch>();
-  #nextId = 0;
+  private readonly batches = new Map<string, ActionBatch>();
+  private nextId = 0;
 
   add(label: string, action: UndoableAction): () => void {
-    const batch = this.#batches.get(label) ?? {
-      id: `session-action-${label}-${++this.#nextId}`,
+    const batch = this.batches.get(label) ?? {
+      id: `session-action-${label}-${++this.nextId}`,
       label,
       actions: new Set<UndoableAction>(),
     };
 
-    this.#batches.set(label, batch);
+    this.batches.set(label, batch);
     batch.actions.add(action);
-    this.#show(batch);
+    this.show(batch);
 
     return () => {
-      if (this.#batches.get(label) !== batch) return;
+      if (this.batches.get(label) !== batch) return;
       batch.actions.delete(action);
 
-      if (batch.actions.size > 0) this.#show(batch);
+      if (batch.actions.size > 0) this.show(batch);
       else {
-        this.#batches.delete(label);
+        this.batches.delete(label);
         toast.close(batch.id);
       }
     };
   }
 
   undo(id: string): void {
-    const batch = this.#batches.values().find((entry) => entry.id === id);
+    const batch = this.batches.values().find((entry) => entry.id === id);
 
     if (batch === undefined) return;
-    this.#finish(batch, true);
+    this.finish(batch, true);
     toast.close(id);
   }
 
-  #finish(batch: ActionBatch, undo: boolean): void {
-    if (this.#batches.get(batch.label) !== batch) return;
-    this.#batches.delete(batch.label);
+  private finish(batch: ActionBatch, undo: boolean): void {
+    if (this.batches.get(batch.label) !== batch) return;
+    this.batches.delete(batch.label);
 
     for (const action of [...batch.actions].reverse()) {
       if (undo) action.undo();
@@ -56,19 +56,19 @@ export class ActionToasts {
     }
   }
 
-  #show(batch: ActionBatch): void {
+  private show(batch: ActionBatch): void {
     const count = batch.actions.size;
     toast.add({
       type: "success",
       title: `${count} ${count === 1 ? "chat" : "chats"} ${batch.label}`,
       id: batch.id,
-      timeout: 6_000,
+      timeout: 6000,
       description:
         batch.label === "deleted"
           ? "Permanently deleted when this notification closes."
           : undefined,
       actionProps: { children: "Undo", onClick: () => this.undo(batch.id) },
-      onClose: () => this.#finish(batch, false),
+      onClose: () => this.finish(batch, false),
     });
   }
 }

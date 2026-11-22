@@ -29,7 +29,10 @@ export interface SocketLike {
   addEventListener(type: "error", listener: () => void): void;
 }
 
-export type SocketClosed = { readonly code: number; readonly reason: string };
+export interface SocketClosed {
+  readonly code: number;
+  readonly reason: string;
+}
 
 export type SocketEvent = EventFrame & JsonSchema;
 
@@ -47,22 +50,25 @@ export interface HostSocket {
   close(): void;
 }
 
-type Waiting = {
+interface Waiting {
   readonly resolve: (output: Json) => void;
   readonly reject: (error: SdkError) => void;
-};
+}
 
-type Probe = { readonly deadline: number; readonly answered: PromiseWithResolvers<void> };
+interface Probe {
+  readonly deadline: number;
+  readonly answered: PromiseWithResolvers<void>;
+}
 
 const OPEN_MS = 10_000;
 
 const IDLE_PROBE_MS = 30_000;
 
-const OWED_PROBE_MS = 5_000;
+const OWED_PROBE_MS = 5000;
 
 const PROBE_MS = 10_000;
 
-const ASKED_PROBE_MS = 2_000;
+const ASKED_PROBE_MS = 2000;
 
 const PROBE_FRAME = { c: "e", type: "call", op: "events.unsubscribe", input: { scopes: [] } };
 
@@ -169,9 +175,9 @@ export async function openHostSocket(input: {
       greeted.resolve(value);
     } else if (results.Check(value)) settle(value.id, value.output, null);
     else if (errors.Check(value)) settle(value.id, null, decodeError(value.error));
-    else if (isJsonObject(value) && events.Check(value))
+    else if (isJsonObject(value) && events.Check(value)) {
       for (const listener of eventListeners) listener(value);
-    else if (texts.Check(value)) for (const listener of textListeners) listener(value);
+    } else if (texts.Check(value)) for (const listener of textListeners) listener(value);
   };
 
   socket.addEventListener("message", (message) => {

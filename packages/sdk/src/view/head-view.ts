@@ -10,7 +10,10 @@ import type { HeadSnapshot } from "../live/head.ts";
 
 export type HeadView = Omit<SessionView, "seq">;
 
-type Built = { readonly snapshot: HeadSnapshot; readonly view: HeadView };
+interface Built {
+  readonly snapshot: HeadSnapshot;
+  readonly view: HeadView;
+}
 
 const IDLE: Execution = { kind: "idle", lastRun: null };
 

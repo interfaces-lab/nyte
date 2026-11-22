@@ -1,21 +1,21 @@
 import { useSyncExternalStore } from "react";
 import type { StagedImage } from "./attachments.ts";
 
-export type AnnotationPoint = {
+export interface AnnotationPoint {
   n: number;
   x: number;
   y: number;
   comment: string;
-};
+}
 
 export type AnnotationMark =
   | { kind: "point"; point: AnnotationPoint }
   | { kind: "stroke"; points: readonly { x: number; y: number }[] };
 
-type ImageAnnotation = {
+interface ImageAnnotation {
   image: StagedImage;
   marks: AnnotationMark[];
-};
+}
 
 const store = new Map<string, ImageAnnotation>();
 

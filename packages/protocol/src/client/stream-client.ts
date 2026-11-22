@@ -35,16 +35,16 @@ const QUIET_MS = 45_000;
 
 /** Multiplex streams over one channel opened through `post`, asking for `deflated` frames when `deflate`; the channel closes when its last stream is released. */
 export function createStreamClient(post: Post, deflate: boolean) {
-  type Stream = {
+  interface Stream {
     readonly buffer: ReturnType<typeof streamBuffer>;
     readonly dispose: () => void;
-  };
+  }
 
-  type Channel = {
+  interface Channel {
     readonly ready: Promise<string>;
     readonly controller: AbortController;
     readonly streams: Map<string, Stream>;
-  };
+  }
 
   let channel: Channel | undefined;
 
@@ -109,8 +109,9 @@ export function createStreamClient(post: Post, deflate: boolean) {
         });
         const id = response.headers.get(CHANNEL_HEADER);
 
-        if (id === null || response.body === null)
+        if (id === null || response.body === null) {
           throw new SdkError("invalid", "The host did not open a stream channel.");
+        }
         ready.resolve(id);
 
         for await (const envelope of parseSse(networkBody(response.body, heard))) {
@@ -143,8 +144,9 @@ export function createStreamClient(post: Post, deflate: boolean) {
           }
         }
 
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
           throw new SdkError("unavailable", "The stream channel disconnected.");
+        }
       } catch (cause) {
         const error =
           cause instanceof Error

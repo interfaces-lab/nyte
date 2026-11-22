@@ -47,8 +47,9 @@ function readRoute(hostId: HostId) {
 export function holdRoute(hostId: HostId): void {
   const stored = readRoute(hostId);
 
-  if (stored !== undefined)
+  if (stored !== undefined) {
     writeStored(localArea(), routeKey(hostId), { ...stored, heldUntil: Date.now() + HOLD_MS });
+  }
 }
 
 export async function directRoute(hostId: HostId): Promise<string | undefined> {

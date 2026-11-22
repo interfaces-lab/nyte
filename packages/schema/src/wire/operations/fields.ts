@@ -6,7 +6,7 @@ import { base64Bytes } from "../base64.ts";
 import { idSchema } from "../../ids.ts";
 import { withJson } from "../../json.ts";
 
-export type OperationRows = { readonly [name: string]: Declaration<unknown, unknown> };
+export type OperationRows = Readonly<Record<string, Declaration<unknown, unknown>>>;
 
 export function wireSchema<T extends TSchema>(type: T) {
   return standard(withJson(type));

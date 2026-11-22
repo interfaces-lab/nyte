@@ -67,9 +67,12 @@ type LinkState =
   | { readonly kind: "needs-sign-in" }
   | { readonly kind: "failed"; readonly message: string; readonly stderr: string | null };
 
-type Listing = { readonly tools: readonly Tool[]; readonly instructions: string | null };
+interface Listing {
+  readonly tools: readonly Tool[];
+  readonly instructions: string | null;
+}
 
-type Link = {
+interface Link {
   readonly key: string;
   entry: McpServerEntry;
   readonly state: () => LinkState;
@@ -78,9 +81,9 @@ type Link = {
   readonly tools: () => readonly ToolDefinition[];
   readonly attempting: () => Promise<void> | null;
   close(): Promise<void>;
-};
+}
 
-type Pool = {
+interface Pool {
   readonly key: string;
   readonly workspace: McpWorkspace;
   readonly files: readonly Omit<McpFile, "contents">[];
@@ -91,7 +94,7 @@ type Pool = {
   readonly listeners: Set<() => void>;
   holders: number;
   linger: ReturnType<typeof setTimeout> | undefined;
-};
+}
 
 function hub(input: {
   readonly home: string;
@@ -139,9 +142,11 @@ function hub(input: {
       void link.close();
     }
 
-    for (const entry of pool.config.servers.values())
-      if (entry.enabled && !pool.links.has(entry.name))
+    for (const entry of pool.config.servers.values()) {
+      if (entry.enabled && !pool.links.has(entry.name)) {
         pool.links.set(entry.name, openLink(entry, pool));
+      }
+    }
 
     notify(pool);
   };
@@ -257,13 +262,12 @@ function hub(input: {
         };
 
         client = next;
-        next.onNotification("notifications/tools/list_changed", async () => {
-          try {
-            await refresh();
-          } catch (error) {
-            if (client === next)
+        next.onNotification("notifications/tools/list_changed", () => {
+          refresh().catch((error: unknown) => {
+            if (client === next) {
               drop(`${entry.name} failed to list its tools: ${errorMessage(error)}`);
-          }
+            }
+          });
         });
         await refresh();
 
@@ -327,12 +331,13 @@ function hub(input: {
       tools() {
         if (listed === null) return [];
 
-        if (bridged?.entry !== link.entry || bridged.listed !== listed)
+        if (bridged?.entry !== link.entry || bridged.listed !== listed) {
           bridged = {
             entry: link.entry,
             listed,
             tools: bridgeTools(link.entry, listed, call),
           };
+        }
 
         return bridged.tools;
       },
@@ -369,8 +374,9 @@ function hub(input: {
         return;
       }
 
-      for (const pool of pools.values())
+      for (const pool of pools.values()) {
         if (pool.files.some((file) => file.path === path)) reconcile(pool);
+      }
     });
   };
 
@@ -430,11 +436,12 @@ function hub(input: {
 
     const unread = files.flatMap((file) => (watched.has(file.path) ? [] : [file.path]));
 
-    for (const path of unread)
+    for (const path of unread) {
       watched.set(
         path,
         watchPath(path, { delay: WATCH_DELAY_MS }, () => changed(path)),
       );
+    }
 
     const pool: Pool = {
       key,
@@ -544,8 +551,9 @@ function hub(input: {
 
       if (watched.has(path)) contents.set(path, { kind: "text", text: plan.text });
 
-      for (const pool of pools.values())
+      for (const pool of pools.values()) {
         if (pool.files.some((file) => file.path === path)) reconcile(pool);
+      }
 
       return { kind: "updated" };
     });
@@ -611,12 +619,14 @@ function hub(input: {
           async pull() {
             await pool.loaded;
 
-            while (!dirty && !ended && !closed && pools.get(pool.key) === pool)
+            while (!dirty && !ended && !closed && pools.get(pool.key) === pool) {
               await new Promise<void>((resolve) => (wake = resolve));
+            }
             wake = null;
 
-            if (ended || closed || pools.get(pool.key) !== pool)
+            if (ended || closed || pools.get(pool.key) !== pool) {
               return { done: true, value: undefined };
+            }
             dirty = false;
 
             return { done: false, value: view(pool) };
@@ -715,11 +725,15 @@ function hub(input: {
           if (entry === undefined) return failedLogin(`No MCP server is named ${server}.`);
           const { transport } = entry;
 
-          if (transport.kind !== "http")
+          if (transport.kind !== "http") {
             return failedLogin(`${server} runs a command, so it has nothing to sign in to.`);
+          }
 
-          if (Object.keys(transport.headers).some((name) => name.toLowerCase() === "authorization"))
+          if (
+            Object.keys(transport.headers).some((name) => name.toLowerCase() === "authorization")
+          ) {
             return failedLogin(`${server} sends its own Authorization header.`);
+          }
           const key = oauthKey(server, transport.url);
 
           if (signingIn.has(key)) return failedLogin(`A sign-in to ${server} is already running.`);
@@ -752,8 +766,9 @@ function hub(input: {
       return {
         steps: () => forwarded(async () => (await begin()).steps()),
         async answer(code) {
-          if (begun === null)
+          if (begun === null) {
             throw new SdkError("invalid", "Read the login's steps before answering.");
+          }
           await (await begun).answer(code);
         },
       };
@@ -763,8 +778,9 @@ function hub(input: {
 
       if (entry === undefined) return { kind: "missing" };
 
-      if (entry.transport.kind !== "http")
+      if (entry.transport.kind !== "http") {
         return { kind: "invalid", message: `${server} runs a command and has no sign-in.` };
+      }
       const key = oauthKey(server, entry.transport.url);
       await input.secrets.delete(key);
       restartSignedIn(key);
@@ -832,8 +848,9 @@ function serverState(entry: McpServerEntry, state: LinkState): McpServerState {
 function notConnected(server: string, state: LinkState): string {
   if (state.kind === "failed") return `${server} is not connected: ${state.message}`;
 
-  if (state.kind === "needs-sign-in")
+  if (state.kind === "needs-sign-in") {
     return `${server} needs the user to sign in again before its tools work.`;
+  }
 
   return `${server} is reconnecting; try the call again shortly.`;
 }

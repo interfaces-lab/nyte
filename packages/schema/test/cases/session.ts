@@ -1,4 +1,3 @@
-import { asId } from "@nyte-ai/schema";
 import {
   AdvanceReportSchema,
   ProjectDraftSchema,
@@ -56,6 +55,7 @@ import {
   UserStatusSchema,
   ViewOptionsSchema,
   WorkspaceCommandOutcomeSchema,
+  asId,
   asSeq,
 } from "../../src/index.ts";
 import {

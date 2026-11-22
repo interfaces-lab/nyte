@@ -20,7 +20,7 @@ function notes(files: Map<string, string>): Plugin<"core"> {
       scope: "workspace",
       mime: "text/plain",
       contents,
-      encoding: "utf-8",
+      encoding: "utf8",
       version: asId(`v-${contents.length}`),
     };
   };

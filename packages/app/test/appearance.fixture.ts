@@ -35,26 +35,32 @@ export function run(): string {
 
           if (getComputedStyle(root).colorScheme !== mode) return `${mode}: incorrect color scheme`;
 
-          if (computed.cursor !== (pointer ? "pointer" : "default"))
+          if (computed.cursor !== (pointer ? "pointer" : "default")) {
             return `${mode}: cursor concern was overwritten`;
+          }
 
-          if (computed.backdropFilter.includes("brightness") !== (mode === "dark"))
+          if (computed.backdropFilter.includes("brightness") !== (mode === "dark")) {
             return `${mode}: display filter was overwritten`;
+          }
           const focusRing = computed.outlineColor;
           const transparent = focusRing === "rgba(0, 0, 0, 0)";
 
-          if (transparent !== (modality === "pointer"))
+          if (transparent !== (modality === "pointer")) {
             return `${mode}: focus concern was overwritten`;
+          }
 
-          if (!root.classList.contains("external-class"))
+          if (!root.classList.contains("external-class")) {
             return "An appearance update replaced an unrelated root class";
+          }
           applyDisplayMode(mode);
 
-          if (getComputedStyle(sample).cursor !== (pointer ? "pointer" : "default"))
+          if (getComputedStyle(sample).cursor !== (pointer ? "pointer" : "default")) {
             return "Display update replaced the cursor concern";
+          }
 
-          if (getComputedStyle(sample).outlineColor !== focusRing)
+          if (getComputedStyle(sample).outlineColor !== focusRing) {
             return "Display update replaced the focus concern";
+          }
         }
       }
     }

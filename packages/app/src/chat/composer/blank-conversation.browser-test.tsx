@@ -18,6 +18,7 @@ import { SessionScreen } from "../../panes/session-screen.tsx";
 import "../../theme/tokens.stylex.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 import { sessionRow } from "../../../test/view-fixtures.ts";
+import { errorMessage } from "../../contract/errors.ts";
 
 const MODEL: ModelInfo = {
   ref: { provider: "test", id: "test" },
@@ -26,7 +27,7 @@ const MODEL: ModelInfo = {
   thinking: ["off"],
   defaultThinking: "off",
   variants: [],
-  contextWindow: 1_000,
+  contextWindow: 1000,
   compactAt: 900,
   maxOutput: 100,
   input: ["text"],
@@ -100,10 +101,14 @@ function mount(container: HTMLElement): Root {
 }
 
 async function until<T>(read: () => T | null | undefined | false, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
-    if (renderFailure !== undefined) throw renderFailure;
+    if (renderFailure !== undefined) {
+      throw renderFailure instanceof Error
+        ? renderFailure
+        : new Error(errorMessage(renderFailure), { cause: renderFailure });
+    }
     const value = read();
 
     if (value !== null && value !== undefined && value !== false) return value;
@@ -219,7 +224,7 @@ async function checkSends(): Promise<string> {
     root = mount(container);
     const alert = await until(() => container.querySelector("[role='alert']"), "the refusal");
     expectRule(
-      alert.textContent?.includes("test isn’t available") === true,
+      alert.textContent?.includes("test isn’t available"),
       `the refusal names the model: ${alert.textContent ?? ""}`,
     );
     expectRule(starts.length === 2, "a refused draft reached sessions.start");

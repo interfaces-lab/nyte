@@ -107,11 +107,12 @@ test("without a tab strip a child chat opens in the pane and the title bar's bac
     });
     await banner.screenshot({ path: testInfo.outputPath(`title-bar-child-${scheme}.png`) });
 
-    for (const [name, centre] of Object.entries(centres))
+    for (const [name, centre] of Object.entries(centres)) {
       expect(
         Math.abs(centre - centres.bar),
         `${name} sits on the title bar's centre line`,
       ).toBeLessThanOrEqual(0.5);
+    }
   }
 
   await expect(title).toBeVisible();

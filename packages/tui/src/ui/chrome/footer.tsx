@@ -43,13 +43,14 @@ function powerlineChunks(
 
   if (frame === 1) return [{ fg: border, text: GLYPHS.rule }];
 
-  if (frame < 6)
+  if (frame < 6) {
     return [
       {
         fg: border,
         text: `${GLYPHS.frameBottomLeft}${GLYPHS.rule.repeat(frame - 2)}${GLYPHS.frameBottomRight}`,
       },
     ];
+  }
 
   const caption = frame - 5;
   const chunks: Chunk[] = [{ fg: border, text: `${GLYPHS.frameBottomLeft}${GLYPHS.rule}` }];

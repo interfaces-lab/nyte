@@ -67,14 +67,14 @@ const UNITLESS = new Set([
 
 export const normalize = (css: string): string =>
   css
-    .replace(/\s+/gu, "")
-    .replace(/(^|[^\d.])0px/gu, "$10")
+    .replaceAll(/\s+/gu, "")
+    .replaceAll(/(^|[^\d.])0px/gu, "$10")
     .toLowerCase();
 
 const camel = (property: string): string =>
   property.startsWith("--")
     ? property
-    : property.replace(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+    : property.replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
 
 export async function buildSourceIndex(): Promise<SourceIndex> {
   const files = (
@@ -129,8 +129,9 @@ export async function buildSourceIndex(): Promise<SourceIndex> {
 
         if (name === "defineConsts" && binding !== null) handles.set(`${binding}.${key}`, value);
 
-        if (name === "defineVars" && key.startsWith("--"))
+        if (name === "defineVars" && key.startsWith("--")) {
           tokens.set(key, { token: key, value, defined: refAt(file, property) });
+        }
       }
     });
   }
@@ -141,12 +142,14 @@ export async function buildSourceIndex(): Promise<SourceIndex> {
     visitCalls(file.source, (call, name) => {
       const argument = call.arguments[0];
 
-      if (name !== "create" || argument === undefined || !ts.isObjectLiteralExpression(argument))
+      if (name !== "create" || argument === undefined || !ts.isObjectLiteralExpression(argument)) {
         return;
+      }
 
       for (const style of argument.properties) {
-        if (!ts.isPropertyAssignment(style) || !ts.isObjectLiteralExpression(style.initializer))
+        if (!ts.isPropertyAssignment(style) || !ts.isObjectLiteralExpression(style.initializer)) {
           continue;
+        }
 
         const entries = style.initializer.properties.flatMap((property) => {
           if (!ts.isPropertyAssignment(property)) return [];
@@ -163,8 +166,9 @@ export async function buildSourceIndex(): Promise<SourceIndex> {
 
         const block = new Map<string, string[]>();
 
-        for (const entry of entries)
+        for (const entry of entries) {
           block.set(entry.key, [...(block.get(entry.key) ?? []), entry.css]);
+        }
 
         for (const entry of entries) {
           const list = uses.get(entry.css) ?? [];
@@ -184,8 +188,9 @@ export function compileExpr(index: SourceIndex, expr: Expr): string {
       case "handle": {
         const css = index.handles.get(part.handle);
 
-        if (css === undefined)
+        if (css === undefined) {
           throw new Error(`The grid rules name an unknown StyleX handle: ${part.handle}.`);
+        }
 
         return css;
       }
@@ -319,13 +324,14 @@ function propertyCause(
 ): Cause {
   const found = findDeclaration(snapshot, id, property);
 
-  if (found === null)
+  if (found === null) {
     return {
       kind: "unresolved",
       reason: INHERITED.has(property)
         ? "inherited from the document"
         : "no rule sets it: a browser default or layout",
     };
+  }
 
   let value = found.declaration.value;
   let use = findUse(index, found.box, found.declaration);
@@ -350,8 +356,9 @@ function propertyCause(
   const token = /var\((--nyte-[\w-]+)/u.exec(value)?.[1];
   const declaration = `${found.declaration.property}: ${found.declaration.value}`;
 
-  if (token === undefined)
+  if (token === undefined) {
     return { kind: "literal", declaration, use: use?.at ?? null, candidates: use?.candidates ?? 0 };
+  }
 
   return {
     kind: "token",
@@ -435,24 +442,27 @@ function sumCause(
 
   if (odd?.kind === "declared") return propertyCause(index, snapshot, odd.box, odd.property);
 
-  if (odd?.kind === "content")
+  if (odd?.kind === "content") {
     return {
       kind: "unresolved",
       reason: `${String(odd.px)}px of content in ${key(odd.box)}: text or children no rule sizes`,
     };
+  }
 
-  if (odd?.kind === "layout")
+  if (odd?.kind === "layout") {
     return {
       kind: "unresolved",
       reason: `${String(odd.px)}px placed by layout in ${key(odd.box)}: alignment or centring`,
     };
+  }
 
   const padding = parts.find(
     (part) => part.kind === "declared" && part.property.startsWith("padding-"),
   );
 
-  if (parts.some((part) => border(part) && off(part)) && padding?.kind === "declared")
+  if (parts.some((part) => border(part) && off(part)) && padding?.kind === "declared") {
     return propertyCause(index, snapshot, padding.box, padding.property);
+  }
 
   return {
     kind: "unresolved",
@@ -512,9 +522,12 @@ function findUse(
   box: SnapBox,
   declaration: Declaration,
 ): { at: SourceRef; candidates: number } | null {
-  const names = [camel(declaration.property), ...(BLOCK_ALIASES.get(declaration.property) ?? [])];
+  const names = new Set([
+    camel(declaration.property),
+    ...(BLOCK_ALIASES.get(declaration.property) ?? []),
+  ]);
   const css = normalize(declaration.value);
-  const sites = (index.uses.get(css) ?? []).filter((use) => names.includes(use.property));
+  const sites = (index.uses.get(css) ?? []).filter((use) => names.has(use.property));
 
   if (sites.length === 0) return null;
   const values = new Map<string, Set<string>>();
@@ -594,8 +607,9 @@ function visitCalls(
 }
 
 function propertyName(name: ts.PropertyName): string | null {
-  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name))
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
     return name.text;
+  }
 
   return null;
 }
@@ -619,10 +633,11 @@ function cssValues(
   key: string,
   handles: ReadonlyMap<string, string>,
 ): string[] {
-  if (ts.isObjectLiteralExpression(node))
+  if (ts.isObjectLiteralExpression(node)) {
     return node.properties.flatMap((property) =>
       ts.isPropertyAssignment(property) ? cssValues(property.initializer, key, handles) : [],
     );
+  }
 
   const text = cssText(node, key, handles);
 
@@ -636,8 +651,9 @@ function cssText(
 ): string | null {
   if (ts.isStringLiteralLike(node)) return node.text;
 
-  if (ts.isNumericLiteral(node))
+  if (ts.isNumericLiteral(node)) {
     return UNITLESS.has(key) || node.text === "0" ? node.text : `${node.text}px`;
+  }
 
   if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.MinusToken) {
     const inner = cssText(node.operand, key, handles);
@@ -645,15 +661,17 @@ function cssText(
     return inner === null ? null : `-${inner}`;
   }
 
-  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression))
+  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
     return handles.get(`${node.expression.text}.${node.name.text}`) ?? null;
+  }
 
   if (
     ts.isElementAccessExpression(node) &&
     ts.isIdentifier(node.expression) &&
     ts.isStringLiteral(node.argumentExpression)
-  )
+  ) {
     return handles.get(`${node.expression.text}.${node.argumentExpression.text}`) ?? null;
+  }
 
   if (ts.isTemplateExpression(node)) {
     const spans = node.templateSpans.map((span) => {

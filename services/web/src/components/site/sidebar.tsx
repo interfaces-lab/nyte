@@ -10,7 +10,10 @@ export interface TocEntry {
   depth: number;
 }
 
-type Branch = { readonly href: string; readonly toc: readonly TocEntry[] };
+interface Branch {
+  readonly href: string;
+  readonly toc: readonly TocEntry[];
+}
 
 export function DocNav({
   sections,
@@ -39,12 +42,13 @@ export function DocNav({
     readonly moved: boolean;
   }>({ open: open === undefined ? null : { href: open, toc }, closing: null, moved: false });
 
-  if ((shown.open?.href ?? undefined) !== open)
+  if ((shown.open?.href ?? undefined) !== open) {
     setShown({
       open: open === undefined ? null : { href: open, toc },
       closing: shown.open,
       moved: true,
     });
+  }
 
   return (
     <nav className={className} aria-label="Docs">

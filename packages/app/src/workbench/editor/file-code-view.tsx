@@ -22,7 +22,7 @@ import { changeEdits, replaceContents } from "./outside-edits.ts";
 import { tokenHooks } from "./pierre-language.ts";
 
 /** An editor CodeView made for one of its items. */
-export type ItemEditor = Editor<EditorType, undefined, undefined>;
+export type ItemEditor = Editor;
 
 type Pointer = Parameters<typeof tokenHooks>[0];
 
@@ -36,7 +36,7 @@ export function createEditor<EType extends EditorType>(
   editorType: EType,
   options: EditorOptions<EType, undefined, undefined>,
   editStateKey?: string,
-): Editor<EType, undefined, undefined> {
+): Editor<EType> {
   return new Editor(editorType, options, editStateKey);
 }
 
@@ -183,7 +183,7 @@ export function documentEditor(editor: ItemEditor): DocumentEditor {
     length: () => {
       const text = editor.getEditState()?.document;
 
-      if (text === undefined) return editor.getText().replace(/\r\n|\r/gu, "\n").length;
+      if (text === undefined) return editor.getText().replaceAll(/\r\n|\r/gu, "\n").length;
       const last = text.lineCount - 1;
 
       return text.offsetAt({ line: last, character: text.getLineLength(last) });

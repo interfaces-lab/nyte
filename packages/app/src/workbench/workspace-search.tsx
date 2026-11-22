@@ -447,7 +447,7 @@ export function WorkspaceSearchResults({
                         aria-label={match.length === 0 ? "Zero-width match" : undefined}
                       >
                         {match.length === 0
-                          ? "\u200b"
+                          ? "\u200B"
                           : match.snippet.slice(start, start + match.length)}
                       </mark>
                       <span {...props(styles.suffix)}>

@@ -52,10 +52,10 @@ export type Health =
       readonly error: SdkError;
     };
 
-export type SocketRequest = {
+export interface SocketRequest {
   readonly url: string;
   readonly headers: Readonly<Record<string, string>>;
-};
+}
 
 export type OpenSocket = (request: SocketRequest) => SocketLike;
 
@@ -93,15 +93,28 @@ export interface SocketLink {
   offer(action: ActionDeclaration, handler: ActionHandler): Disposer;
 }
 
-type Attempt = { opened: boolean; refusal: number | null; closed: SocketClosed | null };
+interface Attempt {
+  opened: boolean;
+  refusal: number | null;
+  closed: SocketClosed | null;
+}
 
-type Joined = { readonly scope: string; readonly attachment: Attachment };
+interface Joined {
+  readonly scope: string;
+  readonly attachment: Attachment;
+}
 
-type Waiter = { resolve(socket: HostSocket): void; reject(error: SdkError): void };
+interface Waiter {
+  resolve(socket: HostSocket): void;
+  reject(error: SdkError): void;
+}
 
-type Offered = { readonly action: ActionDeclaration; readonly handler: ActionHandler };
+interface Offered {
+  readonly action: ActionDeclaration;
+  readonly handler: ActionHandler;
+}
 
-const LOGIN_STATUS_MS = 5_000;
+const LOGIN_STATUS_MS = 5000;
 
 export function openLink(address: string, options: LinkOptions): SocketLink {
   const openSocket = options.socket ?? openGlobalSocket;
@@ -126,8 +139,9 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
   const show = (next: Health): void => {
     health = next;
 
-    if (next.kind === "retrying" || next.kind === "blocked")
+    if (next.kind === "retrying" || next.kind === "blocked") {
       for (const waiter of waiters.values()) waiter.reject(next.error);
+    }
 
     if (next.kind !== "connecting") waiters.clear();
     healthListeners.notify();
@@ -177,8 +191,9 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
     } catch (error) {
       if (mine !== generation) return;
 
-      if (!seen.opened)
+      if (!seen.opened) {
         seen.refusal = await loginStatus(address, credentials, options.fetch ?? fetch);
+      }
 
       if (mine === generation) failed(asSdkError(error), seen);
     }
@@ -203,8 +218,9 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
       else for (const listener of texts) listener(frame);
     });
 
-    for (const entry of joined)
+    for (const entry of joined) {
       entry.attachment.attach(socket, () => subscribe(socket, entry.scope));
+    }
 
     if (texts.size > 0) openText(socket);
     void socket.welcome.then(
@@ -339,8 +355,9 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
 
     if (current !== null) return Promise.resolve(current);
 
-    if (health.kind === "retrying" || health.kind === "blocked")
+    if (health.kind === "retrying" || health.kind === "blocked") {
       return Promise.reject(health.error);
+    }
 
     if (released) return Promise.reject(new SdkError("unavailable", "This connection is closed."));
 
@@ -356,14 +373,15 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
 
     const outcome = await Promise.resolve()
       .then(() => {
-        if (offered === undefined)
+        if (offered === undefined) {
           throw new SdkError("not_supported", `This client no longer offers ${event.action}.`);
+        }
 
         return offered.handler(event.input, event.requester);
       })
       .then(
         (result) => ({ result }),
-        (error) => {
+        (error: unknown) => {
           const failure = asSdkError(error);
 
           return { error: { code: failure.code, message: failure.message } };
@@ -418,8 +436,9 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
       generation += 1;
       clearTimeout(retryTimer);
 
-      for (const waiter of waiters)
+      for (const waiter of waiters) {
         waiter.reject(new SdkError("unavailable", "This connection is closed."));
+      }
       waiters.clear();
       current?.close();
     },
@@ -519,8 +538,9 @@ function openGlobalSocket(request: SocketRequest): SocketLike {
 export function globalWebSocket(): SocketClass {
   const Socket: unknown = globalThis.WebSocket;
 
-  if (!webSocketClass(Socket))
+  if (!webSocketClass(Socket)) {
     throw new SdkError("not_supported", "This runtime has no WebSocket; pass a socket factory.");
+  }
 
   return Socket;
 }

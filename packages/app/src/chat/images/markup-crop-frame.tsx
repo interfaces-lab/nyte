@@ -8,7 +8,10 @@ export const MIN_CROP = 48;
 
 const HIT = 44;
 
-export type Handle = { readonly x: -1 | 0 | 1; readonly y: -1 | 0 | 1 };
+export interface Handle {
+  readonly x: -1 | 0 | 1;
+  readonly y: -1 | 0 | 1;
+}
 
 const HANDLES: readonly Handle[] = [
   { x: -1, y: -1 },

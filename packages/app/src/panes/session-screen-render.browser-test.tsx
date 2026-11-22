@@ -709,7 +709,7 @@ async function checkRules(): Promise<string> {
     expectRule("9", near(measureTop(beforePrompt), beforePromptTop), "a prompt moved the view");
     expectRule(
       "19",
-      promptRow.isConnected && promptRow.textContent?.includes("Pending prompt") === true,
+      promptRow.isConnected && promptRow.textContent?.includes("Pending prompt"),
       "the landed message replaced its row",
     );
     expectRule(
@@ -770,7 +770,8 @@ async function checkRules(): Promise<string> {
 
     expectRule(
       "footer",
-      previousFooter.textContent?.includes("footer.ts") === true,
+
+      previousFooter.textContent?.includes("footer.ts"),
       "the completed card has no changed file",
     );
 
@@ -859,7 +860,8 @@ async function checkRules(): Promise<string> {
     await frames("completed footer", () => checkFooter(nextFooter, true));
     expectRule(
       "footer",
-      nextFooter.textContent?.includes("footer.ts") === true,
+
+      nextFooter.textContent?.includes("footer.ts"),
       "completion did not fill the reserved footer",
     );
     stream.push({ ...finishedNext, changes: [] });

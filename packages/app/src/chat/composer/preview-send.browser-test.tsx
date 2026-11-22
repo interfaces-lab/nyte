@@ -16,6 +16,7 @@ import { tabPlace } from "../../tabs/model.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { sessionRow, sessionView } from "../../../test/view-fixtures.ts";
+import { errorMessage } from "../../contract/errors.ts";
 
 const first = sessionRow("preview-first", { name: "First" });
 
@@ -54,10 +55,14 @@ installScripted(
 let renderFailure: unknown;
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
-    if (renderFailure !== undefined) throw renderFailure;
+    if (renderFailure !== undefined) {
+      throw renderFailure instanceof Error
+        ? renderFailure
+        : new Error(errorMessage(renderFailure), { cause: renderFailure });
+    }
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise((resolve) => window.requestAnimationFrame(resolve));

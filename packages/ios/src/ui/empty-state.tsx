@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { css, html } from "react-strict-dom";
-import { SymbolView, type SFSymbol } from "expo-symbols";
+import { SymbolView } from "expo-symbols";
+import type { SFSymbol } from "expo-symbols";
 import { textStyles, useTheme } from "../theme.ts";
 
 export function EmptyState({

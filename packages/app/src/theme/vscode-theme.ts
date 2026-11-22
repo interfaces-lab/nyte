@@ -162,8 +162,8 @@ function stripJsonc(text: string): string {
   const keepStrings = (_match: string, quoted: string | undefined): string => quoted ?? "";
 
   return text
-    .replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, keepStrings)
-    .replace(/("(?:[^"\\]|\\.)*")|,(?=\s*[}\]])/g, keepStrings);
+    .replaceAll(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, keepStrings)
+    .replaceAll(/("(?:[^"\\]|\\.)*")|,(?=\s*[}\]])/g, keepStrings);
 }
 
 function themeScheme(type: string | undefined, background: string): ColorScheme {
@@ -171,7 +171,7 @@ function themeScheme(type: string | undefined, background: string): ColorScheme 
 
   if (type === "dark" || type === "hc-black") return "dark";
   const digits = background.slice(1);
-  const wide = digits.length <= 4 ? digits.replace(/./g, "$&$&") : digits;
+  const wide = digits.length <= 4 ? digits.replaceAll(/./g, "$&$&") : digits;
   const channel = (start: number): number => Number.parseInt(wide.slice(start, start + 2), 16);
 
   return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4) < 128 ? "dark" : "light";

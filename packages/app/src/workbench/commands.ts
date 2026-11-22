@@ -34,8 +34,9 @@ export function launch(view: WorkbenchViewKey, kind: LaunchKind): void {
       : { kind: "add", tab },
   );
 
-  if (tab.kind === "terminal")
+  if (tab.kind === "terminal") {
     void terminalActions.create({ id: tab.id, workspacePath: workspacePathForView(view) ?? null });
+  }
 }
 
 /** Shows or hides a Code window's explorer. Another tab covering the Editor gives way to it with the explorer open. */
@@ -61,8 +62,9 @@ export function toggleExplorer(view: WorkbenchViewKey): void {
 export function revealChatPanel(view: WorkbenchViewKey): void {
   const layout = workbench.getView(view).layout;
 
-  if (layout.kind === "maximized")
+  if (layout.kind === "maximized") {
     workbench.dispatch(view, { kind: layout.narrow ? "show-chat" : "toggle-maximized" });
+  }
 }
 
 export function openUrl(view: WorkbenchViewKey, url: string, activate = true): void {
@@ -104,10 +106,11 @@ export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Prom
 
   const tab = workbench.getView(view).tabs.find((candidate) => candidate.id === id);
 
-  if (tab?.kind === "file")
+  if (tab?.kind === "file") {
     return fileActions.close(view, tab.id)
       ? { kind: "closed" }
       : { kind: "confirm", reason: "dirty" };
+  }
 
   const terminal = tab?.kind === "terminal" ? getTerminal(id) : undefined;
 
@@ -115,8 +118,9 @@ export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Prom
     terminal?.kind === "shell" &&
     terminal.state.kind === "running" &&
     !(await terminalActions.idle(id))
-  )
+  ) {
     return { kind: "confirm", reason: "running" };
+  }
 
   if (terminal !== undefined) {
     await endTerminal(view, id);
@@ -140,8 +144,9 @@ function closeEditor(view: WorkbenchViewKey): CloseOutcome {
     return { kind: "confirm", reason: "dirty" };
   }
 
-  for (const tab of workbench.getView(view).tabs)
+  for (const tab of workbench.getView(view).tabs) {
     if (tab.kind === "editor") workbench.dispatch(view, { kind: "close", id: tab.id });
+  }
 
   return { kind: "closed" };
 }
@@ -208,11 +213,12 @@ export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpene
 
         if (file.kind === "folder" && studio) return () => openInApp("code", null);
 
-        if (file.kind === "folder")
+        if (file.kind === "folder") {
           return () => {
             workbench.dispatch(view, { kind: "browse", root: FOLLOW_BROWSE });
             fileActions.reveal(view, file.displayPath);
           };
+        }
 
         return openFile(file.path, reference.lines);
       }

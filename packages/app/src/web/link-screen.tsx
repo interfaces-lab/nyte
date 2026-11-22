@@ -55,11 +55,13 @@ type Step =
 
 function lookupProblem(cause: unknown): string {
   if (cause instanceof BrokerError && cause.failure.kind === "refused") {
-    if (cause.failure.code === "not_found")
+    if (cause.failure.code === "not_found") {
       return "No host is waiting on that code. Check the code in the terminal; it expires five minutes after it was shown.";
+    }
 
-    if (cause.failure.code === "rate_limited")
+    if (cause.failure.code === "rate_limited") {
       return "Too many tries. Wait a minute, then try again.";
+    }
   }
 
   return accountProblem(cause);

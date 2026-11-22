@@ -26,8 +26,9 @@ function openHostPort(): Promise<PortEnd> {
       event.source !== window ||
       !Value.Check(HostPortAnswer, event.data) ||
       event.data.nonce !== nonce
-    )
+    ) {
       return;
+    }
     window.removeEventListener("message", receive);
     const [port] = event.ports;
 

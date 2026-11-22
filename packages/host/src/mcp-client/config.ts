@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { isJsonObject, McpExposureNameType, McpOAuthConfigType } from "@nyte-ai/schema";
-import { isJson } from "@nyte-ai/schema";
+import { isJsonObject, McpExposureNameType, McpOAuthConfigType, isJson } from "@nyte-ai/schema";
 import type {
   Json,
   McpChange,
@@ -62,7 +61,7 @@ type McpTransportConfig =
       readonly oauth: McpOAuthConfig;
     };
 
-export type McpServerEntry = {
+export interface McpServerEntry {
   readonly name: string;
   readonly scope: McpScope;
   readonly path: string;
@@ -73,30 +72,31 @@ export type McpServerEntry = {
   readonly description: string | null;
   readonly exposure: McpExposure;
   readonly toolExposure: readonly (readonly [pattern: string, exposure: McpExposure])[];
-};
+}
 
 export type McpFileContents =
   | { readonly kind: "missing" }
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "unreadable"; readonly message: string };
 
-export type McpFile = {
+export interface McpFile {
   readonly path: string;
   readonly scope: McpScope;
   readonly contents: McpFileContents;
-};
+}
 
-export type McpConfig = {
+export interface McpConfig {
   readonly servers: ReadonlyMap<string, McpServerEntry>;
   readonly issues: readonly ValidationIssue[];
-};
+}
 
 export async function readMcpFile(path: string): Promise<McpFileContents> {
   try {
     return { kind: "text", text: await readFile(path, "utf8") };
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return { kind: "missing" };
+    }
 
     return { kind: "unreadable", message: error instanceof Error ? error.message : String(error) };
   }
@@ -169,11 +169,11 @@ export function parseMcpConfig(files: readonly McpFile[]): McpConfig {
       if (raw.command === undefined && raw.url === undefined && raw.type === undefined) {
         const extra = Object.keys(raw).filter((field) => !OVERRIDE_KEYS.has(field));
 
-        if (file.scope !== "project" || base === undefined)
+        if (file.scope !== "project" || base === undefined) {
           fail([name], `${name} needs "command" or "url".`);
-        else if (extra.length > 0)
+        } else if (extra.length > 0) {
           fail([name], `An override of ${name} can only set enabled, exposure and toolExposure.`);
-        else servers.set(name, { ...base, ...settings(raw, base), override: file.path });
+        } else servers.set(name, { ...base, ...settings(raw, base), override: file.path });
 
         continue;
       }
@@ -204,16 +204,19 @@ export function parseMcpConfig(files: readonly McpFile[]): McpConfig {
 }
 
 function readTransport(raw: Static<typeof Entry>): McpTransportConfig | string {
-  if (raw.type === "sse")
+  if (raw.type === "sse") {
     return 'the SSE transport is not supported; use the server\'s streamable HTTP url, often ending in "/mcp".';
+  }
 
-  if (raw.command !== undefined && raw.url !== undefined)
+  if (raw.command !== undefined && raw.url !== undefined) {
     return 'set "command" or "url", not both.';
+  }
 
-  if (raw.command !== undefined && raw.type !== undefined && raw.type !== "stdio")
+  if (raw.command !== undefined && raw.type !== undefined && raw.type !== "stdio") {
     return `type ${raw.type} needs "url", not "command".`;
+  }
 
-  if (raw.command !== undefined)
+  if (raw.command !== undefined) {
     return {
       kind: "stdio",
       command: raw.command,
@@ -221,6 +224,7 @@ function readTransport(raw: Static<typeof Entry>): McpTransportConfig | string {
       env: raw.env ?? {},
       cwd: raw.cwd ?? null,
     };
+  }
 
   if (raw.url === undefined) return `type ${raw.type ?? "stdio"} needs "command" or "url".`;
 
@@ -228,8 +232,9 @@ function readTransport(raw: Static<typeof Entry>): McpTransportConfig | string {
 
   const url = URL.parse(raw.url);
 
-  if (url === null || (url.protocol !== "https:" && url.protocol !== "http:"))
+  if (url === null || (url.protocol !== "https:" && url.protocol !== "http:")) {
     return `${raw.url} is not an http or https URL.`;
+  }
 
   if (raw.command === undefined && raw.oauth?.callbackUrl !== undefined) {
     const callback = URL.parse(raw.oauth.callbackUrl);
@@ -238,8 +243,9 @@ function readTransport(raw: Static<typeof Entry>): McpTransportConfig | string {
       callback === null ||
       callback.protocol !== "http:" ||
       !["localhost", "127.0.0.1", "[::1]"].includes(callback.hostname)
-    )
+    ) {
       return "oauth.callbackUrl must be an http URL on localhost, 127.0.0.1 or [::1].";
+    }
   }
 
   if (raw.oauth?.authServerMetadataUrl !== undefined) {
@@ -249,8 +255,9 @@ function readTransport(raw: Static<typeof Entry>): McpTransportConfig | string {
       metadata === null ||
       (metadata.protocol !== "https:" &&
         !["localhost", "127.0.0.1", "[::1]"].includes(metadata.hostname))
-    )
+    ) {
       return "oauth.authServerMetadataUrl must use https, except on localhost.";
+    }
   }
 
   return { kind: "http", url: raw.url, headers: raw.headers ?? {}, oauth: raw.oauth ?? {} };
@@ -272,14 +279,15 @@ function settings(
 
 export async function planMcpEdit(
   path: string,
-  change: (servers: { readonly [name: string]: Json }) => { readonly [name: string]: Json } | null,
+  change: (servers: Readonly<Record<string, Json>>) => Readonly<Record<string, Json>> | null,
 ): Promise<
   { readonly kind: "planned"; readonly text: string } | Exclude<McpChange, { kind: "updated" }>
 > {
   const contents = await readMcpFile(path);
 
-  if (contents.kind === "unreadable")
+  if (contents.kind === "unreadable") {
     return { kind: "invalid", message: `${path} cannot be read: ${contents.message}` };
+  }
   let parsed: unknown = {};
 
   if (contents.kind === "text") {
@@ -290,12 +298,14 @@ export async function planMcpEdit(
     }
   }
 
-  if (!isJson(parsed) || !isJsonObject(parsed))
+  if (!isJson(parsed) || !isJsonObject(parsed)) {
     return { kind: "invalid", message: `${path} is not a JSON object.` };
+  }
   const servers = parsed.mcpServers ?? {};
 
-  if (!isJsonObject(servers))
+  if (!isJsonObject(servers)) {
     return { kind: "invalid", message: `${path} has an "mcpServers" that is not an object.` };
+  }
   const next = change(servers);
 
   if (next === null) return { kind: "missing" };

@@ -93,9 +93,9 @@ export interface ConnectorTiming {
   readonly stopTimeoutMs: number;
 }
 
-const KILL_GRACE_MS = 2_000;
+const KILL_GRACE_MS = 2000;
 
-const REAP_LIMIT_MS = 1_000;
+const REAP_LIMIT_MS = 1000;
 
 async function reap(pid: number | undefined): Promise<void> {
   if (pid === undefined || !signalGroup(pid, "SIGKILL")) return;
@@ -117,10 +117,10 @@ function signalGroup(pid: number, signal: NodeJS.Signals | 0): boolean {
 }
 
 const DEFAULT_TIMING: ConnectorTiming = {
-  retryDelaysMs: [1_000, 5_000, 30_000],
+  retryDelaysMs: [1000, 5000, 30_000],
   ingressTimeoutMs: 20_000,
   stableMs: 600_000,
-  stopTimeoutMs: 8_000,
+  stopTimeoutMs: 8000,
 };
 
 interface ConnectorOptions {

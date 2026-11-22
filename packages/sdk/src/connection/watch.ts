@@ -2,11 +2,11 @@ import type { HostView, HostViewWire, Json, QueuedMessage, SessionView } from "@
 import { closable, coalesce } from "@nyte-ai/core/client";
 import type { Rows } from "./rows.ts";
 
-export type Sink<T> = {
+export interface Sink<T> {
   next(value: T): void;
   end(): void;
   fail(error: Error): void;
-};
+}
 
 const DONE = { done: true, value: undefined } as const;
 

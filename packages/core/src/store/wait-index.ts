@@ -45,6 +45,11 @@ export function waitIndex(
           return [`${WAITS}job/${waited.job}/${tail(slot)}`];
         case "timer":
           return [`${TIME}${formatTime(waited.until)}/${tail(slot)}`];
+        default: {
+          const exhaustive: never = waited;
+
+          return exhaustive;
+        }
       }
     }),
     ...(deadline === null ? [] : [`${TIME}${formatTime(deadline)}/${tail("deadline")}`]),
@@ -71,13 +76,19 @@ export function readWoken(
 export function readIndexed(name: string): Indexed | null {
   const [slot, occurrence, call, session] = name.split("/").toReversed();
 
-  if (slot === undefined || occurrence === undefined || call === undefined || session === undefined)
+  if (
+    slot === undefined ||
+    occurrence === undefined ||
+    call === undefined ||
+    session === undefined
+  ) {
     return null;
+  }
 
   return {
     name,
     session: asId<"session">(session),
-    call: asId<"call">(call.replace(/%2F|%25/g, (escaped) => (escaped === "%2F" ? "/" : "%"))),
+    call: asId<"call">(call.replaceAll(/%2F|%25/g, (escaped) => (escaped === "%2F" ? "/" : "%"))),
     occurrence: Number(occurrence),
     target: slot === "deadline" || slot === "input" ? null : Number(slot),
   };

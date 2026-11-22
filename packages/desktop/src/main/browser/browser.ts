@@ -46,7 +46,7 @@ const FRAME_QUALITY = 80;
 
 const GUEST_WAIT_MS = 10_000;
 
-const UNBOUND_GUEST_MS = 5_000;
+const UNBOUND_GUEST_MS = 5000;
 
 function readOwner(path: string | null): BrowserOwner {
   return path === null ? { kind: "home" } : { kind: "project", path };
@@ -62,8 +62,9 @@ function reclaimable(surface: Surface): boolean {
     surface.captures > 0 ||
     surface.visible ||
     [...surface.holders.values()].some((holder) => holder.kind !== "session")
-  )
+  ) {
     return false;
+  }
 
   const contents = surface.guest;
 
@@ -79,21 +80,21 @@ function pinPreferences(preferences: WebPreferences, forced: WebPreferences): vo
 export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   readonly dependencies: BrowserSurfacesDependencies;
   readonly agent: BrowserAgent = new SurfaceAgent(this);
-  readonly #surfaces = new Map<string, Surface>();
-  readonly #byWebContents = new Map<number, Surface>();
-  readonly #downloads: BrowserDownloads;
-  readonly #guests: GuestSessions;
-  readonly #chromeFocus = new Map<HostWindow, string>();
-  readonly #announced = new Map<HostWindow, readonly BrowserGuest[]>();
-  #useClock = 0;
+  private readonly surfaces = new Map<string, Surface>();
+  private readonly byWebContents = new Map<number, Surface>();
+  private readonly downloads: BrowserDownloads;
+  private readonly guestSessions: GuestSessions;
+  private readonly chromeFocus = new Map<HostWindow, string>();
+  private readonly announced = new Map<HostWindow, readonly BrowserGuest[]>();
+  private useClock = 0;
 
   constructor(dependencies: BrowserSurfacesDependencies) {
     this.dependencies = dependencies;
-    this.#downloads = new BrowserDownloads((surface, event) => this.notify(surface, event));
-    this.#guests = new GuestSessions({
+    this.downloads = new BrowserDownloads((surface, event) => this.notify(surface, event));
+    this.guestSessions = new GuestSessions({
       dependencies,
-      downloads: this.#downloads,
-      surface: (id) => this.#byWebContents.get(id),
+      downloads: this.downloads,
+      surface: (id) => this.byWebContents.get(id),
       publish: (surface) => this.publish(surface),
     });
     dependencies.history.listen((owner, entries) =>
@@ -106,35 +107,35 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   blocking(url: string): BrowserSurfaceState["blocking"] {
-    return this.#guests.blocking(url);
+    return this.guestSessions.blocking(url);
   }
 
   blockedStyles(url: string): string {
-    return this.#guests.blockedStyles(url);
+    return this.guestSessions.blockedStyles(url);
   }
 
   surface(id: string): Surface | undefined {
-    return this.#surfaces.get(id);
+    return this.surfaces.get(id);
   }
 
   retain(id: string, holder: BrowserHolder, owner: BrowserOwner): Surface {
-    const surface = this.#surfaces.get(id) ?? this.#create(id, owner);
+    const surface = this.surfaces.get(id) ?? this.create(id, owner);
     surface.holders.set(holderKey(holder), holder);
 
     return surface;
   }
 
   release(id: string, holder: BrowserHolder): void {
-    const surface = this.#surfaces.get(id);
+    const surface = this.surfaces.get(id);
 
-    if (surface !== undefined) this.#released(surface, dropHolder(surface, holder));
+    if (surface !== undefined) this.released(surface, dropHolder(surface, holder));
   }
 
   place(surface: Surface): void {
-    this.#rehost(surface, undefined);
+    this.rehost(surface, undefined);
   }
 
-  #rehost(surface: Surface, away: HostWindow | undefined): void {
+  private rehost(surface: Surface, away: HostWindow | undefined): void {
     if (surface.destroyed) return;
     const current = surface.host;
 
@@ -151,13 +152,13 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     const wanted = kept ? current : found;
 
     if (wanted?.id !== current?.id) {
-      this.#unbind(surface);
+      this.unbind(surface);
       surface.host = wanted;
 
       if (current !== undefined) surface.generation += 1;
     }
 
-    this.#announce();
+    this.announce();
   }
 
   guest(surface: Surface, signal?: AbortSignal): Promise<WebContents | undefined> {
@@ -192,8 +193,9 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       published !== undefined &&
       published.window === surface.home &&
       Value.Equal(published.state, state)
-    )
+    ) {
       return;
+    }
     surface.published = { state, window: surface.home };
     this.notify(surface, { kind: "browser_changed", surface: surface.id, state });
   }
@@ -203,10 +205,10 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   load(surface: Surface, url: string): void {
-    void this.#navigate(surface, url);
+    void this.navigateTo(surface, url);
   }
 
-  #navigate(surface: Surface, url: string): Promise<void> {
+  private navigateTo(surface: Surface, url: string): Promise<void> {
     surface.error = undefined;
     surface.address = url;
     const contents = surface.guest;
@@ -218,13 +220,13 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       void contents.loadURL(url).catch(() => undefined);
     };
 
-    if (this.#guests.blockerSettled()) {
+    if (this.guestSessions.blockerSettled()) {
       go();
 
       return Promise.resolve();
     }
 
-    return this.#guests.ensureBlocker().then(go, go);
+    return this.guestSessions.ensureBlocker().then(go, go);
   }
 
   remember(surface: Surface, url: string): void {
@@ -236,17 +238,17 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   reclaimIdle(): void {
-    const idle = [...this.#surfaces.values()]
+    const idle = [...this.surfaces.values()]
       .filter(reclaimable)
       .sort((a, b) => a.lastUse - b.lastUse);
 
     for (const surface of idle.slice(0, Math.max(0, idle.length - WARM_POOL_LIMIT))) {
-      this.#destroy(surface);
+      this.destroy(surface);
     }
   }
 
   touch(surface: Surface): void {
-    surface.lastUse = ++this.#useClock;
+    surface.lastUse = ++this.useClock;
   }
 
   windowShown(surface: Surface): boolean {
@@ -271,11 +273,12 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   ): BrowserSurfaceState {
     const target = webUrl(input.url);
 
-    if (target === undefined)
+    if (target === undefined) {
       throw new ExpectedHostError({
         code: "invalid",
         message: "Only web addresses open in the browser panel.",
       });
+    }
 
     const surface = this.retain(
       input.surface,
@@ -294,7 +297,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   navigate(input: { readonly surface: string; readonly action: BrowserNavigationAction }): void {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
 
     const contents = surface?.guest;
 
@@ -368,7 +371,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     input: Parameters<BrowserBridge["menu"]>[0],
     window: HostWindow,
   ): ReturnType<BrowserBridge["menu"]> {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
     const contents = surface?.guest;
     const hasPage = contents !== undefined && !contents.isDestroyed() && contents.getURL() !== "";
 
@@ -384,21 +387,22 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     input: Parameters<BrowserBridge["perform"]>[0],
     window: HostWindow,
   ): ReturnType<BrowserBridge["perform"]> {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
     const owner = surface?.owner ?? readOwner(input.owner);
 
     if (input.action === "clear-history") {
       await this.dependencies.history.clear(owner);
 
-      for (const other of this.#surfaces.values()) {
+      for (const other of this.surfaces.values()) {
         const contents = other.guest;
 
         if (
           ownerPath(other.owner) !== ownerPath(owner) ||
           contents === undefined ||
           contents.isDestroyed()
-        )
+        ) {
           continue;
+        }
         contents.navigationHistory.clear();
         other.visited = undefined;
         this.publish(other);
@@ -410,19 +414,19 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     return performBrowserAction({
       action: input.action,
       contents: surface?.guest,
-      guest: this.#guests.forOwner(owner).session,
+      guest: this.guestSessions.forOwner(owner).session,
       window: this.dependencies.window(window),
     });
   }
 
   close(input: { readonly surface: string }, window: HostWindow): void {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
 
-    if (surface !== undefined) this.#released(surface, dropWindowHolders(surface, window));
+    if (surface !== undefined) this.released(surface, dropWindowHolders(surface, window));
   }
 
   async captureFrame(input: { readonly surface: string }): Promise<BrowserCapture | undefined> {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
     const contents = surface?.guest;
 
     if (surface === undefined || contents === undefined || contents.isDestroyed()) return undefined;
@@ -431,7 +435,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
 
     if (url === "") return undefined;
     surface.captures += 1;
-    this.#announce();
+    this.announce();
 
     try {
       const image = await capturePageRetrying(contents);
@@ -448,23 +452,24 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       };
     } finally {
       surface.captures -= 1;
-      this.#announce();
+      this.announce();
     }
   }
 
   design(input: { readonly surface: string; readonly change: BrowserDesignChange }): void {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
 
     if (surface !== undefined) changeDesign(this, surface, input.change);
   }
 
   find(input: Parameters<BrowserBridge["find"]>[0]): ReturnType<BrowserBridge["find"]> {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
     const contents = surface?.guest;
     const none = { active: 0, total: 0 };
 
-    if (surface === undefined || contents === undefined || contents.isDestroyed())
+    if (surface === undefined || contents === undefined || contents.isDestroyed()) {
       return Promise.resolve(none);
+    }
     surface.find?.resolve(none);
     surface.find = undefined;
 
@@ -488,11 +493,11 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   cancelDownload(input: { readonly surface: string; readonly id: string }): void {
-    this.#downloads.cancel(input.id);
+    this.downloads.cancel(input.id);
   }
 
   login(input: Parameters<BrowserBridge["login"]>[0]): void {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
     const answer = surface?.login;
 
     if (surface === undefined || answer === undefined) return;
@@ -513,21 +518,21 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   guests(window: HostWindow): readonly BrowserGuest[] {
-    for (const surface of this.#surfaces.values()) {
+    for (const surface of this.surfaces.values()) {
       if (surface.host === undefined) this.place(surface);
     }
 
-    const guests = [...this.#surfaces.values()].flatMap((surface) =>
+    const guests = [...this.surfaces.values()].flatMap((surface) =>
       surface.host?.id === window ? [surfaceGuest(surface)] : [],
     );
 
-    this.#announced.set(window, guests);
+    this.announced.set(window, guests);
 
     return guests;
   }
 
   attach(input: Parameters<BrowserBridge["attach"]>[0], window: HostWindow): void {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
     const contents = webContents.fromId(input.webContentsId);
 
     const ours =
@@ -545,18 +550,19 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     const free =
       ours &&
       (surface.guest === undefined || surface.guest.isDestroyed()) &&
-      !this.#byWebContents.has(contents.id);
+      !this.byWebContents.has(contents.id);
 
-    if (!free)
+    if (!free) {
       throw new ExpectedHostError({
         code: "invalid",
         message: "This page can't attach to that browser tab.",
       });
-    this.#bind(surface, contents);
+    }
+    this.bind(surface, contents);
   }
 
   setShown(message: BrowserShownMessage, window: HostWindow): void {
-    const surface = this.#surfaces.get(message.surface);
+    const surface = this.surfaces.get(message.surface);
 
     if (surface === undefined) return;
     const shown = reportVisibility(surface, window, message.visible);
@@ -571,7 +577,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   setEntered(input: Parameters<BrowserBridge["setEntered"]>[0], window: HostWindow): void {
-    const surface = this.#surfaces.get(input.surface);
+    const surface = this.surfaces.get(input.surface);
 
     if (surface === undefined || surface.home !== window) return;
     enterBoard(surface, input.entered && surface.visible);
@@ -584,7 +590,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       if (
         params.src !== "about:blank" ||
         partition === undefined ||
-        !this.#guests.hosts(partition)
+        !this.guestSessions.hosts(partition)
       ) {
         event.preventDefault();
 
@@ -613,98 +619,101 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     });
     window.webContents.on("did-attach-webview", (_event, contents) => {
       guardGuest(contents);
-      setTimeout(() => this.#closeUnbound(contents, window), UNBOUND_GUEST_MS);
+      setTimeout(() => this.closeUnbound(contents, window), UNBOUND_GUEST_MS);
     });
     window.webContents.ipc.on(WINDOW_ZOOM_CHANNEL, () => {
-      for (const surface of this.#surfaces.values()) {
+      for (const surface of this.surfaces.values()) {
         const contents = surface.guest;
 
-        if (surface.host?.window === window && contents !== undefined && !contents.isDestroyed())
+        if (surface.host?.window === window && contents !== undefined && !contents.isDestroyed()) {
           contents.setZoomFactor(surface.zoom);
+        }
       }
     });
   }
 
   setFocus(message: BrowserFocusMessage, window: HostWindow): void {
     if (!message.focused) {
-      if (this.#chromeFocus.get(window) === message.surface) this.#chromeFocus.delete(window);
+      if (this.chromeFocus.get(window) === message.surface) this.chromeFocus.delete(window);
 
       return;
     }
 
-    this.#chromeFocus.set(window, message.surface);
+    this.chromeFocus.set(window, message.surface);
     const host = this.dependencies.window(window);
 
-    if (host !== undefined && !host.isDestroyed() && !host.webContents.isFocused())
+    if (host !== undefined && !host.isDestroyed() && !host.webContents.isFocused()) {
       host.webContents.focus();
+    }
   }
 
   focused(window: HostWindow | undefined): string | undefined {
     const focusedContents = webContents.getFocusedWebContents();
 
-    for (const surface of this.#surfaces.values()) {
+    for (const surface of this.surfaces.values()) {
       const contents = surface.guest;
       const host = surface.host;
 
       if (contents === undefined || contents.isDestroyed() || host === undefined) continue;
 
-      if (focusedContents !== null && contents.devToolsWebContents === focusedContents)
+      if (focusedContents !== null && contents.devToolsWebContents === focusedContents) {
         return surface.id;
+      }
 
       const hosted = window === undefined ? host.window.isFocused() : host.id === window;
 
       if (hosted && contents.focusedFrame !== null) return surface.id;
     }
 
-    return window === undefined ? undefined : this.#chromeFocus.get(window);
+    return window === undefined ? undefined : this.chromeFocus.get(window);
   }
 
   settingsChanged(): void {
-    for (const surface of this.#surfaces.values()) this.publish(surface);
+    for (const surface of this.surfaces.values()) this.publish(surface);
   }
 
   releaseWindow(window: HostWindow): void {
-    this.#chromeFocus.delete(window);
-    this.#announced.delete(window);
+    this.chromeFocus.delete(window);
+    this.announced.delete(window);
 
-    for (const surface of this.#surfaces.values()) {
+    for (const surface of this.surfaces.values()) {
       if (surface.host?.id === window) {
-        this.#unbind(surface);
+        this.unbind(surface);
         surface.host = undefined;
       }
 
       if (surface.home === window) enterBoard(surface, false);
 
-      if (leaveWindow(surface, window) === "unheld") this.#destroy(surface);
+      if (leaveWindow(surface, window) === "unheld") this.destroy(surface);
     }
 
-    for (const surface of this.#surfaces.values()) {
-      if (surface.host === undefined) this.#rehost(surface, window);
+    for (const surface of this.surfaces.values()) {
+      if (surface.host === undefined) this.rehost(surface, window);
     }
 
     this.reclaimIdle();
-    this.#announce();
+    this.announce();
   }
 
-  #closeUnbound(contents: WebContents, window: BrowserWindow): void {
-    if (contents.isDestroyed() || this.#byWebContents.has(contents.id)) return;
+  private closeUnbound(contents: WebContents, window: BrowserWindow): void {
+    if (contents.isDestroyed() || this.byWebContents.has(contents.id)) return;
     contents.close();
 
     if (window.isDestroyed()) return;
     const id = window.webContents.id;
 
-    for (const surface of this.#surfaces.values()) {
+    for (const surface of this.surfaces.values()) {
       if (surface.host?.id === id && surface.guest === undefined) surface.generation += 1;
     }
 
-    this.#announce();
+    this.announce();
   }
 
-  #released(surface: Surface, held: ReturnType<typeof dropHolder>): void {
+  private released(surface: Surface, held: ReturnType<typeof dropHolder>): void {
     if (held === "absent") return;
 
     if (held === "unheld") {
-      this.#destroy(surface);
+      this.destroy(surface);
 
       return;
     }
@@ -713,12 +722,12 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     this.reclaimIdle();
   }
 
-  #create(id: string, owner: BrowserOwner): Surface {
+  private create(id: string, owner: BrowserOwner): Surface {
     const surface: Surface = {
       id,
       holders: new Map(),
       runtime: createSurfaceRuntime(),
-      guestSession: this.#guests.forOwner(owner),
+      guestSession: this.guestSessions.forOwner(owner),
       guest: undefined,
       waiting: new Set(),
       generation: 0,
@@ -730,7 +739,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       destroyed: false,
       operations: 0,
       captures: 0,
-      lastUse: ++this.#useClock,
+      lastUse: ++this.useClock,
       blocked: 0,
       error: undefined,
       owner,
@@ -751,28 +760,28 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       published: undefined,
     };
 
-    this.#surfaces.set(id, surface);
+    this.surfaces.set(id, surface);
 
     return surface;
   }
 
-  #bind(surface: Surface, contents: WebContents): void {
+  private bind(surface: Surface, contents: WebContents): void {
     surface.guest = contents;
-    this.#byWebContents.set(contents.id, surface);
+    this.byWebContents.set(contents.id, surface);
     wireSurface(this, surface, contents);
     contents.once("destroyed", () => {
       if (surface.guest !== contents) return;
-      this.#unbind(surface);
+      this.unbind(surface);
 
       if (surface.destroyed || surface.host === undefined) return;
       surface.generation += 1;
-      this.#announce();
+      this.announce();
     });
     contents.setBackgroundThrottling(surface.operations === 0);
 
     if (surface.zoom !== 1) contents.setZoomFactor(surface.zoom);
     const address = surface.address;
-    const started = address === undefined ? Promise.resolve() : this.#navigate(surface, address);
+    const started = address === undefined ? Promise.resolve() : this.navigateTo(surface, address);
 
     void started.then(() => {
       if (surface.guest !== contents) return;
@@ -782,15 +791,15 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     });
   }
 
-  #unbind(surface: Surface): void {
+  private unbind(surface: Surface): void {
     const contents = surface.guest;
 
     if (contents === undefined) return;
     surface.guest = undefined;
 
-    for (const [id, bound] of this.#byWebContents) {
+    for (const [id, bound] of this.byWebContents) {
       if (bound !== surface) continue;
-      this.#byWebContents.delete(id);
+      this.byWebContents.delete(id);
       surface.guestSession.upgrades.delete(id);
     }
 
@@ -804,8 +813,9 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     surface.popup = undefined;
     const window = surface.host?.window;
 
-    if (surface.windowWasWindowed && window !== undefined && !window.isDestroyed())
+    if (surface.windowWasWindowed && window !== undefined && !window.isDestroyed()) {
       window.setFullScreen(false);
+    }
     surface.fullscreen = false;
     surface.windowWasWindowed = false;
 
@@ -813,12 +823,12 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     this.publish(surface);
   }
 
-  #announce(): void {
+  private announce(): void {
     const lists = new Map<HostWindow, BrowserGuest[]>(
-      [...this.#announced.keys()].map((window) => [window, []]),
+      [...this.announced.keys()].map((window) => [window, []]),
     );
 
-    for (const surface of this.#surfaces.values()) {
+    for (const surface of this.surfaces.values()) {
       const host = surface.host;
 
       if (host === undefined) continue;
@@ -826,26 +836,26 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     }
 
     for (const [window, guests] of lists) {
-      const announced = this.#announced.get(window);
+      const announced = this.announced.get(window);
 
       if (announced !== undefined && Value.Equal(announced, guests)) continue;
-      this.#announced.set(window, guests);
+      this.announced.set(window, guests);
       this.dependencies.emit({ kind: "browser_guests", guests }, window);
     }
   }
 
-  #destroy(surface: Surface): void {
+  private destroy(surface: Surface): void {
     if (surface.destroyed) return;
     surface.destroyed = true;
-    this.#surfaces.delete(surface.id);
+    this.surfaces.delete(surface.id);
 
-    for (const [window, id] of this.#chromeFocus) {
-      if (id === surface.id) this.#chromeFocus.delete(window);
+    for (const [window, id] of this.chromeFocus) {
+      if (id === surface.id) this.chromeFocus.delete(window);
     }
 
     for (const settle of surface.waiting) settle(undefined);
-    this.#unbind(surface);
+    this.unbind(surface);
     surface.host = undefined;
-    this.#announce();
+    this.announce();
   }
 }

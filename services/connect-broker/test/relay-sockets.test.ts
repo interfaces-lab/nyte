@@ -64,10 +64,11 @@ describe("socket channels", () => {
     for (const chunk of chunks) desktop.send({ t: "message", ch, ...chunk });
     expect(await arrived).toBe(large);
 
-    for (const chunk of chunks)
+    for (const chunk of chunks) {
       expect((await desktop.next("credit", (credit) => credit.ch === ch)).bytes).toBe(
         decodeChunk(chunk.data)?.byteLength,
       );
+    }
 
     socket.send('{"c":"e","id":1}');
     const sent = await desktop.next("message", (message) => message.ch === ch);

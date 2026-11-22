@@ -43,7 +43,7 @@ function check(condition: boolean, message: string): void {
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);

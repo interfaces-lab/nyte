@@ -15,7 +15,7 @@ test("a reply's age reads just now under a minute, then minutes through years", 
   const ago = (ms: number) => replyAge(now - ms, now);
 
   expect(ago(59_999)).toBe("Just now");
-  expect(ago(-5_000)).toBe("Just now");
+  expect(ago(-5000)).toBe("Just now");
   expect(ago(4 * 60_000)).toBe("4m ago");
   expect(ago(4 * 3_600_000)).toBe("4h ago");
   expect(ago(3 * 86_400_000)).toBe("3d ago");

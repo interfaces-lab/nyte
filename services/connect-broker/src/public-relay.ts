@@ -56,13 +56,15 @@ function admit(context: Context, request: Request): Admission {
   if (origin !== null && !context.config.webOrigins.includes(origin)) return refused("forbidden");
   const declared = request.headers.get("content-length");
 
-  if (declared !== null && !(Number(declared) <= RELAY_BODY_LIMIT_BYTES))
+  if (declared !== null && !(Number(declared) <= RELAY_BODY_LIMIT_BYTES)) {
     return refused("payload_too_large");
+  }
   const admission = PUBLIC_RELAY_BEARER[target.kind];
   const token = bearerToken(request.headers);
 
-  if (admission !== "none" && (token === undefined || !Value.Check(DeviceToken, token)))
+  if (admission !== "none" && (token === undefined || !Value.Check(DeviceToken, token))) {
     return refused("unauthorized");
+  }
 
   return {
     kind: "admitted",
@@ -142,8 +144,9 @@ export async function relayPublic(context: Context, request: Request): Promise<R
 
     return passThrough(response, { onCancel: cancel });
   } catch (error) {
-    if (!request.signal.aborted)
+    if (!request.signal.aborted) {
       context.log.warn("relay.forward_failed", { environmentId, error: errorName(error) });
+    }
     cancel();
 
     return refuse("closed");

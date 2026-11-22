@@ -19,12 +19,12 @@ import packageJson from "../package.json" with { type: "json" };
 
 const REPOSITORY = "interfaces-lab/nyte";
 
-const RELEASE_TARGETS = ["darwin-arm64", "linux-arm64", "linux-x64"];
+const RELEASE_TARGETS = new Set(["darwin-arm64", "linux-arm64", "linux-x64"]);
 
 export function platformTarget(platform = process.platform, arch = process.arch) {
   const target = `${platform}-${arch}`;
 
-  return RELEASE_TARGETS.includes(target) ? target : undefined;
+  return RELEASE_TARGETS.has(target) ? target : undefined;
 }
 
 export function releaseAssetName(version, target) {

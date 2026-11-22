@@ -122,8 +122,9 @@ export function NyteConnection({
     );
   }
 
-  if (view.kind === "linked" && !trayOpen)
+  if (view.kind === "linked" && !trayOpen) {
     return <LinkedConnection view={view} connect={connect} />;
+  }
 
   return (
     <SettingsSection title={TITLE}>

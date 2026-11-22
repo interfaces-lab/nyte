@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import type OpenAI from "openai";
 import { Value } from "typebox/value";
 import type {
   ChatCompletionAssistantMessageParam,
@@ -33,10 +33,10 @@ import { transformMessages } from "./transform-messages.ts";
 import {
   parseOpenAIReasoningDetails,
   parseLegacyEncryptedReasoningDetail,
-  type OpenAICompletionsReasoningField,
   OpenAICompletionsReasoningFieldSchema,
   parseCopilotReasoningOpaque,
 } from "./openai-completions-reasoning.ts";
+import type { OpenAICompletionsReasoningField } from "./openai-completions-reasoning.ts";
 
 interface ConvertCompletionsMessagesOptions {
   grammarToolInputProperties?: ReadonlyMap<string, string>;
@@ -94,11 +94,11 @@ type ChatCompletionInstructionMessageParam =
   | ChatCompletionSystemMessageParam
   | KimiToolSystemMessageParam;
 
-type KimiToolSystemMessageParam = {
+interface KimiToolSystemMessageParam {
   role: "system";
   content?: never;
   tools?: OpenAI.Chat.Completions.ChatCompletionTool[];
-};
+}
 
 export type CompletionsMessage = ChatCompletionMessageParam | KimiToolSystemMessageParam;
 
@@ -193,11 +193,13 @@ function addCacheControlToLastTool(
   tools: OpenAI.Chat.Completions.ChatCompletionTool[] | undefined,
   cacheControl: OpenAICompatCacheControl,
 ): void {
-  if (!tools || tools.length === 0) {
+  const last = tools?.at(-1);
+
+  if (last === undefined) {
     return;
   }
 
-  Object.assign(tools[tools.length - 1], { cache_control: cacheControl });
+  Object.assign(last, { cache_control: cacheControl });
 }
 
 function addCacheControlToMessage(
@@ -248,8 +250,8 @@ function addCacheControlToTextContent(
 function normalizeToolCallId(id: string, provider: string): string {
   if (id.includes("|")) {
     const [rawCallId, ...itemParts] = id.split("|");
-    const callId = rawCallId.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const itemId = itemParts.join("|").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const callId = rawCallId.replaceAll(/[^a-zA-Z0-9_-]/g, "_");
+    const itemId = itemParts.join("|").replaceAll(/[^a-zA-Z0-9_-]/g, "_");
     const combinedId = itemId.length > 0 ? `${callId}_${itemId}` : callId;
 
     if (combinedId.length <= 40) {
@@ -331,14 +333,13 @@ export function convertMessages(
                 type: "text",
                 text: sanitizeSurrogates(item.text),
               } satisfies ChatCompletionContentPartText;
-            } else {
-              return {
-                type: "image_url",
-                image_url: {
-                  url: `data:${item.mimeType};base64,${item.data}`,
-                },
-              } satisfies ChatCompletionContentPartImage;
             }
+            return {
+              type: "image_url",
+              image_url: {
+                url: `data:${item.mimeType};base64,${item.data}`,
+              },
+            } satisfies ChatCompletionContentPartImage;
           });
 
         if (content.length === 0) continue;
@@ -485,7 +486,7 @@ export function convertMessages(
 
       params.push(assistantMsg);
     } else if (msg.role === "toolResult") {
-      const imageBlocks: Array<{ type: "image_url"; image_url: { url: string } }> = [];
+      const imageBlocks: { type: "image_url"; image_url: { url: string } }[] = [];
       const deferredToolNames = new Set<string>();
       let j = i;
 
@@ -607,7 +608,7 @@ export function convertTools(
       };
     }
 
-    const strict = resolveJsonSchemaStrictSampling(tool, compat.supportsStrictMode !== false);
+    const strict = resolveJsonSchemaStrictSampling(tool, compat.supportsStrictMode);
 
     return {
       type: "function",
@@ -615,7 +616,7 @@ export function convertTools(
         name: tool.name,
         description: tool.description,
         parameters: getJsonSchemaToolParameters(tool, strict),
-        ...(compat.supportsStrictMode !== false && { strict: strict ?? false }),
+        ...(compat.supportsStrictMode && { strict: strict ?? false }),
       },
     };
   });

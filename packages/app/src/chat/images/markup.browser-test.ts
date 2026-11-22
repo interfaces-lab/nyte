@@ -185,17 +185,19 @@ export async function run(): Promise<string> {
         `${row.name}: the PNG keeps the source size`,
       );
 
-      for (const point of row.on)
+      for (const point of row.on) {
         check(
           differs(output.pixel(point[0], point[1]), base.pixel(point[0], point[1]), 10),
           `${tone} ${row.name}: the PNG contains its mark at ${point.join(",")}`,
         );
+      }
 
-      for (const point of row.off)
+      for (const point of row.off) {
         check(
           !differs(output.pixel(point[0], point[1]), base.pixel(point[0], point[1]), 0),
           `${tone} ${row.name}: the PNG leaves unmarked pixels alone at ${point.join(",")}`,
         );
+      }
     }
   }
 
@@ -225,11 +227,12 @@ export async function run(): Promise<string> {
       `${row.name}: the PNG is ${row.size.join(" × ")}, got ${output.width} × ${output.height}`,
     );
 
-    for (const point of row.at)
+    for (const point of row.at) {
       check(
         !differs(output.pixel(point[0], point[1]), corner, 6) === point[2],
         `${row.name}: pixel ${point[0]},${point[1]} ${point[2] ? "comes from" : "is outside"} the coloured quadrant`,
       );
+    }
   }
 
   return "passed";

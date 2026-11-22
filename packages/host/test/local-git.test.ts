@@ -175,15 +175,17 @@ describe.skipIf(!hasGit)("localGit", () => {
     const { root, git } = await repository();
     await mkdir(join(root, "many"));
 
-    for (let index = 0; index < 40; index += 1)
+    for (let index = 0; index < 40; index += 1) {
       await writeFile(join(root, "many", `f${index}.txt`), "base\n");
+    }
     await writeFile(join(root, "space.txt"), "a b\n");
     await writeFile(join(root, "pic.bin"), new Uint8Array([0, 1, 2, 3]));
     sh(root, "add", "-A");
     sh(root, "commit", "-q", "-m", "more");
 
-    for (let index = 0; index < 40; index += 1)
+    for (let index = 0; index < 40; index += 1) {
       await writeFile(join(root, "many", `f${index}.txt`), `base\nline ${index}\n`);
+    }
     await writeFile(join(root, "a.txt"), "one\nTWO\nthree");
     await writeFile(join(root, "space.txt"), "a  b\n");
     await writeFile(join(root, "pic.bin"), new Uint8Array([0, 1, 2, 4]));

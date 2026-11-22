@@ -60,11 +60,13 @@ serve("ci", {
 
     if (params?.name === "list_check_runs") return text(JSON.stringify(CHECK_RUNS));
 
-    if (params?.name !== "get_job_logs")
+    if (params?.name !== "get_job_logs") {
       return { isError: true, ...text(`No tool ${params?.name}.`) };
+    }
 
-    if (!CHECK_RUNS.some((run) => run.id === args.job_id))
+    if (!CHECK_RUNS.some((run) => run.id === args.job_id)) {
       return { isError: true, ...text(`No job ${args.job_id}.`) };
+    }
     const log = args.job_id === 2 ? ciLog(Number(env.CI_LOG_BYTES) || undefined) : "lint ok\n";
 
     return text(

@@ -1,4 +1,5 @@
-import { create, props, type StyleXStyles } from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
+import type { StyleXStyles } from "@stylexjs/stylex";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { Button } from "@nyte-ai/ui/button";
@@ -171,8 +172,9 @@ function backgroundLayers(element: Element): string[] {
   const computed = getComputedStyle(element);
   const overlay = computed.backgroundImage.match(/^linear-gradient\((.+), \1\)$/u)?.[1];
 
-  if (computed.backgroundImage !== "none" && overlay === undefined)
+  if (computed.backgroundImage !== "none" && overlay === undefined) {
     throw new Error(`Unexpected count background: ${computed.backgroundImage}`);
+  }
 
   return [
     ...(element.parentElement === null ? [] : backgroundLayers(element.parentElement)),
@@ -390,8 +392,9 @@ export async function run(): Promise<string> {
     for (const control of document.querySelectorAll("[data-count-case]")) {
       const stats = control.querySelector('[aria-label="86 added, 24 removed"]');
 
-      if (stats === null || stats.children.length !== 2)
+      if (stats === null || stats.children.length !== 2) {
         throw new Error("Missing ChangeStats counts");
+      }
 
       const neutral = control.matches(":active, [aria-expanded=true], [data-highlighted]");
       const palette = [reference("success"), reference("danger")];

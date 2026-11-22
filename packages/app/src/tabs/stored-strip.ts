@@ -179,8 +179,9 @@ function migrateLayout(layout: Static<typeof earlierLayoutSchema>): Layout<PaneC
     focusedSelection.kind === "session" &&
     otherSelection.kind === "session" &&
     focusedSelection.sessionId === otherSelection.sessionId
-  )
+  ) {
     return singlePane(focused, focusedSelection);
+  }
 
   const trailing = layout.leading === "primary" ? "secondary" : "primary";
 

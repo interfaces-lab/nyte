@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const packages = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const packages = resolve(import.meta.dirname, "../..");
 
 const WALKED: Readonly<Record<string, string>> = {
   "@nyte-ai/core": "core/src/index.ts",

@@ -90,8 +90,9 @@ for (const { directory, manifest } of manifests) {
     for (const [name, range] of Object.entries(manifest[field] ?? {})) {
       const dependency = byName.get(name);
 
-      if (dependency?.manifest.private)
+      if (dependency?.manifest.private) {
         throw new Error(`${manifest.name} depends on private ${name}`);
+      }
 
       if (range.startsWith("workspace:") && dependency === undefined) {
         throw new Error(`${manifest.name} has unknown workspace dependency ${name}`);

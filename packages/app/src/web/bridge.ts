@@ -28,7 +28,7 @@ export interface WebBridge {
   ): Promise<Pick<SdkConnection, "hostId" | "publicKey">>;
 }
 
-const DIRECT_MS = 4_000;
+const DIRECT_MS = 4000;
 
 const NOT_CONNECTED = "The app is not connected to a server.";
 

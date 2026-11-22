@@ -1,4 +1,5 @@
-import { allDesignPages, type DocPage } from "./docs";
+import { allDesignPages } from "./docs";
+import type { DocPage } from "./docs";
 
 export interface CatalogEntry {
   readonly page: DocPage;

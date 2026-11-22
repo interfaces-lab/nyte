@@ -82,8 +82,9 @@ for (const preference of [
   preferences.reduceTransparency,
   preferences.codeBlockWordWrap,
   preferences.chatWidth,
-])
+]) {
   preference.subscribe(refresh);
+}
 
 colorSchemeQuery.addEventListener("change", refresh);
 

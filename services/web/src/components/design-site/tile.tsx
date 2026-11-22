@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { pageSlug, type CatalogEntry } from "~/lib/design-catalog";
+import { pageSlug } from "~/lib/design-catalog";
+import type { CatalogEntry } from "~/lib/design-catalog";
 import { Specimen } from "./specimens";
 
 export function SpecimenTile({ entry }: { entry: CatalogEntry }) {

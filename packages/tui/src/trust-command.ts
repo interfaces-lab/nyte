@@ -40,7 +40,7 @@ export async function trustCommand(input: TrustInput): Promise<void> {
   const yes = args.has("yes");
   const shown = printable(path);
 
-  if (!yes && !out.mode.interactive)
+  if (!yes && !out.mode.interactive) {
     throw new CliError(
       "missing_input",
       `Can't trust ${shown} without --yes in non-interactive mode.`,
@@ -53,6 +53,7 @@ export async function trustCommand(input: TrustInput): Promise<void> {
         ],
       },
     );
+  }
 
   const host = await input.connection();
   const before = await readFolder(host, path);
@@ -102,14 +103,16 @@ async function resolveFolder(
   const real = await realpath(absolute).catch(() => null);
   const directory = real !== null && (await stat(real)).isDirectory();
 
-  if (real === null || !directory)
+  if (real === null || !directory) {
     throw new CliError("not_found", `Can't find a folder at ${printable(absolute)}.`);
+  }
 
-  if (real === (await realpath(homedir())))
+  if (real === (await realpath(homedir()))) {
     throw new CliError(
       "invalid_arguments",
       `Can't ${verb} your home folder. Nyte reads its .nyte files as your user files.`,
     );
+  }
 
   return real;
 }
@@ -130,11 +133,12 @@ async function decide(host: Connection, folder: Folder, trusted: boolean): Promi
   const workspace = host.workspace(await addFolder(host, folder.path));
   const outcome = await workspace.update({ projectResources: trusted });
 
-  if (outcome.kind === "missing")
+  if (outcome.kind === "missing") {
     throw new CliError(
       "failed",
       `Couldn't save the decision. Nyte forgot ${printable(folder.path)} meanwhile.`,
     );
+  }
   const info = await workspace.info();
 
   return { ...folder, decision: info.projectResources, trusted: info.trusted };

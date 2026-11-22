@@ -15,8 +15,9 @@ async function sourceIdentity() {
     encoding: "utf8",
   });
 
-  if (status.trim() !== "")
+  if (status.trim() !== "") {
     throw new Error("Desktop assets require a clean checkout. Use a separate worktree.");
+  }
 
   for (const name of ["canvas", "app"]) {
     const entries = await readdir(join(root, "packages", name));
@@ -25,10 +26,11 @@ async function sourceIdentity() {
       entries.some((entry) =>
         [".env", ".env.local", ".env.production", ".env.production.local"].includes(entry),
       )
-    )
+    ) {
       throw new Error(
         `Remove packages/${name}/.env build files and pass VITE_ configuration through the environment.`,
       );
+    }
   }
 
   return {
@@ -47,8 +49,9 @@ async function externalDirectory(directory) {
   const absolute = join(await realpath(dirname(resolved)), basename(resolved));
   const path = relative(root, absolute);
 
-  if (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path))
+  if (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path)) {
     throw new Error("Keep the desktop asset bundle outside the checkout.");
+  }
 
   return absolute;
 }
@@ -80,15 +83,17 @@ async function inventory(directory) {
   }
 
   for (const path of ["packages", "packages/canvas", "packages/app"]) {
-    if (!(await lstat(join(directory, path))).isDirectory())
+    if (!(await lstat(join(directory, path))).isDirectory()) {
       throw new Error(`Desktop asset directory is not a regular directory: ${path}`);
+    }
   }
 
   for (const output of outputs) await visit(output);
 
   for (const entry of ["packages/canvas/dist/shell/index.html", "packages/app/dist/index.html"]) {
-    if (!files.some((file) => file.path === entry))
+    if (!files.some((file) => file.path === entry)) {
       throw new Error(`Missing desktop asset: ${entry}`);
+    }
   }
 
   return files;
@@ -113,15 +118,18 @@ async function buildDesktopAssets(directory) {
 
     if (result.error) throw result.error;
 
-    if (result.status !== 0)
+    if (result.status !== 0) {
       throw new Error(`${name} build failed. No desktop assets were exported.`);
+    }
   }
 
-  if (!isDeepStrictEqual(identity, await sourceIdentity()))
+  if (!isDeepStrictEqual(identity, await sourceIdentity())) {
     throw new Error("The source or build configuration changed while building desktop assets.");
+  }
 
-  for (const output of outputs)
+  for (const output of outputs) {
     await cp(join(root, output), join(destination, output), { recursive: true });
+  }
 
   await writeFile(
     join(destination, "manifest.json"),
@@ -140,16 +148,18 @@ async function buildDesktopAssets(directory) {
 export async function restoreDesktopAssets(directory) {
   const source = await externalDirectory(directory);
 
-  if (!(await lstat(source)).isDirectory())
+  if (!(await lstat(source)).isDirectory()) {
     throw new Error("The desktop asset bundle must be a regular directory.");
+  }
 
   const manifest = JSON.parse(await readFile(join(source, "manifest.json"), "utf8"));
   const expected = { ...(await sourceIdentity()), files: await inventory(source) };
 
-  if (!isDeepStrictEqual(manifest, expected))
+  if (!isDeepStrictEqual(manifest, expected)) {
     throw new Error(
       "Desktop assets do not match this commit, lockfile, VITE_ configuration or file checksums. Rebuild the bundle from this checkout.",
     );
+  }
 
   for (const output of outputs) {
     await rm(join(root, output), { recursive: true, force: true });

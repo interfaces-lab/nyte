@@ -92,11 +92,12 @@ export function headHandle(
         context.origin === null &&
         context.authority.has("owner") &&
         (patch.model !== undefined || patch.thinking !== undefined)
-      )
+      ) {
         await kernel.rememberChoice(
           outcome.selected,
           patch.model === undefined ? "thinking" : "model",
         );
+      }
 
       return outcome;
     },
@@ -130,8 +131,9 @@ export async function createHead(
     const from = input?.from ?? createPosition(main.id);
     const source = readPositionCommit(from);
 
-    if (source !== null && (await readCommit(kernel.store, source)) === null)
+    if (source !== null && (await readCommit(kernel.store, source)) === null) {
       return { kind: "missing-source" };
+    }
     const at = Date.now();
 
     const record: SessionRecord = {
@@ -202,8 +204,9 @@ export async function mergeHead(
     liveRun(kernel.store, session, stack.parent),
   ]);
 
-  if (options?.expect !== undefined && !sameRevision(options.expect, own.ref))
+  if (options?.expect !== undefined && !sameRevision(options.expect, own.ref)) {
     return { kind: "stale", revision: own.ref?.revision ?? EMPTY_REVISION };
+  }
 
   if (running !== null) return { kind: "busy", run: running.record.view.id };
 
@@ -242,11 +245,12 @@ export async function mergeHead(
     },
   ]);
 
-  if (outcome.kind !== "set")
+  if (outcome.kind !== "set") {
     return {
       kind: "stale",
       revision: (await readTip(kernel.store, session, head)).ref?.revision ?? EMPTY_REVISION,
     };
+  }
 
   return { kind: "merged", revision: own.ref === null ? EMPTY_REVISION : outcome.revisions[0] };
 }
@@ -271,8 +275,9 @@ export async function removeHead(
       kernel.store.refs.get(promptRef(session, head)),
     ]);
 
-    if (options?.expect !== undefined && !sameRevision(options.expect, tip.ref))
+    if (options?.expect !== undefined && !sameRevision(options.expect, tip.ref)) {
       throw new SdkError("stale", `Head ${head} moved since ${options.expect}.`);
+    }
 
     const record: SessionRecord = {
       ...found.record,
@@ -333,8 +338,9 @@ function rows(state: FoldState, head: HeadName): TreeView {
     children.set(parent, siblings);
   }
 
-  for (const siblings of children.values())
+  for (const siblings of children.values()) {
     siblings.sort((left, right) => left.record.at - right.record.at);
+  }
 
   const folded = state.heads.get(head);
   const tip = folded?.info.tip ?? START;
@@ -345,8 +351,9 @@ function rows(state: FoldState, head: HeadName): TreeView {
     [];
 
   const enqueue = (siblings: readonly Commit[], depth: number): void => {
-    for (let index = siblings.length - 1; index >= 0; index -= 1)
+    for (let index = siblings.length - 1; index >= 0; index -= 1) {
       pending.push({ commit: siblings[index], depth, branch: siblings.length > 1 && index === 0 });
+    }
   };
 
   enqueue(children.get(null) ?? [], 0);
@@ -367,7 +374,7 @@ function rows(state: FoldState, head: HeadName): TreeView {
       partKind: body.kind === "part" ? (part?.partKind ?? null) : null,
       preview:
         body.kind === "user"
-          ? extractUserText(body.content).replace(/\s+/g, " ").trim().slice(0, PREVIEW)
+          ? extractUserText(body.content).replaceAll(/\s+/g, " ").trim().slice(0, PREVIEW)
           : partPreview(part),
       at: record.at,
       run: record.run,

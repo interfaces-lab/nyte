@@ -79,9 +79,7 @@ function probe(client: QueryClient) {
   let repo: ReturnType<typeof useGitHubState> | undefined;
 
   function Probe() {
-    // oxlint-disable-next-line react/globals -- the probe hands the hook result out to the test
     found = useGitHubAccount();
-    // oxlint-disable-next-line react/globals -- the probe hands the hook result out to the test
     repo = useGitHubState(client.getQueryData<HostState>(keys.host)?.workspace?.id, folder);
 
     return null;

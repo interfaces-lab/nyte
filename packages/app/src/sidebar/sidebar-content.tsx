@@ -5,7 +5,8 @@ import type { Transition } from "motion/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { firstSettingsSection, SettingsNavigation, type OpenSection } from "../settings/index.ts";
+import { firstSettingsSection, SettingsNavigation } from "../settings/index.ts";
+import type { OpenSection } from "../settings/index.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 
 const INSTANT: Transition = { duration: 0 };

@@ -31,7 +31,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 
 const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
 
-export type McpOAuthSettings = {
+export interface McpOAuthSettings {
   readonly clientId?: string;
   readonly clientSecret?: string;
   readonly callbackPort?: number;
@@ -39,7 +39,7 @@ export type McpOAuthSettings = {
   readonly clientName?: string;
   readonly scope?: string;
   readonly authServerMetadataUrl?: URL;
-};
+}
 
 const tokens = Type.Object({
   access_token: Type.String(),
@@ -111,8 +111,9 @@ export function createAuthProvider(input: {
 
       if (state?.tokens?.access_token !== stale) return;
 
-      if (state?.tokens?.refresh_token === undefined)
+      if (state?.tokens?.refresh_token === undefined) {
         throw new McpOAuthAuthorizationRequiredError();
+      }
       const settings = input.settings();
 
       const redirectUrl =
@@ -307,8 +308,9 @@ async function authorize(input: {
 
     if ((await authorizeMcp(provider, { ...flow, skipRefresh: stepUp })) === "AUTHORIZED") return;
 
-    if (authorizationUrl === undefined)
+    if (authorizationUrl === undefined) {
       throw new Error("The server did not give an authorization page.");
+    }
     const state = await provider.state();
     const expected = new URL(authorizationUrl.searchParams.get("redirect_uri") ?? redirectUrl);
     signal.throwIfAborted();
@@ -339,14 +341,16 @@ function fromRedirectUrl(
 
   if (url === null) throw new Error("Paste the full URL from the browser's address bar.");
 
-  if (url.origin !== expected.origin || url.pathname !== expected.pathname)
+  if (url.origin !== expected.origin || url.pathname !== expected.pathname) {
     throw new Error("That URL is not this sign-in's redirect.");
+  }
   const error = url.searchParams.get("error");
 
   if (error !== null) throw new Error(url.searchParams.get("error_description") ?? error);
 
-  if (url.searchParams.get("state") !== state)
+  if (url.searchParams.get("state") !== state) {
     throw new Error("That URL belongs to a different sign-in.");
+  }
   const code = url.searchParams.get("code");
 
   if (code === null) throw new Error("That URL has no authorization code.");
@@ -359,7 +363,7 @@ async function listen(
   port: number | undefined,
   required: boolean,
 ): Promise<OAuthCallbackServer> {
-  const address = configured.hostname.replace(/^\[|\]$/g, "");
+  const address = configured.hostname.replaceAll(/^\[|\]$/g, "");
 
   const options = {
     host: address === "localhost" ? CALLBACK_HOST : address,
@@ -378,8 +382,9 @@ async function listen(
 }
 
 function fixedRedirectUrl(settings: McpOAuthSettings): string | undefined {
-  if (settings.callbackUrl !== undefined && new URL(settings.callbackUrl).port !== "")
+  if (settings.callbackUrl !== undefined && new URL(settings.callbackUrl).port !== "") {
     return settings.callbackUrl;
+  }
 
   if (settings.callbackPort === undefined) return undefined;
   const url = new URL(settings.callbackUrl ?? `http://${CALLBACK_HOST}${CALLBACK_PATH}`);

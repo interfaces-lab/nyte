@@ -2,9 +2,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 
-const here = fileURLToPath(new URL(".", import.meta.url));
+const here = import.meta.dirname;
 
 const output = resolve(process.argv[2] ?? resolve(here, "dist", "nyte-tailnet"));
 

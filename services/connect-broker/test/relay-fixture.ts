@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, expect } from "vitest";
 import { RelayDesktop, enrollmentHandler, startWorkerdBroker } from "./workerd.ts";
 import type { RelayHandler, WorkerdBroker } from "./workerd.ts";
 
+// oxlint-disable-next-line import/no-mutable-exports -- beforeAll assigns the shared broker, and the relay tests read it through this live binding
 export let broker: WorkerdBroker;
 
 const open: RelayDesktop[] = [];
@@ -116,8 +117,9 @@ export async function enrolled(
 
   if (origin !== undefined) expectCors(answer, origin);
 
-  if (!Value.Check(EnrollResponse, body))
+  if (!Value.Check(EnrollResponse, body)) {
     throw new Error("Enrollment answered outside the contract");
+  }
 
   return { environmentId, key, desktop, bearer, deviceId: body.deviceId };
 }
@@ -171,11 +173,13 @@ export async function answerUntilReset(
   const waiting = new Set(channels);
   const data = encodeChunks(new TextEncoder().encode("data: more\n\n"))[0] ?? "";
 
-  if (head === "send")
+  if (head === "send") {
     for (const ch of waiting) desktop.send({ t: "head", ch, status: 200, headers: {} });
+  }
   const resets = (async () => {
-    while (waiting.size > 0)
+    while (waiting.size > 0) {
       waiting.delete((await desktop.next("reset", (reset) => waiting.has(reset.ch))).ch);
+    }
   })();
 
   while (waiting.size > 0) {

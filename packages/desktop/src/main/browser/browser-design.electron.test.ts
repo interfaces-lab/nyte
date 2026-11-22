@@ -190,7 +190,7 @@ test.runIf(process.env["NYTE_DESKTOP_BROWSER_E2E"] === "1")(
 
     expect(parsed.element.image).toBeGreaterThan(100);
     expect(parsed.after).toBe(parsed.before);
-    expect(parsed.designs.filter((design) => !design.on).at(-1)?.views.xray).toBe(true);
+    expect(parsed.designs.findLast((design) => !design.on)?.views.xray).toBe(true);
   },
   120_000,
 );

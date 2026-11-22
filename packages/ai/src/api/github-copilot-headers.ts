@@ -33,8 +33,9 @@ export function buildCopilotDynamicHeaders(input: {
         Array.isArray(message.content) &&
         message.content.some((part) => part.type === "image"),
     )
-  )
+  ) {
     headers["Copilot-Vision-Request"] = "true";
+  }
 
   return headers;
 }

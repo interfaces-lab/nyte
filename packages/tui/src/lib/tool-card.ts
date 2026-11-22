@@ -83,8 +83,9 @@ function previewCut(toolClass: ToolClass | undefined): PreviewCut {
 function inlineToolPreview(text: string): string | undefined {
   const value = text.trim();
 
-  if (value === "" || value.includes("\n") || displayWidth(value) > TOOL_INLINE_PREVIEW_LENGTH)
+  if (value === "" || value.includes("\n") || displayWidth(value) > TOOL_INLINE_PREVIEW_LENGTH) {
     return undefined;
+  }
 
   return value;
 }
@@ -110,8 +111,9 @@ function tail(parts: readonly (string | undefined)[]): readonly HeadingChunk[] {
 }
 
 function titleChunks(title: string, command: string | undefined): readonly HeadingChunk[] {
-  if (command === undefined || command === "" || !title.endsWith(command))
+  if (command === undefined || command === "" || !title.endsWith(command)) {
     return [{ text: ` ${title}`, role: "foreground" }];
+  }
 
   return [
     { text: ` ${title.slice(0, title.length - command.length)}`, role: "foreground" },
@@ -182,7 +184,7 @@ function settled(
   const command = shellCommand(toolClass);
   const check = toneMark("success");
 
-  if (toolClass.kind === "edit" && patch !== undefined)
+  if (toolClass.kind === "edit" && patch !== undefined) {
     return {
       heading: heading(
         check.glyph,
@@ -193,10 +195,11 @@ function settled(
       ),
       body: diffBody(patchDiff(patch), expanded, cut),
     };
+  }
 
   const changes = state?.changes ?? null;
 
-  if (toolClass.kind === "edit" && !isError && changes !== null)
+  if (toolClass.kind === "edit" && !isError && changes !== null) {
     return {
       heading: heading(
         check.glyph,
@@ -210,6 +213,7 @@ function settled(
           ? textBody(output, expanded, cut, "dim", undefined)
           : diffBody(outputDiff, expanded, cut),
     };
+  }
 
   if (outputDiff !== undefined) {
     const hunks = outputDiff.files.reduce((count, file) => count + file.sections.length, 0);
@@ -238,11 +242,12 @@ function settled(
 
   const mark = toneMark(isError ? "failure" : "success");
 
-  if (collapsedRead || inline !== undefined)
+  if (collapsedRead || inline !== undefined) {
     return {
       heading: heading(mark.glyph, mark.tone, title, [result, word, clock], command),
       body: NONE,
     };
+  }
 
   const filetype =
     status.tense !== "running" && toolClass.kind === "read"

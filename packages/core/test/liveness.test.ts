@@ -53,7 +53,7 @@ function park(
 
 function interrupting(store: StoreConnection) {
   let armed: {
-    match: (names: readonly string[]) => boolean;
+    matches: (names: readonly string[]) => boolean;
     before: () => Promise<unknown>;
   } | null = null;
 
@@ -64,7 +64,7 @@ function interrupting(store: StoreConnection) {
       async set(updates) {
         const pending = armed;
 
-        if (pending !== null && pending.match(updates.map((update) => update.name))) {
+        if (pending !== null && pending.matches(updates.map((update) => update.name))) {
           armed = null;
           await pending.before();
         }
@@ -76,8 +76,8 @@ function interrupting(store: StoreConnection) {
 
   return {
     store: wrapped,
-    arm(match: (names: readonly string[]) => boolean, before: () => Promise<unknown>): void {
-      armed = { match, before };
+    arm(matches: (names: readonly string[]) => boolean, before: () => Promise<unknown>): void {
+      armed = { matches, before };
     },
   };
 }

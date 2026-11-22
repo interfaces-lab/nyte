@@ -16,7 +16,7 @@ import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-type JsonObject = { readonly [key: string]: Json };
+type JsonObject = Readonly<Record<string, Json>>;
 
 export const MAPPING = [
   {
@@ -370,16 +370,18 @@ function migrateCall(from: number, body: JsonObject): JsonObject {
 
   const intent = next.intent;
 
-  if (runs(from, 11) && next.kind === "tool" && isJsonObject(intent))
+  if (runs(from, 11) && next.kind === "tool" && isJsonObject(intent)) {
     next = { ...next, intent: without(intent, ["name", "args"]) };
+  }
 
   if (
     runs(from, 12) &&
     next.kind === "intent" &&
     isJsonObject(next.intent) &&
     !("position" in next.intent)
-  )
+  ) {
     next = { ...next, intent: { ...next.intent, position: 0 } };
+  }
 
   if (
     runs(from, 14) &&
@@ -390,13 +392,15 @@ function migrateCall(from: number, body: JsonObject): JsonObject {
     const hookIntent = next.intent;
     const result = next.result;
 
-    if (isJsonObject(hookIntent) && "args" in hookIntent)
+    if (isJsonObject(hookIntent) && "args" in hookIntent) {
       next = { ...next, intent: { principal: hookIntent.principal ?? null } };
+    }
 
     const decision = readOldToolDecision(result);
 
-    if (decision?.action === "modify")
+    if (decision?.action === "modify") {
       next = { ...next, result: { action: "modify", value: decision.value.args } };
+    }
   }
 
   return next;
@@ -405,8 +409,12 @@ function migrateCall(from: number, body: JsonObject): JsonObject {
 function migratePrincipals(body: JsonObject): JsonObject {
   const principals = Array.isArray(body.principals) ? body.principals : [];
 
-  if (!principals.some((entry) => isJsonObject(entry) && "lastSeenAt" in entry) && "codes" in body)
+  if (
+    !principals.some((entry) => isJsonObject(entry) && "lastSeenAt" in entry) &&
+    "codes" in body
+  ) {
     return body;
+  }
 
   return {
     ...withDefaults(body, { codes: [] }),
@@ -494,8 +502,9 @@ export async function folderTrustRecords(
   if (!runs(from, 18)) return chosen;
 
   for (const object of workspaces) {
-    if (!isJsonObject(object) || object.kind !== "workspace" || !isJsonObject(object.body))
+    if (!isJsonObject(object) || object.kind !== "workspace" || !isJsonObject(object.body)) {
       continue;
+    }
     const body = workspaceTrustAt6(from, object.body);
     const { target, projectResources } = body;
 
@@ -504,8 +513,9 @@ export async function folderTrustRecords(
       (body.isolation ?? null) !== null ||
       !isJsonObject(target) ||
       typeof target.kind !== "string"
-    )
+    ) {
       continue;
+    }
 
     const folder =
       typeof target.path === "string"
@@ -517,11 +527,12 @@ export async function folderTrustRecords(
     const at = typeof object.at === "number" ? object.at : 0;
     const kept = chosen.get(name);
 
-    if (kept === undefined || at > kept.at || (at === kept.at && !projectResources))
+    if (kept === undefined || at > kept.at || (at === kept.at && !projectResources)) {
       chosen.set(name, {
         at,
         record: { kind: "trust", at, body: { target: folder, trusted: projectResources } },
       });
+    }
   }
 
   return new Map([...chosen].map(([name, { record }]) => [name, record]));
@@ -591,13 +602,13 @@ function requestModels(events: readonly Json[]): readonly Json[] {
       !("model" in event) &&
       (event.partKind === "text" || event.partKind === "thinking" || event.partKind === "tool") &&
       byRun.has(event.run ?? null)
-    )
+    ) {
       next.push({ ...event, model: byRun.get(event.run ?? null) ?? null });
-    else if (event.kind === "request" && !("model" in event))
+    } else if (event.kind === "request" && !("model" in event)) {
       next.push({ ...event, model: byHead.get(event.head ?? null) ?? null });
-    else if (event.kind === "input" && schedule.reason === "configuration")
+    } else if (event.kind === "input" && schedule.reason === "configuration") {
       next.push({ ...event, schedule: { ...schedule, reason: "run-ended" } });
-    else next.push(event);
+    } else next.push(event);
   }
 
   return next;
@@ -626,11 +637,12 @@ function intentsInParts(events: readonly Json[]): readonly Json[] {
       !Value.Equal(state.name, event.name) ||
       !Value.Equal(state.args, event.args) ||
       !Value.Equal(state.class, event.class)
-    )
+    ) {
       next[at] = {
         ...opened,
         state: { ...state, name: event.name, args: event.args, class: event.class },
       };
+    }
   }
 
   return next;
@@ -640,11 +652,13 @@ function wholeChangeLists(events: readonly Json[]): readonly Json[] {
   const listed = new Map<string, Json>();
 
   return events.map((event) => {
-    if (!isJsonObject(event) || event.kind !== "changes" || !Array.isArray(event.files))
+    if (!isJsonObject(event) || event.kind !== "changes" || !Array.isArray(event.files)) {
       return event;
+    }
 
-    for (const file of event.files)
+    for (const file of event.files) {
       if (isJsonObject(file) && typeof file.path === "string") listed.set(file.path, file);
+    }
     const files = [...listed.values()];
 
     return Value.Equal(files, event.files) ? event : { ...event, files };
@@ -667,21 +681,23 @@ function waitNames(session: string, call: CallRecord): readonly string[] {
     ...("targets" in waiting ? waiting.targets.map((target) => target.deadline) : []),
   ].flatMap((deadline) => (deadline === undefined ? [] : [deadline]));
 
-  return [
-    ...targets.flatMap((target, index) => {
-      if ((call.partial.at(index) ?? null) !== null) return [];
+  const targetName = (target: (typeof targets)[number], index: number): string => {
+    switch (target.kind) {
+      case "run":
+        return `waits/run/${target.session}/${target.run}/${slot(index)}`;
+      case "part":
+        return `waits/part/${session}/${target.part}/${slot(index)}`;
+      case "job":
+        return `waits/job/${target.job}/${slot(index)}`;
+      case "timer":
+        return `waits/time/${time(target.until)}/${slot(index)}`;
+    }
+  };
 
-      switch (target.kind) {
-        case "run":
-          return [`waits/run/${target.session}/${target.run}/${slot(index)}`];
-        case "part":
-          return [`waits/part/${session}/${target.part}/${slot(index)}`];
-        case "job":
-          return [`waits/job/${target.job}/${slot(index)}`];
-        case "timer":
-          return [`waits/time/${time(target.until)}/${slot(index)}`];
-      }
-    }),
+  return [
+    ...targets.flatMap((target, index) =>
+      (call.partial.at(index) ?? null) === null ? [targetName(target, index)] : [],
+    ),
     ...(deadlines.length === 0
       ? []
       : [`waits/time/${time(Math.min(...deadlines))}/${slot("deadline")}`]),
@@ -723,13 +739,15 @@ export function changedPaths(
   after: Json | undefined,
   path = "",
 ): readonly string[] {
-  if (isJsonObject(before) && isJsonObject(after))
+  if (isJsonObject(before) && isJsonObject(after)) {
     return [...new Set([...Object.keys(before), ...Object.keys(after)])].flatMap((key) =>
       changedPaths(before[key], after[key], `${path}/${key}`),
     );
+  }
 
-  if (Array.isArray(before) && Array.isArray(after) && before.length === after.length)
+  if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) {
     return before.flatMap((item, index) => changedPaths(item, after[index], `${path}/${index}`));
+  }
 
   return Value.Equal(before, after) ? [] : [path === "" ? "/" : path];
 }

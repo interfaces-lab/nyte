@@ -1,11 +1,10 @@
 import { glob, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, join, relative } from "node:path";
 
 import { stylex } from "../stylex.mjs";
 import { context } from "esbuild";
 
-const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const packageRoot = join(import.meta.dirname, "..");
 
 const outdir = join(packageRoot, "dist");
 
@@ -39,8 +38,9 @@ const layerStylesheet = {
           ["style.ts", "surface-theme.ts", "appearance.ts", "platform-colors.ts"].includes(
             basename(entry),
           )
-        )
+        ) {
           continue;
+        }
         const compiled = join(outdir, `${relative("src", entry).replace(/\.tsx?$/, "")}.js`);
         const javascript = await readFile(compiled, "utf8");
         await writeFile(compiled, `"use client";\n${javascript}`);

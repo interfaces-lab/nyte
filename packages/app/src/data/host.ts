@@ -3,12 +3,11 @@ import { skipToken, useQuery } from "@tanstack/react-query";
 import { operationsDigest } from "@nyte-ai/sdk";
 import type { Health } from "@nyte-ai/sdk/client";
 import { installedLive } from "./connection.ts";
-import { keys } from "./query-client.ts";
+import { keys, queryClient } from "./query-client.ts";
 import type { HostProcess, HostState, UpdateState } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { hostWatch } from "./watches.ts";
 import { useWatchSelect } from "./watch-store.ts";
-import { queryClient } from "./query-client.ts";
 
 const OPENING_HOST_STATE: HostState = { workspace: undefined };
 

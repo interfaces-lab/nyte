@@ -13,7 +13,7 @@ type Report =
   | { readonly state: "clear"; readonly id: string };
 
 const QUERY_REPLY =
-  "\u001b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\u001b\\";
+  "\u001B]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\u001B\\";
 
 const MAX_RECORDS = 256;
 
@@ -63,12 +63,12 @@ export function createProgramRecords() {
 
       if (report === undefined) return "";
 
-      if (report.state === "clear")
+      if (report.state === "clear") {
         keep(
           (record) =>
             report.id !== "" && record.id !== report.id && !record.id.startsWith(`${report.id}/`),
         );
-      else if (report.state === "idle") keep((record) => record.id !== report.id);
+      } else if (report.state === "idle") keep((record) => record.id !== report.id);
       else {
         records.delete(report.id);
         records.set(report.id, report);
@@ -105,8 +105,9 @@ function parseReport(payload: string): Report | undefined {
     if (
       encoder.encode(key).byteLength > 16 ||
       encoder.encode(value).byteLength > (VALUE_LIMITS.get(key) ?? MAX_BODY_BYTES)
-    )
+    ) {
       return undefined;
+    }
 
     if (!/^[a-z]+$/u.test(key) || !/^[A-Za-z0-9_.,+/=-]*$/u.test(value)) continue;
 
@@ -131,8 +132,9 @@ function parseReport(payload: string): Report | undefined {
 
   if (state === "idle") return { state, id };
 
-  if (state !== "working" && state !== "blocked" && state !== "done" && state !== "error")
+  if (state !== "working" && state !== "blocked" && state !== "done" && state !== "error") {
     return undefined;
+  }
   const progress = values.get("progress");
   const kind = values.get("kind");
 
@@ -156,8 +158,9 @@ function parseReport(payload: string): Report | undefined {
 }
 
 function decodeText(value: string, limit: number): string | undefined {
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}(?:==)?|[A-Za-z0-9+/]{3}=?)?$/u.test(value))
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}(?:==)?|[A-Za-z0-9+/]{3}=?)?$/u.test(value)) {
     return undefined;
+  }
   const bytes = Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 
   if (bytes.byteLength > limit) return undefined;
@@ -168,8 +171,9 @@ function decodeText(value: string, limit: number): string | undefined {
     encoded.byteLength !== bytes.byteLength ||
     encoded.some((byte, index) => byte !== bytes[index]) ||
     /\p{Cc}/u.test(text)
-  )
+  ) {
     return undefined;
+  }
 
-  return text.replaceAll(/[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/gu, "");
+  return text.replaceAll(/[\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/gu, "");
 }

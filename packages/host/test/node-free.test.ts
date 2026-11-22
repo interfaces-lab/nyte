@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import manifest from "../package.json" with { type: "json" };
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const root = resolve(import.meta.dirname, "..");
 
 const ENTRIES = [
   "src/serve/listen-fetch.ts",

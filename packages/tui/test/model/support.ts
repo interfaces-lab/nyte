@@ -22,7 +22,7 @@ export function model(
     variants: [],
     contextWindow: 100_000,
     compactAt: 90_000,
-    maxOutput: 8_000,
+    maxOutput: 8000,
     input: ["text"],
     capabilities: { steer: true },
     cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },

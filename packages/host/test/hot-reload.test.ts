@@ -37,7 +37,7 @@ function plugin(id: string, command: string, log?: string): string {
 async function eventually<T>(
   read: () => Promise<T>,
   done: (value: T) => boolean,
-  wait = 5_000,
+  wait = 5000,
 ): Promise<T> {
   const deadline = Date.now() + wait;
 
@@ -65,7 +65,7 @@ async function addPlugin(
     const names = await eventually(
       () => commands(session),
       (found) => found.includes(command),
-      2_000,
+      2000,
     );
 
     if (names.includes(command) || attempt === 2) return names;
@@ -181,8 +181,9 @@ describe("hot reload", () => {
     const reloaded = await readFile(log, "utf8");
     const refreshed = Promise.withResolvers<unknown>();
     dev.on((line) => {
-      if (line.startsWith("DEV:resources refreshed ") && line.includes(".nyte/plugins/README.md"))
+      if (line.startsWith("DEV:resources refreshed ") && line.includes(".nyte/plugins/README.md")) {
         refreshed.resolve(JSON.parse(line.slice("DEV:resources refreshed ".length)));
+      }
     });
     onTestFinished(() => dev.off());
     await writeFile(join(dir, "README.md"), "More notes.\n");

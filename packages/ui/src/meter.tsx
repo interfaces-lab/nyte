@@ -3,7 +3,8 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { radius, space } from "./styles/schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";

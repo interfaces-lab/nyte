@@ -342,16 +342,19 @@ async function start(
       const parent =
         input.parent === undefined ? null : await requireSession(kernel.store, input.parent);
 
-      if (input.side === true && parent === null)
+      if (input.side === true && parent === null) {
         throw new SdkError("invalid", "A side chat needs the chat it sits beside as its parent.");
+      }
       const named =
         input.workspace ?? parent?.record.workspace ?? kernel.host.current().defaultWorkspace;
 
-      if (named === null)
+      if (named === null) {
         throw new SdkError("unknown", "No workspace was named and the host has none by default.");
+      }
 
-      if ((await kernel.store.refs.get(workspaceRef(named))) === null)
+      if ((await kernel.store.refs.get(workspaceRef(named))) === null) {
         throw new SdkError("unknown", `Workspace ${named} is not registered on this host.`);
+      }
 
       const joined =
         input.project === undefined ? null : await joinableProject(kernel, input.project, named);
@@ -361,8 +364,9 @@ async function start(
 
       const coordinates = joined !== null && parent === null;
 
-      if (coordinates && joined.record.coordinator !== null)
+      if (coordinates && joined.record.coordinator !== null) {
         throw new SdkError("invalid", `Project ${joined.record.name} already has its chat.`);
+      }
 
       const models =
         project === undefined
@@ -454,8 +458,9 @@ async function start(
       context !== CORE_CONTEXT &&
       origin === null &&
       context.authority.has("owner")
-    )
+    ) {
       await kernel.rememberChoice(selected, "model");
+    }
 
     return id;
   });
@@ -509,14 +514,16 @@ async function update(
     if (moving) {
       const runs = await liveRuns(kernel.store, session);
 
-      if (runs.length > 0)
+      if (runs.length > 0) {
         return {
           outcome: { kind: "busy", runs: runs.map((run) => run.record.view.id) },
           moved: null,
         };
+      }
 
-      if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
+      if ((await kernel.store.refs.get(workspaceRef(workspace))) === null) {
         return { outcome: { kind: "unknown-workspace" }, moved: null };
+      }
     }
 
     const record: SessionRecord = {
@@ -532,8 +539,9 @@ async function update(
       record.pinned === found.record.pinned &&
       record.archived === found.record.archived &&
       !moving
-    )
+    ) {
       return { outcome: { kind: "updated" }, moved: null };
+    }
 
     const written = await commit(kernel, [
       {
@@ -552,8 +560,9 @@ async function update(
   if (moved !== null) {
     await kernel.environments.detach(session);
 
-    if (kernel.plugins.runtimes().has(session))
+    if (kernel.plugins.runtimes().has(session)) {
       await kernel.plugins.reload(session).catch(() => undefined);
+    }
     await releaseWorktree(kernel, session, moved);
   }
 
@@ -640,13 +649,14 @@ async function headInfo(
 function execution(run: RunRecord): Execution {
   if (run.waiting !== null) return { kind: "waiting", run: run.view, on: run.waiting };
 
-  if (run.retrying !== null)
+  if (run.retrying !== null) {
     return {
       kind: "retrying",
       run: run.view,
       until: run.retrying.until,
       reason: run.retrying.reason,
     };
+  }
 
   return { kind: "live", run: run.view, phase: run.phase, stopping: run.stopping };
 }
@@ -655,8 +665,9 @@ function directoryCursor(cursor: Cursor): { readonly at: number; readonly id: Se
   const [position = "", ...id] = cursor.split(":");
   const at = Number(position);
 
-  if (id.length === 0 || !Number.isFinite(at))
+  if (id.length === 0 || !Number.isFinite(at)) {
     throw new SdkError("invalid", `${cursor} is not a directory cursor`);
+  }
 
   return { at, id: asId<"session">(id.join(":")) };
 }

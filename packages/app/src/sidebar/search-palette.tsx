@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Command } from "@nyte-ai/ui/command";
-import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
 import { formatTimeAgo } from "../lib/format.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 import { TaskMark } from "../components/task-mark.tsx";
@@ -140,22 +141,18 @@ export function SearchPalette({
     : (recentSessions ?? []);
 
   const mac = nyte.platform === "darwin";
-  const settingsSections = settingsSectionGroups().flat();
+  const settingsSections = new Set(settingsSectionGroups().flat());
 
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
     if (!("palette" in action)) return [];
 
-    if (
-      action.id === "model-settings" &&
-      !settingsSections.includes(settingsActionPages[action.id])
-    )
+    if (action.id === "model-settings" && !settingsSections.has(settingsActionPages[action.id])) {
       return [];
+    }
 
-    if (
-      action.id === "profile-settings" &&
-      !settingsSections.includes(settingsActionPages[action.id])
-    )
+    if (action.id === "profile-settings" && !settingsSections.has(settingsActionPages[action.id])) {
       return [];
+    }
 
     if (action.id === "open-folder" && nyte.host.pickWorkspace === undefined) return [];
 
@@ -201,8 +198,9 @@ export function SearchPalette({
   const emptyMessage = (): string => {
     if (includesAgents && chatsPending) return "Loading chats…";
 
-    if (tab === "agents")
+    if (tab === "agents") {
       return searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet";
+    }
 
     if (tab === "all") return `Nothing matches "${query.trim()}"`;
 

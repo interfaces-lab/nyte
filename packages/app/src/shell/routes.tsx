@@ -197,8 +197,9 @@ function leaveMissingSession(router: AppRouter): void {
     read: () => readSession(sessionId),
   }).then(
     (exists) => {
-      if (!exists && currentRouteSession(router) === sessionId)
+      if (!exists && currentRouteSession(router) === sessionId) {
         void router.navigate({ to: indexRoute.to, replace: true });
+      }
     },
     () => undefined,
   );
@@ -258,8 +259,8 @@ export function startWindowTabs(desktopWindow: DesktopWindow): void {
   if (desktopWindow.open === undefined) return;
   const open = parseWindowOpen(desktopWindow.open);
 
-  if (open.kind === "app") openAppWindow(open);
-  else openWindowInEditor(open);
+  if (open.kind === "file") openWindowInEditor(open);
+  else openAppWindow(open.kind === "app" ? open : { kind: "app", workspace: open.workspace });
 }
 
 export function windowTabRoute(): string {

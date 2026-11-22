@@ -184,7 +184,7 @@ describe("localSnapshots outside a repository", () => {
 
     expect(before).toMatch(/^journal:/);
     expect(await snapshots.capture(WORKSPACE)).toBe(before);
-    expect(await readdir(store)).toEqual(["objects"]);
+    expect(await readdir(store)).toEqual(["journals", "objects"]);
     expect((await readdir(join(store, "objects"))).length).toBe(5);
 
     await writeFile(join(root, "a.txt"), "one\n2\nthree\n");

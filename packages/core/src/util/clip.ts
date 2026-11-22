@@ -1,7 +1,7 @@
 /** The most characters of text one tool result or report puts in a model's context, its cut marker included. */
 export const CLIP_CHARS = 32_000;
 
-const EXCERPT_CHARS = 2_000;
+const EXCERPT_CHARS = 2000;
 
 type Keep = "head" | "tail" | "ends";
 

@@ -209,7 +209,7 @@ const cases: readonly {
       const second = start(scene, "second", "wait");
       const starts: number[] = [];
       const named: string[] = [];
-      await sleep(2_500);
+      await sleep(2500);
       await checkpoint(scene, starts, named);
       await first.stop();
       await listening(second);

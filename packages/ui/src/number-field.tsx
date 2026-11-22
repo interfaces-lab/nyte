@@ -4,7 +4,8 @@ import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { appearance, role, shadow, type } from "./styles/vars.stylex.ts";
 

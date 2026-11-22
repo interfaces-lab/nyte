@@ -118,10 +118,11 @@ export function receiveReveal(
 
   const same = messages.find((message) => message.id === current?.message.id);
 
-  if (current === undefined || same === undefined || !showsText(same))
+  if (current === undefined || same === undefined || !showsText(same)) {
     return settledReveal(
       live === undefined ? undefined : beginReveal({ message: live, status: live.status }, moment),
     );
+  }
 
   const pace = extendPace(current.pace, same.state.markdown, moment.now);
   const waiting = waitingTexts(current, same, live, messages);
@@ -129,19 +130,21 @@ export function receiveReveal(
   if (waiting.length > 0) {
     const draining = drainPace(pace, moment.now, WAITING_DRAIN_FRAMES);
 
-    if (!moment.showing || draining.shown === draining.text.length)
+    if (!moment.showing || draining.shown === draining.text.length) {
       return settledReveal(revealWaiting(waiting, moment));
+    }
 
     return { message: same, status: current.status, pace: draining, waiting };
   }
 
-  if (same.status.kind === "live")
+  if (same.status.kind === "live") {
     return settledReveal({
       message: same,
       status: same.status,
       pace: moment.showing ? pace : flushPace(pace, moment.now),
       waiting: NOTHING_WAITING,
     });
+  }
 
   return settledReveal({
     message: same,
@@ -167,8 +170,9 @@ function waitingTexts(
     live === undefined ||
     live.id === same.id ||
     queued.some((text) => text.message.id === live.id)
-  )
+  ) {
     return queued.length === 0 ? NOTHING_WAITING : queued;
+  }
 
   return [...queued, { message: live, status: live.status }];
 }
@@ -229,10 +233,11 @@ function revealAfter(
   pace: Pace,
   moment: { readonly showing: boolean; readonly now: number },
 ): Reveal | undefined {
-  if (current.waiting.length > 0 && pace.shown === pace.text.length)
+  if (current.waiting.length > 0 && pace.shown === pace.text.length) {
     return settledReveal(
       revealWaiting(current.waiting, { opening: !moment.showing, now: moment.now }),
     );
+  }
 
   return settledReveal({ ...current, pace });
 }
@@ -256,18 +261,20 @@ export function presentReveal<V extends { readonly messages: readonly Message[] 
     waiting.size === 0 &&
     markdown === reveal.message.state.markdown &&
     reveal.status === reveal.message.status
-  )
+  ) {
     return view;
+  }
 
   return {
     ...view,
     messages: view.messages.map((message) => {
-      if (message.id === reveal.message.id)
+      if (message.id === reveal.message.id) {
         return {
           ...reveal.message,
           state: { ...reveal.message.state, markdown },
           status: reveal.status,
         };
+      }
 
       const next = waiting.get(message.id);
 
@@ -320,8 +327,9 @@ export function createTextPacer<V extends { readonly messages: readonly Message[
     if (current === undefined || latest === undefined) return;
     settle(tickReveal(current, { showing: visible(), now }));
 
-    if (reveal?.pace.shown !== current.pace.shown || reveal?.message !== current.message)
+    if (reveal?.pace.shown !== current.pace.shown || reveal?.message !== current.message) {
       revise(presentReveal(latest, reveal));
+    }
   }
 
   function flush(): void {

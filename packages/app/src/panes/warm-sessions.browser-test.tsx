@@ -30,6 +30,7 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
+import { errorMessage } from "../contract/errors.ts";
 
 const TURNS = 24;
 
@@ -100,7 +101,7 @@ function view(session: string): SessionView {
     seenThrough: null,
     background: [],
     configuration: { selected: null, effective: null },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -185,10 +186,14 @@ function mount(container: HTMLElement): Root {
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
-    if (renderFailure !== undefined) throw renderFailure;
+    if (renderFailure !== undefined) {
+      throw renderFailure instanceof Error
+        ? renderFailure
+        : new Error(errorMessage(renderFailure), { cause: renderFailure });
+    }
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
@@ -224,8 +229,9 @@ function findShown(container: HTMLElement, sessionId: SessionId): Shown | undefi
     composer === null ||
     composer === undefined ||
     viewport.querySelector(`[data-row-key*='${sessionId}-']`) === null
-  )
+  ) {
     return undefined;
+  }
 
   return { viewport, composer, editor };
 }
@@ -317,7 +323,7 @@ async function checkRules(): Promise<string> {
 
     const back = await show(container, A);
     expectRule(
-      back.editor.textContent?.includes("Draft for A") === true,
+      back.editor.textContent?.includes("Draft for A"),
       `switching back lost the draft: ${JSON.stringify(back.editor.textContent)}`,
     );
     expectRule(

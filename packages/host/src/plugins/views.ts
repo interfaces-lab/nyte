@@ -12,8 +12,9 @@ export function createViewCompiler(): (view: URL) => Promise<ViewBuild> {
   const remembered = new Map<string, { readonly read: Read; readonly build: ViewBuild }>();
 
   return async (view) => {
-    if (view.protocol !== "file:")
+    if (view.protocol !== "file:") {
       return { kind: "failed", message: `${view.href} is not a file on this machine.` };
+    }
     const entry = fileURLToPath(view);
     const known = remembered.get(entry);
 
@@ -64,12 +65,13 @@ async function readGraph(entry: string): Promise<
       if (target === null) continue;
       const inside = relative(root, target);
 
-      if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside))
+      if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
         return {
           kind: "failed",
           message: `${name} imports ${specifier}, outside the view's folder.`,
           read,
         };
+      }
       queue.push(target);
     }
   }
@@ -106,8 +108,9 @@ async function compile(entry: string, sources: ReadonlyMap<string, string>): Pro
     { entry },
   );
 
-  if (outcome.kind === "compiled")
+  if (outcome.kind === "compiled") {
     return { kind: "compiled", code: outcome.code, runtime: outcome.runtime };
+  }
 
   return { kind: "failed", message: outcome.errors.map(describeError).join("; ") };
 }

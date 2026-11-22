@@ -50,12 +50,13 @@ export function BrowserCallsView({
 }): ReactElement {
   const [only] = calls;
 
-  if (calls.length === 1 && only !== undefined)
+  if (calls.length === 1 && only !== undefined) {
     return (
       <div {...props(toolCardStyles.stack)}>
         <BrowserStepRow call={only} shot />
       </div>
     );
+  }
 
   const last = calls.at(-1);
 
@@ -164,13 +165,15 @@ function BrowserStepRow({
 function stepDetail(message: ToolMessage, facts: ToolFacts, shot: boolean): ReactNode {
   if (facts.running) return null;
 
-  if (facts.status.tone === "failure")
+  if (facts.status.tone === "failure") {
     return <p {...props(text.sm, toolCardStyles.failure)}>{facts.output}</p>;
+  }
 
   const name = message.state.name;
 
-  if (name === "browser_console" || name === "browser_evaluate")
+  if (name === "browser_console" || name === "browser_evaluate") {
     return facts.output === "" ? null : <pre {...props(toolCardStyles.mono)}>{facts.output}</pre>;
+  }
 
   const file = shot ? screenshot(message) : undefined;
 

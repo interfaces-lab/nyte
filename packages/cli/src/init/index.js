@@ -79,7 +79,7 @@ export async function init(args, options = {}) {
   const env = options.env ?? process.env;
 
   const interactive =
-    options.interactive ?? (Boolean(process.stdin.isTTY && process.stdout.isTTY) && !env.CI);
+    options.interactive ?? (process.stdin.isTTY && process.stdout.isTTY && !env.CI);
 
   const home = options.home ?? homedir();
 

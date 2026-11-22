@@ -138,8 +138,9 @@ export function placeGuest(surface: string, slot: GuestSlot | null): void {
 
   if (slot === null || !slot.interactive) releaseKeyboard(surface);
 
-  if ((previous.slot === null) !== (slot === null))
+  if ((previous.slot === null) !== (slot === null)) {
     nyte.host.browser?.setShown({ surface, visible: slot !== null });
+  }
 
   notify();
 }
@@ -148,8 +149,12 @@ export function sizeGuest(surface: string, width: number, height: number): void 
   const previous = places.get(surface) ?? UNPLACED;
   const next: GuestPlace = { slot: null, width: Math.round(width), height: Math.round(height) };
 
-  if (previous.slot !== null || (previous.width === next.width && previous.height === next.height))
+  if (
+    previous.slot !== null ||
+    (previous.width === next.width && previous.height === next.height)
+  ) {
     return;
+  }
   places = new Map(places).set(surface, next);
   notify();
 }
@@ -306,8 +311,9 @@ function HostedGuest({
           generation: guest.generation,
         })
         .catch((cause: unknown) => {
-          if (elements.get(surface) === element)
+          if (elements.get(surface) === element) {
             toast.add({ type: "error", title: errorMessage(cause) });
+          }
         });
       markAttached(surface, element);
     };
@@ -365,15 +371,16 @@ function guestLook(input: {
   const place = input.place;
   const slot = place.slot;
 
-  if (input.fullscreen)
+  if (input.fullscreen) {
     return {
       parked: false,
       box: [styles.box, styles.fullscreen],
       frame: [styles.frame, styles.fill],
       page: styles.fill,
     };
+  }
 
-  if (slot === null)
+  if (slot === null) {
     return {
       parked: true,
       box: [
@@ -387,6 +394,7 @@ function guestLook(input: {
       frame: styles.frame,
       page: styles.size(place.width, place.height),
     };
+  }
 
   const box = clipRect(slot.rect, slot.clip);
   const fullDetail = input.painting && slot.scale < 1;

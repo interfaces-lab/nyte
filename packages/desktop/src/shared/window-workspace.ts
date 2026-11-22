@@ -10,8 +10,9 @@ export function restorableFolder(workspace: WorkspaceInfo | null): SelectedWorks
     workspace.target.kind !== "local" ||
     !("path" in workspace.target) ||
     (workspace.trusted === null && workspace.projectSources.length > 0)
-  )
+  ) {
     return undefined;
+  }
   const path = workspace.target.path;
 
   return { id: workspace.id, path, name: basename(path) };

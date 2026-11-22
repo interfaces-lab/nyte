@@ -38,7 +38,7 @@ export function cellOffset(
 ): number {
   const prefix = text.slice(0, index);
 
-  if (/^[\x20-\x7e\n]*$/.test(prefix)) return prefix.length;
+  if (/^[\u0020-\u007E\n]*$/.test(prefix)) return prefix.length;
   const buffer = TextBuffer.create(widthMethod, owner);
 
   try {

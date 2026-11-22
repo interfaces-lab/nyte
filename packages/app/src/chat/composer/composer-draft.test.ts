@@ -534,8 +534,9 @@ test.each<{
 ])("$name", (row) => {
   const area = memoryArea();
 
-  for (const [key, value] of Object.entries(row.stored ?? {}))
+  for (const [key, value] of Object.entries(row.stored ?? {})) {
     area.setItem(key, JSON.stringify(value));
+  }
   const window = new WindowDrafts({ storage: area, storageKey: STORE_KEY });
   const store = new SessionViewStateStore(window, "tab");
 

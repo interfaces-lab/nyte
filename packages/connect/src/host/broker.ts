@@ -85,8 +85,9 @@ export class DesktopBroker {
   private readonly send: BrokerFetch;
 
   constructor(options: DesktopBrokerOptions) {
-    if (!namesBrokerOrigin(options.origin))
+    if (!namesBrokerOrigin(options.origin)) {
       throw new Error("The broker origin is not canonical HTTPS");
+    }
     this.origin = options.origin;
     this.send = options.fetch ?? ((input, init) => fetch(input, init));
   }
@@ -317,8 +318,9 @@ export class DesktopBroker {
 
     const headers = new Headers({ accept: "application/json", [PROOF_HEADER]: proof });
 
-    if (input.sessionToken !== undefined)
+    if (input.sessionToken !== undefined) {
       headers.set("authorization", `Bearer ${input.sessionToken}`);
+    }
 
     if (input.body !== undefined) headers.set("content-type", "application/json");
     input.sent?.(proof);
@@ -365,8 +367,9 @@ export class DesktopBroker {
     }
 
     if (!response.ok) {
-      if (Value.Check(ErrorBody, body))
+      if (Value.Check(ErrorBody, body)) {
         throw new BrokerError({ kind: "refused", status: response.status, code: body.error.code });
+      }
       throw new BrokerError({ kind: "bad_response", status: response.status });
     }
 
@@ -377,14 +380,16 @@ export class DesktopBroker {
     schema: S,
     answer: { readonly status: number; readonly body: unknown },
   ): Static<S> {
-    if (answer.status === 204 || !Value.Check(schema, answer.body))
+    if (answer.status === 204 || !Value.Check(schema, answer.body)) {
       throw new BrokerError({ kind: "bad_response", status: answer.status });
+    }
 
     return answer.body;
   }
 
   private empty(answer: { readonly status: number }): void {
-    if (answer.status !== 204)
+    if (answer.status !== 204) {
       throw new BrokerError({ kind: "bad_response", status: answer.status });
+    }
   }
 }

@@ -373,9 +373,10 @@ type Allowed<Entry extends Contract> =
 type Scope = Readonly<{ theme: StyleXClassNameFor<unknown, unknown> }>;
 
 type Restyled<Property extends string> = Readonly<
-  { readonly [Key in Property]?: StyleXClassNameFor<Key, unknown> | null } & {
-    readonly [Key in Exclude<keyof CSSProperties, Property>]?: never;
-  } & { readonly [pseudo: `:${string}`]: never }
+  { readonly [Key in Property]?: StyleXClassNameFor<Key, unknown> | null } & Readonly<
+    Partial<Record<Exclude<keyof CSSProperties, Property>, never>>
+  > &
+    Readonly<Record<`:${string}`, never>>
 >;
 
 export type Restyle<Name extends keyof Contracts> = Contracts[Name] extends { readonly host: true }

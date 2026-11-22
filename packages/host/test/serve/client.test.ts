@@ -275,8 +275,9 @@ describe("transport", () => {
     for await (const frame of owner.frames("login.steps", { provider: "test" })) {
       const step = decodeOutput("login.steps", frame);
 
-      if (step.kind === "paste")
+      if (step.kind === "paste") {
         await owner.invoke("login.answer", { provider: "test", code: "sk-retry" });
+      }
 
       if (step.kind === "failed") throw new Error(step.reason);
     }
@@ -303,8 +304,9 @@ describe("transport", () => {
       fetch: async (input, init) => {
         const request = new Request(input, init);
 
-        if (new URL(request.url).pathname === `/${CHANNEL_PATH}`)
+        if (new URL(request.url).pathname === `/${CHANNEL_PATH}`) {
           return channels.open(owner, request.signal, true);
+        }
         const channel = request.headers.get(CHANNEL_HEADER);
         const stream = request.headers.get(STREAM_HEADER);
         assert(channel !== null && stream !== null);

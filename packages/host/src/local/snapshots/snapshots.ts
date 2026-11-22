@@ -149,7 +149,9 @@ export function localSnapshots(
   };
 
   const repository = (): Promise<Repository | null> => {
-    repositoryLookup ??= findRepository();
+    repositoryLookup ??= journal
+      .started()
+      .then((journaled) => (journaled ? null : findRepository()));
 
     return repositoryLookup;
   };

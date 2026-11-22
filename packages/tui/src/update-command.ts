@@ -53,11 +53,12 @@ function parseUpdateArgs(args: readonly string[]): UpdateRequest {
     ...(parsed.has("models") ? ["--models"] : []),
   ];
 
-  if (chosen.length > 1)
+  if (chosen.length > 1) {
     throw new CliError("invalid_arguments", `Can't combine ${chosen.join(" and ")}.`, {
       ...HELP,
       details: [{ label: "Choose one", value: "A version, stable, nightly, --check or --models" }],
     });
+  }
 
   if (parsed.has("check")) return { kind: "check" };
 
@@ -65,8 +66,9 @@ function parseUpdateArgs(args: readonly string[]): UpdateRequest {
 
   if (target === undefined) return { kind: "install", yes: parsed.has("yes") };
 
-  if (target === "stable" || target === "nightly" || valid(target.replace(/^v/u, "")) !== null)
+  if (target === "stable" || target === "nightly" || valid(target.replace(/^v/u, "")) !== null) {
     return { kind: "install", target, yes: parsed.has("yes") };
+  }
 
   throw new CliError(
     "invalid_arguments",
@@ -247,7 +249,7 @@ async function confirmDowngrade(
 ): Promise<void> {
   const risk = `${version} is older than ${VERSION} and may not open data ${VERSION} saved.`;
 
-  if (!yes && !out.mode.interactive)
+  if (!yes && !out.mode.interactive) {
     throw new CliError(
       "missing_input",
       `Can't install ${version} over ${VERSION} without --yes in non-interactive mode.`,
@@ -261,6 +263,7 @@ async function confirmDowngrade(
         ],
       },
     );
+  }
 
   out.status("warn", risk);
 

@@ -159,16 +159,18 @@ function replyState(
 ): Reply {
   if (mutation.isPending) return { kind: "pending" };
 
-  if (mutation.isSuccess)
+  if (mutation.isSuccess) {
     return { kind: "sent", sessionId: mutation.data.sessionId, part: mutation.data.part };
+  }
 
-  if (mutation.isError)
+  if (mutation.isError) {
     return {
       kind: "failed",
       sessionId: mutation.variables.sessionId,
       part: mutation.variables.request.part,
       message: mutation.error.message,
     };
+  }
 
   return { kind: "idle" };
 }

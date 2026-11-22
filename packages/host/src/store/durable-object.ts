@@ -33,12 +33,12 @@ import { sessionIndexChanges, sqlSessionIndex, stampDirectory } from "./session-
 export type SqlValue = ArrayBuffer | string | number | null;
 
 /** Returns the part of a Durable Object's storage `durableObjectStore` uses, structurally, so a Worker passes `state.storage` as it is and a test passes a shim: `sql.exec` runs one statement with `?` bindings and answers its rows keyed by column name, and `transactionSync` runs a synchronous closure whose writes land all together or, when it throws, not at all (Durable Object SQL refuses `BEGIN`, so this is the only transaction). */
-export type DurableObjectSql = {
+export interface DurableObjectSql {
   readonly sql: {
     exec(query: string, ...bindings: SqlValue[]): { toArray(): Record<string, SqlValue>[] };
   };
   transactionSync<T>(closure: () => T): T;
-};
+}
 
 const ROW_LIMIT = 2_000_000;
 
@@ -102,19 +102,21 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
       ).map(parseStoredObject);
     },
     async *logs() {
-      if (rows("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log'").length === 0)
+      if (rows("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log'").length === 0) {
         return;
+      }
 
       for (const row of rows("SELECT DISTINCT session FROM log")) {
         const session = parseText(row.session);
 
-        if (session !== null)
+        if (session !== null) {
           yield {
             session,
             events: rows("SELECT seq, event FROM log WHERE session = ? ORDER BY seq", session).map(
               loggedRow,
             ),
           };
+        }
       }
     },
     async commit(change) {
@@ -171,23 +173,26 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
               created.target,
               revision,
             ).length > 0
-          )
+          ) {
             updateSessionIndex(storage, created.name, created.target, revision);
+          }
         }
 
-        for (const relog of change.relogs)
+        for (const relog of change.relogs) {
           rows(
             "UPDATE log SET event = ? WHERE session = ? AND seq = ?",
             relog.event,
             relog.session,
             relog.seq,
           );
+        }
 
-        if (change.reindexSessions)
+        if (change.reindexSessions) {
           for (const row of rows("SELECT name, target, revision FROM refs")) {
             const ref = parseRef(row);
             updateSessionIndex(storage, ref.name, ref.target, ref.revision);
           }
+        }
 
         for (const statement of change.indexed) rows(statement);
 
@@ -293,19 +298,21 @@ function connect(storage: DurableObjectSql): StoreConnection {
           assertStoreVersion(storedVersion(storage));
           const before = new Map<string, Ref | undefined>();
 
-          for (const update of updates)
+          for (const update of updates) {
             if (!before.has(update.name)) before.set(update.name, ref(update.name) ?? undefined);
+          }
           const fenced = fenceNames(updates).find((name) => ref(name) === null);
 
           if (fenced !== undefined) return { kind: "fenced", name: fenced };
           const stale = updates.find((update) => !admits(update, before.get(update.name)));
 
-          if (stale !== undefined)
+          if (stale !== undefined) {
             return {
               kind: "stale",
               name: stale.name,
               revision: before.get(stale.name)?.revision ?? null,
             };
+          }
 
           const missing = updates.find(
             (update) =>
@@ -314,12 +321,13 @@ function connect(storage: DurableObjectSql): StoreConnection {
                 .length === 0,
           );
 
-          if (missing !== undefined)
+          if (missing !== undefined) {
             return {
               kind: "stale",
               name: missing.name,
               revision: before.get(missing.name)?.revision ?? null,
             };
+          }
 
           const replaced = replacedTargets(updates, before);
           const stamp = stampDirectory(updates, (text, values) => rows(text, ...values));
@@ -328,13 +336,14 @@ function connect(storage: DurableObjectSql): StoreConnection {
             const revision = mintRevision();
 
             if (update.target === null) rows("DELETE FROM refs WHERE name = ?", update.name);
-            else
+            else {
               rows(
                 "INSERT INTO refs (name, target, revision) VALUES (?, ?, ?) ON CONFLICT (name) DO UPDATE SET target = excluded.target, revision = excluded.revision",
                 update.name,
                 update.target,
                 revision,
               );
+            }
             updateSessionIndex(storage, update.name, update.target, revision);
             const session = parseSessionRef(update.name);
 
@@ -343,15 +352,17 @@ function connect(storage: DurableObjectSql): StoreConnection {
             return revision;
           });
 
-          for (const [session, version] of touched)
+          for (const [session, version] of touched) {
             rows("UPDATE session_index SET version = ? WHERE session = ?", version, session);
+          }
 
-          for (const id of replaced)
+          for (const id of replaced) {
             rows(
               "DELETE FROM objects WHERE id = ? AND bytes IS NULL AND json_extract(body, '$.kind') IS NOT 'commit' AND NOT EXISTS (SELECT 1 FROM refs WHERE target = ?)",
               id,
               id,
             );
+          }
 
           const host = stamp();
           const at = Date.now();
@@ -435,14 +446,16 @@ function updateSessionIndex(
     name,
     body === null ? null : decodeObject(body),
     revision,
-  ))
+  )) {
     storage.sql.exec(change.text, ...change.values);
+  }
 }
 
 function fits(bytes: number, what: string): void {
-  if (bytes > ROW_LIMIT)
+  if (bytes > ROW_LIMIT) {
     throw new SdkError(
       "invalid",
       `${what} is ${bytes} bytes, past the Durable Object store's 2 MB row limit.`,
     );
+  }
 }

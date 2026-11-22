@@ -1,24 +1,21 @@
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { Value } from "typebox/value";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
-import {
-  OAuthTokenResponseSchema,
-  type OAuthAuth,
-  type OAuthCredential,
-  type ProviderAuthInteraction,
-} from "../types.ts";
+import { OAuthTokenResponseSchema } from "../types.ts";
+import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { parseAuthorizationInput } from "./authorization-input.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "./oauth-page.ts";
 import { registerOAuthFlow } from "./load.ts";
 import { generatePKCE } from "./pkce.ts";
 
-type CallbackServerInfo = {
+interface CallbackServerInfo {
   server: Server;
   redirectUri: string;
   cancelWait: () => void;
   failWait: (error: Error) => void;
   waitForCode: () => Promise<{ code: string; state: string } | null>;
-};
+}
 
 const decode = (s: string) => atob(s);
 
@@ -30,7 +27,7 @@ const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 
 const CALLBACK_HOST = getProviderEnvValue("NYTE_OAUTH_CALLBACK_HOST") || "127.0.0.1";
 
-const CALLBACK_PORT = 53692;
+const CALLBACK_PORT = 53_692;
 
 const CALLBACK_PATH = "/callback";
 
@@ -217,6 +214,7 @@ async function exchangeAuthorizationCode(
   } catch (error) {
     throw new Error(
       `Token exchange request failed. url=${TOKEN_URL}; redirect_uri=${redirectUri}; response_type=authorization_code; details=${formatErrorDetails(error)}`,
+      { cause: error },
     );
   }
 
@@ -227,6 +225,7 @@ async function exchangeAuthorizationCode(
   } catch (error) {
     throw new Error(
       `Token exchange returned invalid JSON. url=${TOKEN_URL}; body=${responseBody}; details=${formatErrorDetails(error)}`,
+      { cause: error },
     );
   }
 
@@ -301,7 +300,7 @@ async function loginAnthropic(
         manualInput = input;
         server?.cancelWait();
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         manualError = error instanceof Error ? error : new Error(String(error));
         server?.cancelWait();
       });
@@ -321,6 +320,7 @@ async function loginAnthropic(
       message: "Exchanging authorization code for tokens...",
     });
 
+    // oxlint-disable-next-line typescript/return-await -- the finally closes the callback server before the token exchange starts
     return exchangeAuthorizationCode(
       parsed.code,
       parsed.state ?? verifier,
@@ -354,6 +354,7 @@ async function refreshAnthropicToken(
   } catch (error) {
     throw new Error(
       `Anthropic token refresh request failed. url=${TOKEN_URL}; details=${formatErrorDetails(error)}`,
+      { cause: error },
     );
   }
 
@@ -364,6 +365,7 @@ async function refreshAnthropicToken(
   } catch (error) {
     throw new Error(
       `Anthropic token refresh returned invalid JSON. url=${TOKEN_URL}; body=${responseBody}; details=${formatErrorDetails(error)}`,
+      { cause: error },
     );
   }
 

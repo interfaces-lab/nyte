@@ -385,8 +385,9 @@ describe("environment tools", () => {
     const progress: (string | undefined)[] = [];
 
     kernel.bus.subscribe(session.id, (event) => {
-      if (event.kind === "patch" && "progress" in event && event.part === "call-1")
+      if (event.kind === "patch" && "progress" in event && event.part === "call-1") {
         progress.push(event.progress.text);
+      }
     });
     provider.script = (process) => process.emit("watching\n");
     const running = call("bash", { command: "pnpm test" });
@@ -453,8 +454,9 @@ describe("shell progress", () => {
     const progress: [number, string | undefined][] = [];
 
     kernel.bus.subscribe(session.id, (event) => {
-      if (event.kind === "patch" && "progress" in event && event.part === "call-1")
+      if (event.kind === "patch" && "progress" in event && event.part === "call-1") {
         progress.push([Date.now() - start, event.progress.text]);
+      }
     });
 
     const at = (ms: number) => vi.advanceTimersByTimeAsync(start + ms - Date.now());
@@ -510,10 +512,10 @@ describe("shell progress", () => {
         { emit: [Uint8Array.of(0x61, 0xe2)], at: 10 },
         { emit: [Uint8Array.of(0x82, 0xac, 0x0a)], at: 100 },
       ],
-      output: "a\u20ac\n[exit code 0]",
+      output: "a\u20AC\n[exit code 0]",
       published: [
         [0, "a"],
-        [80, "a\u20ac"],
+        [80, "a\u20AC"],
       ],
     },
   ])("$name, and nothing after it exits", async (row) => {

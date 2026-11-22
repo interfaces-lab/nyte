@@ -15,8 +15,9 @@ export function DesignTab(): ReactElement {
     <DesignPanel
       workspace={browsed.kind === "ready" ? browsed.workspace : undefined}
       onAsk={() => {
-        if (workbench.getView(view).layout.kind === "maximized")
+        if (workbench.getView(view).layout.kind === "maximized") {
           workbench.dispatch(view, { kind: "toggle-maximized" });
+        }
         const layout = windowTabs.panes().layout;
         layout.requestFocus(layout.getSnapshot().focus[0]);
       }}

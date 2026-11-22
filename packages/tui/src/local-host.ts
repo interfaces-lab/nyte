@@ -39,7 +39,7 @@ const HOST_START_MS = 20_000;
 
 const HOST_POLL_MS = 100;
 
-const HOST_WATCH_MS = 2_000;
+const HOST_WATCH_MS = 2000;
 
 export async function connectHost(
   source: HostSource,
@@ -129,8 +129,9 @@ async function retireWhenOutdated(connection: Connection, signal: AbortSignal): 
   if (host === null) return;
   const request = await requestRetire("nyte");
 
-  while (!signal.aborted && processAlive(host.pid))
+  while (!signal.aborted && processAlive(host.pid)) {
     await sleep(HOST_WATCH_MS, undefined, { ref: false, signal }).catch(() => undefined);
+  }
 
   if (!signal.aborted && (await request.consumed())) {
     await ensureHost();
@@ -155,8 +156,9 @@ async function attachHost(endpoint: LocalEndpoint, kind: "tui" | "cli"): Promise
     client: { kind, name: "nyte", version: VERSION },
     journal: fileJournal(),
   }).catch((cause: unknown) => {
-    if (cause instanceof SdkError && cause.code !== "unavailable")
+    if (cause instanceof SdkError && cause.code !== "unavailable") {
       hostFailure(`attach to the host at ${endpoint.url}`)(cause);
+    }
 
     throw new CliError("network_error", `Couldn't reach the host at ${endpoint.url}.`, {
       details: [

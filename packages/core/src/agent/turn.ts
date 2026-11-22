@@ -251,8 +251,9 @@ async function prepareRequest(
     const configuration = await resolveHeadConfiguration(kernel, session, head);
     const configured = modelInfo(models, configuration.model, runtime);
 
-    if (configured === null)
+    if (configured === null) {
       return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
+    }
     const input = { session, head, run: state.run, configuration };
 
     const body = () => requestBody(kernel, models, runtime, input);
@@ -302,10 +303,11 @@ async function prepareRequest(
     const model = models.getModel(request.model.provider, request.model.id);
     const info = modelInfo(models, request.model, runtime);
 
-    if (model === undefined || info === null)
+    if (model === undefined || info === null) {
       return failedRequest(
         `No model ${request.model.provider}/${request.model.id} is in the catalog.`,
       );
+    }
 
     return {
       kind: "request",
@@ -449,8 +451,9 @@ function executeTool(
   const { kernel, session, head } = context;
   const id = callIds.get(call);
 
-  if (id === undefined)
+  if (id === undefined) {
     throw new SdkError("internal", `Call ${call.id} ran before its response settled.`);
+  }
 
   return traced("tool.run", followedTrace(session), { session, tool: call.name }, () =>
     executeCall(kernel, {
@@ -548,11 +551,11 @@ function updated(context: Turn, state: AttemptState, event: AssistantMessageEven
       state.starts.delete(event.contentIndex);
       state.parts.delete(event.contentIndex);
 
-      return;
+      break;
     }
 
     default:
-      return;
+      break;
   }
 }
 
@@ -560,12 +563,13 @@ function closeThoughts(state: AttemptState): void {
   for (const [index, pending] of state.parts) {
     const start = state.starts.get(index);
 
-    if (pending.kind === "thinking" && start !== undefined)
+    if (pending.kind === "thinking" && start !== undefined) {
       pending.thoughts.push({
         length: pending.markdown.length - start,
         signature: null,
         redacted: false,
       });
+    }
   }
 }
 
@@ -713,7 +717,7 @@ function assignCallIds(
 
   return new Map(
     calls.map((call) => {
-      const index = message.content.findIndex((block) => block === call);
+      const index = message.content.indexOf(call);
       let id = call.id;
 
       while (id === "" || seen.has(id)) id = `${id === "" ? "call" : id}_${index}`;
@@ -781,7 +785,7 @@ async function retry(
     };
   });
 
-  if (retried !== null && kept.length > 0)
+  if (retried !== null && kept.length > 0) {
     await changeRun(context, run, async (record) =>
       record.interrupted === undefined
         ? null
@@ -796,6 +800,7 @@ async function retry(
             events: [],
           },
     );
+  }
 
   return retried === null ? state : fresh(retried, 0);
 }
@@ -808,7 +813,7 @@ async function closeOpen(
 ): Promise<void> {
   const { kernel, head } = context;
 
-  if (response === null)
+  if (response === null) {
     return attempt(`Closing the parts of run ${run}`, async () => {
       const failed = await updates();
 
@@ -816,6 +821,7 @@ async function closeOpen(
         ? undefined
         : STALE;
     });
+  }
 
   observe(context, response.prepared, response.usage);
 

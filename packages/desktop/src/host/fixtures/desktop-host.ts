@@ -67,8 +67,9 @@ export async function testDesktop(
 
   const [model] = fake.provider.getModels();
 
-  if (model !== undefined)
+  if (model !== undefined) {
     await served.models.setDefault({ provider: fake.provider.id, id: model.id });
+  }
 
   const dial = () =>
     connect({

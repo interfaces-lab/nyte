@@ -93,10 +93,11 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
   if (target === null && chat?.kind === "blank") {
     const sending = context.read().local.submissions.some((sent) => sent.session === chat.id);
 
-    if ((chat.unresolved === true || !sending) && !sameSelection(chat.selection, selection))
+    if ((chat.unresolved === true || !sending) && !sameSelection(chat.selection, selection)) {
       dispatch({ kind: "selection", session: chat.id, selection });
+    }
     await settleFolder(chat, context);
-  } else if (target === null)
+  } else if (target === null) {
     await openBlank(
       {
         kind: "blank",
@@ -106,7 +107,7 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
       },
       context,
     );
-  else await follow(target, false, context);
+  } else await follow(target, false, context);
 
   if (target !== null && flagged !== null) {
     await configure(
@@ -126,12 +127,13 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
   if (
     availableModels(catalog).length === 0 &&
     catalog.providers.every((provider) => provider.credential !== "unknown")
-  )
+  ) {
     dispatch({
       kind: "inform",
       tone: "warning",
       text: "Not signed in. /login connects a provider.",
     });
+  }
 
   if (options.start === "launch") await checkUpdate(settings.autoUpdate, context);
 }

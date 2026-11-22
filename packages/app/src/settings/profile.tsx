@@ -1,6 +1,7 @@
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
-import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { avatar, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";

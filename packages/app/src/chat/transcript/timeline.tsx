@@ -1,5 +1,6 @@
 import type { SessionId, UserContent } from "@nyte-ai/sdk";
 import type { ChatView } from "../../data/chat-store.ts";
+// oxlint-disable-next-line import/no-duplicates -- the hand-memo import stays on its own line so its suppression covers only that import
 import { useState } from "react";
 // oxlint-disable-next-line no-restricted-imports -- TranscriptContent's uncompiled virtualizer calls renderRow on every scroll update, so each row needs its own memo boundary
 import { memo } from "react";

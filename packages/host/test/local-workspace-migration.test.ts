@@ -65,13 +65,14 @@ it("reopens proven legacy workspaces without moving chats or trusting replacemen
   const connection = await store.open();
 
   try {
-    for (const workspace of records)
+    for (const workspace of records) {
       await connection.refs.set([
         {
           name: workspaceRef(workspace.id),
           target: await connection.objects.put(envelope("workspace", workspace, 1)),
         },
       ]);
+    }
     const session = asId<"session">("existing-chat");
     await connection.refs.set([
       {
@@ -126,13 +127,15 @@ it("reopens proven legacy workspaces without moving chats or trusting replacemen
         name: "Existing chat",
       });
 
-      for (const id of ["unmatched", "replaced", "reused-inode"])
+      for (const id of ["unmatched", "replaced", "reused-inode"]) {
         expect(await host.workspace(asId(id)).info()).toMatchObject({
           availability: { kind: "unavailable", reason: "unreachable" },
         });
+      }
 
-      for (const original of before.filter((ref) => ref.name !== "workspaces/legacy"))
+      for (const original of before.filter((ref) => ref.name !== "workspaces/legacy")) {
         expect(await connection.refs.get(original.name)).toEqual(original);
+      }
       const migrated = await connection.refs.get(workspaceRef(record.id));
       assert(migrated?.target != null);
       expect(decodeWorkspaceRecord(await connection.objects.get(migrated.target))).toEqual({

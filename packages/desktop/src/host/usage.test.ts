@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { build } from "vite";
 import { afterEach, test, vi } from "vitest";
-import { FileModelsStore, type Models } from "@nyte-ai/ai";
+import { FileModelsStore } from "@nyte-ai/ai";
+import type { Models } from "@nyte-ai/ai";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { localDay } from "@nyte-ai/host/store-usage";
 import { socketTest, testDesktop } from "./fixtures/desktop-host.ts";
@@ -111,14 +112,14 @@ test("the bundled worker serves scans, handles repeated reads and closes pending
     await mkdir(join(home, "claude", "projects"), { recursive: true });
     await writeFile(
       join(home, "claude", "projects", "chat.jsonl"),
-      JSON.stringify({
+      `${JSON.stringify({
         type: "assistant",
         message: {
           id: "message",
           model: model.id,
           usage: { input_tokens: 100, output_tokens: 20 },
         },
-      }) + "\n",
+      })}\n`,
     );
     const priced = await worker.scan({ window: request.window });
     assert.equal(priced.claudeCode.kind, "ready");

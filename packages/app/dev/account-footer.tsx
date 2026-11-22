@@ -180,9 +180,10 @@ function Harness(): ReactElement {
 
 const container = document.getElementById("root");
 
-if (container !== null)
+if (container !== null) {
   createRoot(container).render(
     <StrictMode>
       <Harness />
     </StrictMode>,
   );
+}

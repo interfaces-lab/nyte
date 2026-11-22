@@ -59,8 +59,9 @@ void describe("each Lucide set maps exactly its names", () => {
 
 void describe("icon switch", () => {
   void test("NYTE_ICONS=lucide wins even when Central is installed", () => {
-    for (const { name } of ICON_CONSUMERS)
+    for (const { name } of ICON_CONSUMERS) {
       assert.equal(iconSet(name, { NYTE_ICONS: "lucide" }), "lucide");
+    }
   });
 
   void test("NYTE_ICONS rejects anything but central or lucide", () => {

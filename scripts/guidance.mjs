@@ -47,10 +47,11 @@ const skills = listSkills().flatMap((skill) => {
 const count = `${String(changed.length)} ${changed.length === 1 ? "file" : "files"} ${scope.label}`;
 
 if (changed.length === 0) process.stdout.write("No changed files.\n");
-else if (agents.length + skills.length === 0)
+else if (agents.length + skills.length === 0) {
   process.stdout.write(`Only the root AGENTS.md applies to ${count}.\n`);
-else
+} else {
   process.stdout.write(`Read before committing ${count}:\n${[...agents, ...skills].join("\n")}\n`);
+}
 
 function readScope(paths, ref) {
   if (paths.length > 0 && ref === undefined) return { label: "named", files: paths };

@@ -1,7 +1,12 @@
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
-import { failureNotice, PLANNING_LABEL } from "@nyte-ai/plugin/client/presentation";
+import {
+  failureNotice,
+  PLANNING_LABEL,
+  formatDuration,
+  formatWholeDuration,
+} from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import {
   ACTIVITY_RETRY_LABEL,
@@ -11,7 +16,6 @@ import {
   GLYPHS,
   RECOVERY_STEPS,
 } from "../../lib/constants.ts";
-import { formatDuration, formatWholeDuration } from "@nyte-ai/plugin/client/presentation";
 import { retryCause } from "../../lib/format.ts";
 import type { CliTheme } from "../../lib/theme.ts";
 import type { TurnStatus } from "../../model/transcript.ts";
@@ -23,7 +27,7 @@ interface Line {
   readonly spinner: string | null;
 }
 
-const CLOCK_INTERVAL_MS = 1_000;
+const CLOCK_INTERVAL_MS = 1000;
 
 export function statusLine(status: TurnStatus, theme: CliTheme, now: number): Line {
   switch (status.kind) {

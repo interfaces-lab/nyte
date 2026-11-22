@@ -38,14 +38,15 @@ function safeJsonStringify(
 }
 
 function estimateTextAndImageContentChars(
-  content: string | Array<TextContent | ImageContent>,
+  content: string | (TextContent | ImageContent)[],
 ): number {
   if (!Array.isArray(content)) return content.length;
 
   let chars = 0;
 
-  for (const block of content)
+  for (const block of content) {
     chars += block.type === "text" ? block.text.length : ESTIMATED_IMAGE_CHARS;
+  }
 
   return chars;
 }
@@ -55,7 +56,7 @@ export function estimateTextTokens(text: string): number {
 }
 
 export function estimateTextAndImageContentTokens(
-  content: string | Array<TextContent | ImageContent>,
+  content: string | (TextContent | ImageContent)[],
 ): number {
   return Math.ceil(estimateTextAndImageContentChars(content) / CHARS_PER_TOKEN);
 }

@@ -4,8 +4,8 @@ import {
   hasInlineSkills,
   parseComposerSubmission,
   SLASH_COMMANDS,
+  slashIndex,
 } from "../lib/slash.ts";
-import { slashIndex } from "../lib/slash.ts";
 import type { BuiltinSlashName, SlashCommand } from "../lib/slash.ts";
 import type { Intent } from "./msg.ts";
 import { applyChoice, busyRefusal, matchChoice, settingRows } from "./settings.ts";
@@ -131,10 +131,11 @@ function setting(state: State, row: SettingRow, argument: string): Intent {
 
   const choice = matchChoice(row, argument);
 
-  if (choice === null)
+  if (choice === null) {
     return refuse(
       `Unknown ${row.label}: ${argument}. Choices: ${row.choices.map((candidate) => candidate.id).join(", ")}`,
     );
+  }
 
   return applyChoice(state, row, choice);
 }
@@ -188,7 +189,7 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
     const base = { name: command.name, aliases, description: command.description };
     const builtinName = builtins.get(command.name);
 
-    if (builtinName !== undefined)
+    if (builtinName !== undefined) {
       return {
         ...base,
         source: "builtin",
@@ -196,9 +197,10 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
         takesText: false,
         run: (argument) => builtin(builtinName, argument),
       };
+    }
     const row = rows.get(command.name);
 
-    if (row !== undefined)
+    if (row !== undefined) {
       return {
         ...base,
         source: "setting",
@@ -206,10 +208,11 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
         takesText: false,
         run: (argument) => setting(state, row, argument),
       };
+    }
 
     const plugin = plugins.get(command.name);
 
-    if (plugin?.side === "core")
+    if (plugin?.side === "core") {
       return {
         ...base,
         source: "plugin",
@@ -217,6 +220,7 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
         takesText: plugin.takesText,
         run: (argument) => ({ kind: "plugin-command", name: command.name, argument }),
       };
+    }
 
     return {
       ...base,

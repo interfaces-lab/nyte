@@ -118,7 +118,7 @@ describe("models", () => {
     fake.reply({
       content: [{ type: "text", text: "Hi." }],
       limits: [
-        { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 },
+        { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1000 },
         { id: "seven_day", label: "Weekly", usedPercent: 5 },
       ],
     });
@@ -129,7 +129,7 @@ describe("models", () => {
     });
 
     expect((await host.models.list()).providers[0].limits).toEqual([
-      { label: "5-hour", used: 40, limit: 100, resetsAt: 1_000 },
+      { label: "5-hour", used: 40, limit: 100, resetsAt: 1000 },
       { label: "Weekly", used: 5, limit: 100, resetsAt: null },
     ]);
   });
@@ -139,7 +139,7 @@ describe("models", () => {
     await using host = await open(fake);
     const { session } = await host.sessions.start({ content: "Hi." });
     const messages = [{ role: "user" as const, content: "Hi.", timestamp: 0 }];
-    const window = { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 };
+    const window = { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1000 };
     const generation = () => host.kernel.host.current().catalog;
 
     await until(async () => ((await session.view()).catalog.tools.length > 0 ? true : undefined));
@@ -169,7 +169,7 @@ describe("models", () => {
 
     expect(generation()).not.toBe(limited);
     expect((await host.models.list()).providers[0].limits).toEqual([
-      { label: "5-hour", used: 45, limit: 100, resetsAt: 1_000 },
+      { label: "5-hour", used: 45, limit: 100, resetsAt: 1000 },
     ]);
   });
 
@@ -622,8 +622,9 @@ describe("request", () => {
     const events: string[] = [];
 
     host.kernel.bus.subscribe(session.id, (event) => {
-      if (event.kind === "request")
+      if (event.kind === "request") {
         events.push(`${event.step}:${event.head}:${event.context.tokens}`);
+      }
     });
 
     fake.reply(

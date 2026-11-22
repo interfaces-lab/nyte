@@ -1,31 +1,21 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { create, props, when } from "@stylexjs/stylex";
-import {
-  createContext,
-  use,
-  type ComponentProps,
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { createContext, use } from "react";
+import type { ComponentProps, CSSProperties, ReactElement, ReactNode } from "react";
 
 import { hairline } from "./styles/hairline.stylex.ts";
 import { focus } from "./styles/a11y.stylex.ts";
 import { joinedSolid } from "./styles/button.stylex.ts";
 import { controlRoot } from "./styles/control.stylex.ts";
 import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
-import {
-  mergeStyleProps,
-  type StateStyledProps,
-  type StaticStyleProps,
-  type StyledProps,
-  type XStyle,
-} from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StateStyledProps, StaticStyleProps, StyledProps, XStyle } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
-import { ControlGlyphs, Icon, IconSwap, type GlyphSize, type IconName } from "./icon.tsx";
+import { ControlGlyphs, Icon, IconSwap } from "./icon.tsx";
+import type { GlyphSize, IconName } from "./icon.tsx";
 import { Loader } from "./loader.tsx";
 
 const disabled = "[data-disabled]:not([aria-busy='true'])";

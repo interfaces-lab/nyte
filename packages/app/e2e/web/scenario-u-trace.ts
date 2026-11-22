@@ -79,15 +79,17 @@ export async function readRendererSpans(page: Page): Promise<readonly Span[]> {
 
     const detail: Record<string, string | number | boolean | null> = {};
 
-    for (const [key, value] of fields)
+    for (const [key, value] of fields) {
       if (
         key !== "trace" &&
         (value === null ||
           typeof value === "string" ||
           typeof value === "number" ||
           typeof value === "boolean")
-      )
+      ) {
         detail[key] = value;
+      }
+    }
     const trace = fields.get("trace");
 
     return [
@@ -105,8 +107,9 @@ export async function readRendererSpans(page: Page): Promise<readonly Span[]> {
 export function submitTrace(spans: readonly Span[]): string {
   const trace = spans.findLast((span) => span.name === "composer.submit")?.trace;
 
-  if (trace === null || trace === undefined)
+  if (trace === null || trace === undefined) {
     throw new Error("No composer.submit span was recorded.");
+  }
 
   return trace;
 }
@@ -124,8 +127,9 @@ export function hopDurations(waterfall: Waterfall): Readonly<Record<string, numb
   for (const row of waterfall.rows) {
     const key = hopKey(row);
 
-    if (!USER_PACED.has(key) && (row.traced || row.name === "mcp.connect"))
+    if (!USER_PACED.has(key) && (row.traced || row.name === "mcp.connect")) {
       longest[key] = Math.max(longest[key] ?? 0, row.duration);
+    }
   }
 
   return longest;

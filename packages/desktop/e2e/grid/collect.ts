@@ -278,10 +278,11 @@ export function collect(plan: Plan): Snapshot {
       split(rule.css).map(([property, value]) => ({ property, value, selector: rule.selector })),
     );
 
-    if (inline !== null)
+    if (inline !== null) {
       all.push(
         ...split(inline).map(([property, value]) => ({ property, value, selector: "style" })),
       );
+    }
 
     return all;
   };
@@ -293,8 +294,9 @@ export function collect(plan: Plan): Snapshot {
       ["IMG", "svg", "VIDEO", "CANVAS", "INPUT", "TEXTAREA", "SELECT", "HR"].includes(
         element.tagName,
       )
-    )
+    ) {
       return true;
+    }
 
     if (!transparent(style.backgroundColor)) return true;
 
@@ -302,7 +304,7 @@ export function collect(plan: Plan): Snapshot {
 
     return (["Top", "Right", "Bottom", "Left"] as const).some(
       (side) =>
-        parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0 &&
+        Number.parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0 &&
         style.getPropertyValue(`border-${side.toLowerCase()}-style`) !== "none" &&
         !style.getPropertyValue(`border-${side.toLowerCase()}-color`).endsWith(", 0)"),
     );
@@ -344,7 +346,7 @@ export function collect(plan: Plan): Snapshot {
       })
       .nextNode();
 
-    return (first?.textContent ?? "").replace(/\s+/gu, " ").trim().slice(0, 60);
+    return (first?.textContent ?? "").replaceAll(/\s+/gu, " ").trim().slice(0, 60);
   };
 
   const describe = (element: Element): string => {
@@ -359,8 +361,9 @@ export function collect(plan: Plan): Snapshot {
     const own = describe(element);
 
     for (let anchor = element.parentElement; anchor !== null; anchor = anchor.parentElement) {
-      if (anchor.hasAttribute("data-slot") || anchor.hasAttribute("aria-label"))
+      if (anchor.hasAttribute("data-slot") || anchor.hasAttribute("aria-label")) {
         return `${describe(anchor)} > ${own}`;
+      }
     }
 
     return own;
@@ -403,8 +406,9 @@ export function collect(plan: Plan): Snapshot {
     const first = node.getClientRects()[0];
     let block = node.parentElement;
 
-    while (block !== null && getComputedStyle(block).display.startsWith("inline"))
+    while (block !== null && getComputedStyle(block).display.startsWith("inline")) {
       block = block.parentElement;
+    }
 
     if (first === undefined || block === null) return false;
     const range = document.createRange();
@@ -441,8 +445,10 @@ export function collect(plan: Plan): Snapshot {
   const placement = (parent: Element, rect: DOMRect): BoxFact | null => {
     const style = getComputedStyle(parent);
     const box = parent.getBoundingClientRect();
-    const start = box.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
-    const end = box.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
+    const start =
+      box.left + Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.borderLeftWidth);
+    const end =
+      box.right - Number.parseFloat(style.paddingRight) - Number.parseFloat(style.borderRightWidth);
     const before = rect.left - start;
     const after = end - rect.right;
 
@@ -463,7 +469,7 @@ export function collect(plan: Plan): Snapshot {
     const probe = document.createElement("div");
     probe.style.cssText = `position:absolute;visibility:hidden;width:0;height:0;margin-left:${css}`;
     host.append(probe);
-    const value = parseFloat(getComputedStyle(probe).marginLeft);
+    const value = Number.parseFloat(getComputedStyle(probe).marginLeft);
     probe.remove();
 
     if (Number.isNaN(value)) throw new Error(`The grid plan's length ${css} does not resolve.`);
@@ -564,13 +570,15 @@ export function collect(plan: Plan): Snapshot {
     const rect = node.getBoundingClientRect();
     let parent: number | null = null;
 
-    for (let up = node.parentElement; up !== null && parent === null; up = up.parentElement)
+    for (let up = node.parentElement; up !== null && parent === null; up = up.parentElement) {
       parent = ids.get(up) ?? null;
+    }
 
     let region: number | null = null;
 
-    for (let up: Element | null = node; up !== null && region === null; up = up.parentElement)
+    for (let up: Element | null = node; up !== null && region === null; up = up.parentElement) {
       region = regionIndex.get(up) ?? null;
+    }
 
     const map = node.computedStyleMap();
     const lengths: Record<string, number> = {};
@@ -578,12 +586,14 @@ export function collect(plan: Plan): Snapshot {
     for (const property of LENGTHS) {
       const value = map.get(property);
 
-      if (value instanceof CSSUnitValue && value.unit === "px")
+      if (value instanceof CSSUnitValue && value.unit === "px") {
         lengths[property] = round(value.value);
+      }
     }
 
-    if (style.position === "static")
+    if (style.position === "static") {
       for (const side of ["top", "right", "bottom", "left"]) delete lengths[side];
+    }
 
     if (!style.display.includes("flex") && !style.display.includes("grid")) {
       delete lengths["row-gap"];
@@ -610,13 +620,15 @@ export function collect(plan: Plan): Snapshot {
 
     if (Math.min(rect.width, rect.height) <= 1) facts.push("hairline");
 
-    if (rect.bottom >= innerHeight - 0.01 || rect.right >= innerWidth - 0.01)
+    if (rect.bottom >= innerHeight - 0.01 || rect.right >= innerWidth - 0.01) {
       facts.push("window-edge");
+    }
 
     if (style.display === "inline") facts.push("inline-run");
 
-    if (!transparent(style.backgroundColor) || style.backgroundImage !== "none")
+    if (!transparent(style.backgroundColor) || style.backgroundImage !== "none") {
       facts.push("background");
+    }
 
     if (style.boxShadow !== "none") facts.push("shadow");
 
@@ -628,14 +640,16 @@ export function collect(plan: Plan): Snapshot {
       (node.tagName === "TD" || node.tagName === "TH") &&
       node.closest("table") !== null &&
       getComputedStyle(node.closest("table") ?? node).tableLayout === "auto"
-    )
+    ) {
       facts.push("auto-table-column");
+    }
 
     if (
       (style.overflowX === "auto" || style.overflowX === "scroll") &&
       node.scrollWidth > node.clientWidth
-    )
+    ) {
       facts.push("h-scroller");
+    }
 
     const visible =
       visibleIn(rect, clipFor(node.parentElement)) &&
@@ -648,7 +662,7 @@ export function collect(plan: Plan): Snapshot {
     const occurrence = keys.get(descriptor) ?? 0;
 
     if (visible) keys.set(descriptor, occurrence + 1);
-    const lineHeight = parseFloat(style.lineHeight);
+    const lineHeight = Number.parseFloat(style.lineHeight);
 
     const flow = style.display.includes("grid")
       ? "grid"
@@ -687,7 +701,7 @@ export function collect(plan: Plan): Snapshot {
       outOfFlow: style.position === "absolute" || style.position === "fixed",
       lengths,
       font: {
-        size: parseFloat(style.fontSize),
+        size: Number.parseFloat(style.fontSize),
         lineHeight: Number.isNaN(lineHeight) ? null : lineHeight,
         mono: style.fontFamily === monoFamily,
         inline: style.display === "inline",
@@ -709,7 +723,7 @@ export function collect(plan: Plan): Snapshot {
     const parent = node.parentElement;
     const box = parent === null ? undefined : ids.get(parent);
 
-    if (parent === null || box === undefined || boxes[box]?.visible !== true) continue;
+    if (parent === null || box === undefined || !boxes[box]?.visible) continue;
     const style = getComputedStyle(parent);
     const metrics = metricsFor(style);
     const clip = clipFor(parent);
@@ -744,17 +758,16 @@ export function collect(plan: Plan): Snapshot {
   for (const field of document.querySelectorAll("[data-placeholder]")) {
     const box = ids.get(field);
 
-    if (
-      box === undefined ||
-      (field.textContent ?? "").trim() !== "" ||
-      boxes[box]?.visible !== true
-    )
+    if (box === undefined || (field.textContent ?? "").trim() !== "" || !boxes[box]?.visible) {
       continue;
+    }
     const style = getComputedStyle(field);
     const metrics = metricsFor(style);
     const rect = field.getBoundingClientRect();
-    const lineTop = rect.top + parseFloat(style.paddingTop) + parseFloat(style.borderTopWidth);
-    const left = rect.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
+    const lineTop =
+      rect.top + Number.parseFloat(style.paddingTop) + Number.parseFloat(style.borderTopWidth);
+    const left =
+      rect.left + Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.borderLeftWidth);
     texts.push({
       box,
       align: "start",
@@ -782,7 +795,7 @@ export function collect(plan: Plan): Snapshot {
         : [...element.querySelectorAll(selector)].flatMap((found) => {
             const id = ids.get(found);
 
-            return id === undefined || boxes[id]?.visible !== true ? [] : [id];
+            return id === undefined || !boxes[id]?.visible ? [] : [id];
           });
 
     return {
@@ -802,7 +815,7 @@ export function collect(plan: Plan): Snapshot {
   });
 
   const paneBottoms = [...document.querySelectorAll(plan.ends.pane)].flatMap((pane) =>
-    boxes[ids.get(pane) ?? -1]?.visible === true
+    boxes[ids.get(pane) ?? -1]?.visible
       ? [{ pane, bottom: pane.getBoundingClientRect().bottom }]
       : [],
   );
@@ -812,7 +825,7 @@ export function collect(plan: Plan): Snapshot {
   const picks = plan.picks.map((pick) => {
     const found = [...document.querySelectorAll(pick.selector)].filter(
       (element) =>
-        boxes[ids.get(element) ?? -1]?.visible === true &&
+        boxes[ids.get(element) ?? -1]?.visible &&
         (!pick.bottomEdgePane ||
           paneBottoms.some(
             (entry) => entry.bottom >= lowest - 0.5 && entry.pane.contains(element),
@@ -834,8 +847,9 @@ export function collect(plan: Plan): Snapshot {
     const paneId = ids.get(pane);
     const contentId = content === null ? undefined : ids.get(content);
 
-    if (viewport === null || content === null || paneId === undefined || contentId === undefined)
+    if (viewport === null || content === null || paneId === undefined || contentId === undefined) {
       return [];
+    }
     const view = viewport.getBoundingClientRect();
     const dock = pane.querySelector(plan.ends.dock)?.getBoundingClientRect();
 
@@ -850,8 +864,9 @@ export function collect(plan: Plan): Snapshot {
       const walker = document.createTreeWalker(last, NodeFilter.SHOW_TEXT);
       let found: Text | undefined;
 
-      for (let node = walker.nextNode(); node !== null; node = walker.nextNode())
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
         if (node instanceof Text && node.data.trim() !== "") found = node;
+      }
 
       return found;
     })();

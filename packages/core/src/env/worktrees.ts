@@ -6,11 +6,18 @@ import type { Plugin, ResolvedSetting } from "../contract/plugin.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
 import { commit } from "../watch/commit.ts";
 import { workspaceRef } from "../store/refs.ts";
-import { attempt, listSessionRecords, liveRuns, put, STALE } from "../store/session.ts";
+import {
+  attempt,
+  listSessionRecords,
+  liveRuns,
+  put,
+  STALE,
+  workspaceRecords,
+} from "../store/session.ts";
 import { readSetting } from "../store/setting-layers.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
-import { byIdentity, changed, readWorkspace, workspaceRecords } from "./environment.ts";
+import { byIdentity, changed, readWorkspace } from "./environment.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -58,15 +65,17 @@ export async function isolateWorkspace(
   if (made !== undefined) return made.id;
   const source = records.find((record) => record.id === input.source);
 
-  if (source === undefined)
+  if (source === undefined) {
     throw new SdkError("unknown", `Workspace ${input.source} is not registered on this host.`);
+  }
   const worktrees = kernel.environments.provider(source.target.kind)?.worktrees;
 
-  if (worktrees === undefined)
+  if (worktrees === undefined) {
     throw new SdkError(
       "unavailable",
       `A ${source.target.kind} workspace has no git worktrees, so this chat cannot run in one.`,
     );
+  }
 
   const worktree = await worktrees.create(await kernel.environments.attachWorkspace(source.id), {
     name: input.session,
@@ -76,8 +85,9 @@ export async function isolateWorkspace(
 
   const provider = kernel.environments.provider(worktree.target.kind);
 
-  if (provider === undefined)
+  if (provider === undefined) {
     throw new SdkError("unavailable", `No environment provider serves ${worktree.target.kind}.`);
+  }
   const inspected = await provider.inspect(worktree.target);
   const identity = { kind: worktree.target.kind, identity: inspected.identity };
   const id = asId<"workspace">(await objectId(identity));

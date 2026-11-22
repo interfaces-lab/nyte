@@ -122,8 +122,9 @@ it("runs a script's nested gated calls when each gate is answered as it opens", 
     execute: async (args, invocation) => {
       const outcomes = [];
 
-      for (const [index, text] of args.texts.entries())
+      for (const [index, text] of args.texts.entries()) {
         outcomes.push(await invocation.tools.execute("echo", { text }, { key: String(index) }));
+      }
 
       return { content: [{ kind: "text", text: `${String(outcomes.length)} ran.` }] };
     },
@@ -164,8 +165,9 @@ it("runs a script's nested gated calls when each gate is answered as it opens", 
 
   const { session, receipt } = await host.sessions.start({ content: "Run the script." });
 
-  for (const index of [0, 1])
+  for (const index of [0, 1]) {
     await session.part(await until(() => asked.at(index))).act("allow", {});
+  }
 
   expect((await receipt.settled()).kind).toBe("completed");
   expect(ran).toEqual(["one", "two"]);

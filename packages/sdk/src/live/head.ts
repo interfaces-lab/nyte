@@ -43,11 +43,11 @@ export interface HeadStore extends Live<HeadSnapshot | null> {
   close(): void;
 }
 
-type Held = {
+interface Held {
   readonly store: SessionStore;
   activation: Activation;
   built: readonly MessageId[] | null;
-};
+}
 
 type Table = keyof SessionRows;
 
@@ -127,7 +127,7 @@ export function openHeadStore(
         () => {
           if (socket === live && held === current && !reading) settle(live, current, NO_TABLE);
         },
-        (error) => {
+        (error: unknown) => {
           if (wanted === id) wanted = null;
 
           if (socket === live) stale(asSdkError(error));
@@ -191,8 +191,9 @@ export function openHeadStore(
         event.kind === "change" &&
         sessionsChanges.Check(event) &&
         event.tables.sessions?.drop.includes(input.session) === true
-      )
+      ) {
         void read(live);
+      }
 
       return;
     }
@@ -282,8 +283,9 @@ function rebuild(
     activation === previous.activation &&
     catalog === previous.catalog &&
     source.leadingPrompt === previous.leadingPrompt
-  )
+  ) {
     return previous;
+  }
 
   return { head, order, leadingPrompt: source.leadingPrompt, activation, rows, catalog };
 }

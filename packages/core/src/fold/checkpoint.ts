@@ -54,11 +54,11 @@ import { FOLD_CODE } from "./code.ts";
 import { emptyStamps, awaitsSettlement, partRow } from "./draft.ts";
 import { sumUsage } from "./paths.ts";
 
-const REPLAY_EVENTS = 1_024;
+const REPLAY_EVENTS = 1024;
 
 const REPLAY_BYTES = 1_048_576;
 
-const SETTLE_DELAY = 1_000;
+const SETTLE_DELAY = 1000;
 
 const head = idSchema<"head">();
 
@@ -196,12 +196,14 @@ export function foldCheckpointing(
 
     if (!restored || state.seq <= kept.seq || streaming()) return null;
 
-    for (const head of state.heads.values())
+    for (const head of state.heads.values()) {
       if (
         head.info.execution.kind !== "idle" ||
         head.live.some((part) => state[INDEX].unsettled.has(part))
-      )
+      ) {
         return null;
+      }
+    }
 
     return state;
   };
@@ -259,7 +261,7 @@ export function foldCheckpointing(
         const state = decodeFoldCheckpoint(checkpoint.body, session, principal);
 
         return state === null ? null : { state, length: checkpoint.body.length };
-      })().catch((error) => {
+      })().catch((error: unknown) => {
         dev("fold", "checkpoint read failed", { session, error: String(error) });
 
         return null;

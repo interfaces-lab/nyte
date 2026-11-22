@@ -41,8 +41,9 @@ function respond(answer: RouteAnswer): Response {
   if (answer.kind === "empty") return new Response(null, { status: 204, headers });
   headers.set("content-type", "application/json; charset=utf-8");
 
-  if (answer.kind === "json")
+  if (answer.kind === "json") {
     return new Response(JSON.stringify(answer.body), { status: answer.status, headers });
+  }
 
   return new Response(
     JSON.stringify({
@@ -119,14 +120,16 @@ export function connectRouteHandler(
 
     if (!pathname.startsWith(DESKTOP_ROUTES.prefix)) return undefined;
 
-    if (request.headers.has("origin") || !addressed(request, routes.host()))
+    if (request.headers.has("origin") || !addressed(request, routes.host())) {
       return respond(refused(403, "forbidden"));
+    }
 
     if (pathname === DESKTOP_ROUTES.enroll) {
       if (request.method !== "POST") return respond(refused(405, "invalid"));
 
-      if (!/^application\/json(?:;|$)/iu.test(request.headers.get("content-type") ?? ""))
+      if (!/^application\/json(?:;|$)/iu.test(request.headers.get("content-type") ?? "")) {
         return respond(refused(415, "invalid"));
+      }
       const text = await limitedBody(request);
 
       if (text === undefined) return respond(refused(413, "invalid"));

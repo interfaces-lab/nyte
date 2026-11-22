@@ -5,8 +5,10 @@ import Constants from "expo-constants";
 import { fetch } from "expo/fetch";
 import { deleteItemAsync, getItemAsync, setItemAsync } from "expo-secure-store";
 import { createMMKV } from "react-native-mmkv";
-import { displayAddress, type Connection, type SavedConnection } from "./connection.ts";
-import { classifyConnectFailure, type ConnectFailure } from "./connect-copy.ts";
+import { displayAddress } from "./connection.ts";
+import type { Connection, SavedConnection } from "./connection.ts";
+import { classifyConnectFailure } from "./connect-copy.ts";
+import type { ConnectFailure } from "./connect-copy.ts";
 import { createConnectionStore } from "./connection-store.ts";
 import { journalStorage } from "./journal.ts";
 import { nativeSocket } from "./live.ts";
@@ -95,8 +97,9 @@ export async function verifyHost(input: {
       return { kind: "cancelled" };
     }
 
-    if (cause instanceof SdkError && cause.code === "stale" && pinned !== undefined)
+    if (cause instanceof SdkError && cause.code === "stale" && pinned !== undefined) {
       return { kind: "identityChanged", address, url: saved.connection.url };
+    }
 
     if (cause instanceof SdkError) return classifyConnectFailure(cause, address);
 
@@ -190,8 +193,9 @@ function createHostVerifier() {
     if (
       check.kind === "verified" &&
       (next.kind !== "verified" || next.host.connection !== check.host.connection)
-    )
+    ) {
       closeHost(check.host);
+    }
     check = next;
 
     for (const listener of listeners) listener();

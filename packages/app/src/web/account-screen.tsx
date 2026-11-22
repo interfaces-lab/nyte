@@ -191,10 +191,11 @@ function AccountFlow({
 
       if (!signal.aborted) setListing({ kind: "listed", environments: listed });
     } catch (cause) {
-      if (!signal.aborted)
+      if (!signal.aborted) {
         setListing((current) =>
           current.kind === "listed" ? current : { kind: "failed", problem: accountProblem(cause) },
         );
+      }
     }
 
     if (!signal.aborted) setProgress(undefined);
@@ -300,15 +301,17 @@ function AccountFlow({
         busy.current ||
         adopted.current ||
         active.current !== undefined
-      )
+      ) {
         return;
+      }
       work.current?.abort();
       const controller = new AbortController();
       work.current = controller;
       void broker.listEnvironments({ signal: controller.signal }).then(
         (listed) => {
-          if (!controller.signal.aborted)
+          if (!controller.signal.aborted) {
             setListing({ kind: "listed", environments: listed.environments });
+          }
         },
         () => undefined,
       );

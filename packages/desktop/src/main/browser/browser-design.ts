@@ -11,7 +11,7 @@ import { capturePageRetrying } from "./browser-runtime.ts";
 import type { DesignPageMessage } from "../../shared/ipc-inputs.ts";
 import type { Surface, SurfaceRegistry } from "./browser-surface.ts";
 
-const CROP_WIDTH = 1_200;
+const CROP_WIDTH = 1200;
 
 type PagePick = Extract<DesignPageMessage, { kind: "pick" }>;
 
@@ -89,8 +89,9 @@ function changed(design: BrowserDesign, change: BrowserDesignChange): BrowserDes
 function send(surface: Surface, message: DesignMainMessage): void {
   const contents = surface.guest;
 
-  if (contents !== undefined && !contents.isDestroyed())
+  if (contents !== undefined && !contents.isDestroyed()) {
     contents.send(BROWSER_PAGE_DESIGN_CHANNEL, message);
+  }
 }
 
 async function designPick(contents: WebContents, pick: PagePick): Promise<BrowserDesignPick> {

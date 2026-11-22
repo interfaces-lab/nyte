@@ -160,10 +160,11 @@ async function armSwitch(page: Page, target: string): Promise<void> {
     const check = (): void => {
       if (painted()) {
         const channel = new MessageChannel();
-        channel.port1.onmessage = () => {
+        channel.port1.addEventListener("message", () => {
           state.paintedMs = performance.now();
           performance.mark("nyte:switch:painted");
-        };
+        });
+        channel.port1.start();
         channel.port2.postMessage(null);
 
         return;
@@ -273,7 +274,7 @@ function hotFunctions(
     const frame = frames.get(sample) ?? "?";
 
     if (frame.startsWith("(idle)") || frame.startsWith("(program)")) continue;
-    self.set(frame, (self.get(frame) ?? 0) + delta / 1_000);
+    self.set(frame, (self.get(frame) ?? 0) + delta / 1000);
   }
 
   return [...self]
@@ -311,8 +312,9 @@ test("each switch between long chats renders and publishes within its budget", a
 
   await stopCountingWork(page);
 
-  for (const sample of [...first, ...again])
+  for (const sample of [...first, ...again]) {
     expect(sample["render:conversation"], "the app counted no work").toBeGreaterThan(0);
+  }
 
   const summaries = { first: summarize(first), again: summarize(again) };
   const receipt = JSON.stringify(
@@ -367,15 +369,16 @@ test("measures how long switching between long chats takes to paint the last mes
   const main = findThread(events, "nyte:switch:painted");
   const painted = markTimes(main, "nyte:switch:painted");
 
-  if (painted.length !== SWITCHES)
+  if (painted.length !== SWITCHES) {
     throw new Error(`The trace has ${String(painted.length)} painted marks`);
+  }
 
   const switches = timings.map((timing, index) => {
     const to = painted[index] ?? 0;
-    const from = to - timing.spanMs * 1_000;
+    const from = to - timing.spanMs * 1000;
 
     const trace = (ms: number | undefined) =>
-      ms === undefined ? undefined : to + (ms - timing.paintedMs) * 1_000;
+      ms === undefined ? undefined : to + (ms - timing.paintedMs) * 1000;
 
     const marks = timing.marks;
     const waited = marks.skeletonShownMs !== undefined;
@@ -408,8 +411,9 @@ test("measures how long switching between long chats takes to paint the last mes
     .map((entry) => ({ ...entry, hot: hotFunctions(profiled.profile, [entry.window]) }));
 
   const splitAcrossSwitches = switches.reduce<Record<string, number>>((totals, entry) => {
-    for (const [part, ms] of Object.entries(entry.split))
+    for (const [part, ms] of Object.entries(entry.split)) {
       totals[part] = round((totals[part] ?? 0) + ms);
+    }
 
     return totals;
   }, {});

@@ -3,7 +3,7 @@ import { afterEach, describe, vi, test } from "vitest";
 import { uuidv7 } from "../src/utils/uuid.ts";
 
 const UUID_V7_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const TIMESTAMP = 0x0123456789ab;
+const TIMESTAMP = 0x01_23_45_67_89_ab;
 
 function parseTimestamp(uuid: string): number {
   return Number.parseInt(uuid.replaceAll("-", "").slice(0, 12), 16);
@@ -24,7 +24,7 @@ describe("uuidv7", () => {
     vi.setSystemTime(TIMESTAMP + 1);
     const afterAdvance = uuidv7();
     const ordinaryIds = [first, second, afterRollback, afterAdvance];
-    const followerTimestamp = TIMESTAMP - 1_000;
+    const followerTimestamp = TIMESTAMP - 1000;
     const followers = [uuidv7(followerTimestamp), uuidv7(followerTimestamp)];
 
     for (const id of [...ordinaryIds, ...followers]) assert.match(id, UUID_V7_RE);

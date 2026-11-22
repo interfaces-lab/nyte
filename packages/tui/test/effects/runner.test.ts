@@ -274,7 +274,7 @@ test.each<[string, SendEnd | null, readonly ("sent" | "send-refused")[]]>([
       ),
     ).toEqual([...kinds]);
 
-    if (end?.kind === "refused")
+    if (end?.kind === "refused") {
       expect(app.dispatched.at(-1)).toEqual({
         kind: "send-refused",
         submission: "sub-1",
@@ -282,6 +282,7 @@ test.each<[string, SendEnd | null, readonly ("sent" | "send-refused")[]]>([
         reason: "Message not sent: not here. It is back in the composer.",
         snapshot: SUBMISSION.snapshot,
       });
+    }
   },
 );
 

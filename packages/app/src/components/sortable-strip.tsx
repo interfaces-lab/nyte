@@ -101,7 +101,7 @@ function startDrag(
   id: string,
   clientX: number,
 ): Drag | undefined {
-  const from = order.findIndex((item) => item === id);
+  const from = order.indexOf(id);
 
   if (from === -1) return undefined;
   const listLeft = list.getBoundingClientRect().left - list.scrollLeft;
@@ -167,7 +167,7 @@ function slideDistance(drag: Drag, id: string): number {
   if (id === drag.id) return drag.offset;
 
   const { from } = drag;
-  const index = drag.order.findIndex((item) => item === id);
+  const index = drag.order.indexOf(id);
   const room = (drag.widths.get(drag.id) ?? 0) + drag.gap;
 
   if (from < drag.target && index > from && index <= drag.target) return -room;
@@ -219,8 +219,9 @@ export function SortableList({
     landing.current = undefined;
     const element = items.get(pending.id);
 
-    if (element === undefined || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    if (element === undefined || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
+    }
     const delta = pending.left - element.getBoundingClientRect().left;
 
     if (delta === 0) return;
@@ -248,8 +249,9 @@ export function SortableList({
     let clientX: number | undefined;
 
     const move = (): void => {
-      if (dragRef.current !== undefined && clientX !== undefined)
+      if (dragRef.current !== undefined && clientX !== undefined) {
         settle(moveDrag(dragRef.current, list, clientX));
+      }
     };
 
     const point = (event: PointerEvent): void => {

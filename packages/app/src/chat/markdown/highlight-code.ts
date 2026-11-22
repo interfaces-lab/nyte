@@ -24,7 +24,7 @@ function tokenOptions(language: Lang) {
     themes: codeThemes,
     defaultColor: false,
     cssVariablePrefix: "--diffs-token-",
-    tokenizeMaxLineLength: 1_000,
+    tokenizeMaxLineLength: 1000,
   } as const;
 }
 

@@ -32,8 +32,9 @@ export const noOfLookupNamesRule = defineRule({
       if (node.id !== null) reportOfLookupName(node.id, node.id.name);
 
       for (const parameter of node.params) {
-        if (functionParameterTypeAnnotation(parameter)?.typeAnnotation.type !== "TSFunctionType")
+        if (functionParameterTypeAnnotation(parameter)?.typeAnnotation.type !== "TSFunctionType") {
           continue;
+        }
 
         reportOfLookupName(parameter, functionParameterBindingName(parameter, context.sourceCode));
       }
@@ -60,8 +61,9 @@ export const noOfLookupNamesRule = defineRule({
         reportOfLookupName(node.id, node.id.name);
       },
       Property(node) {
-        if (node.parent.type !== "ObjectExpression" || readFunctionValue(node.value) === null)
+        if (node.parent.type !== "ObjectExpression" || readFunctionValue(node.value) === null) {
           return;
+        }
         reportFunctionKey(node.key, node.computed);
       },
       MethodDefinition(node) {

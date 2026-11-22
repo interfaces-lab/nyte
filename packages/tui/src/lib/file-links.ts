@@ -28,8 +28,9 @@ function readFileTarget(code: string, root: string): string | null {
     SCHEME.test(path) ||
     !name.includes(".") ||
     !/[^.]/u.test(name)
-  )
+  ) {
     return null;
+  }
 
   return pathToFileURL(path.startsWith("~/") ? join(homedir(), path.slice(2)) : resolve(root, path))
     .href;
@@ -82,8 +83,9 @@ function readMarks(block: Token, root: string): readonly Mark[] {
       return;
     }
 
-    if (token.type === "codespan")
+    if (token.type === "codespan") {
       marks.push({ raw: token.raw, target: readFileTarget(token.text, root) });
+    }
   });
 
   return marks;

@@ -24,7 +24,7 @@ const document: Extract<FileDocument, { readonly kind: "text" }> = {
   scope: "workspace",
   mime: "text/markdown",
   contents: source,
-  encoding: "utf-8",
+  encoding: "utf8",
   version: asId<"file-version">("v1"),
 };
 
@@ -38,8 +38,9 @@ test.each([
   let end = -1;
 
   doc.descendants((node, position) => {
-    if (node.type.name === "tableCell" && node.textContent === "1")
+    if (node.type.name === "tableCell" && node.textContent === "1") {
       end = position + node.nodeSize - 1;
+    }
   });
   const edited = EditorState.create({ doc }).tr.insertText(typed, end).doc;
 

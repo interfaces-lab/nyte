@@ -35,7 +35,7 @@ const smallWindow: Plugin<"core"> = {
   id: "small-window",
   contribute: {
     modelContext: [
-      { model: { provider: "test", id: "model" }, contextWindow: 100_000, compactAt: 6_000 },
+      { model: { provider: "test", id: "model" }, contextWindow: 100_000, compactAt: 6000 },
     ],
   },
 };
@@ -64,8 +64,9 @@ it("compacts in the middle of scenario D's run and goes on to the answer with th
 
   const fake = fakeModels({
     fallback: (request) => {
-      if (request.context.messages.at(-1)?.role === "user" && lastUserText(request) === EARLIER)
+      if (request.context.messages.at(-1)?.role === "user" && lastUserText(request) === EARLIER) {
         return { content: [{ type: "text", text: EARLIER_ANSWER }] };
+      }
 
       if (!summarising(request)) return turns.answer(request);
       summaries.push(request);

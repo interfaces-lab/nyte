@@ -31,8 +31,9 @@ export function createBlocker(engine: FiltersEngine): Blocker {
 
       const response = engine.match(request);
 
-      if (response.redirect !== undefined)
+      if (response.redirect !== undefined) {
         return { kind: "redirect", url: response.redirect.dataUrl };
+      }
 
       return response.match ? { kind: "block" } : { kind: "allow" };
     },

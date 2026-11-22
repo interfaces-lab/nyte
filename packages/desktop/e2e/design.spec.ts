@@ -409,10 +409,11 @@ test("a live page frame loads once selected, follows the board's camera, takes i
     const over = overlapMiddle(shown.box, await measure(menu));
     soft(over, "the zoom menu overlaps the page").not.toBeNull();
 
-    if (over !== null)
+    if (over !== null) {
       soft(paintsPage(await colorAt(desktop, over)), "the page paints over the zoom menu").toBe(
         false,
       );
+    }
     await page.getByRole("menuitem", { name: "Zoom to Fit" }).click();
     await expect(stage).not.toHaveAttribute("data-moving");
     await soft(live).toHaveAttribute("data-page-state", "live");

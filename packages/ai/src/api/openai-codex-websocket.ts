@@ -15,14 +15,12 @@ import {
   CODEX_TOOL_CALL_PROVIDERS,
   CodexApiError,
   CodexProtocolError,
-  type CodexRequest,
   codexStreamOptions,
   mapCodexEvents,
-  type RequestBody,
 } from "./openai-codex-protocol.ts";
+import type { CodexRequest, RequestBody } from "./openai-codex-protocol.ts";
 import {
   CodexFrameJson,
-  type CodexFrame,
   readBoolean,
   readNumber,
   readRecord,
@@ -30,7 +28,9 @@ import {
   resolveCodexWebSocketUrl,
   TERMINAL_RESPONSE_TYPES,
 } from "./openai-codex-wire.ts";
-import { convertResponsesMessages, type ResponsesInput } from "./openai-responses-convert.ts";
+import type { CodexFrame } from "./openai-codex-wire.ts";
+import { convertResponsesMessages } from "./openai-responses-convert.ts";
+import type { ResponsesInput } from "./openai-responses-convert.ts";
 import { processResponsesStream, ResponsesUsageError } from "./openai-responses-stream.ts";
 
 const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 15_000;
@@ -155,9 +155,7 @@ function socketReusable(socket: WebSocketLike): boolean {
 function closeWebSocketSilently(socket: WebSocketLike, code = 1000, reason = "done"): void {
   try {
     socket.close(code, reason);
-  } catch {
-    return;
-  }
+  } catch {}
 }
 
 function forgetEntry(sessionId: string, accountId: string, entry: CachedWebSocketConnection): void {
@@ -415,7 +413,7 @@ async function decodeWebSocketData(data: unknown): Promise<string | null> {
 
   const blobLike = readRecord(data);
 
-  if (blobLike && blobLike.arrayBuffer instanceof Function) {
+  if (blobLike && typeof blobLike.arrayBuffer === "function") {
     const arrayBuffer = await blobLike.arrayBuffer();
 
     return new TextDecoder().decode(new Uint8Array(arrayBuffer));

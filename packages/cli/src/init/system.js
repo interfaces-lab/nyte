@@ -8,7 +8,7 @@ import process from "node:process";
 import { Interrupted } from "./engine.js";
 
 export function openLog(home, now = new Date()) {
-  const stamp = now.toISOString().replace(/[-:]/gu, "").replace("T", "-").slice(0, 15);
+  const stamp = now.toISOString().replaceAll(/[-:]/gu, "").replace("T", "-").slice(0, 15);
   const directory = join(home, ".nyte", "logs");
   const path = join(directory, `init-${stamp}.log`);
   let ready = false;

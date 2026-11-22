@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { frameText, openTerminal } from "./harness.ts";
 
-const esc = "\u001b";
+const esc = "\u001B";
 
 const bold = (text: string) => `${esc}[1m${text}${esc}[0m`;
 

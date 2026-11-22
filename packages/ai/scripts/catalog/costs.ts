@@ -1,6 +1,6 @@
 import type { Api, Model, ModelCost } from "../../src/types.ts";
 
-export const OPENAI_LONG_CONTEXT_INPUT_THRESHOLD = 272000;
+export const OPENAI_LONG_CONTEXT_INPUT_THRESHOLD = 272_000;
 
 export function roundCost(value: number): number {
   return Number(value.toFixed(6));
@@ -52,7 +52,7 @@ export const OPENAI_GPT_6_ASTRA_STANDARD_COST: ModelCost = {
   cacheWrite: 12.5,
 };
 
-export const KIMI_K3_MAX_TOKENS = 131072;
+export const KIMI_K3_MAX_TOKENS = 131_072;
 
 export const KIMI_K3_COST = {
   input: 3,

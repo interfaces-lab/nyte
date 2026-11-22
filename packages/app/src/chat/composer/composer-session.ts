@@ -155,8 +155,9 @@ export function stepSession(
 ): SessionStep {
   const next = releaseLeftHold(transition(state, draft, event));
 
-  if (next.state.reading === null || shownDraft(next.draft).draft === shownDraft(draft).draft)
+  if (next.state.reading === null || shownDraft(next.draft).draft === shownDraft(draft).draft) {
     return next;
+  }
 
   return { ...next, state: { ...next.state, reading: null } };
 }
@@ -295,8 +296,9 @@ function noticed(
 function releaseLeftHold(next: SessionStep): SessionStep {
   const hold = next.state.hold;
 
-  if (hold === null || hold.phase === "saving" || next.draft.edit?.message.id === hold.message)
+  if (hold === null || hold.phase === "saving" || next.draft.edit?.message.id === hold.message) {
     return next;
+  }
 
   return {
     ...next,
@@ -324,8 +326,9 @@ function beginEdit(
   message: UserMessage,
   asking: boolean,
 ): SessionStep {
-  if (editBlock(draft, asking) !== null || message.source.kind === "action")
+  if (editBlock(draft, asking) !== null || message.source.kind === "action") {
     return step(state, draft);
+  }
 
   const held = askHold(
     { ...state, recall: null, intake: nextIntake(state.intake, { kind: "cleared" }) },
@@ -451,8 +454,9 @@ function recall(
   const history = walking?.history ?? loaded;
   const older = walking === null ? 0 : walking.position + 1;
 
-  if (direction === "newer" || older < history.prompts.length || history.before === null)
+  if (direction === "newer" || older < history.prompts.length || history.before === null) {
     return walk(state, draft, history, direction);
+  }
 
   if (state.reading !== null) return step(state, draft);
   const token = state.token + 1;

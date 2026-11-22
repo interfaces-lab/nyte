@@ -181,7 +181,17 @@ describe("openHost", () => {
       "claude-code",
       "antigravity",
       "grok",
+      "kiro",
       "fx",
+      "devin",
+      "copilot-cli",
+      "kimi-code",
+      "droid",
+      "opencode-cli",
+      "claude-agent",
+      "glm",
+      "mistral-vibe",
+      "omp",
     ]);
   });
 
@@ -208,7 +218,7 @@ describe("openHost", () => {
                 input: ["text"],
                 cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 100_000,
-                maxTokens: 4_096,
+                maxTokens: 4096,
               },
             ],
           },
@@ -312,8 +322,9 @@ describe("openHost", () => {
       !("signature" in answer) ||
       typeof answer.publicKey !== "string" ||
       typeof answer.signature !== "string"
-    )
+    ) {
       throw new Error("The identity answer has no key and signature.");
+    }
 
     const publicKey = await crypto.subtle.importKey(
       "raw",
@@ -355,7 +366,7 @@ describe("openHost", () => {
       workspace: { kind: "chat-only", locator: null },
       home,
       clientPlugins: (actions) => {
-        void rejection(actions.perform("browser", null, 1_000)).then(
+        void rejection(actions.perform("browser", null, 1000)).then(
           opening.resolve,
           opening.reject,
         );
@@ -439,13 +450,14 @@ describe("openHost", () => {
       },
     };
 
-    for (const provider of ["opencode", "test"])
+    for (const provider of ["opencode", "test"]) {
       await credentialStore(store, secrets).modify(provider, async () =>
         storedAccounts({
           type: "api_key",
           key: "saved-key",
         }),
       );
+    }
     reads = 0;
     const workspace = { kind: "chat-only", locator: null } as const;
     const options = { store, plugins: [chatOnly], workspace, home, secrets };
@@ -690,8 +702,9 @@ async function rewriteUntil(
   const rewriting = setInterval(() => void write(), 250);
 
   try {
-    for (let next = await views.next(); next.done !== true; next = await views.next())
+    for (let next = await views.next(); next.done !== true; next = await views.next()) {
       if (matches(next.value)) return next.value;
+    }
   } finally {
     clearInterval(rewriting);
     await views.return?.();

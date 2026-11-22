@@ -38,8 +38,9 @@ export function pages<V extends Pageable>(history: Head["history"]): Pages<V> {
       turns = (shown?.turns ?? []).filter((turn) => pagedTurns.has(turn.id));
     }
 
-    if (view.leadingPrompt !== null && view.leadingPrompt.id === leadingPrompt?.id)
+    if (view.leadingPrompt !== null && view.leadingPrompt.id === leadingPrompt?.id) {
       leadingPrompt = view.leadingPrompt;
+    }
 
     latest = view;
     shown =

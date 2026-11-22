@@ -91,11 +91,11 @@ export function createUpdateController({
     const running = current.kind === "busy" ? runningWork(current) : undefined;
 
     const { response } = await message({
-      type: running === undefined ? "info" : "warning",
+      type: "info",
       message: `Nyte ${version} is ready to install`,
-      detail: running === undefined ? undefined : `Restarting stops ${running}.`,
+      detail: running === undefined ? undefined : `Nyte restarts without stopping ${running}.`,
       buttons: ["Restart to Update", "Later"],
-      defaultId: running === undefined ? 0 : 1,
+      defaultId: 0,
       cancelId: 1,
       noLink: true,
     });

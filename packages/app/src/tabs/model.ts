@@ -17,11 +17,11 @@ import {
 import type { PaneSelection } from "../panes/pane-layout.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 
-export type CustomizePage = {
+export interface CustomizePage {
   readonly kind: "customize";
   readonly section: string | undefined;
   readonly sessionId: SessionId | undefined;
-};
+}
 
 export type Page = CustomizePage | { readonly kind: "project"; readonly projectId: ProjectId };
 
@@ -232,8 +232,9 @@ function showsOnlyBlank(tab: Tab): boolean {
 }
 
 function showing(tab: Tab, place: Place): boolean {
-  if (tab.view.kind === "page")
+  if (tab.view.kind === "page") {
     return showsPage(place) && pageTabKey(tab.view.page) === pageTabKey(place);
+  }
 
   return place.kind === "session" && findSessionTab(tab.view.layout, place.sessionId) !== undefined;
 }
@@ -311,10 +312,11 @@ function open(
     return activate(withTab(state, reveal(existing, place)), existing.id);
   }
 
-  if (target === "here")
+  if (target === "here") {
     return showsPage(place)
       ? openTab(state, place, true, createId)
       : openInChatTab(state, place, createId);
+  }
 
   if (place.kind === "blank" && target !== "background") return openBlank(state, createId);
 
@@ -419,12 +421,13 @@ function removeTabs(
     state.tabs.slice(index + 1).find(stays)?.id ??
     state.tabs.slice(0, index).findLast(stays)?.id;
 
-  if (next !== undefined)
+  if (next !== undefined) {
     return {
       ...remaining,
       activeTabId: next,
       recent: remaining.recent.filter((id) => id !== next),
     };
+  }
   const fresh: Tab = { id: createId(), view: placeView(BLANK, createId) };
 
   return { ...remaining, tabs: [fresh], activeTabId: fresh.id };
@@ -657,8 +660,9 @@ function reopenTab(state: WindowState, createId: () => string): WindowState {
   if (taken.length === 0) return restoreTab(rest, last.tab, last.index);
   const focused = tabPlaces(last.tab).find((place) => place.kind === "session");
 
-  if (taken.length === shownChats(layout).length && focused !== undefined)
+  if (taken.length === shownChats(layout).length && focused !== undefined) {
     return open(rest, focused, "permanent", createId);
+  }
 
   const left = taken.reduce(
     (current, pane) => reduceLayout(current, { kind: "close", tab: pane.tab }, paneRules),

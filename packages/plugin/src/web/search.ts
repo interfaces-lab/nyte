@@ -32,10 +32,11 @@ export function webSearch(setting: string): ToolDefinition<{ query: string }, Se
         const hits = await provider
           .search({ query: args.query, signal: AbortSignal.any([invocation.signal, deadline]) })
           .catch((error: unknown) => {
-            if (deadline.aborted && !invocation.signal.aborted)
+            if (deadline.aborted && !invocation.signal.aborted) {
               throw new Error(`${provider.name} didn't answer within ${TIMEOUT_MS / 1000} s.`, {
                 cause: error,
               });
+            }
 
             throw error;
           });

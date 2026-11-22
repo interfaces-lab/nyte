@@ -234,8 +234,9 @@ describe("execution", () => {
 
     const driver = driveInProcess(kernel, coverage);
 
-    for (const covered of [session.id, child.id])
+    for (const covered of [session.id, child.id]) {
       (await until(() => script.turns.find((turn) => turn.input.session === covered))).finish();
+    }
 
     expect(await host.session(session.id).receipt(first.id).settled()).toEqual(completed);
     expect(await host.session(child.id).receipt(report.id).settled()).toEqual(completed);

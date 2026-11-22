@@ -102,8 +102,9 @@ export function FilePalette({
           onKeyDown={(event) => {
             const input = event.currentTarget;
 
-            if (event.key.length === 1 && input.selectionEnd === 0 && /^[:@]$/u.test(input.value))
+            if (event.key.length === 1 && input.selectionEnd === 0 && /^[:@]$/u.test(input.value)) {
               input.setSelectionRange(1, 1);
+            }
           }}
         />
         <div role="status" {...props(srOnly)}>
@@ -172,8 +173,9 @@ function paletteMode(query: string): Mode {
     };
   }
 
-  if (query.startsWith("@"))
+  if (query.startsWith("@")) {
     return { kind: "symbol", needle: query.slice(1).trim().toLocaleLowerCase() };
+  }
 
   return { kind: "files", needle: query.trim().toLocaleLowerCase() };
 }
@@ -280,7 +282,7 @@ function paletteRows(
           target: { kind: "symbol", symbol: match.symbol },
           key: `symbol:${String(match.symbol.line)}:${match.symbol.name}`,
           label: match.symbol.name,
-          detail: `${match.symbol.kind} \u00b7 line ${String(match.symbol.line)}`,
+          detail: `${match.symbol.kind} \u00B7 line ${String(match.symbol.line)}`,
           run: () => input.onGoTo(match.symbol.line, undefined),
         }));
     default: {

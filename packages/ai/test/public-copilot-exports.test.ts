@@ -81,8 +81,9 @@ test("public Copilot composition bundles and logs in without Node globals", asyn
             received !== null &&
             "type" in received &&
             (received.type === "complete" || received.type === "failed")
-          )
+          ) {
             result.resolve(received);
+          }
         },
       },
       { timeout: 5000 },

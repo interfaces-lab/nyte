@@ -1,13 +1,12 @@
 import type { Connection } from "@nyte-ai/sdk";
 import type { Health, Live } from "@nyte-ai/sdk/client";
-import { keys } from "./query-client.ts";
+import { keys, queryClient } from "./query-client.ts";
 import { nyte } from "../contract/nyte.ts";
 import { hostWatch } from "./watches.ts";
 import { sessionList } from "./directory.ts";
 import { connectHost, currentConnection } from "./connection.ts";
 import { workspacesQuery } from "./workspaces.ts";
 import { readModelCatalog } from "./catalog.ts";
-import { queryClient } from "./query-client.ts";
 
 let connecting: Promise<Connection> | undefined;
 

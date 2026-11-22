@@ -59,31 +59,37 @@ export function parseFlags(args: readonly string[]): RunFlags {
   if (
     values.minimal === true &&
     (values.print === true || values.json === true || values.quiet === true)
-  )
+  ) {
     usage("Can't combine --minimal with --print, --json or --quiet.");
+  }
 
-  if (values.session !== undefined && values.resume === true)
+  if (values.session !== undefined && values.resume === true) {
     usage("Use either --session <SESSION_ID> or --resume.");
+  }
 
-  if (values.trust === true && values["no-trust"] === true)
+  if (values.trust === true && values["no-trust"] === true) {
     usage("Use either --trust or --no-trust.");
+  }
 
   if (
     values["no-context-files"] === true &&
     (values.resume === true || values.session !== undefined)
-  )
+  ) {
     usage(
       "Can't combine --no-context-files with --resume or --session: a chat keeps the context files it started with.",
     );
+  }
 
   if (values.session === "") usage("--session needs a session ID.");
 
-  if (values["host-url"] !== undefined && !URL.canParse(values["host-url"]))
+  if (values["host-url"] !== undefined && !URL.canParse(values["host-url"])) {
     usage("--host-url takes a URL, such as the one nyte host prints.");
+  }
   const effort = THINKING_LEVELS.find((level) => level === values.effort);
 
-  if (values.effort !== undefined && effort === undefined)
+  if (values.effort !== undefined && effort === undefined) {
     usage(`--effort takes ${THINKING_LEVELS.join(", ")}.`);
+  }
 
   let flags: RunFlags = {
     resume:
@@ -180,15 +186,17 @@ function rootArgsError(args: readonly string[], cause: unknown): CliError {
     if (
       known.type === "string" &&
       (token.value === undefined || (!token.inlineValue && token.value.startsWith("-")))
-    )
+    ) {
       return new CliError("invalid_arguments", `${token.rawName} needs a value.`, {
         next: SEE_OPTIONS,
       });
+    }
 
-    if (known.type === "boolean" && token.value !== undefined)
+    if (known.type === "boolean" && token.value !== undefined) {
       return new CliError("invalid_arguments", `${token.rawName} takes no value.`, {
         next: SEE_OPTIONS,
       });
+    }
   }
 
   return new CliError(
@@ -227,14 +235,16 @@ export async function readPrompt(
       ? await readStdin(terminal, signal)
       : "";
 
-  if (rest.length > 0 && piped.trim() !== "")
+  if (rest.length > 0 && piped.trim() !== "") {
     usage("Pass the prompt as an argument or on stdin, not both.");
+  }
   const prompt = rest.length === 0 ? piped : rest.join(" ");
 
-  if (prompt.trim() === "")
+  if (prompt.trim() === "") {
     throw new CliError("missing_input", "Can't send an empty prompt.", {
       next: [{ label: "Pass the prompt", argv: ["nyte", "-p", "<PROMPT>"] }],
     });
+  }
 
   return prompt;
 }

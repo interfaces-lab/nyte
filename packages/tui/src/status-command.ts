@@ -18,10 +18,11 @@ export async function statusCommand(input: {
   const out = input.output;
   const running = await findRunningHost(hostFilePath());
 
-  if (running === null)
+  if (running === null) {
     throw new CliError("host_not_running", "Can't read credentials without a running Nyte host.", {
       next: [{ label: "Start a host in another terminal", argv: ["nyte", "host"] }],
     });
+  }
 
   const host = await input.attach({ url: running.url, token: running.token });
 

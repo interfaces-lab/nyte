@@ -128,8 +128,9 @@ async function newestOn(
   report({ kind: "checking", channel });
   const latest = await fetchLatestRelease(channel, signal);
 
-  if (!supersedes(latest.version, VERSION))
+  if (!supersedes(latest.version, VERSION)) {
     return { kind: "waiting", channel, newest: latest.version };
+  }
 
   return { kind: "install", version: latest.version };
 }
@@ -457,8 +458,9 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
 }
 
 export function latestReleaseText(channel: UpdateChannel): string {
-  if (releaseChannel(VERSION) !== channel)
+  if (releaseChannel(VERSION) !== channel) {
     return `No ${channel} release is newer than nyte ${VERSION}.`;
+  }
 
   return `nyte ${VERSION} is the latest ${channel === "nightly" ? "nightly" : "release"}.`;
 }

@@ -49,7 +49,8 @@ export function getClientApiKey(
 ): string {
   if (apiKey) return apiKey;
 
-  if (hasHeader(headers, "authorization") || hasHeader(headers, "cf-aig-authorization"))
+  if (hasHeader(headers, "authorization") || hasHeader(headers, "cf-aig-authorization")) {
     return "unused";
+  }
   throw new Error(`No API key for provider: ${provider}`);
 }

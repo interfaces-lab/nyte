@@ -117,7 +117,7 @@ export function sessionView(change: Partial<SessionView> = {}): SessionView {
     seenThrough: null,
     background: [],
     configuration: { selected: null, effective: null },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
     ...change,

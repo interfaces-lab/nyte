@@ -201,7 +201,7 @@ function luminance(color: Rgba): number {
   const linear = (channel: number): number => {
     const value = channel / 255;
 
-    return value <= 0.039_28 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   };
 
   return 0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b);

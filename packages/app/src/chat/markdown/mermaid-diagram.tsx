@@ -63,8 +63,9 @@ export function MermaidDiagram({ source }: { readonly source: string }): ReactEl
   const [sourceVisible, setSourceVisible] = useState(false);
   const rendered: DiagramState = render.data ?? { kind: "pending" };
 
-  if (render.isError || rendered.kind === "source")
+  if (render.isError || rendered.kind === "source") {
     return <CodeBlock code={source} lang="mermaid" />;
+  }
 
   return (
     <figure aria-label="Mermaid diagram" {...props(styles.figure, hairline.ring)}>

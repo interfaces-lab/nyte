@@ -35,7 +35,7 @@ export const eventOperations = {
   ),
   "client.perform input": operation(
     OPERATIONS["client.perform"].input,
-    { client: "c1", action: "open", input: { session }, timeoutMs: 5_000 },
+    { client: "c1", action: "open", input: { session }, timeoutMs: 5000 },
     { client: "c1", action: "open", input: {}, timeoutMs: 0 },
   ),
   "client.perform output": operation(

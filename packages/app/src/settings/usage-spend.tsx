@@ -16,7 +16,8 @@ import {
 } from "../lib/format.ts";
 import { Bone, focusRing, tipSurface } from "./usage-parts.tsx";
 import { usageStyles } from "./usage-settings.stylex.ts";
-import { dayLabel, promptTokens, type UsageDerived } from "./usage-view.ts";
+import { dayLabel, promptTokens } from "./usage-view.ts";
+import type { UsageDerived } from "./usage-view.ts";
 
 const figure = { fontVariantNumeric: "tabular-nums" } as const;
 

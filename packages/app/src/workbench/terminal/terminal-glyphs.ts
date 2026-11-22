@@ -21,84 +21,84 @@ const LINES = [
   .map((weights) => Array.from(weights, Number));
 
 const DASHES = new Map([
-  [0x2504, 3],
-  [0x2505, 3],
-  [0x2506, 3],
-  [0x2507, 3],
-  [0x2508, 4],
-  [0x2509, 4],
-  [0x250a, 4],
-  [0x250b, 4],
-  [0x254c, 2],
-  [0x254d, 2],
-  [0x254e, 2],
-  [0x254f, 2],
+  [0x25_04, 3],
+  [0x25_05, 3],
+  [0x25_06, 3],
+  [0x25_07, 3],
+  [0x25_08, 4],
+  [0x25_09, 4],
+  [0x25_0a, 4],
+  [0x25_0b, 4],
+  [0x25_4c, 2],
+  [0x25_4d, 2],
+  [0x25_4e, 2],
+  [0x25_4f, 2],
 ]);
 
 const BLOCKS = new Map<number, readonly (readonly [number, number, number, number])[]>([
-  [0x2580, [[0, 0, 8, 4]]],
-  [0x2581, [[0, 7, 8, 8]]],
-  [0x2582, [[0, 6, 8, 8]]],
-  [0x2583, [[0, 5, 8, 8]]],
-  [0x2584, [[0, 4, 8, 8]]],
-  [0x2585, [[0, 3, 8, 8]]],
-  [0x2586, [[0, 2, 8, 8]]],
-  [0x2587, [[0, 1, 8, 8]]],
-  [0x2588, [[0, 0, 8, 8]]],
-  [0x2589, [[0, 0, 7, 8]]],
-  [0x258a, [[0, 0, 6, 8]]],
-  [0x258b, [[0, 0, 5, 8]]],
-  [0x258c, [[0, 0, 4, 8]]],
-  [0x258d, [[0, 0, 3, 8]]],
-  [0x258e, [[0, 0, 2, 8]]],
-  [0x258f, [[0, 0, 1, 8]]],
-  [0x2590, [[4, 0, 8, 8]]],
-  [0x2594, [[0, 0, 8, 1]]],
-  [0x2595, [[7, 0, 8, 8]]],
+  [0x25_80, [[0, 0, 8, 4]]],
+  [0x25_81, [[0, 7, 8, 8]]],
+  [0x25_82, [[0, 6, 8, 8]]],
+  [0x25_83, [[0, 5, 8, 8]]],
+  [0x25_84, [[0, 4, 8, 8]]],
+  [0x25_85, [[0, 3, 8, 8]]],
+  [0x25_86, [[0, 2, 8, 8]]],
+  [0x25_87, [[0, 1, 8, 8]]],
+  [0x25_88, [[0, 0, 8, 8]]],
+  [0x25_89, [[0, 0, 7, 8]]],
+  [0x25_8a, [[0, 0, 6, 8]]],
+  [0x25_8b, [[0, 0, 5, 8]]],
+  [0x25_8c, [[0, 0, 4, 8]]],
+  [0x25_8d, [[0, 0, 3, 8]]],
+  [0x25_8e, [[0, 0, 2, 8]]],
+  [0x25_8f, [[0, 0, 1, 8]]],
+  [0x25_90, [[4, 0, 8, 8]]],
+  [0x25_94, [[0, 0, 8, 1]]],
+  [0x25_95, [[7, 0, 8, 8]]],
 ]);
 
 const SHADES = new Map([
-  [0x2591, 0.25],
-  [0x2592, 0.5],
-  [0x2593, 0.75],
+  [0x25_91, 0.25],
+  [0x25_92, 0.5],
+  [0x25_93, 0.75],
 ]);
 
 const QUADRANTS = new Map([
-  [0x2596, 4],
-  [0x2597, 8],
-  [0x2598, 1],
-  [0x2599, 13],
-  [0x259a, 9],
-  [0x259b, 7],
-  [0x259c, 11],
-  [0x259d, 2],
-  [0x259e, 6],
-  [0x259f, 14],
+  [0x25_96, 4],
+  [0x25_97, 8],
+  [0x25_98, 1],
+  [0x25_99, 13],
+  [0x25_9a, 9],
+  [0x25_9b, 7],
+  [0x25_9c, 11],
+  [0x25_9d, 2],
+  [0x25_9e, 6],
+  [0x25_9f, 14],
 ]);
 
 export function drawGlyph(context: CanvasRenderingContext2D, text: string, box: Box): boolean {
   if (text.length !== 1) return false;
   const code = text.charCodeAt(0);
 
-  if (code >= 0x256d && code <= 0x2570) return drawArc(context, code, box);
+  if (code >= 0x25_6d && code <= 0x25_70) return drawArc(context, code, box);
 
-  if (code >= 0x2571 && code <= 0x2573) return drawDiagonal(context, code, box);
+  if (code >= 0x25_71 && code <= 0x25_73) return drawDiagonal(context, code, box);
 
-  if (code >= 0x2500 && code <= 0x257f) return drawLines(context, code, box);
+  if (code >= 0x25_00 && code <= 0x25_7f) return drawLines(context, code, box);
 
-  if (code >= 0x2580 && code <= 0x259f) return drawBlock(context, code, box);
+  if (code >= 0x25_80 && code <= 0x25_9f) return drawBlock(context, code, box);
 
-  if (code >= 0xe0b0 && code <= 0xe0b3) return drawPowerline(context, code, box);
+  if (code >= 0xe0_b0 && code <= 0xe0_b3) return drawPowerline(context, code, box);
 
-  if (code >= 0xe0b4 && code <= 0xe0b7) return drawPowerlineRound(context, code, box);
+  if (code >= 0xe0_b4 && code <= 0xe0_b7) return drawPowerlineRound(context, code, box);
 
-  if (code >= 0xe0b8 && code <= 0xe0bf) return drawPowerlineSlant(context, code, box);
+  if (code >= 0xe0_b8 && code <= 0xe0_bf) return drawPowerlineSlant(context, code, box);
 
   return false;
 }
 
 function drawLines(context: CanvasRenderingContext2D, code: number, box: Box): boolean {
-  const weights = LINES[code - 0x2500] ?? [];
+  const weights = LINES[code - 0x25_00] ?? [];
   const up = weights[0] ?? 0;
   const right = weights[1] ?? 0;
   const down = weights[2] ?? 0;
@@ -108,8 +108,9 @@ function drawLines(context: CanvasRenderingContext2D, code: number, box: Box): b
   const h = box.height;
   const dashes = DASHES.get(code);
 
-  if (dashes !== undefined)
+  if (dashes !== undefined) {
     return drawDashes(context, box, dashes, up === 0 ? right : up, up !== 0);
+  }
   const vLightLeft = Math.floor((w - t) / 2);
   const vLightRight = vLightLeft + t;
   const vHeavyLeft = Math.floor((w - 2 * t) / 2);
@@ -246,8 +247,8 @@ function centerLine(box: Box) {
 function drawArc(context: CanvasRenderingContext2D, code: number, box: Box): boolean {
   const center = centerLine(box);
   const radius = Math.min(box.width, box.height) / 2;
-  const top = code === 0x256f || code === 0x2570;
-  const toRight = code === 0x256d || code === 0x2570;
+  const top = code === 0x25_6f || code === 0x25_70;
+  const toRight = code === 0x25_6d || code === 0x25_70;
   const edge = toRight ? box.x + box.width : box.x;
   context.lineWidth = box.thickness;
   context.lineCap = "butt";
@@ -269,12 +270,12 @@ function drawDiagonal(context: CanvasRenderingContext2D, code: number, box: Box)
   context.strokeStyle = context.fillStyle;
   context.beginPath();
 
-  if (code !== 0x2572) {
+  if (code !== 0x25_72) {
     context.moveTo(right, box.y);
     context.lineTo(box.x, bottom);
   }
 
-  if (code !== 0x2571) {
+  if (code !== 0x25_71) {
     context.moveTo(box.x, box.y);
     context.lineTo(right, bottom);
   }
@@ -329,8 +330,8 @@ function drawBlock(context: CanvasRenderingContext2D, code: number, box: Box): b
 }
 
 function drawPowerline(context: CanvasRenderingContext2D, code: number, box: Box): boolean {
-  const solid = code === 0xe0b0 || code === 0xe0b2;
-  const pointsRight = code === 0xe0b0 || code === 0xe0b1;
+  const solid = code === 0xe0_b0 || code === 0xe0_b2;
+  const pointsRight = code === 0xe0_b0 || code === 0xe0_b1;
   const base = pointsRight ? box.x : box.x + box.width;
   const tip = pointsRight ? box.x + box.width : box.x;
   const inset = solid ? 0 : box.thickness / 2;
@@ -355,8 +356,8 @@ function drawPowerline(context: CanvasRenderingContext2D, code: number, box: Box
 }
 
 function drawPowerlineRound(context: CanvasRenderingContext2D, code: number, box: Box): boolean {
-  const solid = code === 0xe0b4 || code === 0xe0b6;
-  const bulgesRight = code === 0xe0b4 || code === 0xe0b5;
+  const solid = code === 0xe0_b4 || code === 0xe0_b6;
+  const bulgesRight = code === 0xe0_b4 || code === 0xe0_b5;
   const inset = solid ? 0 : box.thickness / 2;
   context.beginPath();
   context.ellipse(
@@ -434,10 +435,10 @@ const SLANTS: readonly { readonly corners: readonly Point[]; readonly line: read
 ];
 
 function drawPowerlineSlant(context: CanvasRenderingContext2D, code: number, box: Box): boolean {
-  const slant = SLANTS[(code - 0xe0b8) >> 1];
+  const slant = SLANTS[(code - 0xe0_b8) >> 1];
 
   if (slant === undefined) return false;
-  const solid = (code - 0xe0b8) % 2 === 0;
+  const solid = (code - 0xe0_b8) % 2 === 0;
   context.beginPath();
   (solid ? slant.corners : slant.line).forEach((point, index) => {
     const x = box.x + point[0] * box.width;

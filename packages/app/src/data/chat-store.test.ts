@@ -86,7 +86,7 @@ const ROWS: readonly {
     name: "a warm chat is still held at 4,999 ms",
     steps: [
       { kind: "warm", names: "a" },
-      { kind: "wait", ms: 4_999 },
+      { kind: "wait", ms: 4999 },
     ],
     held: "a",
   },
@@ -94,7 +94,7 @@ const ROWS: readonly {
     name: "a warm chat is released at 5,000 ms",
     steps: [
       { kind: "warm", names: "a" },
-      { kind: "wait", ms: 5_000 },
+      { kind: "wait", ms: 5000 },
     ],
     held: "",
   },
@@ -102,9 +102,9 @@ const ROWS: readonly {
     name: "warming a chat again restarts its 5 s",
     steps: [
       { kind: "warm", names: "a" },
-      { kind: "wait", ms: 3_000 },
+      { kind: "wait", ms: 3000 },
       { kind: "warm", names: "a" },
-      { kind: "wait", ms: 4_999 },
+      { kind: "wait", ms: 4999 },
     ],
     held: "a",
   },
@@ -112,9 +112,9 @@ const ROWS: readonly {
     name: "a chat warmed again is released 5 s after the last warm",
     steps: [
       { kind: "warm", names: "a" },
-      { kind: "wait", ms: 3_000 },
+      { kind: "wait", ms: 3000 },
       { kind: "warm", names: "a" },
-      { kind: "wait", ms: 5_000 },
+      { kind: "wait", ms: 5000 },
     ],
     held: "",
   },
@@ -128,7 +128,7 @@ const ROWS: readonly {
     steps: [
       { kind: "keep", names: "a" },
       { kind: "warm", names: "a" },
-      { kind: "wait", ms: 5_000 },
+      { kind: "wait", ms: 5000 },
     ],
     held: "a",
   },
@@ -145,7 +145,7 @@ const ROWS: readonly {
     steps: [
       { kind: "warm", names: "a" },
       { kind: "keep", names: "abcdefghi" },
-      { kind: "wait", ms: 5_000 },
+      { kind: "wait", ms: 5000 },
     ],
     held: "bcdefghi",
   },
@@ -173,7 +173,7 @@ const ROWS: readonly {
 
 test.each(ROWS)("through keepChat and warmSession: $name", async (row) => {
   run({ kind: "replace" });
-  run({ kind: "wait", ms: 5_000 });
+  run({ kind: "wait", ms: 5000 });
 
   for (const step of row.steps) run(step);
   await vi.advanceTimersByTimeAsync(0);
@@ -419,7 +419,7 @@ function unread(): ViewStream {
 
       return () => listeners.delete(listener);
     },
-    watch: async function* () {},
+    async *watch() {},
   };
 }
 

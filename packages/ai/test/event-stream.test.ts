@@ -46,7 +46,9 @@ test("event queues retain order across consumers and expose their terminal resul
     (value) => value,
   );
   source.push(1);
+  // oxlint-disable-next-line unicorn/prefer-single-call -- the event stream's push takes one event per call
   source.push(2);
+  // oxlint-disable-next-line unicorn/prefer-single-call -- the event stream's push takes one event per call
   source.push(3);
   source.end();
   const first = source[Symbol.asyncIterator]();

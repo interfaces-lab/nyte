@@ -1,4 +1,4 @@
-const ORIENTATION_TAG = 0x0112;
+const ORIENTATION_TAG = 0x01_12;
 
 export function exifOrientation(bytes: Uint8Array): number {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -48,8 +48,9 @@ function tiffStart(bytes: Uint8Array, view: DataView): number {
     for (let offset = 12; offset + 8 <= bytes.length;) {
       const size = view.getUint32(offset + 4, true);
 
-      if (ascii(bytes, offset, "EXIF"))
+      if (ascii(bytes, offset, "EXIF")) {
         return startsExif(bytes, offset + 8) ? offset + 14 : offset + 8;
+      }
       offset += 8 + size + (size % 2);
     }
   }
@@ -62,8 +63,9 @@ function startsExif(bytes: Uint8Array, offset: number): boolean {
 }
 
 function ascii(bytes: Uint8Array, offset: number, text: string): boolean {
-  for (let index = 0; index < text.length; index++)
+  for (let index = 0; index < text.length; index++) {
     if (bytes[offset + index] !== text.charCodeAt(index)) return false;
+  }
 
   return true;
 }

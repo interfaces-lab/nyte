@@ -12,8 +12,8 @@ import {
   parseOutputFrames,
   parseSse,
   withInputHeader,
+  parseJson,
 } from "@nyte-ai/protocol";
-import { parseJson } from "@nyte-ai/protocol";
 import { endless } from "../endless.ts";
 import { post, served } from "./fakes.ts";
 

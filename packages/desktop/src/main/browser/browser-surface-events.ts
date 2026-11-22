@@ -152,18 +152,20 @@ function wireKeys(registry: SurfaceRegistry, surface: Surface, contents: WebCont
   contents.on("devtools-opened", () => {
     const devtools = contents.devToolsWebContents;
 
-    if (devtools !== null)
+    if (devtools !== null) {
       devtools.ipc.removeAllListeners(BROWSER_PAGE_KEY_CHANNEL).on(
         BROWSER_PAGE_KEY_CHANNEL,
         forwardFrom(devtools, () => true),
       );
+    }
     void watchPauses(contents).catch(() => undefined);
   });
   contents.on("devtools-closed", () => {
     surface.paused = false;
 
-    if (!contents.isDestroyed() && contents.debugger.isAttached())
+    if (!contents.isDestroyed() && contents.debugger.isAttached()) {
       void contents.debugger.sendCommand("Debugger.disable").catch(() => undefined);
+    }
   });
   contents.debugger.on("message", (_event, method) => {
     if (method === "Debugger.paused") surface.paused = true;
@@ -201,8 +203,9 @@ function wireKeys(registry: SurfaceRegistry, surface: Surface, contents: WebCont
   contents.on("found-in-page", (_event, result) => {
     const pending = surface.find;
 
-    if (pending === undefined || pending.request !== result.requestId || !result.finalUpdate)
+    if (pending === undefined || pending.request !== result.requestId || !result.finalUpdate) {
       return;
+    }
     surface.find = undefined;
     pending.resolve({ active: result.activeMatchOrdinal, total: result.matches });
   });
@@ -213,8 +216,9 @@ export function enterBoard(surface: Surface, entered: boolean): void {
   surface.entered = entered;
   const contents = surface.guest;
 
-  if (contents !== undefined && !contents.isDestroyed())
+  if (contents !== undefined && !contents.isDestroyed()) {
     contents.send(BROWSER_PAGE_BOARD_CHANNEL, { entered } satisfies BoardMainMessage);
+  }
 }
 
 function wireBoard(registry: SurfaceRegistry, surface: Surface, contents: WebContents): void {
@@ -246,16 +250,19 @@ function wireBoard(registry: SurfaceRegistry, surface: Surface, contents: WebCon
       input.control ||
       input.alt ||
       input.meta
-    )
+    ) {
       return;
+    }
     event.preventDefault();
 
-    if (!input.isAutoRepeat)
+    if (!input.isAutoRepeat) {
       registry.notify(surface, { kind: "browser_board_leave", surface: surface.id });
+    }
   });
   contents.on("dom-ready", () => {
-    if (surface.entered)
+    if (surface.entered) {
       contents.send(BROWSER_PAGE_BOARD_CHANNEL, { entered: true } satisfies BoardMainMessage);
+    }
   });
 }
 
@@ -277,8 +284,9 @@ function wireFullscreen(registry: SurfaceRegistry, surface: Surface, contents: W
     const window = surface.host?.window;
     surface.fullscreen = false;
 
-    if (surface.windowWasWindowed && window !== undefined && !window.isDestroyed())
+    if (surface.windowWasWindowed && window !== undefined && !window.isDestroyed()) {
       window.setFullScreen(false);
+    }
     surface.windowWasWindowed = false;
     registry.publish(surface);
   });
@@ -317,8 +325,9 @@ function wireNavigation(registry: SurfaceRegistry, surface: Surface, contents: W
   contents.on("dom-ready", () => {
     const styles = registry.blockedStyles(contents.getURL());
 
-    if (styles !== "")
+    if (styles !== "") {
       void contents.insertCSS(styles, { cssOrigin: "user" }).catch(() => undefined);
+    }
     registry.publish(surface);
   });
   contents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
@@ -332,8 +341,9 @@ function wireNavigation(registry: SurfaceRegistry, surface: Surface, contents: W
   contents.on("page-title-updated", (_event, title, explicitSet) => {
     const page = webUrl(contents.getURL());
 
-    if (explicitSet && page !== undefined && !surface.destroyed && followsTabPolicy(surface))
+    if (explicitSet && page !== undefined && !surface.destroyed && followsTabPolicy(surface)) {
       void registry.dependencies.history.retitle(surface.owner, { url: page, title });
+    }
 
     registry.publish(surface);
   });

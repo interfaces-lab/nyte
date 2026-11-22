@@ -36,8 +36,9 @@ function readFence(line: string): { readonly marker: string; readonly mermaid: b
     (marker !== "`" && marker !== "~") ||
     line[start + 1] !== marker ||
     line[start + 2] !== marker
-  )
+  ) {
     return null;
+  }
 
   let end = start + 3;
 
@@ -79,11 +80,12 @@ export function splitMermaid(markdown: string): readonly Segment[] {
     for (let at = 0; at < closing.length; at += 1) if (closing[at] !== marker[0]) return;
 
     if (mermaid) {
-      if (opened.start > textStart)
+      if (opened.start > textStart) {
         segments.push({
           kind: "markdown",
           text: structuredClone(markdown.slice(textStart, opened.start - 1)),
         });
+      }
       segments.push({
         kind: "mermaid",
         source: structuredClone(markdown.slice(opened.sourceStart, start - 1)),
@@ -103,8 +105,9 @@ export function splitMermaid(markdown: string): readonly Segment[] {
 
   if (lineStart < markdown.length) visit(lineStart, markdown.length, markdown.length + 1);
 
-  if (textStart <= markdown.length)
+  if (textStart <= markdown.length) {
     segments.push({ kind: "markdown", text: markdown.slice(textStart) });
+  }
 
   return segments;
 }

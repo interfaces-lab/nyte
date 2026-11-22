@@ -165,8 +165,9 @@ function textNodes(box: HTMLElement): Text[] {
   const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
 
-  for (let node = walker.nextNode(); node !== null; node = walker.nextNode())
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
     if (node instanceof Text && /\S/u.test(node.data)) nodes.push(node);
+  }
 
   return nodes;
 }
@@ -229,7 +230,7 @@ function timeline(changes: readonly Change[], from: number): string {
 
 async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMessage[]) => void) {
   render([read("quick-a", 0, true)]);
-  await within(() => header(outer) === "Exploring quick-a.ts", 2_000);
+  await within(() => header(outer) === "Exploring quick-a.ts", 2000);
   check(header(outer) === "Exploring quick-a.ts", "A live group counts the read in flight");
   const labels = recordLabels(outer, () => header(outer));
   const a = read("quick-a", 0);
@@ -250,7 +251,7 @@ async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMe
     await frame();
   }
 
-  await within(() => header(outer) === "Editing lease.ts, explored 2 files, ran 1 command", 2_000);
+  await within(() => header(outer) === "Editing lease.ts, explored 2 files, ran 1 command", 2000);
   labels.stop();
   const seen = timeline(labels.changes, started);
 
@@ -276,7 +277,7 @@ async function thinkingSteps(
   const labels = recordLabels(outer, () => header(outer));
   const settled = performance.now();
   render([thought("plan-a", "Weighing the lease", 0)], false);
-  await within(() => header(outer) === "Thought", 2_000);
+  await within(() => header(outer) === "Thought", 2000);
   labels.stop();
   const seen = timeline(labels.changes, settled);
 
@@ -311,8 +312,9 @@ async function liveSequence(outer: HTMLElement, root: Root) {
   const box = outer.querySelector("[data-step-preview]");
   const calls = box?.firstElementChild;
 
-  if (!(box instanceof HTMLElement) || calls === null || calls === undefined)
+  if (!(box instanceof HTMLElement) || calls === null || calls === undefined) {
     throw new Error("A live group shows its preview");
+  }
 
   let failure: string | undefined;
   let pinned = true;
@@ -324,8 +326,9 @@ async function liveSequence(outer: HTMLElement, root: Root) {
     if (failure !== undefined || !pinned) return;
 
     if (!atEnd(box)) failure = `While ${step}, the pinned preview left the end`;
-    else if (line === undefined || line.cut)
+    else if (line === undefined || line.cut) {
       failure = `While ${step}, the newest line is cut off at the bottom`;
+    }
   };
 
   let pinnedFrame = new ResizeObserver(checkPinned);
@@ -391,22 +394,24 @@ async function liveSequence(outer: HTMLElement, root: Root) {
   step = "finishing the first thought";
   render([...lead, first]);
 
-  for (let index = 0; index < 30; index += 1)
+  for (let index = 0; index < 30; index += 1) {
     await next(() => {
       unmoved("Finishing it");
       shown("Finishing it");
     });
+  }
 
   step = "starting the next thought";
   const height = box.scrollHeight;
   render([...lead, first, thought("second", "", 3, true)]);
 
-  for (let index = 0; index < 40; index += 1)
+  for (let index = 0; index < 40; index += 1) {
     await next(() => {
       check(box.scrollHeight === height, "An empty thought adds no height to the preview");
       unmoved("Before the next thought has text");
       shown("Before the next thought has text");
     });
+  }
 
   step = "streaming the next thought";
   let last = word(box, "surface.")?.top ?? 0;
@@ -414,7 +419,7 @@ async function liveSequence(outer: HTMLElement, root: Root) {
   for (let count = 1; count <= wordCount(SECOND); count += 2) {
     render([...lead, first, thought("second", prefix(SECOND, count), 3, true)]);
 
-    for (let index = 0; index < 2; index += 1)
+    for (let index = 0; index < 2; index += 1) {
       await next(() => {
         const line = word(box, "surface.");
         unmoved("Streaming the next thought");
@@ -428,6 +433,7 @@ async function liveSequence(outer: HTMLElement, root: Root) {
         );
         last = line?.top ?? last;
       });
+    }
   }
 
   const second = thought("second", SECOND, 3);
@@ -440,11 +446,12 @@ async function liveSequence(outer: HTMLElement, root: Root) {
   const toolHeight = box.scrollHeight;
   render([...called, thought("third", "", 5, true)]);
 
-  for (let index = 0; index < 20; index += 1)
+  for (let index = 0; index < 20; index += 1) {
     await next(() => {
       check(box.scrollHeight === toolHeight, "An empty thought after a tool call adds no height");
       unmoved("Waiting for the third thought");
     });
+  }
 
   step = "streaming the third thought";
   let words = 48;
@@ -634,8 +641,9 @@ export async function run() {
     await settle();
     const thoughtToggle = outer.querySelector("button");
 
-    if (!(thoughtToggle instanceof HTMLButtonElement))
+    if (!(thoughtToggle instanceof HTMLButtonElement)) {
       throw new Error("Missing thought disclosure");
+    }
     thoughtToggle.click();
     await settle();
     flushSync(() => root.render(group([firstThought, streamingThought], true)));

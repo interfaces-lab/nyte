@@ -100,8 +100,9 @@ function placeholderFor(
 
   if (screen.blocked !== null) return blockedReason(screen.blocked);
 
-  if (screen.run.kind !== "idle")
+  if (screen.run.kind !== "idle") {
     return screen.followUp === "steer" ? BUSY_COMPOSER_PLACEHOLDER : "Queue a follow-up";
+  }
 
   return COMPOSER_PLACEHOLDER;
 }
@@ -138,8 +139,9 @@ function livePreview(state: State, markers: readonly MarkerSpan[]): PreviewModel
   const marker = state.local.preview;
   const part = marker === null ? undefined : state.local.draft.parts.get(marker);
 
-  if (marker === null || part === undefined || !markers.some((span) => span.marker === marker))
+  if (marker === null || part === undefined || !markers.some((span) => span.marker === marker)) {
     return null;
+  }
 
   return { marker, part };
 }
@@ -253,11 +255,13 @@ function healthNotice(health: Health): HealthNotice | null {
 function blockedStatus(state: State, question: QuestionModel | null): ProgramState | null {
   const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
 
-  if (auth?.step.kind === "link")
+  if (auth?.step.kind === "link") {
     return { state: "blocked", kind: "auth", msg: `Sign in to ${auth.name}` };
+  }
 
-  if (auth?.step.kind === "secret" || auth?.step.kind === "choose")
+  if (auth?.step.kind === "secret" || auth?.step.kind === "choose") {
     return { state: "blocked", kind: "auth", msg: auth.step.prompt };
+  }
   const session = followedSession(state);
 
   const approval = currentApproval(
@@ -265,15 +269,17 @@ function blockedStatus(state: State, question: QuestionModel | null): ProgramSta
     state.facts.tasks,
   );
 
-  if (approval !== null)
+  if (approval !== null) {
     return {
       state: "blocked",
       kind: "permission",
       msg: `${approvalHeading(approval)} ${approvalPrompt(approval).detail}`,
     };
+  }
 
-  if (question !== null && !question.late)
+  if (question !== null && !question.late) {
     return { state: "blocked", kind: "question", msg: questionTitle(question) };
+  }
   const alert = session === null ? null : headAttention(session.info).alert;
 
   return alert?.state === "waiting"

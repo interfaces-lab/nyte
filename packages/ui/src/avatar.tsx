@@ -1,7 +1,8 @@
 import { avatar, radius } from "./styles/schema.stylex.ts";
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
 import { create, props } from "@stylexjs/stylex";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme } from "./surface-theme.ts";
 import { role, type } from "./styles/vars.stylex.ts";

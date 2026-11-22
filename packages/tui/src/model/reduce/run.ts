@@ -33,8 +33,9 @@ export const runHandlers = {
     const followed = followedSession(state);
     const current = runModel(followed);
 
-    if (followed === null || current.kind === "idle")
+    if (followed === null || current.kind === "idle") {
       return refuse(state, "No active run to stop.", now, "info");
+    }
 
     return { state, effects: [{ kind: "stop-run", session: followed.id, run: current.run }] };
   },
@@ -42,8 +43,9 @@ export const runHandlers = {
     const followed = followedSession(state);
     const question = tableInputFor(state, null).question;
 
-    if (question === null || question.part !== msg.part || question.session !== msg.session)
+    if (question === null || question.part !== msg.part || question.session !== msg.session) {
       return stay(state);
+    }
 
     const group = editingQuestionDraft(state.local.question, question);
 
@@ -86,8 +88,9 @@ export const runHandlers = {
   "escape-tree": (state, _msg, now, reduce) => {
     const armed = state.local.escapeArmedAt;
 
-    if (armed === null || now - armed > ESCAPE_WINDOW_MS)
+    if (armed === null || now - armed > ESCAPE_WINDOW_MS) {
       return stay(withLocal(state, { escapeArmedAt: now }));
+    }
 
     return openDialog(
       withLocal(state, { escapeArmedAt: null }),
@@ -101,8 +104,9 @@ export const runHandlers = {
 
     if (followed === null) return stay(state);
 
-    if (busy(state))
+    if (busy(state)) {
       return refuse(state, "Wait for the current run before changing the chat branch", now);
+    }
 
     const landed = followed.view?.messages.find(
       (message) =>
@@ -137,11 +141,13 @@ export const runHandlers = {
     const followed = followedSession(state);
     const task = state.facts.tasks.find((candidate) => candidate.id === msg.task);
 
-    if (followed === null || task === undefined)
+    if (followed === null || task === undefined) {
       return refuse(state, "This task is no longer available.", now, "info");
+    }
 
-    if (task.kind === "job" && task.job.state.kind !== "running")
+    if (task.kind === "job" && task.job.state.kind !== "running") {
       return refuse(state, "This task has already finished. /tasks opens its output.", now, "info");
+    }
 
     if (!canStopTask(task)) return refuse(state, "This task has already finished.", now, "info");
 
@@ -231,7 +237,7 @@ export function advanceQuestion(
 
   if (group === null) return stay(state);
 
-  if (group.active < question.questions.length - 1)
+  if (group.active < question.questions.length - 1) {
     return stay(
       withLocal(state, {
         question: {
@@ -241,6 +247,7 @@ export function advanceQuestion(
         },
       }),
     );
+  }
 
   return {
     state: withLocal(state, {
@@ -270,7 +277,7 @@ function moved(state: State, msg: Extract<Outcome, { kind: "moved" }>, now: numb
   if (outcome.kind === "moved") {
     const handback = outcome.handback === null ? msg.handback : draftFromContent(outcome.handback);
 
-    if (handback !== null && followed !== null)
+    if (handback !== null && followed !== null) {
       return stageHandback(
         next,
         followed.id,
@@ -284,6 +291,7 @@ function moved(state: State, msg: Extract<Outcome, { kind: "moved" }>, now: numb
         },
         now,
       );
+    }
 
     return context.purpose === "retract"
       ? stay(next)

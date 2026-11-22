@@ -131,12 +131,13 @@ async function verify(store: StoreConnection, session: SessionId): Promise<Integ
     const expected = classifySessionRef(session, ref.name);
     const view = decodeView(ref.target, object);
 
-    if (view === null || (expected !== null && view.kind !== expected))
+    if (view === null || (expected !== null && view.kind !== expected)) {
       issues.push({
         ref: ref.name,
         object: null,
         message: `${ref.name} does not hold a ${expected ?? "stored"} record.`,
       });
+    }
   }
 
   const commits = await ancestry(store, session, refs);
@@ -144,12 +145,13 @@ async function verify(store: StoreConnection, session: SessionId): Promise<Integ
   for (const [commit, record] of commits) {
     const parent = record?.parent ?? null;
 
-    if (parent !== null && commits.get(parent) === null)
+    if (parent !== null && commits.get(parent) === null) {
       issues.push({
         ref: null,
         object: commit,
         message: `Commit ${commit} names a parent that does not exist.`,
       });
+    }
   }
 
   return { ok: issues.length === 0, issues };
@@ -189,8 +191,9 @@ function classifySessionRef(session: SessionId, name: string): string | null {
 }
 
 function decodeView(id: ObjectId, object: Json | null): DecodedObjectView | null {
-  if (!isJsonObject(object) || typeof object.kind !== "string" || typeof object.at !== "number")
+  if (!isJsonObject(object) || typeof object.kind !== "string" || typeof object.at !== "number") {
     return null;
+  }
 
   return {
     id,

@@ -210,7 +210,7 @@ test.each<{
 }>([
   {
     name: "a settled thought is titled by its heading and timed from its start to its end",
-    messages: [thoughtAt("**Checking the lease**\n\nThe lease is fine.", 1_000, 3_500)],
+    messages: [thoughtAt("**Checking the lease**\n\nThe lease is fine.", 1000, 3500)],
     running: false,
     facts: {
       entries: 1,
@@ -222,7 +222,7 @@ test.each<{
   },
   {
     name: "a settled thought under half a second shows no time",
-    messages: [thoughtAt("Weighing it", 1_000, 1_499)],
+    messages: [thoughtAt("Weighing it", 1000, 1499)],
     running: false,
     facts: {
       entries: 1,
@@ -234,7 +234,7 @@ test.each<{
   },
   {
     name: "a settled thought that is only a heading has nothing to open",
-    messages: [thoughtAt("**Only a heading**", 1_000, 3_500)],
+    messages: [thoughtAt("**Only a heading**", 1000, 3500)],
     running: false,
     facts: {
       entries: 1,
@@ -258,7 +258,7 @@ test.each<{
   },
   {
     name: "thoughts alone stay apart, and two settled thoughts are not titled",
-    messages: [thoughtAt("First", 1_000, 2_000), thoughtAt("Second", 2_000, 4_000)],
+    messages: [thoughtAt("First", 1000, 2000), thoughtAt("Second", 2000, 4000)],
     running: false,
     facts: {
       entries: 2,
@@ -271,9 +271,9 @@ test.each<{
   {
     name: "thoughts beside a call merge, and a blank thought is dropped",
     messages: [
-      thoughtAt("First", 1_000, 2_000),
-      thoughtAt("Second", 2_000, 3_000),
-      thoughtAt(" ", 3_000, 3_000),
+      thoughtAt("First", 1000, 2000),
+      thoughtAt("Second", 2000, 3000),
+      thoughtAt(" ", 3000, 3000),
       call({ kind: "read", path: "/w/a.ts" }, SUCCESS),
     ],
     running: false,

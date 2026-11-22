@@ -7,7 +7,12 @@ import { InMemoryModelsStore } from "../src/models-store.ts";
 import { githubCopilotProvider } from "../src/providers/github-copilot.ts";
 import type { Api, JsonValue, Model } from "../src/types.ts";
 
-type Captured = { url: string; method: string; headers: Headers; body: string };
+interface Captured {
+  url: string;
+  method: string;
+  headers: Headers;
+  body: string;
+}
 type Routes = Record<string, (request: Captured) => Response | Promise<Response>>;
 
 export function fakeFetch(routes: Routes) {
@@ -22,8 +27,9 @@ export function fakeFetch(routes: Routes) {
     };
     requests.push(captured);
     const route = routes[`${captured.method} ${captured.url}`];
-    if (route === undefined)
+    if (route === undefined) {
       throw new Error(`Unexpected request: ${captured.method} ${captured.url}`);
+    }
     return route(captured);
   };
   return { fetch, requests };

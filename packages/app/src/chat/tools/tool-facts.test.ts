@@ -180,7 +180,7 @@ test.each<
     CARDS.map(([, policy]) => outputs[POLICY_COLUMN[policy]]),
   );
 
-  for (const fact of facts)
+  for (const fact of facts) {
     expect({ ...fact, output: undefined }).toEqual({
       status: expect.objectContaining({ word }),
       running,
@@ -188,6 +188,7 @@ test.each<
       durationMs,
       verb,
     });
+  }
 
   expect(toolFacts(input, whole, undefined, "edit").verb).toBeUndefined();
 });
@@ -202,7 +203,7 @@ test.each<[string, string | undefined, string | undefined]>([
 
 test.each([
   ["src/a.ts", "a.ts"],
-  ["C:\\repo\\b.ts", "b.ts"],
+  [String.raw`C:\repo\b.ts`, "b.ts"],
   ["c.ts", "c.ts"],
 ])("%s is named %s", (path, name) => {
   expect(basename(path)).toBe(name);

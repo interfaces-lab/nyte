@@ -35,7 +35,7 @@ function fakeJob(key: string) {
     write: async (bytes) => {
       written.push(new TextDecoder().decode(bytes));
     },
-    output: async function* () {
+    async *output() {
       for (;;) {
         const frame = frames.shift();
 
@@ -118,7 +118,7 @@ const connection: ClientConnection = {
       },
       recover: async (key) => running.get(key) ?? { kind: "missing" },
       list: async () => [],
-      watch: async function* () {},
+      async *watch() {},
     },
     job: () => next.job,
   }),

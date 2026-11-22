@@ -135,8 +135,9 @@ export function createPdfPages(
     for (const entry of entries) {
       const state = byElement.get(entry.target);
 
-      if (state === undefined || entry.rootBounds === null || entry.rootBounds.height === 0)
+      if (state === undefined || entry.rootBounds === null || entry.rootBounds.height === 0) {
         continue;
+      }
       state[band] = entry.isIntersecting;
       const demand = state.render ? "render" : state.retain ? "retain" : "release";
 

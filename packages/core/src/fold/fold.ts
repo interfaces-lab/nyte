@@ -290,15 +290,17 @@ function landCommitted(
   );
   draft.rebuild.add(owner);
 
-  if (input !== undefined && input.landed === null)
+  if (input !== undefined && input.landed === null) {
     draft.inputs.set(id, { ...input, landed: { commit: event.id, run: event.run } });
+  }
 
   if (
     message?.kind === "user" &&
     message.status.kind === "landed" &&
     message.status.commit === event.id
-  )
+  ) {
     return;
+  }
   const turn = landingTurn(draft, owner, body.delivery, event.run, id, event.at);
 
   setMessage(draft, {
@@ -426,8 +428,9 @@ function applyInput(draft: Draft, event: Logged<"input">): void {
       draft.inputs.set(input.id, { ...input, schedule: event.schedule });
       const message = draft.messages.get(input.id);
 
-      if (message?.kind === "user" && message.status.kind === "pending")
+      if (message?.kind === "user" && message.status.kind === "pending") {
         setMessage(draft, { ...message, status: { ...message.status, schedule: event.schedule } });
+      }
       updateHead(draft, input.head, (head) => ({
         ...head,
         pending: placeAt(head.pending, input.id, event.position),
@@ -551,8 +554,9 @@ function applyRun(draft: Draft, event: Logged<"run">): void {
   if (event.change === "ended") return end(draft, run, event);
   const execution = draft.heads.get(run.view.head)?.info.execution;
 
-  if (execution === undefined || execution.kind === "idle" || execution.run.id !== event.run)
+  if (execution === undefined || execution.kind === "idle" || execution.run.id !== event.run) {
     return;
+  }
 
   switch (event.change) {
     case "phase":
@@ -649,18 +653,20 @@ function end(
   const turn = draft.turns.get(run.turn);
   const execution = draft.heads.get(run.view.head)?.info.execution ?? IDLE;
 
-  if (execution.kind === "idle" || execution.run.id === event.run)
+  if (execution.kind === "idle" || execution.run.id === event.run) {
     execute(draft, run, {
       kind: "idle",
       lastRun: { id: event.run, end: event.end, endedAt: event.at },
     });
+  }
 
-  if (turn !== undefined)
+  if (turn !== undefined) {
     setTurn(draft, {
       ...turn,
       info: { ...turn.info, state: { kind: "ended", end: event.end }, endedAt: event.at },
       live: [],
     });
+  }
 
   if (event.end.kind === "completed") return;
   const failure = event.end.kind === "failed" ? event.end.failure : STOPPED;
@@ -681,8 +687,9 @@ function execute(draft: Draft, run: FoldRun, execution: Execution): void {
 function work(draft: Draft, id: TurnId): void {
   const turn = draft.turns.get(id);
 
-  if (turn !== undefined)
+  if (turn !== undefined) {
     turnState(draft, id, { kind: "working", activity: describeLiveActivity(draft, turn.live) });
+  }
 }
 
 function turnState(draft: Draft, id: TurnId, state: TurnInfo["state"]): void {
@@ -731,8 +738,9 @@ function applyPart(draft: Draft, event: Logged<"part">): void {
       if (
         record === undefined ||
         (transcriptRole(record.placement) !== null && draft.messages.has(toPartMessageId(id)))
-      )
+      ) {
         return;
+      }
       dropPart(draft, id);
       draft.partViews = draft.partViews.filter((view) => view.id !== id);
       dropRow(draft, "parts", id);
@@ -827,8 +835,9 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
       (part.partKind !== "text" && part.partKind !== "thinking") ||
       !isJsonObject(state) ||
       typeof state.markdown !== "string"
-    )
+    ) {
       return false;
+    }
 
     const markdown = "append" in event ? state.markdown + event.append : event.markdown;
 
@@ -846,8 +855,9 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
     (part.status.kind !== "live" && part.status.kind !== "waiting") ||
     !isJsonObject(state) ||
     state.phase !== "running"
-  )
+  ) {
     return false;
+  }
 
   updatePart(draft, part.id, (current) => ({
     ...current,

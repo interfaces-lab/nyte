@@ -271,8 +271,9 @@ export function acceleratorMatches(accelerator: string, key: BrowserKey, mac: bo
     key.ctrlKey !== (has("control", "ctrl") || (!mac && primary)) ||
     key.altKey !== has("alt", "option") ||
     key.shiftKey !== has("shift")
-  )
+  ) {
     return false;
+  }
   const wanted = ACCELERATOR_KEYS.get(name) ?? name;
   const character = shortcutCharacter(key);
 

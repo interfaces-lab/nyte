@@ -294,8 +294,9 @@ function WebOriginsSection(): ReactElement {
 }
 
 function originProblem(value: string, allowed: readonly string[]): string | undefined {
-  if (!ORIGIN.test(value.toLowerCase()))
+  if (!ORIGIN.test(value.toLowerCase())) {
     return "Origins start with https://, like https://example.com or https://*.example.com.";
+  }
 
   return allowed.includes(value.toLowerCase()) ? `${value} is already allowed.` : undefined;
 }

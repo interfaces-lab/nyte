@@ -18,7 +18,7 @@ const PARTITION = "canvas-preview";
 
 const NOWHERE = "socks5://127.0.0.1:9";
 
-const VIEWPORT_LIMIT = 4_096;
+const VIEWPORT_LIMIT = 4096;
 
 const CAPTURE_ATTEMPTS = 3;
 
@@ -138,8 +138,9 @@ async function capture(window: BrowserWindow): Promise<Uint8Array> {
         attempt === CAPTURE_ATTEMPTS ||
         !(error instanceof Error) ||
         error.message !== "UnknownVizError"
-      )
+      ) {
         throw error;
+      }
     }
   }
 }
@@ -171,8 +172,9 @@ async function previewOffscreen(
   let png: Uint8Array | undefined;
 
   contents.ipc.handle(CANVAS_PREVIEW_CHANNELS.resize, async (_event, width, height) => {
-    if (!Value.Check(ViewportSide, width) || !Value.Check(ViewportSide, height))
+    if (!Value.Check(ViewportSide, width) || !Value.Check(ViewportSide, height)) {
       throw new Error("The preview asked for a viewport out of range.");
+    }
     window.setContentSize(width, height);
     await painted(window);
   });
@@ -199,8 +201,9 @@ async function previewOffscreen(
       contents.send(CANVAS_PREVIEW_CHANNELS.run, request);
       const outcome = await answered.promise;
 
-      if (!Value.Check(DriverOutcome, outcome))
+      if (!Value.Check(DriverOutcome, outcome)) {
         throw new Error("The preview answered something unreadable.");
+      }
 
       if (outcome.kind === "failed") throw new Error(outcome.message);
 

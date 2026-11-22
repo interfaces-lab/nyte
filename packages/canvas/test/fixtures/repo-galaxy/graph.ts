@@ -29,7 +29,7 @@ export const LAYERS = [
 
 export type Import = Readonly<{ from: number; to: number; line: number; typeOnly: boolean }>;
 
-export type Star = {
+export interface Star {
   readonly id: number;
   readonly label: string;
   readonly path: string | null;
@@ -39,7 +39,7 @@ export type Star = {
   readonly radius: number;
   readonly imports: Import[];
   readonly importers: Import[];
-};
+}
 
 function findLayer(path: string): number {
   const folder = path.includes("/") ? (path.split("/")[0] ?? "") : "api";

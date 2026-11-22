@@ -126,8 +126,9 @@ async function signIn(
   const pending = /data-request="([^"]+)"/.exec(page)?.[1];
   const code = /<code id="code">([^<]+)<\/code>/.exec(page)?.[1];
 
-  if (pending === undefined || code === undefined)
+  if (pending === undefined || code === undefined) {
     throw new Error(`The authorize page shows no code:\n${page}`);
+  }
   process.stdout.write(`authorize page code: ${code}\n`);
 
   const approved = await socketCall(socket, token, "mcp.approve", {
@@ -142,8 +143,9 @@ async function signIn(
   );
   const authorization = new URL(state.location).searchParams.get("code");
 
-  if (authorization === null)
+  if (authorization === null) {
     throw new Error(`The sign-in ended without a code: ${state.location}`);
+  }
 
   const tokens = await json(
     await fetch(`${url}/oauth/token`, {
@@ -279,8 +281,9 @@ function socketCall(socket: string, token: string, name: string, body: unknown):
 async function json<T extends TSchema>(response: Response, type: T): Promise<Static<T>> {
   const value: unknown = await response.json();
 
-  if (!compile(type).Check(value))
+  if (!compile(type).Check(value)) {
     throw new Error(`Unexpected answer ${response.status}: ${JSON.stringify(value)}`);
+  }
 
   return value;
 }

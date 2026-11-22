@@ -6,7 +6,10 @@ import type { Plugin } from "@nyte-ai/plugin/core";
 
 export const DEFAULT_SEARCH_LIMIT = 8;
 
-export type ToolSearchDocument = { readonly name: string; readonly text: string };
+export interface ToolSearchDocument {
+  readonly name: string;
+  readonly text: string;
+}
 
 const STOP_WORDS: ReadonlySet<string> = new Set([
   "a",
@@ -128,8 +131,8 @@ export default {
 /** Lowercase terms split at camelCase boundaries and non-alphanumerics, without stop words, naively singular. */
 export function tokenize(text: string): readonly string[] {
   return text
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replaceAll(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((term) => term.length > 0 && !STOP_WORDS.has(term))

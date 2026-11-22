@@ -20,7 +20,7 @@ import type { TSchema } from "typebox";
 import { sqliteStore } from "../../src/store/sqlite.ts";
 import { ID, schemaArbitrary } from "./arbitrary.ts";
 
-type JsonObject = { readonly [key: string]: Json };
+type JsonObject = Readonly<Record<string, Json>>;
 
 function body(kind: Exclude<RecordKind, "kv">): fc.Arbitrary<JsonObject> {
   return schemaArbitrary(
@@ -180,20 +180,23 @@ function records(from: number): fc.Arbitrary<Entry> {
       .map(([session, other, own, value, time, legacy]) => {
         let call: JsonObject = value;
 
-        if (older(from, 2) && legacy.reran)
+        if (older(from, 2) && legacy.reran) {
           call = Object.fromEntries(Object.entries(call).filter(([key]) => key !== "reran"));
+        }
 
-        if (older(from, 7) && legacy.patch)
+        if (older(from, 7) && legacy.patch) {
           call = { ...call, result: legacy.outcome, nested: legacy.nested };
+        }
 
-        if (older(from, 11) && legacy.pairing === "tool")
+        if (older(from, 11) && legacy.pairing === "tool") {
           call = {
             ...call,
             kind: "tool",
             intent: { ...legacy.intent, name: "edit", args: legacy.args },
           };
+        }
 
-        if (older(from, 12) && legacy.pairing === "intent")
+        if (older(from, 12) && legacy.pairing === "intent") {
           call = {
             ...call,
             kind: "intent",
@@ -201,8 +204,9 @@ function records(from: number): fc.Arbitrary<Entry> {
               Object.entries(legacy.intent).filter(([key]) => key !== "position"),
             ),
           };
+        }
 
-        if (older(from, 14) && legacy.pairing === "hook")
+        if (older(from, 14) && legacy.pairing === "hook") {
           call = {
             ...call,
             kind: "hook",
@@ -212,7 +216,8 @@ function records(from: number): fc.Arbitrary<Entry> {
               ? { action: "modify", value: legacy.modify }
               : (call.result ?? null),
           };
-        if (older(from, 10) && legacy.waiting !== null)
+        }
+        if (older(from, 10) && legacy.waiting !== null) {
           call = {
             ...call,
             result: null,
@@ -220,6 +225,7 @@ function records(from: number): fc.Arbitrary<Entry> {
             partial: [],
             head: typeof call.head === "string" ? call.head : "main",
           };
+        }
         const id =
           (own || (older(from, 10) && legacy.waiting !== null)) && typeof call.id === "string"
             ? call.id
@@ -565,7 +571,7 @@ export async function writeStore(
     for (const record of ended.records) await connection.objects.put(record);
     const [first] = ended.records;
 
-    if (ended.sessionRecord !== null)
+    if (ended.sessionRecord !== null) {
       await connection.refs.set([
         {
           name: `sessions/${ended.session}`,
@@ -573,8 +579,9 @@ export async function writeStore(
           expect: "absent",
         },
       ]);
+    }
 
-    if (ended.live && isJsonObject(first) && isJsonObject(first.body))
+    if (ended.live && isJsonObject(first) && isJsonObject(first.body)) {
       await connection.refs.set([
         {
           name: `sessions/${ended.session}/runs/${ended.run}`,
@@ -585,6 +592,7 @@ export async function writeStore(
           expect: "absent",
         },
       ]);
+    }
     logs.set(ended.session, [
       ...(logs.get(ended.session) ?? []),
       { head: "main", kind: "run", run: ended.run, change: "ended", end: { kind: "stopped" } },
@@ -595,9 +603,11 @@ export async function writeStore(
   const database = new DatabaseSync(path);
   const append = database.prepare("INSERT INTO log (session, seq, at, event) VALUES (?, ?, ?, ?)");
 
-  for (const [session, logged] of logs)
-    for (const [index, event] of logged.entries())
-      append.run(session, index + 1, 1_000 + index, JSON.stringify(event));
+  for (const [session, logged] of logs) {
+    for (const [index, event] of logged.entries()) {
+      append.run(session, index + 1, 1000 + index, JSON.stringify(event));
+    }
+  }
 
   if (input.from <= 2) database.exec("DROP TABLE session_index; DROP TABLE pending_work");
 

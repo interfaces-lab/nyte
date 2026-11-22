@@ -28,9 +28,10 @@ async function openTool(page: Page, kind: string): Promise<void> {
     .click();
 }
 
-for (const theme of ["dark", "light"] as const)
+for (const theme of ["dark", "light"] as const) {
   test(`every function of Nyte, Code and Studio, ${theme}`, ({ desk }) =>
     everyFunction(desk, theme));
+}
 
 async function everyFunction(desk: Desk, theme: "dark" | "light"): Promise<void> {
   test.setTimeout(300_000);

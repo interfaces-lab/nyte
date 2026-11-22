@@ -5,8 +5,8 @@ import { app, dialog, MessageChannelMain, shell } from "electron";
 import type { MessagePortMain } from "electron";
 import type { ConnectRuntime } from "@nyte-ai/connect/host";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
-import { servePort } from "../shared/host-port.ts";
-import type { PortEnd } from "../shared/host-port.ts";
+import { servePort, HOST_PORT_ORIGIN } from "../shared/host-port.ts";
+import type { PortEnd, DialSocket } from "../shared/host-port.ts";
 import { DesktopHost } from "../host/desktop-host.ts";
 import type { DesktopHostDependencies } from "../host/desktop-host.ts";
 import { CloudflareTunnelPlugin } from "../host/connections/cloudflare-tunnel.ts";
@@ -18,8 +18,6 @@ import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserAgent } from "../shared/browser-agent.ts";
 import { appSocket, offerAppActions } from "../shared/host-client.ts";
-import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
-import type { DialSocket } from "../shared/host-port.ts";
 import { HostLink } from "../host/host-link.ts";
 import type { HostLinkState } from "../host/host-link.ts";
 import { socketDial, socketFetch } from "./host-socket.ts";
@@ -189,10 +187,11 @@ function announce(registration: AgentRegistration): void {
         noLink: true,
       })
       .then(({ response }) => {
-        if (response === 0)
+        if (response === 0) {
           void shell.openExternal(
             "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
           );
+        }
       });
 
     return;

@@ -15,7 +15,7 @@ export function check(condition: boolean, message: string): void {
 }
 
 export async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
@@ -92,12 +92,13 @@ export async function openViewer(name: string, children?: ReactNode) {
 
   if (drawing === null) throw new Error("Missing drawing control");
 
-  for (const key of ["Enter", "ArrowRight", "ArrowDown", "Enter"])
+  for (const key of ["Enter", "ArrowRight", "ArrowDown", "Enter"]) {
     flushSync(() =>
       drawing.dispatchEvent(
         new KeyboardEvent("keydown", { key, shiftKey: true, bubbles: true, cancelable: true }),
       ),
     );
+  }
 
   check(
     document.querySelectorAll('[data-image-markup] [data-image-mark="box"]').length === 1,
@@ -108,8 +109,9 @@ export async function openViewer(name: string, children?: ReactNode) {
     button.textContent?.includes("Add to Chat"),
   );
 
-  if (add === undefined || source === undefined || signal === undefined)
+  if (add === undefined || source === undefined || signal === undefined) {
     throw new Error("The viewer did not expose its existing export controls");
+  }
 
   return {
     source,

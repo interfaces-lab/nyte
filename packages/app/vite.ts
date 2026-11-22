@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import type { DevRow } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { normalizePath, type Plugin } from "vite";
+import { normalizePath } from "vite";
+import type { Plugin } from "vite";
 
 export { stylex } from "@nyte-ai/ui/stylex";
 
@@ -78,8 +79,9 @@ export function trimStreamdown(): Plugin {
       },
     },
     async load(id) {
-      if (id.startsWith(STREAMDOWN_STANDIN))
+      if (id.startsWith(STREAMDOWN_STANDIN)) {
         return STREAMDOWN_STANDINS.get(id.slice(STREAMDOWN_STANDIN.length));
+      }
 
       if (!id.endsWith(PARSE_ONLY)) return;
       const code = await readFile(id.slice(0, -PARSE_ONLY.length), "utf8");
@@ -89,8 +91,9 @@ export function trimStreamdown(): Plugin {
         .replace(/^ *const toMarkdownExtensions =\n.*\n/mu, "")
         .replace(/^ *toMarkdownExtensions\.push\(gfmToMarkdown\(settings\)\)\n/mu, "");
 
-      if (parseOnly.includes("oMarkdown") || !parseOnly.includes("gfmFromMarkdown()"))
+      if (parseOnly.includes("oMarkdown") || !parseOnly.includes("gfmFromMarkdown()")) {
         this.error(`${id} no longer registers its markdown serializer as expected`);
+      }
 
       return { code: parseOnly, map: null };
     },
@@ -99,8 +102,9 @@ export function trimStreamdown(): Plugin {
       handler(code, id) {
         const table = /(var [\w$]+=\{)(ol:[\w$]+,[^;]*?section:[\w$]+)(\};)/u.exec(code);
 
-        if (table === null || !code.includes("createElement,"))
+        if (table === null || !code.includes("createElement,")) {
           this.error(`${id} no longer lists its default components as expected`);
+        }
 
         const [whole, open, entries, close] = table;
         const dropped: string[] = [];
@@ -121,8 +125,9 @@ export function trimStreamdown(): Plugin {
             const at = text.indexOf(named);
             const end = text.indexOf('";', at);
 
-            if (at === -1 || text.includes(named, end))
+            if (at === -1 || text.includes(named, end)) {
               this.error(`${id} no longer names its default component ${component} once`);
+            }
 
             return `${text.slice(0, at)}${text.slice(end + 2)}`;
           },

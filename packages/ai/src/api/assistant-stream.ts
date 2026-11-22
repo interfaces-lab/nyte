@@ -73,12 +73,13 @@ export function runAssistantStream(
       output.errorMessage = formatError(error);
       const retryAfterMs = requestedRetryDelayMs(error);
 
-      if (retryAfterMs !== undefined)
+      if (retryAfterMs !== undefined) {
         appendAssistantMessageDiagnostic(output, {
           type: "provider_retry_after",
           timestamp: Date.now(),
           details: { retryAfterMs },
         });
+      }
       const unsent = unsentDiagnostic(error);
 
       if (unsent !== undefined) appendAssistantMessageDiagnostic(output, unsent);

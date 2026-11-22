@@ -1,3 +1,5 @@
+import { errorMessage } from "../contract/errors.ts";
+
 interface Scene {
   step: string;
   readonly failures: string[];
@@ -7,10 +9,14 @@ interface Scene {
 export const scene: Scene = { step: "mount", failures: [], renderFailure: undefined };
 
 export async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
-    if (scene.renderFailure !== undefined) throw scene.renderFailure;
+    if (scene.renderFailure !== undefined) {
+      throw scene.renderFailure instanceof Error
+        ? scene.renderFailure
+        : new Error(errorMessage(scene.renderFailure), { cause: scene.renderFailure });
+    }
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
@@ -225,8 +231,9 @@ export const moved = (element: Element, top: number): string =>
   `moved from ${String(top)} to ${String(measureTop(element))}`;
 
 export function first<T>(value: T | undefined | null, what: string): T {
-  if (value === undefined || value === null)
+  if (value === undefined || value === null) {
     throw new Error(`${what} is missing at ${scene.step}\n${scene.failures.join("\n")}`);
+  }
 
   return value;
 }

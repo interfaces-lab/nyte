@@ -56,7 +56,7 @@ const anthropicModel: Model<"anthropic-messages"> = {
   reasoning: false,
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 100000,
+  contextWindow: 100_000,
   maxTokens: 4096,
 };
 

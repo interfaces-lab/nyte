@@ -207,12 +207,13 @@ export function McpServersTab({
   readonly issues: readonly ValidationIssue[];
   readonly term: string;
 }): ReactElement {
-  if (servers.length === 0 && issues.length === 0)
+  if (servers.length === 0 && issues.length === 0) {
     return term === "" ? (
       <Notice>No MCP servers yet. Add one under mcpServers in ~/.nyte/mcp.json.</Notice>
     ) : (
       <Notice>No MCP servers match &ldquo;{term}&rdquo;</Notice>
     );
+  }
 
   return (
     <Section title="Servers" description="From ~/.nyte/mcp.json and this folder's .nyte/mcp.json">

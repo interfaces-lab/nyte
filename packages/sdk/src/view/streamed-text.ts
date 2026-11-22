@@ -10,13 +10,16 @@ export interface StreamedPart {
 
 export type StreamedText = ReadonlyMap<string, StreamedPart>;
 
-type Laid = {
+interface Laid {
   readonly texts: StreamedText;
   readonly laid: ReadonlyMap<number, Message>;
   readonly result: HeadView;
-};
+}
 
-type Drawn = { readonly source: Message; readonly result: Message };
+interface Drawn {
+  readonly source: Message;
+  readonly result: Message;
+}
 
 const views = new WeakMap<HeadView, Laid>();
 
@@ -30,19 +33,21 @@ export function streamText(texts: StreamedText, update: TextUpdate): StreamedTex
   const base = pruned.get(texts) ?? texts;
   const known = base.get(update.part);
 
-  if ("progress" in update)
+  if ("progress" in update) {
     return new Map(base).set(update.part, {
       version: known?.version ?? 0,
       text: known?.text ?? null,
       progress: update.progress,
     });
+  }
 
-  if ("text" in update)
+  if ("text" in update) {
     return new Map(base).set(update.part, {
       version: update.version,
       text: update.text,
       progress: known?.progress ?? null,
     });
+  }
 
   if (known === undefined || known.text === null) return texts;
 
@@ -83,8 +88,9 @@ export function withStreamedText(view: HeadView, texts: StreamedText): HeadView 
     if (next !== message) laid.set(at, next);
   }
 
-  if (settled.size > 0)
+  if (settled.size > 0) {
     pruned.set(texts, new Map(Array.from(texts).filter((entry) => !settled.has(entry[0]))));
+  }
 
   const result =
     laid.size === 0

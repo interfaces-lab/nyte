@@ -30,8 +30,9 @@ export async function folder(): Promise<string> {
 }
 
 export async function removeFolders(): Promise<void> {
-  for (const made of folders.splice(0))
+  for (const made of folders.splice(0)) {
     await rm(made, { recursive: true, force: true, maxRetries: 10 });
+  }
 }
 
 export async function start(host: Host, prompt: string) {
@@ -199,8 +200,8 @@ export async function expectSettledViews(session: Session, watched: Watched): Pr
   const versions = new Map<string, number>();
 
   for (const view of watched.views) {
-    expect(Number(view.seq)).toBeGreaterThanOrEqual(seq);
-    seq = Number(view.seq);
+    expect(view.seq).toBeGreaterThanOrEqual(seq);
+    seq = view.seq;
     const ids = view.messages.map((message) => message.id);
 
     expect(new Set(ids).size, "a message appears twice in one view").toBe(ids.length);

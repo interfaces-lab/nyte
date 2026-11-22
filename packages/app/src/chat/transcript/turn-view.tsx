@@ -313,8 +313,9 @@ export function UserMessageView({
               surface="follow-up"
               document={edit.document}
               onDocumentChange={(document) => {
-                if (document.text !== edit.document.text && rowRef.current !== null)
+                if (document.text !== edit.document.text && rowRef.current !== null) {
                   transcript.reveal(rowRef.current);
+                }
                 patchEdit({ kind: "document", document });
               }}
               onSubmit={save}
@@ -370,8 +371,9 @@ function DismissOnOutsideClick({
         pressStartedInPopup ||
         insidePopup(event.target) ||
         event.composedPath().includes(row)
-      )
+      ) {
         return;
+      }
       dismiss();
     };
 
@@ -417,12 +419,13 @@ function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
 
   if (isPart(message, compaction)) {
-    if (message.status.kind === "live")
+    if (message.status.kind === "live") {
       return (
         <StatusMarker role="status" variant="retrying">
           Summarizing chat context…
         </StatusMarker>
       );
+    }
 
     return message.state.summary === null ? null : (
       <HistoryDisclosure label="Chat context summarized">
@@ -453,8 +456,9 @@ function TurnPartView({
   cwd: string | undefined;
   density: ToolCallDensity;
 }): ReactElement | null {
-  if (showsThinking(message))
+  if (showsThinking(message)) {
     return <ThinkingLine message={message} text={message.state.markdown} />;
+  }
 
   if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
 
@@ -534,7 +538,7 @@ export function TurnItemView({
     case "step": {
       const step = stepRowView(row);
 
-      if (step.kind === "entry")
+      if (step.kind === "entry") {
         return (
           <StepEntryView
             entry={step.entry}
@@ -545,6 +549,7 @@ export function TurnItemView({
             live={false}
           />
         );
+      }
 
       return (
         <StepGroupFactsView

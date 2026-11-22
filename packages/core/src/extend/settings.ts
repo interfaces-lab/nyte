@@ -69,10 +69,11 @@ export function settingHandle<T>(
       if (!isJson(value)) throw new SdkError("invalid", `Setting ${id} takes a JSON value.`);
       const checked = await check(definition.schema, value);
 
-      if (checked.kind === "invalid")
+      if (checked.kind === "invalid") {
         throw new SdkError("invalid", `Setting ${id} rejects this value.`, {
           issues: checked.issues,
         });
+      }
 
       if (definition.scope === "host" || session === null) {
         await storeHostValue(kernel, definition, value);
@@ -82,10 +83,11 @@ export function settingHandle<T>(
 
       const outcome = await configure(kernel, session, MAIN, { settings: { [id]: value } }, true);
 
-      if (outcome.kind !== "configured")
+      if (outcome.kind !== "configured") {
         throw new SdkError("invalid", `Setting ${id} could not be configured: ${outcome.kind}.`, {
           issues: outcome.kind === "invalid" ? outcome.issues : [],
         });
+      }
     },
     watch: () => ({
       async *[Symbol.asyncIterator]() {
@@ -151,8 +153,9 @@ async function storeHostValue(
   if (id === SKILL_PATHS) {
     dropScans(kernel);
 
-    for (const session of kernel.plugins.runtimes().keys())
+    for (const session of kernel.plugins.runtimes().keys()) {
       void kernel.plugins.reload(session).catch(() => undefined);
+    }
   }
 
   await Promise.all([
@@ -218,8 +221,9 @@ async function sealSecretEntry(
 ): Promise<Json> {
   if (!isJsonObject(written) || written.secret !== true) return written;
 
-  if (typeof written.value === "string")
+  if (typeof written.value === "string") {
     return { secret: true, ...(await sealText(kernel, written.value)) };
+  }
 
   if (isJsonObject(stored) && stored.secret === true && "ciphertext" in stored) return stored;
 
@@ -250,8 +254,9 @@ export async function configure(
     const current = await requireSession(kernel.store, session);
     const entry = current.record.heads.find((other) => other.name === head);
 
-    if (entry === undefined)
+    if (entry === undefined) {
       throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
+    }
     const runtime = kernel.plugins.runtime(session);
 
     if (!activation) await runtime.ready;
@@ -287,8 +292,9 @@ export async function configure(
 
   if (selected.kind !== "exact") return selected;
 
-  if (patch.settings !== undefined)
+  if (patch.settings !== undefined) {
     await settingsConfigured(kernel, session, Object.keys(patch.settings));
+  }
   const ref = await kernel.store.refs.get(headRef(session, head));
 
   return { kind: "configured", selected, revision: ref?.revision ?? EMPTY_REVISION };

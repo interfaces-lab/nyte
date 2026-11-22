@@ -59,8 +59,9 @@ async function readRelease() {
   const commit = String(body.target_commitish);
   const assets: unknown[] = Array.isArray(body.assets) ? body.assets : [];
 
-  if (!/^[0-9a-f]{40}$/u.test(commit))
+  if (!/^[0-9a-f]{40}$/u.test(commit)) {
     throw new Error(`tip release target ${commit} is not a commit`);
+  }
 
   return {
     commit,

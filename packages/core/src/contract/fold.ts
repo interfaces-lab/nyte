@@ -139,7 +139,7 @@ export interface Index {
   readonly thinking: Map<TurnId, number>;
   readonly paths: Map<HeadName, Path>;
 
-  readonly stamps: { readonly [T in Table]: Map<string, Seq> };
+  readonly stamps: Readonly<Record<Table, Map<string, Seq>>>;
   readonly ring: Ring;
 }
 
@@ -155,8 +155,8 @@ export type Table =
   | "background";
 
 export interface Touched {
-  readonly upsert: { readonly [T in Table]: Set<string> };
-  readonly drop: { readonly [T in Table]: Set<string> };
+  readonly upsert: Readonly<Record<Table, Set<string>>>;
+  readonly drop: Readonly<Record<Table, Set<string>>>;
   readonly paths: Map<HeadName, number>;
 }
 

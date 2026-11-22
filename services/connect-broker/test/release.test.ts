@@ -149,7 +149,7 @@ describe("a strong revocation after a release", () => {
     expect((await harness.release(desktop, { deviceId })).status).toBe(204);
     const policy = (await harness.lease(desktop)).claims?.policy;
 
-    for (let index = 0; index < 2; index += 1)
+    for (let index = 0; index < 2; index += 1) {
       expect(
         (
           await harness.removeDevice(
@@ -161,6 +161,7 @@ describe("a strong revocation after a release", () => {
           )
         ).status,
       ).toBe(204);
+    }
     expect(await device(deviceId)).toEqual({ state: "revoked", revoke_reason: "revoked" });
     expect(await denials()).toEqual([expect.objectContaining({ session_id: "sess_phone" })]);
     expect(harness.clerkApi.revoked).toEqual(["sess_phone"]);

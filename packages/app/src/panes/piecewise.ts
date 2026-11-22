@@ -64,10 +64,11 @@ export function compose(outer: Piecewise, inner: Piecewise): Piecewise {
     const x1 = inner.xs[index + 1];
     const y1 = inner.ys[index + 1];
 
-    if (x1 === undefined || y1 === undefined)
+    if (x1 === undefined || y1 === undefined) {
       return inner.slope === 0
         ? []
         : outer.xs.map((knot) => x0 + (knot - y0) / inner.slope).filter((x) => x > x0);
+    }
 
     return outer.xs
       .filter((knot) => (knot - y0) * (knot - y1) < 0)
@@ -130,10 +131,11 @@ function envelope(
     const d = difference(x);
     const next = knots[index + 1];
 
-    if (next === undefined)
+    if (next === undefined) {
       return Math.abs(d) > EPSILON && Math.abs(rate) > EPSILON && Math.sign(d) !== Math.sign(rate)
         ? [x - d / rate]
         : [];
+    }
 
     const e = difference(next);
 

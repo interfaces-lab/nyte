@@ -64,8 +64,9 @@ function QuestionCard({
   const restoreFocus = useRef(false);
 
   const carryFocus = (form: HTMLFormElement): (() => void) => {
-    if (restoreFocus.current && !form.contains(document.activeElement))
+    if (restoreFocus.current && !form.contains(document.activeElement)) {
       form.querySelector<HTMLInputElement>("input:not(:disabled)")?.focus({ preventScroll: true });
+    }
 
     return () => {
       restoreFocus.current = form.contains(document.activeElement);
@@ -95,8 +96,9 @@ function QuestionCard({
         if (!blocked && !dock.last) void dock.advance();
       }}
       onKeyDown={(event) => {
-        if (event.defaultPrevented || blocked || event.repeat || event.nativeEvent.isComposing)
+        if (event.defaultPrevented || blocked || event.repeat || event.nativeEvent.isComposing) {
           return;
+        }
 
         if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key === "Enter") {
           event.preventDefault();

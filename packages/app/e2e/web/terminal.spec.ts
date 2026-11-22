@@ -40,8 +40,9 @@ test("a paired browser opens a terminal on the host's Home folder", async ({ pag
     await expect(page.getByRole("tab", { name: "Idle shell", exact: true })).toBeVisible();
     await page.evaluate(() => {
       const observer = new MutationObserver(() => {
-        if (document.querySelector('[role="alertdialog"]') !== null)
+        if (document.querySelector('[role="alertdialog"]') !== null) {
           document.body.dataset.terminalConfirmationShown = "true";
+        }
       });
       observer.observe(document.body, { childList: true, subtree: true });
     });
@@ -93,6 +94,6 @@ test("Shift+Enter reaches a program that asked for the Kitty keyboard protocol",
   await expect(page.getByRole("tab", { name: "Kitty keys", exact: true })).toBeVisible();
   await page.keyboard.press("Shift+Enter");
   await expect(terminal.getByRole("status")).toHaveText(/Shell exited/u);
-  expect(await readFile(received, "utf8")).toBe("\u001b[13;2u");
+  expect(await readFile(received, "utf8")).toBe("\u001B[13;2u");
   expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
 });

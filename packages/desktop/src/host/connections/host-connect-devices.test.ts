@@ -7,6 +7,7 @@ import { cleanUp } from "../fixtures/connect-machine.ts";
 afterEach(cleanUp);
 
 test("on the loopback listener the desktop routes refuse browsers, other hosts, and forwarded requests", async () => {
+  // oxlint-disable-next-line eslint/prefer-const -- bound is assigned once the listener binds, after the handler reads it
   let bound: string | undefined;
   const reached: string[] = [];
 

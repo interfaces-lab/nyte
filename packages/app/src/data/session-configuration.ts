@@ -68,7 +68,7 @@ export function showsChoice(
   );
 }
 
-const SHOWN_WITHIN_MS = 2_000;
+const SHOWN_WITHIN_MS = 2000;
 
 const waits = new Map<SessionId, AbortController>();
 
@@ -79,8 +79,9 @@ export function sessionConfigurationOptions({ sessionId }: { readonly sessionId:
     mutationFn: async (patch: ConfigureSessionPatch) => {
       const outcome = await connection().session(sessionId).configure(patch);
 
-      if (outcome.kind !== "configured")
+      if (outcome.kind !== "configured") {
         throw new Error("That model setting is no longer available");
+      }
       waits.get(sessionId)?.abort();
       const bound = new AbortController();
       waits.set(sessionId, bound);

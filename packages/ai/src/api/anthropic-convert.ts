@@ -14,8 +14,8 @@ import { renderSystemMessageUpdate } from "../utils/text.ts";
 import {
   getJsonSchemaToolParameters,
   resolveJsonSchemaStrictSampling,
-  type UnsupportedStrictSchemaKeywordCheck,
 } from "./constrained-sampling.ts";
+import type { UnsupportedStrictSchemaKeywordCheck } from "./constrained-sampling.ts";
 import { toClaudeCodeName } from "./claude-code.ts";
 import { splitErrorToolResultImages } from "./transform-messages.ts";
 
@@ -33,7 +33,7 @@ function convertImageBlock(image: ImageContent): BetaImageBlockParam {
 
 function convertContentBlocks(
   content: (TextContent | ImageContent)[],
-): string | Array<BetaTextBlockParam | BetaImageBlockParam> {
+): string | (BetaTextBlockParam | BetaImageBlockParam)[] {
   const hasImages = content.some((c) => c.type === "image");
 
   if (!hasImages) {
@@ -59,7 +59,7 @@ function convertContentBlocks(
 }
 
 export function normalizeToolCallId(id: string): string {
-  return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+  return id.replaceAll(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
 }
 
 interface ConvertedToolResult {
@@ -74,7 +74,7 @@ function convertToolResult(
   loadedToolNames: Set<string>,
   normalizeToolName: (name: string) => string,
 ): ConvertedToolResult {
-  const references: Array<{ type: "tool_reference"; tool_name: string }> = [];
+  const references: { type: "tool_reference"; tool_name: string }[] = [];
 
   for (const name of msg.addedToolNames ?? []) {
     const normalizedName = normalizeToolName(name);
@@ -171,9 +171,8 @@ export function convertMessages(
               type: "text",
               text: sanitizeSurrogates(item.text),
             };
-          } else {
-            return convertImageBlock(item);
           }
+          return convertImageBlock(item);
         });
 
         const filteredBlocks = blocks.filter((b) => {
@@ -202,9 +201,13 @@ export function convertMessages(
           });
         } else if (block.type === "thinking") {
           if (block.redacted) {
+            if (block.thinkingSignature === undefined) {
+              throw new Error("Redacted thinking block has no signature to replay");
+            }
+
             blocks.push({
               type: "redacted_thinking",
-              data: block.thinkingSignature!,
+              data: block.thinkingSignature,
             });
             continue;
           }
@@ -293,11 +296,11 @@ export function convertMessages(
   flushPendingSystemMessages();
 
   if (cacheControl && params.length > 0) {
-    const lastMessage = params[params.length - 1];
+    const lastMessage = params.at(-1);
 
-    if (lastMessage.role === "user" || lastMessage.role === "system") {
+    if (lastMessage?.role === "user" || lastMessage?.role === "system") {
       if (Array.isArray(lastMessage.content)) {
-        const lastBlock = lastMessage.content[lastMessage.content.length - 1];
+        const lastBlock = lastMessage.content.at(-1);
 
         if (
           lastBlock &&
@@ -354,8 +357,9 @@ const ANTHROPIC_STRICT_STRING_FORMATS = new Set([
 const rejectedByAnthropicStrictTools: UnsupportedStrictSchemaKeywordCheck = (key, value) => {
   if (ANTHROPIC_STRICT_UNSUPPORTED_KEYWORDS.has(key)) return true;
   if (key === "minItems") return value !== 0 && value !== 1;
-  if (key === "format")
+  if (key === "format") {
     return typeof value !== "string" || !ANTHROPIC_STRICT_STRING_FORMATS.has(value);
+  }
   return false;
 };
 

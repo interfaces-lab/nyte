@@ -281,8 +281,9 @@ describe("client", () => {
     let injected = false;
 
     host.intercept(async (request, next) => {
-      if (readOperation(request) === "workspace.watch")
+      if (readOperation(request) === "workspace.watch") {
         streamId = request.headers.get(STREAM_HEADER);
+      }
       const response = await next(request);
 
       if (readOperation(request) !== CHANNEL_PATH || response.body === null) return response;

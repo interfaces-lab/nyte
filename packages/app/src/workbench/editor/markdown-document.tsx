@@ -315,8 +315,9 @@ function WorkspaceImage(input: { readonly path: string; readonly alt: string }):
   const path = input.path;
   const url = useBlobUrl(["files", "bytes", path], async () => (await documentsApi()).bytes(path));
 
-  if (url.data === undefined)
+  if (url.data === undefined) {
     return <span {...props(styles.imageLabel)}>{input.alt || path.split("/").at(-1)}</span>;
+  }
 
   return <img src={url.data} alt={input.alt} {...props(styles.image)} />;
 }
@@ -332,8 +333,9 @@ function codeHighlighting(): Plugin<DecorationSet> {
     void loadDeferred("highlight").then((runtime) => {
       cache.set(id, runtime.highlightTokens(code, language) ?? []);
 
-      if (view !== undefined && !view.isDestroyed)
+      if (view !== undefined && !view.isDestroyed) {
         view.dispatch(view.state.tr.setMeta(highlightKey, true));
+      }
     });
   };
 
@@ -364,8 +366,9 @@ function codeHighlighting(): Plugin<DecorationSet> {
         for (const token of line) {
           const end = offset + token.content.length;
 
-          if (token.style !== "")
+          if (token.style !== "") {
             decorations.push(Decoration.inline(offset, end, { style: token.style }));
+          }
           offset = end;
         }
 

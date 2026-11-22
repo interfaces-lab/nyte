@@ -258,12 +258,12 @@ const table = create({
   }),
 });
 
-type Column = {
+interface Column {
   readonly key: string;
   readonly label: ReactNode;
   readonly align?: "start" | "end";
   readonly width?: number | string;
-};
+}
 
 export function Table({
   columns,

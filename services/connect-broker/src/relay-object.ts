@@ -106,8 +106,9 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     const config = parseConfig(env);
     const id = ctx.id.name;
 
-    if ("invalid" in config)
+    if ("invalid" in config) {
       consoleLogger.error("config.invalid", { bindings: config.invalid.join(",") });
+    }
     this.#record =
       "invalid" in config || !Value.Check(Uuid, id)
         ? undefined
@@ -190,9 +191,11 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
   override async alarm(): Promise<void> {
     const now = Date.now();
 
-    for (const { socket, attachment } of this.#sockets())
-      if (attachment.state === "pending" && attachment.deadline <= now)
+    for (const { socket, attachment } of this.#sockets()) {
+      if (attachment.state === "pending" && attachment.deadline <= now) {
         this.#close(socket, "unauthorized");
+      }
+    }
     await this.#record?.drain();
     await this.#schedule();
   }
@@ -299,8 +302,9 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
       )
       .sort((left, right) => left.deadline - right.deadline);
 
-    for (const oldest of pending.slice(0, Math.max(0, pending.length + 1 - RELAY_PENDING_LIMIT)))
+    for (const oldest of pending.slice(0, Math.max(0, pending.length + 1 - RELAY_PENDING_LIMIT))) {
       this.#close(oldest.socket, "unauthorized");
+    }
     const pair = new WebSocketPair();
 
     const attachment: Attachment = {
@@ -462,8 +466,9 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
       !Value.Check(RelayMethod, method) ||
       !Value.Check(ChannelId, id) ||
       !Value.Check(RelayAdmission, admission)
-    )
+    ) {
       return relayRefusal("not_found");
+    }
 
     if (record === undefined) return relayRefusal("internal");
     this.#admitting.add(id);
@@ -584,8 +589,9 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
       request.headers.get("upgrade")?.toLowerCase() !== "websocket" ||
       !Value.Check(RelaySocketPath, path) ||
       !Value.Check(ChannelId, id)
-    )
+    ) {
       return relayRefusal("not_found");
+    }
     const desktop = this.#ready();
 
     if (desktop === undefined || this.#channels.has(id)) return relayRefusal("closed");

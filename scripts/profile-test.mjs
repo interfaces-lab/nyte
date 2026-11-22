@@ -103,12 +103,14 @@ process.stdout.write(
 );
 process.stdout.write(`METRIC failed_tests{package="${name}"}=${profile.failed}\n\nSlowest files\n`);
 
-for (const file of files.slice(0, top))
+for (const file of files.slice(0, top)) {
   process.stdout.write(`${round(file.seconds).padStart(8)}s  ${file.name}\n`);
+}
 process.stdout.write("\nSlowest tests\n");
 
-for (const row of ranked(profile.tests).slice(0, Math.min(top, 10)))
+for (const row of ranked(profile.tests).slice(0, Math.min(top, 10))) {
   process.stdout.write(`${round(row.seconds).padStart(8)}s  ${row.name}\n`);
+}
 
 rmSync(scratch, { recursive: true, force: true });
 process.exit(result.status ?? 1);

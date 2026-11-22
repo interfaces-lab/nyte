@@ -40,10 +40,8 @@ function waitForSettle(contents: WebContents, signal?: AbortSignal): Promise<voi
   if (contents.isDestroyed() || !contents.isLoading()) return Promise.resolve();
 
   return new Promise<void>((resolve) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
     const done = () => {
-      if (timer !== undefined) clearTimeout(timer);
+      clearTimeout(timer);
       contents.removeListener("did-stop-loading", done);
       contents.removeListener("did-fail-load", done);
       contents.removeListener("destroyed", done);
@@ -51,7 +49,7 @@ function waitForSettle(contents: WebContents, signal?: AbortSignal): Promise<voi
       resolve();
     };
 
-    timer = setTimeout(done, SETTLE_LIMIT_MS);
+    const timer = setTimeout(done, SETTLE_LIMIT_MS);
     contents.on("did-stop-loading", done);
     contents.on("did-fail-load", done);
     contents.on("destroyed", done);
@@ -60,10 +58,10 @@ function waitForSettle(contents: WebContents, signal?: AbortSignal): Promise<voi
 }
 
 export class SurfaceAgent implements BrowserAgent {
-  readonly #surfaces: AgentSurfaces;
+  private readonly surfaces: AgentSurfaces;
 
   constructor(surfaces: AgentSurfaces) {
-    this.#surfaces = surfaces;
+    this.surfaces = surfaces;
   }
 
   async open(input: Parameters<BrowserAgent["open"]>[0]): ReturnType<BrowserAgent["open"]> {
@@ -71,22 +69,23 @@ export class SurfaceAgent implements BrowserAgent {
 
     if (target === undefined) return CLOSED;
 
-    const surface = this.#surfaces.retain(
+    const surface = this.surfaces.retain(
       sessionSurfaceId(input.session),
       { kind: "session", session: input.session },
       input.owner,
     );
 
-    if (pageAddress(surface) !== target || surface.error !== undefined)
-      this.#surfaces.load(surface, target);
-    this.#surfaces.emit({
+    if (pageAddress(surface) !== target || surface.error !== undefined) {
+      this.surfaces.load(surface, target);
+    }
+    this.surfaces.emit({
       kind: "browser_agent_opened",
       owner: input.owner.kind === "project" ? input.owner.path : null,
       surface: surface.id,
       url: target,
     });
 
-    return this.#operate(surface, CLOSED, input.signal, async (contents) => {
+    return this.operate(surface, CLOSED, input.signal, async (contents) => {
       if (contents.isDestroyed()) return CLOSED;
 
       await waitForSettle(contents, input.signal);
@@ -100,11 +99,11 @@ export class SurfaceAgent implements BrowserAgent {
   async snapshot(
     input: Parameters<BrowserAgent["snapshot"]>[0],
   ): ReturnType<BrowserAgent["snapshot"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
     if (surface === undefined) return CLOSED;
 
-    return this.#operate(surface, CLOSED, undefined, async (contents) => {
+    return this.operate(surface, CLOSED, undefined, async (contents) => {
       if (contents.isDestroyed()) return CLOSED;
 
       return { kind: "ok", state: await takeSnapshot(contents, surface.runtime, input.ref) };
@@ -112,30 +111,30 @@ export class SurfaceAgent implements BrowserAgent {
   }
 
   async click(input: Parameters<BrowserAgent["click"]>[0]): ReturnType<BrowserAgent["click"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
     if (surface === undefined) return CLOSED;
 
-    return this.#operate(surface, CLOSED, input.signal, (contents) =>
+    return this.operate(surface, CLOSED, input.signal, (contents) =>
       performClick(
         contents,
         surface.runtime,
         input.ref,
         input.button ?? "left",
         input.double ?? false,
-        this.#surfaces.windowShown(surface),
+        this.surfaces.windowShown(surface),
         input.signal,
       ),
     );
   }
 
   async type(input: Parameters<BrowserAgent["type"]>[0]): ReturnType<BrowserAgent["type"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
     if (surface === undefined) return CLOSED;
     surface.pressed.splice(0);
 
-    return this.#operate(surface, CLOSED, input.signal, (contents) =>
+    return this.operate(surface, CLOSED, input.signal, (contents) =>
       performType(
         contents,
         surface.runtime,
@@ -143,52 +142,52 @@ export class SurfaceAgent implements BrowserAgent {
         input.text,
         input.clear ?? false,
         input.submit ?? false,
-        this.#surfaces.windowShown(surface),
+        this.surfaces.windowShown(surface),
         input.signal,
       ),
     );
   }
 
   async press(input: Parameters<BrowserAgent["press"]>[0]): ReturnType<BrowserAgent["press"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
     if (surface === undefined) return CLOSED;
     surface.pressed.splice(0);
 
-    return this.#operate(surface, CLOSED, input.signal, (contents) =>
+    return this.operate(surface, CLOSED, input.signal, (contents) =>
       performPress(
         contents,
         surface.runtime,
         input.key,
         input.ref,
-        this.#surfaces.windowShown(surface),
+        this.surfaces.windowShown(surface),
         input.signal,
       ),
     );
   }
 
   async scroll(input: Parameters<BrowserAgent["scroll"]>[0]): ReturnType<BrowserAgent["scroll"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
     if (surface === undefined) return CLOSED;
 
-    return this.#operate(surface, CLOSED, input.signal, (contents) =>
+    return this.operate(surface, CLOSED, input.signal, (contents) =>
       performScroll(
         contents,
         surface.runtime,
         input,
-        this.#surfaces.windowShown(surface),
+        this.surfaces.windowShown(surface),
         input.signal,
       ),
     );
   }
 
   async wait(input: Parameters<BrowserAgent["wait"]>[0]): ReturnType<BrowserAgent["wait"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
     if (surface === undefined) return CLOSED;
 
-    return this.#operate(surface, CLOSED, input.signal, (contents) =>
+    return this.operate(surface, CLOSED, input.signal, (contents) =>
       performWait(contents, surface.runtime, input, input.signal),
     );
   }
@@ -196,7 +195,7 @@ export class SurfaceAgent implements BrowserAgent {
   async console(
     input: Parameters<BrowserAgent["console"]>[0],
   ): ReturnType<BrowserAgent["console"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
     if (surface === undefined) return [];
 
@@ -210,12 +209,13 @@ export class SurfaceAgent implements BrowserAgent {
   async evaluate(
     input: Parameters<BrowserAgent["evaluate"]>[0],
   ): ReturnType<BrowserAgent["evaluate"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
-    if (surface === undefined)
+    if (surface === undefined) {
       return { kind: "threw", message: "No page is open for this session" };
+    }
 
-    return this.#operate(surface, EVALUATE_CLOSED, undefined, (contents) =>
+    return this.operate(surface, EVALUATE_CLOSED, undefined, (contents) =>
       performEvaluate(contents, surface.runtime, input.expression, input.ref),
     );
   }
@@ -223,15 +223,15 @@ export class SurfaceAgent implements BrowserAgent {
   async capture(
     input: Parameters<BrowserAgent["capture"]>[0],
   ): ReturnType<BrowserAgent["capture"]> {
-    const surface = this.#session(input.session);
+    const surface = this.session(input.session);
 
     if (surface === undefined) return undefined;
 
-    return this.#operate(surface, undefined, undefined, (contents) => performCapture(contents));
+    return this.operate(surface, undefined, undefined, (contents) => performCapture(contents));
   }
 
   release(input: Parameters<BrowserAgent["release"]>[0]): void {
-    this.#surfaces.release(sessionSurfaceId(input.session), {
+    this.surfaces.release(sessionSurfaceId(input.session), {
       kind: "session",
       session: input.session,
     });
@@ -241,39 +241,39 @@ export class SurfaceAgent implements BrowserAgent {
     return sessionSurfaceId(sessionId);
   }
 
-  #session(sessionId: SessionId): Surface | undefined {
-    return this.#surfaces.surface(sessionSurfaceId(sessionId));
+  private session(sessionId: SessionId): Surface | undefined {
+    return this.surfaces.surface(sessionSurfaceId(sessionId));
   }
 
-  async #operate<T>(
+  private async operate<T>(
     surface: Surface,
     closed: T,
     signal: AbortSignal | undefined,
     run: (contents: WebContents) => Promise<T>,
   ): Promise<T> {
     surface.operations += 1;
-    this.#surfaces.touch(surface);
-    this.#surfaces.place(surface);
+    this.surfaces.touch(surface);
+    this.surfaces.place(surface);
 
     try {
-      const contents = await this.#surfaces.guest(surface, signal);
+      const contents = await this.surfaces.guest(surface, signal);
 
       if (contents === undefined || contents.isDestroyed()) return closed;
       contents.setBackgroundThrottling(false);
-      this.#surfaces.reclaimIdle();
+      this.surfaces.reclaimIdle();
 
       return await run(contents);
     } finally {
       surface.operations -= 1;
-      this.#surfaces.touch(surface);
+      this.surfaces.touch(surface);
       const contents = surface.guest;
 
       if (surface.operations === 0 && contents !== undefined && !contents.isDestroyed()) {
         contents.setBackgroundThrottling(true);
       }
 
-      this.#surfaces.place(surface);
-      this.#surfaces.reclaimIdle();
+      this.surfaces.place(surface);
+      this.surfaces.reclaimIdle();
     }
   }
 }

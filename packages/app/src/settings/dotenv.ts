@@ -49,7 +49,7 @@ function closingQuote(body: string, quote: string): number {
 }
 
 function unescapeDoubleQuoted(value: string): string {
-  return value.replace(/\\([nrt"\\])/g, (_match, char: string) =>
+  return value.replaceAll(/\\([nrt"\\])/g, (_match, char: string) =>
     char === "n" ? "\n" : char === "r" ? "\r" : char === "t" ? "\t" : char,
   );
 }

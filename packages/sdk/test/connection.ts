@@ -149,11 +149,13 @@ export function tapped(
 
       if (counted) chunks += 1;
 
-      if (frame.kind === "chunk")
+      if (frame.kind === "chunk") {
         seen(decoder.decode(Uint8Array.fromBase64(frame.data)), frame.stream);
+      }
 
-      if (frame.kind === "deflated")
+      if (frame.kind === "deflated") {
         seen(decoder.decode(inflateRawSync(Uint8Array.fromBase64(frame.data))), frame.stream);
+      }
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(next.value)}\n\n`));
     },
     cancel: () => frames.return(undefined).then(() => undefined),
@@ -164,7 +166,7 @@ export async function viewWhen(
   read: () => Promise<SessionView>,
   done: (view: SessionView) => boolean,
 ): Promise<SessionView> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + 5000;
 
   for (;;) {
     const view = await read();

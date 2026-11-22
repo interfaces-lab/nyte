@@ -45,7 +45,7 @@ function shellJob() {
     id: asId<"job">("job-shell"),
     key: asId<"job-key">("shell"),
     write: async () => undefined,
-    output: async function* () {
+    async *output() {
       for (;;) {
         const frame = frames.shift();
 
@@ -131,7 +131,7 @@ export async function run(): Promise<string> {
         start: async () => shell.job,
         recover: async () => shell.job,
         list: async () => [],
-        watch: async function* () {},
+        async *watch() {},
       },
       job: () => shell.job,
     }),

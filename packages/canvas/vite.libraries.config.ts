@@ -40,7 +40,7 @@ export default defineConfig({
     target: ["chrome123", "safari16.4"],
     minify: true,
     modulePreload: false,
-    chunkSizeWarningLimit: 1_000,
+    chunkSizeWarningLimit: 1000,
     rolldownOptions: {
       input: Object.fromEntries(Object.keys(LIBRARY_VERSIONS).map((name) => [name, name])),
       preserveEntrySignatures: "strict",

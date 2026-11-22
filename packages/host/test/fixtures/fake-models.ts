@@ -47,7 +47,7 @@ const model: Model<Api> = {
   input: ["text"],
   cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 100_000,
-  maxTokens: 4_096,
+  maxTokens: 4096,
 };
 
 export function fakeModels(input?: {

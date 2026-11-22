@@ -26,7 +26,7 @@ import { Transcript } from "../ui/transcript/transcript.tsx";
 import { statusLine } from "../ui/transcript/turn-status.tsx";
 import { projectMiniTranscript, withoutMark } from "./transcript.ts";
 
-const CLOCK_INTERVAL_MS = 1_000;
+const CLOCK_INTERVAL_MS = 1000;
 
 const RULE_END = GLYPHS.rule.repeat(2);
 
@@ -50,12 +50,13 @@ export function MiniScreen(): JSX.Element {
     const running = plan().held[0];
     const turn = status?.kind === "settled" || status?.kind === "unanswered" ? null : status;
 
-    if (running?.kind === "tool" && (turn === null || turn.kind === "working"))
+    if (running?.kind === "tool" && (turn === null || turn.kind === "working")) {
       return {
         kind: "tool",
         chunks: withoutMark(running.chunks),
         startedAt: turn === null ? null : turn.startedAt,
       };
+    }
 
     return turn === null ? null : { kind: "turn", status: turn };
   });
@@ -140,12 +141,13 @@ function ActiveRule(props: { readonly activity: Activity }): JSX.Element {
     const activity = props.activity;
     const frame = SPINNER_FRAMES[spin() % SPINNER_FRAMES.length] ?? "";
 
-    if (activity.kind === "tool")
+    if (activity.kind === "tool") {
       return {
         spinner: { fg: theme.running, text: frame },
         text: activity.chunks.map((chunk) => ({ fg: theme[chunk.role], text: chunk.text })),
         elapsed: activity.startedAt === null ? null : now - activity.startedAt,
       };
+    }
 
     const status = activity.status;
     const line = statusLine(status, theme, now);
@@ -244,8 +246,9 @@ function sessionGroups(footer: FooterModel, opening: boolean, theme: CliTheme): 
   const powerline = footer.powerline;
   const model = opening ? "Opening…" : (powerline.model ?? "Select a model with /model");
 
-  if (opening || powerline.model === undefined)
+  if (opening || powerline.model === undefined) {
     return { model: rightGroup(3, theme.dim, model), effort: null, context: null };
+  }
 
   const usage = powerlineSegments({
     tokens: powerline.tokens,

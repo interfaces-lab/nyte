@@ -99,6 +99,8 @@ export function observeActivation(activation: Activation): void {
   if (activation.kind !== "unavailable") toast.close("workspace-unavailable");
 
   switch (activation.kind) {
+    case "inactive":
+      return;
     case "unavailable":
       toast.add({
         type: "error",
@@ -126,8 +128,6 @@ export function observeActivation(activation: Activation): void {
       failedShown = false;
       toast.close("plugins-failed");
 
-      return;
-    case "inactive":
       return;
     default: {
       const _exhaustive: never = activation;

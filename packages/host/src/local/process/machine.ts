@@ -2,13 +2,17 @@ import { execFile } from "node:child_process";
 import { readFile, readlink } from "node:fs/promises";
 import type { Machine, OsProcess } from "@nyte-ai/core";
 
-const TERM_GRACE_MS = 2_000;
+const TERM_GRACE_MS = 2000;
 
-const KILL_WAIT_MS = 1_000;
+const KILL_WAIT_MS = 1000;
 
 const POLL_MS = 50;
 
-type Seen = { readonly group: number; readonly started: string; readonly exited: boolean };
+interface Seen {
+  readonly group: number;
+  readonly started: string;
+  readonly exited: boolean;
+}
 
 let booting: Promise<string | null> | undefined;
 
@@ -128,8 +132,8 @@ async function readProcess(pid: number): Promise<Seen | null> {
     ? null
     : {
         group: Number(match[2]),
-        started: `darwin-lstart-utc:${match[3]?.replace(/\s+/g, " ")}`,
-        exited: match[1]?.startsWith("Z") === true,
+        started: `darwin-lstart-utc:${match[3]?.replaceAll(/\s+/g, " ")}`,
+        exited: match[1]?.startsWith("Z"),
       };
 }
 

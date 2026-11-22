@@ -267,14 +267,14 @@ describe("shellCard", () => {
     session: null,
     command: "ls -la",
     include: true,
-    startedAt: 1_000,
+    startedAt: 1000,
     output: "a\nb\n",
     state: { kind: "running" },
     delivered: false,
   };
 
   test("a running command shows its clock", () => {
-    expect(text(shellCard(job, 3_500, false))).toBe("● ! ls -la  2 lines · 2.5s");
+    expect(text(shellCard(job, 3500, false))).toBe("● ! ls -la  2 lines · 2.5s");
   });
 
   test("the command is its own chunk, highlighted as bash", () => {

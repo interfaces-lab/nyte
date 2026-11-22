@@ -71,8 +71,9 @@ export function openingFrame(input: {
 
   if (own !== undefined && input.onScreen(own.bounds)) return own;
 
-  if (last !== undefined && own === undefined && input.first && input.onScreen(last.bounds))
+  if (last !== undefined && own === undefined && input.first && input.onScreen(last.bounds)) {
     return last;
+  }
 
   return {
     bounds: { width: last?.bounds.width ?? 1280, height: last?.bounds.height ?? 800 },
@@ -100,33 +101,33 @@ function readState(path: string): LaunchState {
 }
 
 export class LaunchStateStore {
-  readonly #path: string;
-  #state: LaunchState;
+  private readonly path: string;
+  private state: LaunchState;
 
   constructor(path: string) {
-    this.#path = path;
-    this.#state = readState(path);
+    this.path = path;
+    this.state = readState(path);
   }
 
   theme(): ThemeSource {
-    return this.#state.theme;
+    return this.state.theme;
   }
 
   window(): WindowFrame | undefined {
-    return this.#state.window;
+    return this.state.window;
   }
 
   windows(): readonly string[] {
-    return this.#state.windows ?? [];
+    return this.state.windows ?? [];
   }
 
   frame(windowId: string): WindowFrame | undefined {
-    return this.#state.frames?.[windowId];
+    return this.state.frames?.[windowId];
   }
 
   /** How a kept window reopens: as the same app, and Code or Studio on its project. A window from before kinds is Nyte. */
   reopening(windowId: string): Reopening {
-    const kind: WindowKind = this.#state.apps?.[windowId] ?? { app: "nyte" };
+    const kind: WindowKind = this.state.apps?.[windowId] ?? { app: "nyte" };
 
     return {
       app: kind.app,
@@ -136,27 +137,27 @@ export class LaunchStateStore {
   }
 
   setTheme(theme: ThemeSource): void {
-    this.#write({ ...this.#state, theme });
+    this.write({ ...this.state, theme });
   }
 
   setWindow(windowId: string, window: WindowFrame): void {
-    this.#write({
-      ...this.#state,
+    this.write({
+      ...this.state,
       window,
-      frames: { ...this.#state.frames, [windowId]: window },
+      frames: { ...this.state.frames, [windowId]: window },
     });
   }
 
   setWindows(windows: readonly string[]): void {
     const frames = Object.fromEntries(
-      Object.entries(this.#state.frames ?? {}).filter(([windowId]) => windows.includes(windowId)),
+      Object.entries(this.state.frames ?? {}).filter(([windowId]) => windows.includes(windowId)),
     );
 
     const apps = Object.fromEntries(
-      Object.entries(this.#state.apps ?? {}).filter((entry) => windows.includes(entry[0])),
+      Object.entries(this.state.apps ?? {}).filter((entry) => windows.includes(entry[0])),
     );
 
-    this.#write({ ...this.#state, windows: [...windows], frames, apps });
+    this.write({ ...this.state, windows: [...windows], frames, apps });
   }
 
   keepWindow(windowId: string, app: DesktopApp, opening: DesktopWindowOpen | undefined): void {
@@ -164,22 +165,22 @@ export class LaunchStateStore {
     const workspace = app === "nyte" ? undefined : opening?.workspace;
     const kind = workspace === undefined ? { app } : { app, workspace };
 
-    this.#write({
-      ...this.#state,
+    this.write({
+      ...this.state,
       windows: windows.includes(windowId) ? [...windows] : [...windows, windowId],
-      apps: { ...this.#state.apps, [windowId]: kind },
+      apps: { ...this.state.apps, [windowId]: kind },
     });
   }
 
-  #write(next: LaunchState): void {
-    if (Value.Equal(this.#state, next)) return;
-    this.#state = next;
+  private write(next: LaunchState): void {
+    if (Value.Equal(this.state, next)) return;
+    this.state = next;
 
     try {
-      mkdirSync(dirname(this.#path), { recursive: true, mode: 0o700 });
-      const temporary = `${this.#path}.tmp`;
+      mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
+      const temporary = `${this.path}.tmp`;
       writeFileSync(temporary, JSON.stringify(next), { mode: 0o600 });
-      renameSync(temporary, this.#path);
+      renameSync(temporary, this.path);
     } catch (cause) {
       process.emitWarning(`The launch state could not be saved: ${String(cause)}`, {
         code: "NYTE_LAUNCH_STATE",

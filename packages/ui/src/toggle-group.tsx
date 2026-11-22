@@ -4,7 +4,8 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext } from "react";
 import type { ReactElement } from "react";
 
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import { hairline } from "./styles/hairline.stylex.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { role } from "./styles/vars.stylex.ts";

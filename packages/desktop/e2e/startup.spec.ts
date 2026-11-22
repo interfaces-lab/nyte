@@ -22,11 +22,11 @@ import {
 
 const output = process.env.NYTE_PERF_DIR;
 
-const HOST_DELAY_MS = 6_000;
+const HOST_DELAY_MS = 6000;
 
 const DRAFT = "Typed before the host opened";
 
-const FRAME_MS = 1_000 / 60;
+const FRAME_MS = 1000 / 60;
 
 const SHOW_TO_PAINT_FRAMES = 3;
 
@@ -143,8 +143,9 @@ test("a relaunch draws the last run's chats and model while the host is held, an
     firstContentfulPaint === undefined ||
     firstInputHandled === undefined ||
     windowShown === undefined
-  )
+  ) {
     throw new Error(`Missing a first-frame mark: ${JSON.stringify({ ...held, windowShown })}`);
+  }
 
   const shown = windowShown - timeOrigin;
 
@@ -271,8 +272,9 @@ test("measures a relaunch into a long chat while the host keeps running", async 
   await application.evaluate(() => globalThis.nyteStopTrace?.());
   const events = await readTraceFile(traceFile);
 
-  if (main.entry === undefined || main.shown === undefined)
+  if (main.entry === undefined || main.shown === undefined) {
     throw new Error(`Missing a relaunch mark: ${JSON.stringify(main)}`);
+  }
 
   const painted = renderer.marks.find((mark) => mark.name === "nyte:last-message-painted");
   const session = painted?.session;
@@ -284,8 +286,9 @@ test("measures a relaunch into a long chat while the host keeps running", async 
 
   const startup = find("nyte:startup");
 
-  if (painted === undefined || startup === undefined)
+  if (painted === undefined || startup === undefined) {
     throw new Error(`Missing a renderer mark: ${JSON.stringify(renderer.marks)}`);
+  }
 
   const launched = main.timeOrigin + main.entry;
 
@@ -297,7 +300,7 @@ test("measures a relaunch into a long chat while the host keeps running", async 
   const startupTs = thread.find((event) => event.name === "nyte:startup")?.ts ?? 0;
 
   const trace = (mark: PageMark | undefined) =>
-    mark === undefined ? undefined : startupTs + (mark.at - startup.at) * 1_000;
+    mark === undefined ? undefined : startupTs + (mark.at - startup.at) * 1000;
 
   const skeletonShown = find("nyte:skeleton-shown");
   const skeletonRemoved = find("nyte:skeleton-removed");

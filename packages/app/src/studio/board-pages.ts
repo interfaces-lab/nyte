@@ -30,11 +30,11 @@ const MAX_GUESTS = 5;
 
 const MAX_VIEWPORT = 10_000;
 
-const OPEN_INTERVAL_MS = 1_000;
+const OPEN_INTERVAL_MS = 1000;
 
-const GRACE_MS = 3_000;
+const GRACE_MS = 3000;
 
-const HANDOFF_MS = 1_000;
+const HANDOFF_MS = 1000;
 
 export type BrowserOwner = NonNullable<Parameters<BrowserBridge["open"]>[0]["owner"]>;
 
@@ -129,8 +129,9 @@ export function boardPages(input: {
           sequence <= frame.drawn ||
           taken.generation !== guestGeneration(guest.surface) ||
           taken.url !== guest.url
-        )
+        ) {
           return;
+        }
         frame.drawn = sequence;
         const still = frame.still ?? createStill(layer);
         frame.still = still;
@@ -153,8 +154,9 @@ export function boardPages(input: {
   const stilled = (frame: Frame, sequence: number): void => {
     const showing = frame.showing;
 
-    if (showing.kind !== "settling" || sequence <= showing.after || frame.drawn !== sequence)
+    if (showing.kind !== "settling" || sequence <= showing.after || frame.drawn !== sequence) {
       return;
+    }
     rest(frame);
   };
 
@@ -354,8 +356,9 @@ export function boardPages(input: {
 
       if (slot === null && sized) sizeGuest(guest.surface, width, height);
 
-      if (slot === null && guest.design && frame.state !== "still")
+      if (slot === null && guest.design && frame.state !== "still") {
         void designOff(guest).catch(() => undefined);
+      }
       const entered = slot?.interactive === true;
 
       if (entered !== guest.entered) {
@@ -383,8 +386,9 @@ export function boardPages(input: {
       next?.surface === active?.surface &&
       next?.entered === active?.entered &&
       (next === null || active === null || spanKey(next.key) === spanKey(active.key))
-    )
+    ) {
       return;
+    }
     active = next;
     input.onActive(next);
   };
@@ -452,7 +456,7 @@ export function boardPages(input: {
       const page = entry.page;
       const now = page.state === "still" ? 0 : ++clock;
 
-      if (found === undefined)
+      if (found === undefined) {
         return {
           key: entry.key,
           span: page.key,
@@ -467,6 +471,7 @@ export function boardPages(input: {
           guest: undefined,
           gone: undefined,
         };
+      }
 
       taken.add(found);
       clearTimeout(found.gone);

@@ -63,8 +63,9 @@ export function createFileStructure(data: FileStructureData): FileStructure {
         (symbol.depth === current.depth &&
           symbol.line === current.line &&
           symbol.endLine < current.endLine)
-      )
+      ) {
         current = symbol;
+      }
     }
 
     return [{ line: event.line, symbol: current }];

@@ -518,7 +518,7 @@ export function BrowserPanel({
   const forget = (entry: string): void => {
     void browserBridge()
       .forgetHistory({ owner: workspacePath, url: entry })
-      .catch((cause) => setFailure(errorMessage(cause)));
+      .catch((cause: unknown) => setFailure(errorMessage(cause)));
   };
 
   const openMenu = (event: MouseEvent<HTMLButtonElement>): void => {
@@ -549,7 +549,7 @@ export function BrowserPanel({
 
         await browserBridge().perform({ surface, action, owner: workspacePath });
       })
-      .catch((cause) => setFailure(errorMessage(cause)));
+      .catch((cause: unknown) => setFailure(errorMessage(cause)));
   };
 
   const loading = state?.loading === true;

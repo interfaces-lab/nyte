@@ -1,4 +1,5 @@
 import { props } from "@stylexjs/stylex";
+// oxlint-disable-next-line import/no-duplicates -- the hand-memo import stays on its own line so its suppression covers only that import
 import { createContext, use, useState } from "react";
 // oxlint-disable-next-line no-restricted-imports -- uncompiled Streamdown renders every block on each streamed update, so a settled block needs its own memo boundary
 import { memo } from "react";
@@ -205,8 +206,9 @@ function createFadeInChunks(): FadeInChunks {
     type: "animate",
     rehypePlugin,
     commit() {
-      if (rendered > (commits.at(-1)?.offset ?? 0))
+      if (rendered > (commits.at(-1)?.offset ?? 0)) {
         commits.push({ offset: rendered, at: Date.now() });
+      }
     },
     getLastRenderCharCount: () => rendered,
     setPrevContentLength(length) {

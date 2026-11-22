@@ -52,13 +52,15 @@ const FirstFrameType = Type.Object(
 
 type FirstFrame = Decoded<typeof FirstFrameType>;
 
-const SEEDED_KEYS = [
-  keys.host,
-  keys.modelCatalog("initial"),
-  keys.firstFrameWorkspaces,
-  keys.firstFrameRoots,
-  keys.firstFrameHome,
-].map((key) => hashKey(key));
+const SEEDED_KEYS = new Set(
+  [
+    keys.host,
+    keys.modelCatalog("initial"),
+    keys.firstFrameWorkspaces,
+    keys.firstFrameRoots,
+    keys.firstFrameHome,
+  ].map((key) => hashKey(key)),
+);
 
 let seededHostId: string | undefined;
 
@@ -69,8 +71,9 @@ export function forgetFirstFrame(): void {
 }
 
 export function seedFirstFrame(host: string, workspace: SelectedWorkspace | undefined): boolean {
-  if (workspace !== undefined)
+  if (workspace !== undefined) {
     queryClient.setQueryData(keys.host, { workspace } satisfies HostState);
+  }
   const stored = readStored(localArea(), FIRST_FRAME_KEY, FirstFrameType, null);
   const frame = stored?.host === host ? stored : undefined;
 
@@ -92,16 +95,17 @@ export function seedFirstFrame(host: string, workspace: SelectedWorkspace | unde
     frame.folder !== null &&
     place.kind === "session" &&
     place.sessionId === frame.folder.session
-  )
+  ) {
     queryClient.setQueryData(keys.host, { workspace: frame.folder.workspace } satisfies HostState, {
       updatedAt: 0,
     });
+  }
 
   return true;
 }
 
 function seeded(query: Query): boolean {
-  return query.state.dataUpdatedAt === 0 && SEEDED_KEYS.includes(query.queryHash);
+  return query.state.dataUpdatedAt === 0 && SEEDED_KEYS.has(query.queryHash);
 }
 
 function recentRoots(directory: readonly SessionInfo[]): readonly SessionInfo[] {
@@ -162,7 +166,7 @@ export function recordFirstFrame(host: string, hostId: HostId): void {
   recording = { host, hostId };
 }
 
-const CONTENT_WAIT_MS = 2_000;
+const CONTENT_WAIT_MS = 2000;
 
 export async function windowContentReady(): Promise<void> {
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));

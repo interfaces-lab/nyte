@@ -4,18 +4,10 @@ import { createModels } from "@nyte-ai/ai/models";
 import type { Models } from "@nyte-ai/ai";
 import { serial } from "@nyte-ai/schema/serial";
 import type { Api, Model } from "@nyte-ai/schema/model";
-import {
-  loadStoreUsageCache,
-  readNyteUsage,
-  saveStoreUsageCache,
-  type StoreUsageCache,
-} from "./store.ts";
-import {
-  loadUsageScanCaches,
-  readLocalUsage,
-  saveUsageScanCaches,
-  type UsageScanCaches,
-} from "./local-history.ts";
+import { loadStoreUsageCache, readNyteUsage, saveStoreUsageCache } from "./store.ts";
+import type { StoreUsageCache } from "./store.ts";
+import { loadUsageScanCaches, readLocalUsage, saveUsageScanCaches } from "./local-history.ts";
+import type { UsageScanCaches } from "./local-history.ts";
 import type { UsageSnapshot, UsageWindow } from "./types.ts";
 
 export interface UsageScanRequest {
@@ -52,11 +44,12 @@ export class UsageScanner implements UsageScanReader {
 
   scan(request: UsageScanRequest): Promise<UsageScan> {
     return this.scans.run(async () => {
-      if (request.catalog === undefined)
+      if (request.catalog === undefined) {
         await this.models.refresh({
           providers: ["anthropic", "openai-codex"],
           allowNetwork: false,
         });
+      }
       const catalog = request.catalog;
 
       const models: Pick<Models, "getModels"> =

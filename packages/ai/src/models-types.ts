@@ -1,4 +1,4 @@
-import { type AuthResolutionOverrides } from "./auth/resolve.ts";
+import type { AuthResolutionOverrides } from "./auth/resolve.ts";
 import type {
   AuthCheck,
   AuthContext,
@@ -15,7 +15,7 @@ import type {
 } from "./auth/types.ts";
 import type { ModelCapabilities } from "@nyte-ai/schema";
 import type { ApiStreamOptions } from "./api-options.ts";
-import { type ModelsStore, type ModelsStoreEntry } from "./models-store.ts";
+import type { ModelsStore, ModelsStoreEntry } from "./models-store.ts";
 import type {
   AccountLimits,
   AccountLimitsResult,

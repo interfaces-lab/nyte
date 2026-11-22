@@ -102,10 +102,10 @@ describe("extendPace", () => {
   test("text that no longer extends what was shown appears at once", () => {
     const shown = framePace(extendPace(settledPace(""), BURST, 0), 100);
 
-    expect(extendPace(shown, "A different answer.", 1_000)).toEqual({
+    expect(extendPace(shown, "A different answer.", 1000)).toEqual({
       text: "A different answer.",
       shown: 19,
-      flushedAt: 1_000,
+      flushedAt: 1000,
       drainFrames: undefined,
     });
   });

@@ -61,9 +61,11 @@ function placesScript() {
 async function serverState(host: Host, session: Session, state: string): Promise<McpView> {
   const info = await session.info();
 
-  for await (const view of host.workspace(info.workspace).mcp.watch())
-    if (view.servers.some((server) => server.name === "places" && server.state.kind === state))
+  for await (const view of host.workspace(info.workspace).mcp.watch()) {
+    if (view.servers.some((server) => server.name === "places" && server.state.kind === state)) {
       return view;
+    }
+  }
 
   throw new Error(`places never reached ${state}.`);
 }

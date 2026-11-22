@@ -28,7 +28,7 @@ import type { FakeFiles, FakePlugins, FakeShell, FakeTerminal } from "../fixture
 
 process.env["NYTE_SKIP_VERSION_CHECK"] = "1";
 
-const MAX_TURNS = 3_000;
+const MAX_TURNS = 3000;
 
 export interface TuiOptions {
   readonly size?: { readonly width: number; readonly height: number };

@@ -95,16 +95,18 @@ interface ListAction {
 const PAGE = 9;
 
 export function listActions(purpose: ListPurpose): readonly ListAction[] {
-  if (purpose.kind === "queue")
+  if (purpose.kind === "queue") {
     return [
       { command: "chat.queue.edit", label: "edit" },
       { command: "chat.queue.delete", label: "delete" },
       { command: "chat.queue.up", label: "earlier" },
       { command: "chat.queue.down", label: "later" },
     ];
+  }
 
-  if (purpose.kind === "tasks" && purpose.section === "active")
+  if (purpose.kind === "tasks" && purpose.section === "active") {
     return [{ command: "chat.task.stop", label: "cancel" }];
+  }
 
   if (purpose.kind === "accounts") return [{ command: "chat.account.rename", label: "rename" }];
 
@@ -141,8 +143,9 @@ export function cancelLabel(purpose: ListPurpose): string {
 
   if (purpose.kind === "approval") return "deny";
 
-  if (purpose.kind === "setting" || purpose.kind === "summary" || purpose.kind === "account-name")
+  if (purpose.kind === "setting" || purpose.kind === "summary" || purpose.kind === "account-name") {
     return "back";
+  }
 
   if (purpose.kind === "tasks" && purpose.section === "finished") return "back";
 
@@ -247,18 +250,20 @@ function quit(dialog: ListDialog): DialogStep<ListDialog> {
 export function reduceList(dialog: ListDialog, command: DialogCommand): DialogStep<ListDialog> {
   const quits = dialog.purpose.kind === "trust" && dialog.purpose.gate;
 
-  if (command.kind === "close")
+  if (command.kind === "close") {
     return quits ? quit(dialog) : { dialog: null, intents: [], push: null };
+  }
 
   if (dialog.busy) return unchanged(dialog);
 
   if (command.kind === "query") {
-    if (dialog.answering !== null)
+    if (dialog.answering !== null) {
       return unchanged({
         ...dialog,
         answering: command.text,
         highlighted: visibleChoices(dialog).length,
       });
+    }
 
     return unchanged({ ...dialog, query: command.text, highlighted: 0 });
   }
@@ -286,13 +291,15 @@ export function reduceList(dialog: ListDialog, command: DialogCommand): DialogSt
           })
         : unchanged(dialog);
     case "picker.close":
-      if (dialog.answering === null && dialog.query !== "")
+      if (dialog.answering === null && dialog.query !== "") {
         return unchanged({ ...dialog, query: "", highlighted: 0 });
+      }
 
-      if (dialog.answering !== null && dialog.answering !== "")
+      if (dialog.answering !== null && dialog.answering !== "") {
         return unchanged({ ...dialog, answering: "" });
+      }
 
-      if (dialog.purpose.kind === "tasks" && dialog.purpose.section === "finished")
+      if (dialog.purpose.kind === "tasks" && dialog.purpose.section === "finished") {
         return {
           dialog,
           intents: [
@@ -306,6 +313,7 @@ export function reduceList(dialog: ListDialog, command: DialogCommand): DialogSt
           ],
           push: null,
         };
+      }
 
       return quits ? quit(dialog) : { dialog: null, intents: [], push: null };
     case "picker.accept":

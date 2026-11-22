@@ -2,26 +2,29 @@ import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
 import type { PaneId } from "../../panes/layout.ts";
 import {
-  type ChatDraft,
-  type ComposerImageAttachment,
-  type ComposerViewState,
   IMAGE_CONTENT,
-  type PersistedComposer,
   composerSchema,
   strict,
   DEFAULT_COMPOSER_VIEW_STATE,
   EDITING,
-  type SessionViewState,
   contentChanged,
   DEFAULT_SESSION_VIEW_STATE,
   draftHasContent,
   draftKept,
   persistableComposer,
 } from "../../panes/session-view-state.ts";
+import type {
+  ChatDraft,
+  ComposerImageAttachment,
+  ComposerViewState,
+  PersistedComposer,
+  SessionViewState,
+} from "../../panes/session-view-state.ts";
 import type { SessionId } from "@nyte-ai/sdk";
 import { ModelRefType, ThinkingType, asId } from "@nyte-ai/schema";
 import { projectId } from "../../data/schemas.ts";
-import { readStored, removeStored, type StorageArea, writeStored } from "../../lib/storage.ts";
+import { readStored, removeStored, writeStored } from "../../lib/storage.ts";
+import type { StorageArea } from "../../lib/storage.ts";
 import { journaledReceipts } from "../../data/send-journal.ts";
 import { NO_SENDING, persistedDraft, restorable, unsentNotice } from "./composer-draft.ts";
 import type { ComposerNotice, Restore, Sending, SessionDraft } from "./composer-draft.ts";
@@ -210,51 +213,51 @@ function readOwner<Schema extends TSchema>(
 
 export class WindowDrafts {
   readonly sessions = new Map<SessionId, SessionViewState>();
-  readonly #panes = new Map<string, Map<PaneId, PaneDraftState>>();
-  readonly #listeners = new Set<() => void>();
-  readonly #keyed = new Map<string, Set<() => void>>();
-  readonly #persistence: Persistence | undefined;
-  readonly #pending = new Map<string, StoredValue | undefined>();
-  #flushTimer: ReturnType<typeof setTimeout> | undefined;
-  #publishTimer: ReturnType<typeof setTimeout> | undefined;
-  #savedIndex = "";
-  #listed: readonly ChatDraft[] | undefined;
+  private readonly panes = new Map<string, Map<PaneId, PaneDraftState>>();
+  private readonly listeners = new Set<() => void>();
+  private readonly keyed = new Map<string, Set<() => void>>();
+  private readonly persistence: Persistence | undefined;
+  private readonly pending = new Map<string, StoredValue | undefined>();
+  private flushTimer: ReturnType<typeof setTimeout> | undefined;
+  private publishTimer: ReturnType<typeof setTimeout> | undefined;
+  private savedIndex = "";
+  private listed: readonly ChatDraft[] | undefined;
 
   constructor(persistence?: Persistence) {
-    this.#persistence = persistence;
-    this.#restore();
+    this.persistence = persistence;
+    this.restore();
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
-    this.#listeners.add(listener);
+    this.listeners.add(listener);
 
-    return () => this.#listeners.delete(listener);
+    return () => this.listeners.delete(listener);
   };
 
   subscribeKey(key: string, listener: () => void): () => void {
-    const listeners = this.#keyed.get(key) ?? new Set<() => void>();
-    this.#keyed.set(key, listeners);
+    const listeners = this.keyed.get(key) ?? new Set<() => void>();
+    this.keyed.set(key, listeners);
     listeners.add(listener);
 
     return () => {
       listeners.delete(listener);
 
-      if (listeners.size === 0 && this.#keyed.get(key) === listeners) this.#keyed.delete(key);
+      if (listeners.size === 0 && this.keyed.get(key) === listeners) this.keyed.delete(key);
     };
   }
 
   notify(key: string): void {
-    for (const listener of this.#keyed.get(key) ?? []) listener();
+    for (const listener of this.keyed.get(key) ?? []) listener();
   }
 
   readonly listedDrafts = (): readonly ChatDraft[] => {
-    this.#listed ??= this.drafts();
+    this.listed ??= this.drafts();
 
-    return this.#listed;
+    return this.listed;
   };
 
   drafts(): readonly ChatDraft[] {
-    return [...this.#panes.values()]
+    return [...this.panes.values()]
       .flatMap((panes) => [...panes.values()])
       .flatMap((state) => [state.active, ...state.parked.values()])
       .filter(draftHasContent)
@@ -264,8 +267,8 @@ export class WindowDrafts {
   }
 
   pane(tabId: string, paneId: PaneId): PaneDraftState {
-    const panes = this.#panes.get(tabId) ?? new Map<PaneId, PaneDraftState>();
-    this.#panes.set(tabId, panes);
+    const panes = this.panes.get(tabId) ?? new Map<PaneId, PaneDraftState>();
+    this.panes.set(tabId, panes);
     const current = panes.get(paneId);
 
     if (current !== undefined) return current;
@@ -276,10 +279,11 @@ export class WindowDrafts {
   }
 
   find(draftId: string): LocatedDraft | undefined {
-    for (const [tabId, panes] of this.#panes) {
+    for (const [tabId, panes] of this.panes) {
       for (const [paneId, state] of panes) {
-        if (state.active.id === draftId)
+        if (state.active.id === draftId) {
           return { kind: "active", tabId, paneId, draft: state.active };
+        }
 
         const parked = state.parked.get(draftId);
 
@@ -319,8 +323,8 @@ export class WindowDrafts {
     );
 
     if (!contentChanged(previous.composer, next.composer)) return;
-    clearTimeout(this.#publishTimer);
-    this.#publishTimer = setTimeout(this.emit, FLUSH_DEBOUNCE_MS);
+    clearTimeout(this.publishTimer);
+    this.publishTimer = setTimeout(this.emit, FLUSH_DEBOUNCE_MS);
   }
 
   saveSession(sessionId: SessionId, previous: SessionDraft, next: SessionDraft): void {
@@ -340,28 +344,29 @@ export class WindowDrafts {
     this.save(`session:${sessionId}`, persistedDraft(previous), after, record);
     const before = restorable(previous)?.restore?.attachments ?? NO_IMAGES;
     const kept = notice?.restore?.attachments ?? NO_IMAGES;
-    const persistence = this.#persistence;
+    const persistence = this.persistence;
 
     if (persistence === undefined) return;
     const key = `${persistence.storageKey}:session:${sessionId}`;
 
-    if (before !== kept) this.#saveImages(`${key}:refused`, kept);
+    if (before !== kept) this.saveImages(`${key}:refused`, kept);
 
     if (previous.sending === next.sending) return;
-    this.#pending.set(`${key}:sending`, storedSending(next.sending));
-    this.#store();
+    this.pending.set(`${key}:sending`, storedSending(next.sending));
+    this.store();
   }
 
   saveSteps(sessionId: SessionId, stepGroups: ReadonlyMap<string, boolean>): void {
-    const persistence = this.#persistence;
+    const persistence = this.persistence;
 
-    if (persistence !== undefined)
-      this.#pending.set(
+    if (persistence !== undefined) {
+      this.pending.set(
         `${persistence.storageKey}:session:${sessionId}:steps`,
         storedSteps(stepGroups),
       );
+    }
 
-    this.#schedule();
+    this.schedule();
   }
 
   save(
@@ -370,50 +375,51 @@ export class WindowDrafts {
     next: ComposerViewState,
     record: StoredValue | undefined,
   ): void {
-    const persistence = this.#persistence;
+    const persistence = this.persistence;
 
     if (persistence !== undefined) {
       const key = `${persistence.storageKey}:${owner}`;
-      this.#pending.set(key, record);
+      this.pending.set(key, record);
 
-      if (previous.attachments !== next.attachments)
-        this.#saveImages(`${key}:images`, next.attachments);
+      if (previous.attachments !== next.attachments) {
+        this.saveImages(`${key}:images`, next.attachments);
+      }
     }
 
-    this.#schedule();
+    this.schedule();
   }
 
-  #saveImages(key: string, attachments: readonly ComposerImageAttachment[]): void {
+  private saveImages(key: string, attachments: readonly ComposerImageAttachment[]): void {
     const stored = storedImages(attachments);
     const omitted = attachments.length - stored.length;
-    this.#pending.set(key, stored.length === 0 ? undefined : stored);
-    this.#pending.set(`${key}:omitted`, omitted === 0 ? undefined : omitted);
+    this.pending.set(key, stored.length === 0 ? undefined : stored);
+    this.pending.set(`${key}:omitted`, omitted === 0 ? undefined : omitted);
   }
 
-  #schedule(): void {
-    clearTimeout(this.#flushTimer);
-    this.#flushTimer = setTimeout(this.#store, FLUSH_DEBOUNCE_MS);
+  private schedule(): void {
+    clearTimeout(this.flushTimer);
+    this.flushTimer = setTimeout(this.store, FLUSH_DEBOUNCE_MS);
 
     if (globalThis.window === undefined) return;
-    window.addEventListener("pagehide", this.#store);
-    document.addEventListener("visibilitychange", this.#store);
+    window.addEventListener("pagehide", this.store);
+    document.addEventListener("visibilitychange", this.store);
   }
 
   persist(): void {
-    this.#store();
+    this.store();
   }
 
   readonly emit = (): void => {
-    clearTimeout(this.#publishTimer);
-    this.#publishTimer = undefined;
-    this.#store();
-    this.#listed = undefined;
+    clearTimeout(this.publishTimer);
+    this.publishTimer = undefined;
+    this.store();
+    this.listed = undefined;
 
-    for (const listener of this.#listeners) listener();
+    for (const listener of this.listeners) listener();
   };
 
-  #restore(): void {
-    const persistence = this.#persistence;
+  private restore(): void {
+    const persistence = this.persistence;
 
     if (persistence === undefined) return;
     const index = readStored(persistence.storage, persistence.storageKey, indexSchema, undefined);
@@ -461,12 +467,12 @@ export class WindowDrafts {
           }
         }
 
-        const restored = this.#panes.get(tabId) ?? new Map<PaneId, PaneDraftState>();
+        const restored = this.panes.get(tabId) ?? new Map<PaneId, PaneDraftState>();
         restored.set(asId<"pane">(paneId), {
           active: readDraft(stored.active) ?? this.createDraft(),
           parked,
         });
-        this.#panes.set(tabId, restored);
+        this.panes.set(tabId, restored);
       }
     }
 
@@ -486,8 +492,9 @@ export class WindowDrafts {
       );
 
       if (stored === undefined) {
-        if (stepGroups.size > 0)
+        if (stepGroups.size > 0) {
           this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, stepGroups });
+        }
         continue;
       }
 
@@ -528,23 +535,23 @@ export class WindowDrafts {
 
       if (dropped > 0 || sending.length > 0) {
         this.saveSession(asId<"session">(id), DEFAULT_SESSION_VIEW_STATE.draft, draft);
-        this.#pending.set(`${key}:sending`, undefined);
+        this.pending.set(`${key}:sending`, undefined);
       }
 
       if (!draftKept(draft) && stepGroups.size === 0) continue;
       this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, draft, stepGroups });
     }
 
-    if (this.#pending.size > 0) this.#schedule();
+    if (this.pending.size > 0) this.schedule();
   }
 
-  #flush(): void {
-    const persistence = this.#persistence;
+  private flush(): void {
+    const persistence = this.persistence;
 
     if (persistence === undefined) return;
 
-    for (const [key, value] of this.#pending) {
-      this.#pending.delete(key);
+    for (const [key, value] of this.pending) {
+      this.pending.delete(key);
 
       if (value === undefined) removeStored(persistence.storage, key);
       else writeStored(persistence.storage, key, value);
@@ -552,12 +559,13 @@ export class WindowDrafts {
 
     const tabs: StoredIndex["tabs"] = {};
 
-    for (const [tabId, panes] of this.#panes) {
+    for (const [tabId, panes] of this.panes) {
       const kept: StoredIndex["tabs"][string] = {};
 
       for (const [paneId, state] of panes) {
-        if (draftHasContent(state.active) || state.parked.size > 0)
+        if (draftHasContent(state.active) || state.parked.size > 0) {
           kept[paneId] = { active: state.active.id, parked: [...state.parked.keys()] };
+        }
       }
 
       if (Object.keys(kept).length > 0) tabs[tabId] = kept;
@@ -571,20 +579,20 @@ export class WindowDrafts {
     const index = { tabs, sessions } satisfies StoredIndex;
     const serialized = JSON.stringify(index);
 
-    if (serialized === this.#savedIndex) return;
+    if (serialized === this.savedIndex) return;
     writeStored(persistence.storage, persistence.storageKey, index);
-    this.#savedIndex = serialized;
+    this.savedIndex = serialized;
   }
 
-  readonly #store = (): void => {
-    clearTimeout(this.#flushTimer);
-    this.#flushTimer = undefined;
+  private readonly store = (): void => {
+    clearTimeout(this.flushTimer);
+    this.flushTimer = undefined;
 
     if (globalThis.window !== undefined) {
-      window.removeEventListener("pagehide", this.#store);
-      document.removeEventListener("visibilitychange", this.#store);
+      window.removeEventListener("pagehide", this.store);
+      document.removeEventListener("visibilitychange", this.store);
     }
 
-    this.#flush();
+    this.flush();
   };
 }

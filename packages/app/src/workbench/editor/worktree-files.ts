@@ -31,10 +31,10 @@ export function worktreeFiles(
 
     if (
       current === undefined ||
-      WORKTREE_ORDER.findIndex((kind) => kind === row.kind) <
-        WORKTREE_ORDER.findIndex((kind) => kind === current)
-    )
+      WORKTREE_ORDER.indexOf(row.kind) < WORKTREE_ORDER.indexOf(current)
+    ) {
       byPath.set(row.path, row.kind);
+    }
   }
 
   return [...byPath]

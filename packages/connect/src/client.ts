@@ -130,8 +130,9 @@ async function boundedText(response: Response): Promise<string> {
   if (reader === undefined) {
     const text = await response.text();
 
-    if (text.length > RESPONSE_LIMIT_BYTES)
+    if (text.length > RESPONSE_LIMIT_BYTES) {
       throw new BrokerError({ kind: "bad_response", status: response.status });
+    }
 
     return text;
   }
@@ -165,8 +166,9 @@ async function boundedText(response: Response): Promise<string> {
 }
 
 export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
-  if (!namesBrokerOrigin(options.origin))
+  if (!namesBrokerOrigin(options.origin)) {
     throw new Error("The connect origin must be a canonical https:// origin.");
+  }
   const send = options.fetch ?? fetch;
   const { origin } = options;
 
@@ -234,12 +236,13 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
       }
 
       if (!response.ok) {
-        if (Value.Check(ErrorBody, body))
+        if (Value.Check(ErrorBody, body)) {
           throw new BrokerError({
             kind: "refused",
             status: response.status,
             code: body.error.code,
           });
+        }
         throw new BrokerError({ kind: "bad_response", status: response.status });
       }
 
@@ -254,15 +257,17 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
     schema: S,
     answer: { readonly status: number; readonly body: unknown },
   ): Static<S> => {
-    if (!Value.Check(schema, answer.body))
+    if (!Value.Check(schema, answer.body)) {
       throw new BrokerError({ kind: "bad_response", status: answer.status });
+    }
 
     return answer.body;
   };
 
   const empty = (answer: { readonly status: number }): void => {
-    if (answer.status !== 204)
+    if (answer.status !== 204) {
       throw new BrokerError({ kind: "bad_response", status: answer.status });
+    }
   };
 
   return {
@@ -282,8 +287,9 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
       });
       const enrolled = parse(EnrollResponse, answer);
 
-      if (enrolled.environmentId !== environmentId)
+      if (enrolled.environmentId !== environmentId) {
         throw new BrokerError({ kind: "bad_response", status: answer.status });
+      }
 
       return enrolled;
     },

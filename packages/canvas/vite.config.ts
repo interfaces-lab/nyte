@@ -23,7 +23,7 @@ export default defineConfig(() => ({
     target: ["chrome123", "safari16.4"],
     modulePreload: false,
     cssCodeSplit: false,
-    chunkSizeWarningLimit: 2_000,
+    chunkSizeWarningLimit: 2000,
     assetsInlineLimit: 0,
     rolldownOptions: { output: { codeSplitting: false } },
   },

@@ -162,8 +162,9 @@ function ScopeMeta({
   readonly stats: ChangeScopeStats | undefined;
   readonly fileCount: number | undefined;
 }): ReactElement | null {
-  if (stats !== undefined && (stats.added > 0 || stats.removed > 0))
+  if (stats !== undefined && (stats.added > 0 || stats.removed > 0)) {
     return <ChangeStats {...stats} />;
+  }
 
   if (fileCount === undefined) return null;
 

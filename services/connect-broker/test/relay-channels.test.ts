@@ -8,7 +8,7 @@ import {
   decodeChunk,
   encodeChunks,
 } from "@nyte-ai/connect/relay";
-import { RelayDesktop } from "./workerd.ts";
+import type { RelayDesktop } from "./workerd.ts";
 import { describe, expect, it } from "vitest";
 import {
   enrolled,
@@ -226,8 +226,9 @@ describe("cancellation and revocation", () => {
         headers: { "content-type": "text/event-stream" },
       });
 
-      for (const data of encodeChunks(new TextEncoder().encode("data: one\n\n")))
+      for (const data of encodeChunks(new TextEncoder().encode("data: one\n\n"))) {
         desktop.send({ t: "data", ch, data });
+      }
       const response = await answer;
       const reader = response.body?.getReader();
 

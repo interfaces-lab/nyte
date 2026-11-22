@@ -40,7 +40,7 @@ async function settle() {
   for (let index = 0; index < 4; index += 1) await frame();
 }
 
-const STALL_MS = 5_000;
+const STALL_MS = 5000;
 
 async function until(done: () => boolean, deadline: number) {
   while (!done() && performance.now() < deadline) await frame();
@@ -82,7 +82,7 @@ function view(messages: readonly Message[]): SessionView {
     seenThrough: null,
     background: [],
     configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
     messages,
@@ -356,7 +356,7 @@ export async function run(): Promise<string> {
   quietRow.render("hidden");
   await settle();
   quietRow.render("visible");
-  await wait(1_000);
+  await wait(1000);
   quietLabels.stop();
 
   check(

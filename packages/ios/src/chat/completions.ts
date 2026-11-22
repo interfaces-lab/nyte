@@ -228,8 +228,9 @@ export function acceptSuggestion(
     const instruction = skillInstruction(suggestion.name);
     const body = `${before}${after}`;
 
-    if (body.trimStart().startsWith(instruction))
+    if (body.trimStart().startsWith(instruction)) {
       return { draft: body, caret: Math.min(before.length, body.length) };
+    }
     const head = `${instruction}\n\n`;
 
     return { draft: `${head}${body}`, caret: head.length + before.length };

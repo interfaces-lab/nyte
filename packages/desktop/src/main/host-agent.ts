@@ -218,8 +218,9 @@ function detachedHost(options: HostAgentOptions): HostAgent {
 }
 
 async function stopped(pid: () => Promise<number | null>): Promise<void> {
-  for (let attempt = 0; attempt < 50 && (await pid()) !== null; attempt++)
+  for (let attempt = 0; attempt < 50 && (await pid()) !== null; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 function appId(options: HostAgentOptions): string {
@@ -234,7 +235,7 @@ async function bootstrap(path: string): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     const failed = await execute("launchctl", ["bootstrap", domain(), path]).then(
       () => null,
-      (cause: unknown) => cause,
+      (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause), { cause })),
     );
 
     if (failed === null) return;

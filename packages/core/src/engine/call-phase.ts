@@ -19,8 +19,9 @@ export function callPhase(record: CallRecord): CallPhase {
 
   if (record.result !== null) return { kind: "settled", result: record.result };
 
-  if (record.waiting !== null)
+  if (record.waiting !== null) {
     return { kind: "parked", waiting: record.waiting, replay: record.replay };
+  }
 
   return record.waits.length === 0
     ? { kind: "opened", replay: record.replay }

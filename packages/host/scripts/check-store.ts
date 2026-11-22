@@ -95,7 +95,7 @@ function fail(
   failures.set(group, found);
 }
 
-function findVariants(event: { readonly [key: string]: Json }) {
+function findVariants(event: Readonly<Record<string, Json>>) {
   return SessionEventType.anyOf.filter(
     (variant) =>
       variant.properties.kind.const === event.kind &&
@@ -161,8 +161,9 @@ function checkObject(id: string, text: string, location: string, session: string
     return;
   }
 
-  if (record.decode(object) === null)
+  if (record.decode(object) === null) {
     fail(`record ${record.kind}`, session, location, () => ["does not decode as a stored record"]);
+  }
 }
 
 for (const row of database
@@ -181,8 +182,9 @@ for (const row of database
 
 for (const row of database
   .prepare("SELECT id, body FROM objects WHERE json_extract(body, '$.kind') = 'commit'")
-  .iterate())
+  .iterate()) {
   checkObject(String(row.id), String(row.body), `commit ${String(row.id)}`, null);
+}
 
 const stamp = database
   .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'store_meta'")
@@ -194,10 +196,11 @@ database.close();
 
 console.log(`Checked ${events} log events and ${checkedObjects.size} records in ${path}.`);
 
-if (stamp < STORE_VERSION)
+if (stamp < STORE_VERSION) {
   console.log(
     `\nThe store is at version ${stamp}; this checkout migrates it to ${STORE_VERSION} when it opens, and rows read here are unmigrated. \`node scripts/migrate-proof.ts ${path}\` checks the migration on a copy.`,
   );
+}
 
 for (const [group, failure] of failures) {
   const spread = failure.sessions.size > 0 ? ` in ${failure.sessions.size} sessions` : "";
@@ -206,10 +209,11 @@ for (const [group, failure] of failures) {
   for (const reason of failure.reasons) console.log(`    ${reason}`);
 }
 
-if (unchecked.size > 0)
+if (unchecked.size > 0) {
   console.log(
     `\nNot checked (no stored schema): ${[...unchecked].map(([kind, count]) => `${kind} ${count}`).join(", ")}`,
   );
+}
 
 if (failures.size > 0) {
   console.log("\nThis store holds rows the current schemas reject. Backfill them before shipping.");

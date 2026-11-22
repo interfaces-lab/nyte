@@ -4,8 +4,8 @@ import { dev } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { ExecutionEnv, GitHubAccountApi, Plugin, PluginDirectory } from "@nyte-ai/core";
-import { chatOnly, fakeModels, testModel } from "@nyte-ai/bench";
-import type { FakeModels } from "@nyte-ai/bench";
+import { chatOnly, fakeModels } from "@nyte-ai/bench";
+import type { FakeModels, testModel } from "@nyte-ai/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
 import subagentsPlugin from "@nyte-ai/plugin/core/subagents";
 import { listen } from "@nyte-ai/host";
@@ -103,7 +103,7 @@ export async function openTestHost(options?: {
 
 export async function until<T>(
   read: () => Promise<T | undefined> | T | undefined,
-  timeout = 3_000,
+  timeout = 3000,
 ): Promise<T> {
   const deadline = Date.now() + timeout;
 
@@ -140,7 +140,7 @@ export function testEnvironment(exec: ExecutionEnv["exec"]): Plugin<"core"> {
               scope: "workspace",
               mime: "text/plain",
               contents: await readFile(path, "utf8"),
-              encoding: "utf-8",
+              encoding: "utf8",
               version: asId("v1"),
             }),
           },

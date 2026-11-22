@@ -127,12 +127,13 @@ test.each([false, true])(
     files.actions.open(key, { path: "/workspace/file.ts" });
     files.actions.split(key, "after");
 
-    if (launched)
+    if (launched) {
       workbench.dispatch(key, {
         kind: "open",
         tab: { kind: "editor", id: "launcher" },
         activate: true,
       });
+    }
 
     for (const tab of files.getView(key).tabs) files.actions.close(key, tab.id);
 

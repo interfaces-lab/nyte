@@ -134,7 +134,7 @@ test("a key a page forwards runs the menu item a native key equivalent would", (
     },
     {
       accelerator: "Alt+Command+I",
-      key: key({ key: "\u02c6", code: "KeyI", metaKey: true, altKey: true }),
+      key: key({ key: "\u02C6", code: "KeyI", metaKey: true, altKey: true }),
       mac: true,
       matches: true,
     },
@@ -146,11 +146,12 @@ test("a key a page forwards runs the menu item a native key equivalent would", (
     },
     { accelerator: "CommandOrControl+R", key: dvorakP, mac: true, matches: false },
     { accelerator: "CommandOrControl+P", key: dvorakP, mac: true, matches: true },
-  ])
+  ]) {
     expect(
       acceleratorMatches(row.accelerator, row.key, row.mac),
       `${row.accelerator} ${row.key.key}/${row.key.code} mac=${String(row.mac)}`,
     ).toBe(row.matches);
+  }
 });
 
 test("held keys repeat only zoom", () => {
@@ -215,8 +216,9 @@ test("a forwarded key performs the native role a click leaves to AppKit", () => 
     "togglefullscreen",
     "pasteandmatchstyle",
     "selectAll",
-  ])
+  ]) {
     expect(performMenuRole(role, target)).toBe(true);
+  }
 
   expect(performMenuRole("services", target)).toBe(false);
   expect(performMenuRole("", target)).toBe(false);

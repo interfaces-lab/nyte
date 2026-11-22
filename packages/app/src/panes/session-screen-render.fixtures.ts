@@ -102,15 +102,19 @@ function turnMessages(index: number): Message[] {
   const messages: Message[] = [prompt(index)];
 
   if (index % 2 === 1) {
-    messages.push(tool(`read-${String(index)}`, index, { kind: "read", path: file }));
-    messages.push(tool(`edit-${String(index)}`, index, { kind: "edit", path: file }));
+    messages.push(
+      tool(`read-${String(index)}`, index, { kind: "read", path: file }),
+      tool(`edit-${String(index)}`, index, { kind: "edit", path: file }),
+    );
   }
 
   messages.push(prose(`answer-${String(index)}`, index, paragraphs(index)));
 
   if (index % 7 === 0) {
-    messages.push(user(`steer-${String(index)}`, index, `Steering note ${String(index)}`, "steer"));
-    messages.push(prose(`followup-${String(index)}`, index, `After steering ${String(index)}.`));
+    messages.push(
+      user(`steer-${String(index)}`, index, `Steering note ${String(index)}`, "steer"),
+      prose(`followup-${String(index)}`, index, `After steering ${String(index)}.`),
+    );
   }
 
   return messages;
@@ -155,11 +159,13 @@ export function view(
 
     if (index === 10) {
       const report = tool("report-10", 10, { kind: "shell", command: "git status" });
-      messages.push({ ...report, turn: continuation });
-      messages.push({
-        ...prose("report-text-10", 10, "Background report folded in."),
-        turn: continuation,
-      });
+      messages.push(
+        { ...report, turn: continuation },
+        {
+          ...prose("report-text-10", 10, "Background report folded in."),
+          turn: continuation,
+        },
+      );
       turns.push(endedTurn([], { id: continuation, prompt: null, steps: 2 }).info);
     }
   }
@@ -179,7 +185,7 @@ export function view(
     seenThrough: null,
     background: [],
     configuration: { selected: configuration, effective: configuration },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };

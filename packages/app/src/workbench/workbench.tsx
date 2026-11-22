@@ -462,10 +462,11 @@ function browsedWorkspace(
   chatFolder: SelectedWorkspace | undefined,
   records: readonly RailWorkspace[] | undefined,
 ): WorkbenchWorkspace {
-  if (browse.kind === "follow")
+  if (browse.kind === "follow") {
     return chatFolder === undefined
       ? { kind: "none" }
       : { kind: "ready", workspace: chatFolder, isChatFolder: true };
+  }
 
   if (records === undefined) return { kind: "loading" };
   const record = records.find((candidate) => candidate.id === browse.id);
@@ -490,8 +491,9 @@ export function Workbench({
   const snapshot = useWorkbenchSnapshot();
   const [visited, setVisited] = useState<readonly WorkbenchViewKey[]>([viewKey]);
 
-  if (visited.at(-1) !== viewKey)
+  if (visited.at(-1) !== viewKey) {
     setVisited([...visited.filter((key) => key !== viewKey), viewKey].slice(-MOUNTED_VIEWS));
+  }
 
   useMountEffect(prefetchWorkbench);
 

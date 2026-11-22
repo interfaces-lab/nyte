@@ -38,7 +38,7 @@ const LOCK_ABANDONED_MS = 2 * LOCK_TIMEOUT_MS;
 
 const LOCK_HEARTBEAT_MS = LOCK_ABANDONED_MS / 6;
 
-const RECOVERY_STALE_MS = 1_000;
+const RECOVERY_STALE_MS = 1000;
 
 const CredentialFileSchema = Type.Record(Type.String(), Type.Unknown());
 
@@ -148,9 +148,7 @@ function holdLock(lockPath: string, owner: string): CredentialLock {
 
     try {
       utimesSync(lockPath, now, now);
-    } catch {
-      return;
-    }
+    } catch {}
   }, LOCK_HEARTBEAT_MS);
 
   heartbeat.unref();
@@ -164,9 +162,7 @@ function holdLock(lockPath: string, owner: string): CredentialLock {
 
       try {
         rmSync(lockPath, { force: true });
-      } catch {
-        return;
-      }
+      } catch {}
     },
   };
 }
@@ -299,7 +295,7 @@ export class FileCredentialStore implements CredentialStore {
     for (const [providerId, value] of Object.entries(this.load())) {
       const accounts = readCredentialAccounts(value);
 
-      if (accounts)
+      if (accounts) {
         stored.push(
           ...accounts.accounts.map((account) => ({
             providerId,
@@ -309,6 +305,7 @@ export class FileCredentialStore implements CredentialStore {
             active: account.id === accounts.active,
           })),
         );
+      }
     }
 
     return stored;

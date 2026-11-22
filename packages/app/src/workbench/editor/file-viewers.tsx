@@ -114,10 +114,11 @@ export function FileImage(input: {
 
   const [broken, setBroken] = useState(false);
 
-  if (broken)
+  if (broken) {
     return <FileMessage active={input.active} alert title="The image could not be displayed." />;
+  }
 
-  if (url.data === undefined)
+  if (url.data === undefined) {
     return url.isError ? (
       <FileMessage active={input.active} alert title="The image could not be loaded.">
         <span {...props(viewerStyles.messageDetail)}>{url.error.message}</span>
@@ -126,6 +127,7 @@ export function FileImage(input: {
     ) : (
       <FileMessage active={input.active} title="Opening file…" />
     );
+  }
 
   return (
     <div
@@ -171,15 +173,16 @@ export function FileVideo(input: {
     setAttempt((current) => current + 1);
   };
 
-  if (failure === "unsupported")
+  if (failure === "unsupported") {
     return (
       <FileMessage active={input.active} title="This video can't be played here.">
         <span>{details}</span>
         <RevealButton path={path} />
       </FileMessage>
     );
+  }
 
-  if (url.data === undefined || failure === "stopped")
+  if (url.data === undefined || failure === "stopped") {
     return url.isError || failure === "stopped" ? (
       <FileMessage active={input.active} alert title="The video could not be loaded.">
         {url.isError && <span {...props(viewerStyles.messageDetail)}>{url.error.message}</span>}
@@ -188,6 +191,7 @@ export function FileVideo(input: {
     ) : (
       <FileMessage active={input.active} title="Opening file…" />
     );
+  }
 
   return (
     <div

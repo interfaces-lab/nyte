@@ -4,5 +4,4 @@
  * `http://` origin. Those are the pages a browser treats as secure contexts, so a plain-http page
  * on the network never receives a host's credential.
  */
-export const ORIGIN_PATTERN =
-  "^(https://([a-z0-9-]+\\.)*[a-z0-9-]+|https://\\*\\.([a-z0-9-]+\\.)+[a-z]{2,}|http://(localhost|127\\.0\\.0\\.1|\\[::1\\]))(:[0-9]{1,5})?$";
+export const ORIGIN_PATTERN = String.raw`^(https://([a-z0-9-]+\.)*[a-z0-9-]+|https://\*\.([a-z0-9-]+\.)+[a-z]{2,}|http://(localhost|127\.0\.0\.1|\[::1\]))(:[0-9]{1,5})?$`;

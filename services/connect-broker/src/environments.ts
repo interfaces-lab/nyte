@@ -92,11 +92,12 @@ export function claimRefusal(outcome: Exclude<ClaimOutcome, { kind: "linked" }>)
 }
 
 export async function requestActor(context: Context, request: Request): Promise<Actor> {
-  if (request.headers.has(PROOF_HEADER))
+  if (request.headers.has(PROOF_HEADER)) {
     return {
       kind: "desktop",
       proof: { token: proofToken(request), body: await requestText(request) },
     };
+  }
   const session = await verifySession(context, request, "revoke");
 
   return { kind: "owner", ownerId: session.userId };

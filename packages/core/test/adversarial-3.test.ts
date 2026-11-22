@@ -169,7 +169,7 @@ describe("ADV A-3", () => {
     expect(parts).toEqual([{ status: "failed", state: { markdown: "A partia", signature: null } }]);
   });
 
-  for (const reloadAt of ["none", "claim"] as const)
+  for (const reloadAt of ["none", "claim"] as const) {
     it(`re-runs a woken call on a runtime it holds once ready, though the session reloads at the lease claim (D-3 N1, probe P5 ${reloadAt})`, async () => {
       const fake = fakeModels();
       const at = Date.now() + 60_000;
@@ -262,6 +262,7 @@ describe("ADV A-3", () => {
         { type: "text", text: "napper ran timer" },
       ]);
     });
+  }
 });
 
 async function crashingAfterMove() {

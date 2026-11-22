@@ -367,8 +367,9 @@ function watchIslands(
   const mount = (host: HTMLElement, island: Island, first: boolean): MountedIsland => {
     const slot = adopt(host, island);
 
-    if (first ? host.firstChild !== slot.container : slot.container.parentNode !== host)
+    if (first ? host.firstChild !== slot.container : slot.container.parentNode !== host) {
       host.insertBefore(slot.container, first ? host.firstChild : null);
+    }
 
     return { ...slot, island, signature: JSON.stringify(island) };
   };
@@ -427,8 +428,9 @@ function citationHosts(
   return [...element.querySelectorAll<HTMLElement>("a[href], code")].flatMap((host) => {
     const code = host.localName === "code";
 
-    if (host.closest(OPAQUE_ISLAND) !== null || (code && host.closest("a, pre") !== null))
+    if (host.closest(OPAQUE_ISLAND) !== null || (code && host.closest("a, pre") !== null)) {
       return [];
+    }
 
     const reference = code
       ? inlineCodeReference(host.textContent ?? "", files)
@@ -436,14 +438,16 @@ function citationHosts(
 
     if (reference?.kind !== "file") return [];
 
-    if (host.dataset["citation"] !== reference.file.kind)
+    if (host.dataset["citation"] !== reference.file.kind) {
       host.dataset["citation"] = reference.file.kind;
+    }
     const title = referenceTitle(reference) ?? "";
 
     if (host.dataset["tip"] !== title) host.dataset["tip"] = title;
 
-    if (code && !citedCodeClasses.every((name) => host.classList.contains(name)))
+    if (code && !citedCodeClasses.every((name) => host.classList.contains(name))) {
       host.classList.add(...citedCodeClasses);
+    }
 
     return [{ host, reference }];
   });
@@ -553,9 +557,10 @@ function clickAction(
     return reference === undefined ? undefined : opener(reference);
   }
 
-  if (href.startsWith("#"))
+  if (href.startsWith("#")) {
     return () =>
       target.ownerDocument.getElementById(href.slice(1))?.scrollIntoView({ block: "center" });
+  }
 
   const reference = opener === undefined ? undefined : linkReference(href, files);
 

@@ -78,10 +78,11 @@ function usageBreakdown(usage: Usage): string {
     `Input ${formatTokens(usage.input)} · Output ${formatTokens(usage.output)}`,
   ];
 
-  if (usage.cacheRead > 0 || usage.cacheWrite > 0)
+  if (usage.cacheRead > 0 || usage.cacheWrite > 0) {
     lines.push(
       `Cache read ${formatTokens(usage.cacheRead)} · Write ${formatTokens(usage.cacheWrite)}`,
     );
+  }
 
   return lines.join("\n");
 }
@@ -95,8 +96,9 @@ function CostRow({
 }): ReactElement {
   const navigate = useNavigate();
 
-  if (usage === undefined || usage.total === 0)
+  if (usage === undefined || usage.total === 0) {
     return <StatusRow icon="speed-low" label="No usage yet" quiet actions={actions} />;
+  }
 
   const label =
     usage.cost.total > 0 ? formatUsd(usage.cost.total) : `${formatTokens(usage.total)} tokens`;

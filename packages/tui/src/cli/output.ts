@@ -28,7 +28,7 @@ export function createOutput(
   let phase: string | undefined;
 
   const clear = (): void => {
-    if (drawn) streams.stderr.write("\r\x1b[K");
+    if (drawn) streams.stderr.write("\r\u001B[K");
     drawn = false;
   };
 
@@ -57,7 +57,7 @@ export function createOutput(
       const line = formatStatus("none", next, mode.stderr);
 
       if (animate) {
-        streams.stderr.write(`\r\x1b[K${detail === undefined ? line : `${line} ${detail}`}`);
+        streams.stderr.write(`\r\u001B[K${detail === undefined ? line : `${line} ${detail}`}`);
         drawn = true;
       } else if (next !== phase) say(line);
 

@@ -140,8 +140,8 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
     const output = log.getByRole("region", { name: "Command output" }).first();
     await expect(output).toContainText("✖ sum adds");
     await expect(output).toContainText("ℹ fail 1");
-    expect(read.filter((text) => text.endsWith("[exit code 1]")).at(-1)).toContain("ℹ fail 1");
-    expect(read.filter((text) => text.endsWith("[exit code 0]")).at(-1)).toMatch(/ℹ pass 1/u);
+    expect(read.findLast((text) => text.endsWith("[exit code 1]"))).toContain("ℹ fail 1");
+    expect(read.findLast((text) => text.endsWith("[exit code 0]"))).toMatch(/ℹ pass 1/u);
   });
 
   const canvas = log.getByRole("figure", { name: "CI failures" }).locator("iframe").contentFrame();

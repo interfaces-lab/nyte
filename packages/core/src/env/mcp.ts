@@ -32,8 +32,9 @@ export async function awaitMcpServers(
   if (kernel.mcp === null) return;
   const { workspace } = (await requireSession(kernel.store, session)).record;
 
-  if (await kernel.mcp.ready(workspace, AbortSignal.any([signal, AbortSignal.timeout(READY_MS)])))
+  if (await kernel.mcp.ready(workspace, AbortSignal.any([signal, AbortSignal.timeout(READY_MS)]))) {
     await runtime.registries.materialize();
+  }
 }
 
 export function mcpApi(kernel: Kernel, id: WorkspaceId): McpApi {
@@ -60,8 +61,9 @@ export function mcpApi(kernel: Kernel, id: WorkspaceId): McpApi {
       return {
         steps: () => forwarded(async () => (await begin()).steps()),
         async answer(code) {
-          if (login === null)
+          if (login === null) {
             throw new SdkError("invalid", "Read the login's steps before answering.");
+          }
           await (await login).answer(code);
         },
       };

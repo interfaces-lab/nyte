@@ -53,7 +53,7 @@ export function lazyOAuth(input: {
   let promise: Promise<OAuthAuth> | undefined;
 
   const loaded = () => {
-    promise ??= input.load().catch((error) => {
+    promise ??= input.load().catch((error: unknown) => {
       promise = undefined;
       throw error;
     });

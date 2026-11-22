@@ -1,4 +1,4 @@
-const SAMPLE_LINES = 2_000;
+const SAMPLE_LINES = 2000;
 
 /** How wide a tab is in the columns the status bar and Go to Line count, as GoLand counts them for Go. */
 export const TAB_COLUMNS = 4;
@@ -34,8 +34,9 @@ export function indentUnit(path: string, text: string): string | undefined {
 export function visualColumn(lineText: string, character: number, tabSize: number): number {
   let column = 0;
 
-  for (const char of lineText.slice(0, character))
+  for (const char of lineText.slice(0, character)) {
     column = char === "\t" ? column + tabSize - (column % tabSize) : column + 1;
+  }
 
   return column;
 }

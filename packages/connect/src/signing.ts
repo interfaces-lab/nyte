@@ -16,10 +16,9 @@ import {
   CLOCK_TOLERANCE_SECONDS,
   PROOF_LIFETIME_SECONDS,
   ProofClaims,
-  PublicJwk,
   TOKEN_TYPES,
 } from "./schemas.ts";
-import type { BrokerJwk, BrokerKeys } from "./schemas.ts";
+import type { BrokerJwk, BrokerKeys, PublicJwk } from "./schemas.ts";
 
 export const PrivateJwk = Type.Object({
   kty: Type.Literal("OKP"),
@@ -135,11 +134,13 @@ export async function verifyClaims<S extends TSchema>(input: {
     payload.iat === undefined ||
     payload.exp === undefined ||
     payload.exp - payload.iat > input.lifetime
-  )
+  ) {
     throw new VerificationFailed("Token lifetime exceeds the contract");
+  }
 
-  if (!Value.Check(input.schema, payload))
+  if (!Value.Check(input.schema, payload)) {
     throw new VerificationFailed("Token claims do not match the contract");
+  }
 
   return payload;
 }
@@ -189,11 +190,13 @@ export async function verifyProof(input: {
     now: input.now,
   });
 
-  if (claims.htm !== input.method || claims.htu !== input.path)
+  if (claims.htm !== input.method || claims.htu !== input.path) {
     throw new VerificationFailed("Proof names another request");
+  }
 
-  if (claims.bh !== (await sha256(input.body)))
+  if (claims.bh !== (await sha256(input.body))) {
     throw new VerificationFailed("Proof names another body");
+  }
 
   return claims;
 }

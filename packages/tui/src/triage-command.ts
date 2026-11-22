@@ -66,20 +66,22 @@ export async function triageCommand(
   const options = parseTriageArgs(args);
   const output = context.output;
 
-  if (!output.mode.interactive || !output.mode.tty.stdout)
+  if (!output.mode.interactive || !output.mode.tty.stdout) {
     throw new CliError("missing_input", "Can't run triage without an interactive terminal.", {
       next: [{ label: "Print the doctor report for a script", argv: ["nyte", "doctor", "--json"] }],
     });
+  }
 
   const report = await runDoctor(output.mode);
   const agent = pickAgent(report, options.agent);
 
-  if (agent === undefined)
+  if (agent === undefined) {
     throw new CliError(
       "missing_input",
       "Can't start triage. No provider has a credential, and neither claude nor codex is on PATH.",
       { next: [{ label: "Sign in so nyte can run it", argv: ["nyte", "login"] }] },
     );
+  }
 
   const folder = join(nyteHome(), "triage", stamp());
   const bundle = await planBundle(report, options.problem);
@@ -91,8 +93,9 @@ export async function triageCommand(
     { label: "Never read", value: NEVER_READ.join(", ") },
   ]);
 
-  if (options.agent === undefined)
+  if (options.agent === undefined) {
     output.say("  Choose another agent with --agent nyte, --agent claude or --agent codex.");
+  }
   output.say("");
 
   const consented = await confirm(
@@ -128,8 +131,9 @@ export function parseTriageArgs(args: readonly string[]) {
     if (arg === "--agent" || arg.startsWith("--agent=")) {
       const known = AGENTS.find((name) => name === value);
 
-      if (known === undefined)
+      if (known === undefined) {
         throw new CliError("invalid_arguments", "--agent takes nyte, claude or codex.", help);
+      }
       agent = known;
     } else if (arg.startsWith("-")) {
       throw new CliError("unknown_option", `Unknown option ${arg} for nyte triage.`, help);
@@ -142,7 +146,7 @@ export function parseTriageArgs(args: readonly string[]) {
 }
 
 export function parseIssue(markdown: string): { readonly title: string; readonly body: string } {
-  const lines = markdown.replace(/\r\n/gu, "\n").split("\n");
+  const lines = markdown.replaceAll("\r\n", "\n").split("\n");
   const first = lines.findIndex((line) => line.trim() !== "");
   const raw = (lines[first] ?? "").replace(/^#+\s*/u, "").trim();
   const title = raw.startsWith("[Bug]:") ? raw : `[Bug]: ${raw}`;
@@ -183,7 +187,7 @@ function tilde(path: string): string {
 }
 
 function stamp(): string {
-  return new Date().toISOString().replace(/[-:]/gu, "").replace(/\..*$/u, "");
+  return new Date().toISOString().replaceAll(/[-:]/gu, "").replace(/\..*$/u, "");
 }
 
 function onPath(name: string): boolean {
@@ -191,7 +195,7 @@ function onPath(name: string): boolean {
 }
 
 function firstLine(command: string, args: readonly string[]): string {
-  const result = spawnSync(command, args, { encoding: "utf8", timeout: 5_000 });
+  const result = spawnSync(command, args, { encoding: "utf8", timeout: 5000 });
 
   return result.status === 0 ? (result.stdout.split("\n")[0] ?? "").trim() : "";
 }
@@ -274,8 +278,9 @@ async function planBundle(report: DoctorReport, problem: string): Promise<readon
 async function writeBundle(folder: string, bundle: readonly BundleFile[]): Promise<void> {
   await mkdir(folder, { recursive: true, mode: 0o700 });
 
-  for (const file of bundle)
+  for (const file of bundle) {
     await writeFile(join(folder, file.name), redact(await file.text()), { mode: 0o600 });
+  }
 }
 
 function pickAgent(

@@ -60,22 +60,27 @@ export async function serveOAuth(
   const url = new URL(request.url);
   const path = url.pathname;
 
-  if (path === RESOURCE_METADATA || path === `${RESOURCE_METADATA}${MCP_PATH}`)
+  if (path === RESOURCE_METADATA || path === `${RESOURCE_METADATA}${MCP_PATH}`) {
     return request.method === "GET" ? json(200, resourceMetadata(url)) : notAllowed("GET");
+  }
 
-  if (path === SERVER_METADATA || path === `${SERVER_METADATA}${MCP_PATH}`)
+  if (path === SERVER_METADATA || path === `${SERVER_METADATA}${MCP_PATH}`) {
     return request.method === "GET" ? json(200, serverMetadata(url)) : notAllowed("GET");
+  }
 
   if (path === REGISTER) return request.method === "POST" ? register(request) : notAllowed("POST");
 
-  if (path === AUTHORIZE)
+  if (path === AUTHORIZE) {
     return request.method === "GET" ? authorize(url, grants, clients) : notAllowed("GET");
+  }
 
-  if (path === SIGN_IN_STATE)
+  if (path === SIGN_IN_STATE) {
     return request.method === "GET" ? signInState(url, grants) : notAllowed("GET");
+  }
 
-  if (path === TOKEN)
+  if (path === TOKEN) {
     return request.method === "POST" ? token(request, grants, clients) : notAllowed("POST");
+  }
 
   return null;
 }
@@ -111,44 +116,52 @@ async function register(request: Request): Promise<Response> {
   const text = await readLimited(request);
   const value = text === null ? null : readJson(text);
 
-  if (!registration.Check(value))
+  if (!registration.Check(value)) {
     return oauthError(
       400,
       "invalid_client_metadata",
       "Send redirect_uris and an optional client_name.",
     );
+  }
 
-  if (value.application_type !== "native" && value.application_type !== "web")
+  if (value.application_type !== "native" && value.application_type !== "web") {
     return oauthError(
       400,
       "invalid_client_metadata",
       "Send application_type: native for a client on this machine, web for a remote one. Dynamic registration is deprecated; a Client ID Metadata Document needs no registration.",
     );
+  }
 
-  if (value.token_endpoint_auth_method !== undefined && value.token_endpoint_auth_method !== "none")
+  if (
+    value.token_endpoint_auth_method !== undefined &&
+    value.token_endpoint_auth_method !== "none"
+  ) {
     return oauthError(
       400,
       "invalid_client_metadata",
       "This host registers public clients only: token_endpoint_auth_method must be none.",
     );
+  }
 
   if (
     value.grant_types?.some((grant) => grant !== "authorization_code" && grant !== "refresh_token")
-  )
+  ) {
     return oauthError(
       400,
       "invalid_client_metadata",
       "This host grants authorization_code and refresh_token only.",
     );
+  }
 
-  if (value.response_types?.some((type) => type !== "code"))
+  if (value.response_types?.some((type) => type !== "code")) {
     return oauthError(400, "invalid_client_metadata", "This host answers response_type code only.");
+  }
   const web = value.application_type === "web";
   const unsafe = value.redirect_uris.find(
     (uri) => !allowsRedirect(uri) || (web && new URL(uri).protocol !== "https:"),
   );
 
-  if (unsafe !== undefined)
+  if (unsafe !== undefined) {
     return oauthError(
       400,
       "invalid_redirect_uri",
@@ -156,6 +169,7 @@ async function register(request: Request): Promise<Response> {
         ? `${unsafe} isn't an https URL, which a web client needs.`
         : `${unsafe} isn't an https URL or an http URL on localhost, 127.0.0.1 or [::1].`,
     );
+  }
   const name = value.client_name ?? "An unnamed MCP client";
 
   const id = Buffer.from(
@@ -179,12 +193,13 @@ async function authorize(url: URL, grants: McpGrants, clients: ClientDirectory):
   const params = url.searchParams;
   const client = await findClient(params.get("client_id") ?? "", clients);
 
-  if (client === null)
+  if (client === null) {
     return page(
       400,
       "Unknown MCP client",
       "The client ID is neither a metadata document this host could fetch and accept nor one it registered.",
     );
+  }
 
   const redirectUri =
     params.get("redirect_uri") ??
@@ -194,29 +209,33 @@ async function authorize(url: URL, grants: McpGrants, clients: ClientDirectory):
     redirectUri === null ||
     redirectUri === undefined ||
     !client.redirectUris.includes(redirectUri)
-  )
+  ) {
     return page(400, "Unknown redirect URI", "The redirect URI isn't one the client registered.");
+  }
   const state = params.get("state");
   const issuer = url.origin;
 
   const back = (error: string, description: string): Response =>
     redirectError(redirectUri, { error, description, state, issuer });
 
-  if (params.get("response_type") !== "code")
+  if (params.get("response_type") !== "code") {
     return back("unsupported_response_type", "This host answers response_type code only.");
+  }
   const challenge = params.get("code_challenge");
 
   if (
     challenge === null ||
     !CHALLENGE.test(challenge) ||
     params.get("code_challenge_method") !== "S256"
-  )
+  ) {
     return back("invalid_request", "This host requires PKCE with code_challenge_method S256.");
+  }
   const resources = params.getAll("resource");
   const resource = mcpResource(url);
 
-  if (resources.length !== 1 || resources[0] !== resource)
+  if (resources.length !== 1 || resources[0] !== resource) {
     return back("invalid_target", `Ask for the resource ${resource}.`);
+  }
 
   const asked = grants.ask({
     client,
@@ -259,22 +278,25 @@ async function token(
   const form = new URLSearchParams(text);
   const resources = form.getAll("resource");
 
-  if (resources.length > 1)
+  if (resources.length > 1) {
     return oauthError(400, "invalid_target", "Ask for one resource, the /mcp URL.");
+  }
   const resource = resources[0] ?? null;
   const grant = form.get("grant_type");
   const clientId = form.get("client_id");
 
-  if (clientId === null || (await findClient(clientId, clients)) === null)
+  if (clientId === null || (await findClient(clientId, clients)) === null) {
     return oauthError(401, "invalid_client", "Send the client_id this host registered.");
+  }
 
   if (grant === "authorization_code") {
     const code = form.get("code");
     const redirectUri = form.get("redirect_uri");
     const verifier = form.get("code_verifier");
 
-    if (code === null || redirectUri === null || verifier === null)
+    if (code === null || redirectUri === null || verifier === null) {
       return oauthError(400, "invalid_request", "Send code, redirect_uri and code_verifier.");
+    }
 
     return issued(await grants.exchange({ code, clientId, redirectUri, verifier, resource }));
   }

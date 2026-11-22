@@ -86,7 +86,7 @@ const MISSING_OPENAI_MODELS: Model<"openai-responses">[] = [
     input: ["text", "image"],
     cost: withOpenAiLongContextPricing(OPENAI_GPT_6_ASTRA_STANDARD_COST),
     contextWindow: OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
-    maxTokens: 128000,
+    maxTokens: 128_000,
     modes: ["fast"],
     thinkingLevelMap: {
       off: null,
@@ -113,7 +113,7 @@ const MISSING_OPENAI_MODELS: Model<"openai-responses">[] = [
       cacheWrite: 6.25,
     }),
     contextWindow: OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
-    maxTokens: 128000,
+    maxTokens: 128_000,
   },
   {
     id: "gpt-5.6-terra",
@@ -125,7 +125,7 @@ const MISSING_OPENAI_MODELS: Model<"openai-responses">[] = [
     input: ["text", "image"],
     cost: withOpenAiLongContextPricing(OPENAI_GPT_56_TERRA_STANDARD_COST),
     contextWindow: OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
-    maxTokens: 128000,
+    maxTokens: 128_000,
   },
   {
     id: "gpt-5.6-luna",
@@ -137,7 +137,7 @@ const MISSING_OPENAI_MODELS: Model<"openai-responses">[] = [
     input: ["text", "image"],
     cost: withOpenAiLongContextPricing(OPENAI_GPT_56_LUNA_STANDARD_COST),
     contextWindow: OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
-    maxTokens: 128000,
+    maxTokens: 128_000,
   },
   {
     id: "gpt-5-chat-latest",
@@ -153,8 +153,8 @@ const MISSING_OPENAI_MODELS: Model<"openai-responses">[] = [
       cacheRead: 0.125,
       cacheWrite: 0,
     },
-    contextWindow: 128000,
-    maxTokens: 16384,
+    contextWindow: 128_000,
+    maxTokens: 16_384,
   },
 ];
 
@@ -178,8 +178,8 @@ const DEEPSEEK_V4_MODELS: Model<"openai-completions">[] = [
       cacheRead: 0.0028,
       cacheWrite: 0,
     },
-    contextWindow: 1000000,
-    maxTokens: 384000,
+    contextWindow: 1_000_000,
+    maxTokens: 384_000,
     compat: DEEPSEEK_COMPAT,
   },
   {
@@ -196,8 +196,8 @@ const DEEPSEEK_V4_MODELS: Model<"openai-completions">[] = [
       cacheRead: 0.003625,
       cacheWrite: 0,
     },
-    contextWindow: 1000000,
-    maxTokens: 384000,
+    contextWindow: 1_000_000,
+    maxTokens: 384_000,
     compat: DEEPSEEK_COMPAT,
   },
 ];
@@ -220,8 +220,8 @@ const ANT_LING_MODELS: Model<"openai-completions">[] = [
     reasoning: false,
     input: ["text"],
     cost: { input: 0.01, output: 0.02, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 262144,
-    maxTokens: 65536,
+    contextWindow: 262_144,
+    maxTokens: 65_536,
     compat: ANT_LING_COMPAT,
   },
   {
@@ -233,8 +233,8 @@ const ANT_LING_MODELS: Model<"openai-completions">[] = [
     reasoning: false,
     input: ["text"],
     cost: { input: 0.06, output: 0.25, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 262144,
-    maxTokens: 65536,
+    contextWindow: 262_144,
+    maxTokens: 65_536,
     compat: ANT_LING_COMPAT,
   },
   {
@@ -246,21 +246,21 @@ const ANT_LING_MODELS: Model<"openai-completions">[] = [
     reasoning: true,
     input: ["text"],
     cost: { input: 0.06, output: 0.25, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 262144,
-    maxTokens: 65536,
+    contextWindow: 262_144,
+    maxTokens: 65_536,
     compat: { ...ANT_LING_COMPAT, thinkingFormat: "ant-ling" },
   },
 ];
 
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 
-const CODEX_CONTEXT = 272000;
+const CODEX_CONTEXT = 272_000;
 
-const CODEX_GPT_56_CONTEXT = 272000;
+const CODEX_GPT_56_CONTEXT = 272_000;
 
-const CODEX_SPARK_CONTEXT = 128000;
+const CODEX_SPARK_CONTEXT = 128_000;
 
-const CODEX_MAX_TOKENS = 128000;
+const CODEX_MAX_TOKENS = 128_000;
 
 const CODEX_MODELS: Model<"openai-codex-responses">[] = [
   {
@@ -335,7 +335,7 @@ const CODEX_MODELS: Model<"openai-codex-responses">[] = [
     reasoning: true,
     input: ["text", "image"],
     cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
-    contextWindow: 500000,
+    contextWindow: 500_000,
     maxTokens: CODEX_MAX_TOKENS,
   },
   {
@@ -419,8 +419,8 @@ const MISTRAL_MEDIUM_35: Model<"mistral-conversations"> = {
     cacheRead: 0,
     cacheWrite: 0,
   },
-  contextWindow: 262144,
-  maxTokens: 262144,
+  contextWindow: 262_144,
+  maxTokens: 262_144,
 };
 
 const OPENROUTER_AUTO: Model<"openai-completions"> = {
@@ -437,8 +437,8 @@ const OPENROUTER_AUTO: Model<"openai-completions"> = {
     cacheRead: 0,
     cacheWrite: 0,
   },
-  contextWindow: 2000000,
-  maxTokens: 30000,
+  contextWindow: 2_000_000,
+  maxTokens: 30_000,
 };
 
 const OPENROUTER_FUSION: Model<"openai-completions"> = {
@@ -455,8 +455,8 @@ const OPENROUTER_FUSION: Model<"openai-completions"> = {
     cacheRead: 0,
     cacheWrite: 0,
   },
-  contextWindow: 1000000,
-  maxTokens: 30000,
+  contextWindow: 1_000_000,
+  maxTokens: 30_000,
 };
 
 export function withoutUnservedModels(models: readonly Model<Api>[]): Model<Api>[] {
@@ -476,7 +476,7 @@ export function applyUpstreamCorrections(models: readonly Model<Api>[]): void {
       candidate.provider === "github-copilot" &&
       GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS.has(candidate.id)
     ) {
-      candidate.contextWindow = 1000000;
+      candidate.contextWindow = 1_000_000;
     }
 
     if (
@@ -488,22 +488,22 @@ export function applyUpstreamCorrections(models: readonly Model<Api>[]): void {
         candidate.id === "claude-opus-4.6" ||
         candidate.id === "claude-sonnet-4.6")
     ) {
-      candidate.contextWindow = 1000000;
+      candidate.contextWindow = 1_000_000;
     }
 
     if (
       (candidate.provider === "opencode" || candidate.provider === "opencode-go") &&
       (candidate.id === "claude-sonnet-4-5" || candidate.id === "claude-sonnet-4")
     ) {
-      candidate.contextWindow = 200000;
+      candidate.contextWindow = 200_000;
     }
 
     if (
       (candidate.provider === "opencode" || candidate.provider === "opencode-go") &&
       candidate.id === "gpt-5.4"
     ) {
-      candidate.contextWindow = 272000;
-      candidate.maxTokens = 128000;
+      candidate.contextWindow = 272_000;
+      candidate.maxTokens = 128_000;
     }
 
     if (
@@ -511,7 +511,7 @@ export function applyUpstreamCorrections(models: readonly Model<Api>[]): void {
       OPENAI_SHORT_CONTEXT_CAPPED_MODEL_IDS.has(candidate.id)
     ) {
       candidate.contextWindow = OPENAI_LONG_CONTEXT_INPUT_THRESHOLD;
-      candidate.maxTokens = 128000;
+      candidate.maxTokens = 128_000;
     }
 
     if (
@@ -529,7 +529,7 @@ export function applyUpstreamCorrections(models: readonly Model<Api>[]): void {
     }
 
     if (candidate.provider === "openai" && candidate.id === "gpt-5-pro") {
-      candidate.maxTokens = 128000;
+      candidate.maxTokens = 128_000;
     }
 
     if (
@@ -571,8 +571,7 @@ function addUnlisted(models: Model<Api>[], model: Model<Api>): void {
 export function addCuratedModels(models: Model<Api>[]): void {
   for (const model of MISSING_OPENAI_MODELS) addUnlisted(models, model);
 
-  models.push(...DEEPSEEK_V4_MODELS);
-  models.push(...ANT_LING_MODELS);
+  models.push(...DEEPSEEK_V4_MODELS, ...ANT_LING_MODELS);
 
   for (const candidate of models) {
     if (
@@ -626,7 +625,7 @@ export function addCuratedModels(models: Model<Api>[]): void {
               cacheWrite: model.cost.cacheWrite,
             },
             contextWindow: AZURE_LARGE_CONTEXT_MODEL_IDS.has(model.id)
-              ? 1050000
+              ? 1_050_000
               : model.contextWindow,
           },
         ]

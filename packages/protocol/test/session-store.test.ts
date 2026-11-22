@@ -19,7 +19,10 @@ import type { Recorded } from "./sessions.ts";
 
 type FoldState = ReturnType<typeof emptyFold>;
 
-type Log = { readonly recorded: Recorded; readonly events: readonly SessionEvent[] };
+interface Log {
+  readonly recorded: Recorded;
+  readonly events: readonly SessionEvent[];
+}
 
 const SEED = 20_261_102;
 
@@ -27,7 +30,7 @@ const CLIENTS = 300;
 
 const PRINCIPAL = "local";
 
-type Schedule = {
+interface Schedule {
   readonly id: string;
   readonly head: HeadName;
   readonly spec: "from" | number;
@@ -35,15 +38,15 @@ type Schedule = {
   readonly check: number;
   readonly emits: ReadonlySet<number>;
   readonly drops: ReadonlyMap<number, number>;
-};
+}
 
-type Client = {
+interface Client {
   readonly schedule: Schedule;
   readonly trace: string[];
   spec: WindowSpec;
   store: SessionStore | null;
   connected: boolean;
-};
+}
 
 let logs: readonly Log[] = [];
 
@@ -61,9 +64,12 @@ beforeAll(async () => {
 
 type Kept = "all" | "some" | "none";
 
-type Away = { readonly attach: number; readonly resume: number };
+interface Away {
+  readonly attach: number;
+  readonly resume: number;
+}
 
-type HeadCase = {
+interface HeadCase {
   readonly name: string;
   readonly recording: string;
   readonly tail: number;
@@ -72,7 +78,7 @@ type HeadCase = {
   readonly describes: boolean;
   readonly kept: Kept;
   readonly sends?: number;
-};
+}
 
 const HEAD_CASES: readonly HeadCase[] = [
   {
@@ -164,7 +170,7 @@ const HEAD_CASES: readonly HeadCase[] = [
   },
 ];
 
-type SessionsCase = {
+interface SessionsCase {
   readonly name: string;
   readonly limit: number;
   readonly away: (
@@ -174,7 +180,7 @@ type SessionsCase = {
   ) => Promise<void>;
   readonly describes: boolean;
   readonly kept: boolean;
-};
+}
 
 const SESSIONS_CASES: readonly SessionsCase[] = [
   { name: "nothing moved", limit: 50, away: async () => undefined, describes: true, kept: true },
@@ -292,7 +298,7 @@ describe("session store", () => {
     );
 
     expect(failures.slice(0, 3)).toEqual([]);
-    expect(logs.length * CLIENTS).toBeGreaterThanOrEqual(2_000);
+    expect(logs.length * CLIENTS).toBeGreaterThanOrEqual(2000);
     expect(keptResumes).toBeGreaterThan(500);
   });
 
@@ -456,8 +462,9 @@ function pickRestore(log: Log, next: () => number): number {
       [...state.heads.values()].every(
         (head) => head.info.execution.kind === "idle" && head.live.length === 0,
       )
-    )
+    ) {
       settled.push(point);
+    }
   }
 
   const point = settled[Math.floor(next() * settled.length)];
@@ -542,8 +549,9 @@ function step(client: Client, state: FoldState, point: number, next: () => numbe
     client.trace.push(`drop@${point}`);
   }
 
-  if ([...schedule.drops.values()].includes(point) && !client.connected)
+  if ([...schedule.drops.values()].includes(point) && !client.connected) {
     resume(client, store, state, point, next);
+  }
 
   if (client.connected && (schedule.emits.has(point) || point === schedule.check)) {
     const change = structuredClone(changesSince(state, store.seq));
@@ -612,11 +620,13 @@ function compare(client: Client, snapshot: SessionSnapshot, state: FoldState): s
 }
 
 function differ(snapshot: SessionSnapshot, expected: HeadWindow, head: HeadName): string | null {
-  if (JSON.stringify(snapshot.order) !== JSON.stringify(expected.order))
+  if (JSON.stringify(snapshot.order) !== JSON.stringify(expected.order)) {
     return `order ${JSON.stringify(snapshot.order)} != ${JSON.stringify(expected.order)}`;
+  }
 
-  if (snapshot.leadingPrompt !== expected.leadingPrompt)
+  if (snapshot.leadingPrompt !== expected.leadingPrompt) {
     return `leadingPrompt ${snapshot.leadingPrompt} != ${expected.leadingPrompt}`;
+  }
   const rows = snapshot.rows;
   const tables = expected.tables;
 
@@ -687,8 +697,9 @@ function rowsDiffer(
   for (const [key, row] of expected) {
     const have = held.get(key);
 
-    if (JSON.stringify(have) !== JSON.stringify(row))
+    if (JSON.stringify(have) !== JSON.stringify(row)) {
       return `${table} ${key}: ${JSON.stringify(have)} != ${JSON.stringify(row)}`;
+    }
   }
 
   if (!exact || held.size === expected.length) return null;

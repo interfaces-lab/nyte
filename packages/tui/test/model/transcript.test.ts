@@ -44,7 +44,7 @@ describe("rows", () => {
   test("a turn the window cut after its prompt starts with that prompt and is marked clipped until the prompt is among the messages", () => {
     const whole = buildView((v) =>
       v.turn("t1", (t) =>
-        t.at(1_000).user("ask").text("one").text("two").text("three").ended("completed"),
+        t.at(1000).user("ask").text("one").text("two").text("three").ended("completed"),
       ),
     );
 
@@ -64,10 +64,10 @@ describe("rows", () => {
   test("turns in view order with their notes in place, shells by start time; queued messages are not rows", () => {
     const view = buildView((v) =>
       v
-        .turn("t1", (t) => t.at(1_000).user("a").text("b").ended("completed"))
+        .turn("t1", (t) => t.at(1000).user("a").text("b").ended("completed"))
         .turn("t2", (t) =>
           t
-            .at(5_000)
+            .at(5000)
             .user("c")
             .text("d")
             .ended("completed")
@@ -77,7 +77,7 @@ describe("rows", () => {
         .live("run-t2"),
     );
 
-    const model = deriveTranscript(view, [shell("s1", 4_000)], LOCAL, null);
+    const model = deriveTranscript(view, [shell("s1", 4000)], LOCAL, null);
 
     expect(model.rows.map((row) => row.key)).toEqual(["turn:t1", "shell:s1", "turn:t2"]);
     expect(turnsIn(model)[1]?.blocks.map((message) => message.id)).toEqual([
@@ -167,14 +167,14 @@ describe("turn status", () => {
 
   test("a settled turn reports Worked for from endedAt - startedAt", () => {
     const view = buildView((v) =>
-      v.turn("t1", (t) => t.at(1_000).user("a").text("b").ended("completed", { endedAt: 4_500 })),
+      v.turn("t1", (t) => t.at(1000).user("a").text("b").ended("completed", { endedAt: 4500 })),
     );
 
     const [info] = view.turns;
 
     expect(info === undefined ? null : turnStatus(info, view.messages, view, false)).toEqual({
       kind: "settled",
-      durationMs: 3_500,
+      durationMs: 3500,
       failure: null,
       stopped: false,
     });
@@ -197,7 +197,7 @@ describe("turn status", () => {
     );
 
     const retrying = buildView((v) =>
-      v.turn("t1", (t) => t.user("a")).retrying("rate limited", 9_000),
+      v.turn("t1", (t) => t.user("a")).retrying("rate limited", 9000),
     );
 
     const working = buildView((v) =>
@@ -212,7 +212,7 @@ describe("turn status", () => {
     expect(status(thinking)).toMatchObject({ kind: "thinking" });
     expect(status(retrying)).toEqual({
       kind: "retrying",
-      until: 9_000,
+      until: 9000,
       reason: "rate limited",
       attempt: 0,
     });

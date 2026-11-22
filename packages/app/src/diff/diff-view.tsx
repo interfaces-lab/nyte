@@ -5,6 +5,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@nyte-ai/ui/diffs";
 import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { FileDiff } from "@nyte-ai/ui/diffs/react";
+// oxlint-disable-next-line import/no-duplicates -- the hand-memo import stays on its own line so its suppression covers only that import
 import { useLayoutEffect, useRef } from "react";
 import type { ReactElement } from "react";
 // oxlint-disable-next-line no-restricted-imports -- the compiler merges the patch parse into the theme/layout scope; keep it keyed on diff.patch alone

@@ -143,8 +143,9 @@ export function revealSelection(
   editor.setSelections([input.selection]);
   editor.focus({ preventScroll: true });
 
-  if (!shown)
+  if (!shown) {
     viewer.scrollTo({ type: "line", id: input.path, lineNumber: head.line + 1, align: "center" });
+  }
 }
 
 /** Whether a caret's rectangle shows inside a box; a line the editor hasn't drawn has none. */

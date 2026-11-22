@@ -23,8 +23,8 @@ import type {
 } from "@nyte-ai/connect";
 import { RELAY_CLOSE } from "@nyte-ai/connect/relay";
 import type { RelayMethod } from "@nyte-ai/connect/relay";
+import type { PrivateJwk } from "@nyte-ai/connect/signing";
 import {
-  PrivateJwk,
   generateMachineKey,
   keyThumbprint,
   nowSeconds,

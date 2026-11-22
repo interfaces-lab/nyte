@@ -177,8 +177,9 @@ async function decide(
     return current.decision === null && allowed ? { ...current, decision } : current;
   });
 
-  if (outcome.kind !== "updated")
+  if (outcome.kind !== "updated") {
     throw new SdkError("invalid", "This approval is no longer waiting.");
+  }
 
   if (refused) throw new SdkError("denied", "Only the host's owner can allow a tool call.");
 
@@ -188,8 +189,9 @@ async function decide(
   await context.api.storage.set(grantKey(granted), true);
 
   for (const sibling of openApprovals(await context.api.session.view())) {
-    if (sibling.part !== context.part.id && sibling.tool === granted)
+    if (sibling.part !== context.part.id && sibling.tool === granted) {
       await context.api.session.part(sibling.part).act("once", {});
+    }
   }
 
   return undefined;
@@ -220,8 +222,9 @@ async function approveRuntimeCall(
 ): Promise<RuntimeVerdict> {
   const { api, signal } = context;
 
-  if (changes(call) && (await readsOnly(api.session, api.host)))
+  if (changes(call) && (await readsOnly(api.session, api.host))) {
     return { kind: "deny", reason: READ_ONLY };
+  }
   const reason = await pendingReason(api, call);
 
   if (reason === null) return { kind: "allow" };
@@ -261,8 +264,9 @@ export default {
       const definition = api.registries.tools.list().find((tool) => tool.name === call.name);
       const tool = { name: call.name, class: call.class, asks: definition?.asks };
 
-      if (changes(tool) && (await readsOnly(api.session, api.host)))
+      if (changes(tool) && (await readsOnly(api.session, api.host))) {
         return { action: "reject", reason: READ_ONLY };
+      }
 
       const reason = await context.memo("reason", () => pendingReason(api, tool));
 

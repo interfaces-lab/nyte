@@ -131,7 +131,7 @@ printf 'goodbye\\n'
     const env = { SHELL: local.shell, PATH: "/inherited" };
     const started = Date.now();
     await createShellEnvironmentRepair({ env, timeoutMs: 100 })();
-    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(Date.now() - started).toBeLessThan(2000);
     expect(env.PATH).toBe("/inherited");
   });
 
@@ -147,7 +147,7 @@ printf 'goodbye\\n'
     expect(
       await execute("gh", ["--version"], {
         cwd: local.directory,
-        timeout: 1_000,
+        timeout: 1000,
       }),
     ).toEqual({ stdout: "fixture-gh", stderr: "" });
   });
@@ -155,7 +155,12 @@ printf 'goodbye\\n'
 
 it("preserves the complete inherited environment on Windows", async () => {
   const local = await fixture('PATH=/recovered /bin/sh -c "$2"');
-  const env = { Path: "C:\\tools", PATH: "unchanged", SHELL: local.shell, GH_TOKEN: "secret" };
+  const env = {
+    Path: String.raw`C:\tools`,
+    PATH: "unchanged",
+    SHELL: local.shell,
+    GH_TOKEN: "secret",
+  };
   const original = { ...env };
   await createShellEnvironmentRepair({ env, platform: "win32" })();
   expect(env).toEqual(original);

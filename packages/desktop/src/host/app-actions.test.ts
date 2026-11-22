@@ -59,7 +59,7 @@ async function offered(made: TestDesktop): Promise<void> {
       const rows = await made.client.call("clients.read", {});
       assert.ok(rows.some((row) => row.actions.some((action) => action.name === "browser")));
     },
-    { timeout: 5_000 },
+    { timeout: 5000 },
   );
 }
 
@@ -313,7 +313,7 @@ socketTest(
 
         return found;
       },
-      { timeout: 5_000 },
+      { timeout: 5000 },
     );
 
     assert.deepEqual(await made.served.client(row.id).perform("echo", { n: 1 }), {

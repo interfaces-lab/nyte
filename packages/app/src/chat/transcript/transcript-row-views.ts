@@ -60,8 +60,14 @@ export function stepRowView(row: StepRow): StepRowView {
   const facts = stepGroupFacts(row.messages, row.running);
   const only = facts.entries[0];
 
-  if (!row.running && facts.entries.length === 1 && only !== undefined && only.kind !== "thinking")
+  if (
+    !row.running &&
+    facts.entries.length === 1 &&
+    only !== undefined &&
+    only.kind !== "thinking"
+  ) {
     return { kind: "entry", entry: only };
+  }
 
   return { kind: "group", facts };
 }
@@ -126,7 +132,7 @@ export function userRowView(row: PromptRow | PartRow): UserRowView | undefined {
   const prompt = row.kind === "prompt";
   const held = row.kind === "prompt" && row.held;
 
-  if (showsReport(message))
+  if (showsReport(message)) {
     return {
       kind: "report",
       source: message.source,
@@ -134,6 +140,7 @@ export function userRowView(row: PromptRow | PartRow): UserRowView | undefined {
       held,
       wrapped: prompt,
     };
+  }
 
   if (showsAnswer(message)) return { kind: "answer", message, held, wrapped: prompt };
 

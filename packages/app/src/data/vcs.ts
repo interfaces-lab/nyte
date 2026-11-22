@@ -9,11 +9,10 @@ import type {
   PatchSet,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import { keys } from "./query-client.ts";
+import { keys, queryClient } from "./query-client.ts";
 import { gitStatusWatch } from "./watches.ts";
 import { connected } from "./connection.ts";
 import { useWatch } from "./watch-store.ts";
-import { queryClient } from "./query-client.ts";
 
 export async function gitFor(workspace: WorkspaceId | undefined): Promise<GitApi> {
   if (workspace === undefined) throw new Error("Open a workspace to read its repository");

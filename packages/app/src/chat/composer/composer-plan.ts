@@ -91,11 +91,13 @@ export function planEdit(
 ): Exclude<SubmissionPlan, { readonly kind: "command" }> {
   if (input.commands.kind === "failed") return commandsFailed(input.commands);
 
-  if (parsePluginCommand(input.submission.text, input.commands.commands) !== undefined)
+  if (parsePluginCommand(input.submission.text, input.commands.commands) !== undefined) {
     return { kind: "kept", message: "Commands can't run from a queued message." };
+  }
 
-  if (input.submission.parts.length === 0 && input.attachments.length === 0)
+  if (input.submission.parts.length === 0 && input.attachments.length === 0) {
     return { kind: "empty" };
+  }
 
   return {
     kind: "message",

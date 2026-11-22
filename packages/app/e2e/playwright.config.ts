@@ -24,7 +24,7 @@ export default defineConfig({
     cwd: resolve(import.meta.dirname, ".."),
     url: `${E2E_ORIGIN}/`,
     reuseExistingServer: !CI,
-    gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
+    gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
     stdout: "pipe",
     stderr: "pipe",
   },

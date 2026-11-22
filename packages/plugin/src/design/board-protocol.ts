@@ -24,11 +24,11 @@ const DigestType = Type.String({ pattern: "^[0-9a-f]{8}$" });
 export type Digest = Static<typeof DigestType>;
 
 export function textDigest(text: string): Digest {
-  let hash = 0x811c9dc5;
+  let hash = 0x81_1c_9d_c5;
 
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
+    hash = Math.imul(hash, 0x01_00_01_93) >>> 0;
   }
 
   return hash.toString(16).padStart(8, "0");
@@ -72,7 +72,7 @@ export type FrameFact = Static<typeof FrameFactType>;
 /** How many page frames the board reports; a board with more treats the rest as plain frames. */
 export const MAX_PAGE_FRAMES = 64;
 
-const PageAddressType = Type.String({ maxLength: 8192, pattern: "^https?://[^\\s]+$" });
+const PageAddressType = Type.String({ maxLength: 8192, pattern: String.raw`^https?://[^\s]+$` });
 
 const Finite = Type.Number();
 

@@ -54,8 +54,9 @@ export function turnChangeOptions(turns: readonly TurnMessages[]): readonly Turn
       const files = new Set<string>();
 
       for (const message of turn.messages) {
-        if (showsTool(message) && message.state.phase === "settled")
+        if (showsTool(message) && message.state.phase === "settled") {
           for (const path of message.state.changes?.paths ?? []) files.add(path);
+        }
       }
 
       return {
@@ -268,8 +269,9 @@ export type BranchReadout =
 export function branchReadout(snapshot: GitStatus | undefined): BranchReadout | undefined {
   if (snapshot === undefined || snapshot.kind !== "repository") return undefined;
 
-  if (snapshot.branch === null)
+  if (snapshot.branch === null) {
     return { kind: "detached", label: snapshot.head === null ? "HEAD" : snapshot.head.slice(0, 7) };
+  }
 
   if (snapshot.head === null) return { kind: "unborn", label: snapshot.branch };
 

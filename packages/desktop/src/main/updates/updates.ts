@@ -161,8 +161,9 @@ export async function registerUpdates({
       operations.run(async () => {
         if (next === channel) return channel;
 
-        if (updates.state().kind === "installing")
+        if (updates.state().kind === "installing") {
           throw new Error("Nyte is restarting to install an update. Change the channel afterward.");
+        }
 
         await saveChannel(next);
         applyChannel();
@@ -176,8 +177,9 @@ export async function registerUpdates({
 }
 
 function localFeedUrl(port: string | undefined): string | undefined {
-  if (port === undefined || !/^[1-9]\d{0,4}$/u.test(port) || Number(port) > 65_535)
+  if (port === undefined || !/^[1-9]\d{0,4}$/u.test(port) || Number(port) > 65_535) {
     return undefined;
+  }
 
   return `http://127.0.0.1:${port}`;
 }

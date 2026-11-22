@@ -1,7 +1,7 @@
 const useColor =
   process.env.NO_COLOR === undefined &&
   process.env.FORCE_COLOR !== "0" &&
-  (process.stdout.isTTY === true || process.env.FORCE_COLOR !== undefined);
+  (process.stdout.isTTY || process.env.FORCE_COLOR !== undefined);
 
 const ESC = "[";
 
@@ -19,7 +19,7 @@ const control = (body) => new RegExp(`${ESC[0]}\\[${body}`, "g");
 
 const SGR = control("[0-9;]*m");
 
-const KIB = 1_024;
+const KIB = 1024;
 
 export function formatSize(bytes) {
   return `${(bytes / KIB).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KiB`;
@@ -32,12 +32,12 @@ export function formatBytes(bytes) {
 }
 
 export function formatDuration(ms) {
-  if (ms < 1_000) return `${Math.round(ms)}ms`;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
 
-  if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   const minutes = Math.floor(ms / 60_000);
 
-  return `${minutes}m ${Math.round((ms - minutes * 60_000) / 1_000)}s`;
+  return `${minutes}m ${Math.round((ms - minutes * 60_000) / 1000)}s`;
 }
 
 const visibleLength = (cell) => cell.replace(SGR, "").length;
@@ -133,10 +133,10 @@ export function livePanel({ max = 6 } = {}) {
     rendered = performance.now();
   };
 
-  const erase = () => (printed === 0 ? "" : `\u001b[${printed}A\u001b[J`);
-  const showCursor = () => process.stdout.write("\u001b[?25h");
+  const erase = () => (printed === 0 ? "" : `\u001B[${printed}A\u001B[J`);
+  const showCursor = () => process.stdout.write("\u001B[?25h");
 
-  process.stdout.write("\u001b[?25l");
+  process.stdout.write("\u001B[?25l");
   process.once("exit", showCursor);
   const timer = setInterval(render, 100);
   render();

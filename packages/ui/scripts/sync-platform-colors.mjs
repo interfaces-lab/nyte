@@ -1,15 +1,14 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { readGroups } from "./tokens.mjs";
 
-const outputPath = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "platform-colors.ts");
+const outputPath = join(import.meta.dirname, "..", "src", "platform-colors.ts");
 
-const rampsPath = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "platform-ramps.ts");
+const rampsPath = join(import.meta.dirname, "..", "src", "platform-ramps.ts");
 
 const check = process.argv.includes("--check");
 
-const tokenDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "styles");
+const tokenDirectory = join(import.meta.dirname, "..", "src", "styles");
 
 const themeGroups = await readGroups(join(tokenDirectory, "theme.stylex.ts"));
 
@@ -107,8 +106,8 @@ const parseLab = (value) => {
   const fy = (lightness + 16) / 116;
   const fx = fy + a / 500;
   const fz = fy - b / 200;
-  const epsilon = 216 / 24389;
-  const kappa = 24389 / 27;
+  const epsilon = 216 / 24_389;
+  const kappa = 24_389 / 27;
   const inverse = (f) => (f ** 3 > epsilon ? f ** 3 : (116 * f - 16) / kappa);
   const x = (inverse(fx) * 0.3457) / 0.3585;
   const y = lightness > kappa * epsilon ? fy ** 3 : lightness / kappa;
@@ -162,12 +161,12 @@ const fromOklch = ({ l, c, h, alpha }) => {
 
 const evaluate = (expression, trail) => {
   const tokens = expression
-    .replace(/var\((--[a-z0-9-]+)\)/g, (_, name) => {
+    .replaceAll(/var\((--[a-z0-9-]+)\)/g, (_, name) => {
       if (declared[name] === undefined) throw new Error(`${trail.at(-1)}: ${name} is undeclared`);
 
       return declared[name];
     })
-    .replace(/%/g, "")
+    .replaceAll("%", "")
     .match(/[\d.]+|[-+*/()]/g);
 
   let at = 0;
@@ -411,7 +410,7 @@ const scopedScheme = (mode) =>
 
       return `    ${hue}: {\n${scheme(mode, scopedColorNames)
         .split("\n")
-        .map((line) => "  " + line)
+        .map((line) => `  ${line}`)
         .join("\n")}\n    },`;
     })
     .join("\n");

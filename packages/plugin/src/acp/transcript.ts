@@ -36,8 +36,9 @@ export function transcriptText(messages: readonly Message[]): string {
     .flatMap((message) => {
       if (message.role === "user") return [`User:\n${text(message.content)}`];
 
-      if (message.role === "toolResult")
+      if (message.role === "toolResult") {
         return [`Tool result (${message.toolName}):\n${excerptText(text(message.content))}`];
+      }
 
       if (message.role !== "assistant" || message.stopReason === "error") return [];
 

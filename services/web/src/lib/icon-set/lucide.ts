@@ -28,8 +28,8 @@ import {
   SquareTerminal,
   Sun,
   X,
-  type LucideIcon,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { createElement } from "react";
 
 import type { DocsGlyph, DocsGlyphName } from "./names.ts";

@@ -376,8 +376,9 @@ export function mergeSessionRows(
 ): Pick<SessionRows, "rows" | "hosted" | "roots"> {
   const merged = new Map<SessionId, SessionInfo>();
 
-  for (const list of sources.lists)
+  for (const list of sources.lists) {
     for (const session of list ?? []) if (!merged.has(session.id)) merged.set(session.id, session);
+  }
 
   const rows = new Map(
     [...merged.values()].flatMap((listed) => {

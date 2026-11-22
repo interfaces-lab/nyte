@@ -41,8 +41,8 @@ type StoreDialect = "sqlite" | "postgres";
 export interface SchemaStep {
   readonly kind: "schema";
   readonly name: string;
-  readonly sql: { readonly [D in StoreDialect]: readonly string[] };
-  readonly indexed?: { readonly [D in StoreDialect]: readonly string[] };
+  readonly sql: Readonly<Record<StoreDialect, readonly string[]>>;
+  readonly indexed?: Readonly<Record<StoreDialect, readonly string[]>>;
 }
 
 export interface RewriteStep {
@@ -171,7 +171,7 @@ const baseline: SchemaStep = {
   },
 };
 
-type JsonObject = { readonly [key: string]: Json };
+type JsonObject = Readonly<Record<string, Json>>;
 
 function patched(object: Json, patch: (body: JsonObject) => JsonObject): Json | null {
   if (!isJsonObject(object) || !isJsonObject(object.body)) return null;
@@ -325,8 +325,9 @@ const callIntentOnce: RewriteStep = {
     events.forEach((event, index) => {
       if (!isJsonObject(event)) return;
 
-      if (event.kind === "part" && event.change === "created")
+      if (event.kind === "part" && event.change === "created") {
         opened.set(event.part ?? null, index);
+      }
 
       if (event.kind !== "call" || event.change !== "intent") return;
       const { name, args, class: called, ...ids } = event;
@@ -343,8 +344,9 @@ const callIntentOnce: RewriteStep = {
         Value.Equal(state.name, name) &&
         Value.Equal(state.args, args) &&
         Value.Equal(state.class, called)
-      )
+      ) {
         return;
+      }
       next[at] = { ...created, state: { ...state, name, args, class: called } };
     });
 
@@ -359,8 +361,9 @@ const liveRefs: RewriteStep = {
     const session = parseSessionRef(name);
     const run = decodeRunRecord(record);
 
-    if (session === null || run === null || run.stopping || name !== runRef(session, run.view.id))
+    if (session === null || run === null || run.stopping || name !== runRef(session, run.view.id)) {
       return [];
+    }
 
     return [liveRef(session, run.view.id)];
   },
@@ -388,8 +391,9 @@ function indexParkedCall(name: string, record: Json): readonly string[] {
     call === null ||
     call.result !== null ||
     name !== callRef(session, call.id)
-  )
+  ) {
     return [];
+  }
 
   return waitIndex(session, call);
 }
@@ -403,8 +407,13 @@ const toolArgsInPart: RewriteStep = {
     return patched(object, (body) => {
       const intent = body.intent;
 
-      if (body.kind !== "tool" || !isJsonObject(intent) || !("name" in intent || "args" in intent))
+      if (
+        body.kind !== "tool" ||
+        !isJsonObject(intent) ||
+        !("name" in intent || "args" in intent)
+      ) {
         return body;
+      }
 
       return {
         ...body,
@@ -444,8 +453,9 @@ const wokenCalls: RewriteStep = {
       call.waiting !== null ||
       call.waits.length === 0 ||
       name !== callRef(session, call.id)
-    )
+    ) {
       return [];
+    }
 
     return [wokenIndex(session, call.id)];
   },
@@ -469,11 +479,13 @@ const hookToolArgs: RewriteStep = {
       const { intent, result } = body;
       let next = body;
 
-      if (isJsonObject(intent) && "args" in intent)
+      if (isJsonObject(intent) && "args" in intent) {
         next = { ...next, intent: { principal: intent.principal ?? null } };
+      }
 
-      if (isJsonObject(result) && result.action === "modify" && ToolCalls.Check(result.value))
+      if (isJsonObject(result) && result.action === "modify" && ToolCalls.Check(result.value)) {
         next = { ...next, result: { action: "modify", value: result.value.args } };
+      }
 
       return next;
     });
@@ -486,7 +498,7 @@ const endedRunRecords: RecoverStep = {
   async recover({ refs, logs, objects }) {
     const ended = new Map<string, Set<string>>();
 
-    for await (const log of logs)
+    for await (const log of logs) {
       for (const row of log.events) {
         const event = parsed(row.event);
 
@@ -495,9 +507,11 @@ const endedRunRecords: RecoverStep = {
           event.kind === "run" &&
           event.change === "ended" &&
           typeof event.run === "string"
-        )
+        ) {
           ended.set(event.run, (ended.get(event.run) ?? new Set()).add(log.session));
+        }
       }
+    }
 
     const latest = new Map<
       string,
@@ -512,13 +526,15 @@ const endedRunRecords: RecoverStep = {
           : null;
       const run = body !== null && isJsonObject(body.view) ? body.view.id : null;
 
-      if (record === null || typeof run !== "string" || typeof body?.snapshot !== "string")
+      if (record === null || typeof run !== "string" || typeof body?.snapshot !== "string") {
         continue;
+      }
       const at = isJsonObject(record) && typeof record.at === "number" ? record.at : 0;
       const kept = latest.get(run);
 
-      if (kept === undefined || at > kept.at || (at === kept.at && object.id > kept.object.id))
+      if (kept === undefined || at > kept.at || (at === kept.at && object.id > kept.object.id)) {
         latest.set(run, { object, at, record });
+      }
     }
 
     return [...latest].flatMap(([run, { object, record }]) => {
@@ -532,8 +548,9 @@ const endedRunRecords: RecoverStep = {
         !refs.has(sessionRef(session)) ||
         refs.has(runRef(session, ran)) ||
         refs.has(endedRunRef(session, ran))
-      )
+      ) {
         return [];
+      }
 
       return [{ name: endedRunRef(session, ran), target: object.id, body: object.body }];
     });
@@ -577,26 +594,29 @@ const folderTrust: RecoverStep = {
         !isJsonObject(object) ||
         object.kind !== "workspace" ||
         !isJsonObject(object.body)
-      )
+      ) {
         continue;
+      }
       const { projectResources, isolation, target } = object.body;
 
       if (
         typeof projectResources !== "boolean" ||
         (isolation ?? null) !== null ||
         !WORKSPACE_TARGET.Check(target)
-      )
+      ) {
         continue;
+      }
       const folder = trustTarget(WORKSPACE_TARGET.Decode(target));
       const name = await trustRef(folder);
       const at = typeof object.at === "number" ? object.at : 0;
       const kept = chosen.get(name);
 
-      if (kept === undefined || at > kept.at || (at === kept.at && !projectResources))
+      if (kept === undefined || at > kept.at || (at === kept.at && !projectResources)) {
         chosen.set(name, {
           at,
           record: envelope("trust", { target: folder, trusted: projectResources }, at),
         });
+      }
     }
 
     return Promise.all(
@@ -645,8 +665,9 @@ const changesAsWholeList: RewriteStep = {
       if (!Array.isArray(logged)) return null;
       listed = new Map(listed);
 
-      for (const file of logged)
+      for (const file of logged) {
         if (isJsonObject(file) && typeof file.path === "string") listed.set(file.path, file);
+      }
 
       const files = [...listed.values()];
 
@@ -697,15 +718,17 @@ const modelsPerRequest: RewriteStep = {
         return model === undefined ? null : { ...event, model };
       }
 
-      if (event.kind === "request" && event.model === undefined)
+      if (event.kind === "request" && event.model === undefined) {
         return { ...event, model: heads.get(event.head ?? null) ?? null };
+      }
 
       if (
         event.kind === "input" &&
         isJsonObject(event.schedule) &&
         event.schedule.reason === "configuration"
-      )
+      ) {
         return { ...event, schedule: { ...event.schedule, reason: "run-ended" } };
+      }
 
       return null;
     });
@@ -773,11 +796,12 @@ const STORE_STEPS: readonly StoreStep[] = [
 export const STORE_VERSION: number = STORE_STEPS.length;
 
 export function assertStoreVersion(version: number): void {
-  if (version > STORE_VERSION)
+  if (version > STORE_VERSION) {
     throw new SdkError(
       "unavailable",
       `This data was updated by a newer version of Nyte (store version ${version}; this version reads up to ${STORE_VERSION}). Update Nyte to open it.`,
     );
+  }
 }
 
 const COMMIT_ATTEMPTS = 3;
@@ -811,13 +835,14 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
         ? []
         : await relogs(rewrites, target.logs());
 
-    if (moved.length > 0 || relogged.length > 0)
+    if (moved.length > 0 || relogged.length > 0) {
       await target.backup?.(
         stamp.version,
         STORE_VERSION,
         moved.map((repoint) => repoint.name),
         relogged,
       );
+    }
 
     const outcome = await target.commit({
       from: stamp.version,
@@ -854,13 +879,14 @@ async function recoverRefs(
   let seen = records;
 
   for (const step of steps) {
-    if (step.kind === "rewrite" && step.rewrite !== undefined)
+    if (step.kind === "rewrite" && step.rewrite !== undefined) {
       seen = seen.map((stored) => {
         const record = parsed(stored.body);
         const next = record === null ? null : (step.rewrite?.(record) ?? null);
 
         return next === null ? stored : { ...stored, body: JSON.stringify(next) };
       });
+    }
 
     if (step.kind !== "recover") continue;
     found.push(

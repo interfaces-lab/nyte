@@ -4,7 +4,7 @@ type Line = Hunk["lines"][number];
 
 const CONTEXT = 3;
 
-const MAX_EDITS = 4_000;
+const MAX_EDITS = 4000;
 
 export function lineDiff(
   before: string,
@@ -15,7 +15,7 @@ export function lineDiff(
   const next = splitLines(after);
 
   const key = (line: { readonly text: string; readonly last: boolean }): string =>
-    `${options?.ignoreWhitespace === true ? line.text.replace(/\s+/g, "") : line.text}${line.last ? "\u0000" : ""}`;
+    `${options?.ignoreWhitespace === true ? line.text.replaceAll(/\s+/g, "") : line.text}${line.last ? "\u0000" : ""}`;
 
   const ops = edits(old.map(key), next.map(key));
   const script: { readonly kind: Line["kind"]; readonly old: number; readonly new: number }[] = [];
@@ -78,9 +78,7 @@ export function lineDiff(
 
       if (step.kind === "remove") removed += 1;
 
-      return line?.last === true
-        ? { kind: step.kind, text, noNewline: true }
-        : { kind: step.kind, text };
+      return line?.last ? { kind: step.kind, text, noNewline: true } : { kind: step.kind, text };
     });
 
     const oldLines = slice.filter((step) => step.kind !== "add").length;
@@ -110,8 +108,9 @@ function edits(old: readonly string[], next: readonly string[]): readonly Line["
     tail < old.length - head &&
     tail < next.length - head &&
     old[old.length - 1 - tail] === next[next.length - 1 - tail]
-  )
+  ) {
     tail += 1;
+  }
 
   const a = old.slice(head, old.length - tail);
   const b = next.slice(head, next.length - tail);

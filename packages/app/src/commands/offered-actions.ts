@@ -24,11 +24,13 @@ export function performAction(router: RegisteredRouter, name: string, input: Jso
 
   if (!namesAppAction(name)) throw new SdkError("not_supported", `This app has no action ${name}.`);
 
-  if (!Value.Check(APP_ACTIONS[name].input, input))
+  if (!Value.Check(APP_ACTIONS[name].input, input)) {
     throw new SdkError("invalid", `That is not the input ${name} takes.`);
+  }
 
-  if (!runAction(router, name, input))
+  if (!runAction(router, name, input)) {
     throw new SdkError("unavailable", `${name} has nothing to act on right now.`);
+  }
 
   return null;
 }
@@ -53,16 +55,18 @@ export function actionDeclarations(): readonly ActionDeclaration[] {
  * refused with `denied`.
  */
 export function offerActions(link: Pick<ClientConnection, "principal" | "offer">): void {
-  for (const declaration of actionDeclarations())
+  for (const declaration of actionDeclarations()) {
     link.offer(declaration, (input, requester) => {
-      if (requester.principal !== link.principal && !preferences.remoteControl.get())
+      if (requester.principal !== link.principal && !preferences.remoteControl.get()) {
         throw new SdkError(
           "denied",
           "This app runs requests from its own user only. To let your other devices drive it, turn on Remote control in Settings > Server.",
         );
+      }
 
       return appActions.run(declaration.name, input);
     });
+  }
 }
 
 onInstall(() => offerActions(connection()));

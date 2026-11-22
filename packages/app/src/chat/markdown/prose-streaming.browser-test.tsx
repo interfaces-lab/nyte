@@ -85,7 +85,7 @@ export async function run(): Promise<string> {
     [...host.querySelectorAll("p")].map((paragraph) => paragraph.textContent.trim());
 
   const quiet = async (expected: string): Promise<string[]> => {
-    const deadline = performance.now() + 5_000;
+    const deadline = performance.now() + 5000;
     const words = fresh();
 
     while (

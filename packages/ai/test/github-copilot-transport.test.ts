@@ -174,7 +174,7 @@ describe("GitHub Copilot transport", () => {
     const model: Model<"openai-completions"> = {
       ...chatModel,
       id: "claude-chat",
-      maxTokens: 16000,
+      maxTokens: 16_000,
       thinkingLevelMap: { high: null, xhigh: null, max: null },
       compat: {
         supportsReasoningEffort: false,
@@ -205,7 +205,7 @@ describe("GitHub Copilot transport", () => {
     const off = requestBody(offRequest.body);
     assert.equal(high.thinking_budget, 8192);
     assert.equal(high.reasoning_effort, undefined);
-    assert.equal(high.max_tokens, 16000);
+    assert.equal(high.max_tokens, 16_000);
     assert.equal(off.thinking_budget, undefined);
   });
 
@@ -516,7 +516,7 @@ const chatModel: Model<"openai-completions"> = {
   reasoning: true,
   input: ["text", "image"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 100000,
+  contextWindow: 100_000,
   maxTokens: 4096,
 };
 

@@ -24,8 +24,9 @@ export async function callTable<P extends CallPath>(
 ): Promise<CallOutput<P>> {
   const handler = table[path];
 
-  if (handler === undefined)
+  if (handler === undefined) {
     throw new ExpectedHostError({ code: "unknown", message: "This operation isn't available." });
+  }
 
   return handler(window, input);
 }

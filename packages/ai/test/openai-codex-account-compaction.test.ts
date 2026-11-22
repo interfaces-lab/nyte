@@ -2,7 +2,8 @@ import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
+import { createServer } from "node:http";
+import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
@@ -69,8 +70,8 @@ function sse(...events: unknown[]): string {
 async function serve(
   respond: (response: ServerResponse, index: number) => void | ServerResponse | Promise<void>,
 ) {
-  const requests: Array<{ path: string; headers: IncomingHttpHeaders; body: unknown }> = [];
-  const server = createServer(async (request, response) => {
+  const requests: { path: string; headers: IncomingHttpHeaders; body: unknown }[] = [];
+  const handle = async (request: IncomingMessage, response: ServerResponse) => {
     try {
       const chunks: Buffer[] = [];
       for await (const chunk of request) {
@@ -88,7 +89,8 @@ async function serve(
     } catch {
       response.destroy();
     }
-  });
+  };
+  const server = createServer((request, response) => void handle(request, response));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -714,7 +716,7 @@ describe("Codex V2 compaction", () => {
     assert.equal(result.usage?.totalTokens, 130);
   });
 
-  test.each([-1, 0.5, NaN])(
+  test.each([-1, 0.5, Number.NaN])(
     "rejects invalid retry budget %s before sending",
     async (maxRetries) => {
       await using server = await serve((response) => response.end(sse(itemDone(), completed())));
@@ -775,7 +777,7 @@ describe("Codex V2 compaction", () => {
       assert.ok(!error.message.includes("private cancellation reason"));
       return true;
     });
-    await vi.advanceTimersByTimeAsync(4_999);
+    await vi.advanceTimersByTimeAsync(4999);
     assert.equal(vi.getTimerCount(), 1);
     controller.abort(new Error("private cancellation reason"));
     await rejected;

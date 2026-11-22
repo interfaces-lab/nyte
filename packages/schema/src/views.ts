@@ -274,8 +274,8 @@ export type HeadWindow = Decoded<typeof HeadWindowType>;
 
 /** A 64-bit hash of `ids` in their order, as 16 hex digits. Each id is hashed after its length, so two lists hash alike only by collision. It runs the same in a host and in every client, browser and React Native included, without `crypto.subtle`. */
 export function digestIds(ids: readonly string[]): string {
-  let left = 0xdeadbeef;
-  let right = 0x41c6ce57;
+  let left = 0xde_ad_be_ef;
+  let right = 0x41_c6_ce_57;
 
   const mix = (unit: number): void => {
     left = Math.imul(left ^ unit, 2_654_435_761);

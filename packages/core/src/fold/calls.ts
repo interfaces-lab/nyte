@@ -37,7 +37,7 @@ export function applyCall(draft: Draft, event: Logged<"call">): void {
       }));
       const turn = callTurn(draft, event.part, event.head);
 
-      if (turn !== undefined)
+      if (turn !== undefined) {
         setTurn(
           draft,
           withActivity(draft, {
@@ -45,6 +45,7 @@ export function applyCall(draft: Draft, event: Logged<"call">): void {
             live: [...turn.live.filter((id) => id !== event.call), event.call],
           }),
         );
+      }
 
       return;
     }
@@ -58,8 +59,9 @@ export function applyCall(draft: Draft, event: Logged<"call">): void {
           : part,
       );
     case "settled": {
-      if (call !== undefined)
+      if (call !== undefined) {
         draft.calls.set(event.call, { ...call, waiting: null, settled: true });
+      }
 
       updatePart(draft, event.part, (part) => ({
         ...part,

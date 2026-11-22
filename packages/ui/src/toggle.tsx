@@ -3,13 +3,8 @@ import { create } from "@stylexjs/stylex";
 import { use } from "react";
 import type { ReactElement } from "react";
 
-import {
-  buttonGlyphSize,
-  buttonStyle,
-  tooltipTitle,
-  type ButtonAppearance,
-  type ButtonSizing,
-} from "./button.tsx";
+import { buttonGlyphSize, buttonStyle, tooltipTitle } from "./button.tsx";
+import type { ButtonAppearance, ButtonSizing } from "./button.tsx";
 import { ControlGlyphs, Icon } from "./icon.tsx";
 import type { StyledProps } from "./style.ts";
 import { hairline } from "./styles/hairline.stylex.ts";

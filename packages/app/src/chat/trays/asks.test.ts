@@ -290,7 +290,7 @@ function view(spec: ChatSpec, prefix: string): SessionView {
       startedBy: null,
     })),
     configuration: { selected: null, effective: null },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -312,7 +312,7 @@ function source(first: SessionView | undefined): ViewStream {
 
       return () => listeners.delete(listener);
     },
-    watch: async function* () {
+    async *watch() {
       yield* [];
     },
   };
@@ -363,8 +363,9 @@ test("a chat's open asks are its own, then each waiting descendant's in walk ord
     assert.equal(walk.getSnapshot(), walk.getSnapshot(), `${row.name}: a stable snapshot`);
 
     if (row.loaded !== undefined) {
-      for (const [name, spec] of Object.entries(row.chats))
+      for (const [name, spec] of Object.entries(row.chats)) {
         if (spec.loadsLater === true) sources.get(id(name))?.push(view(spec, prefix));
+      }
       await settled(names.map(id));
       assert.deepEqual(read(), row.loaded, `${row.name}, once loaded`);
     }

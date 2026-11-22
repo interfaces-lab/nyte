@@ -22,11 +22,21 @@ interface Edge {
   readonly goland: string;
 }
 
-type Caret = { readonly anchor: number; readonly head: number };
+interface Caret {
+  readonly anchor: number;
+  readonly head: number;
+}
 
-type Marked = { readonly text: string; readonly carets: readonly Caret[] };
+interface Marked {
+  readonly text: string;
+  readonly carets: readonly Caret[];
+}
 
-type Spot = { readonly line: number; readonly column: number; readonly character: number };
+interface Spot {
+  readonly line: number;
+  readonly column: number;
+  readonly character: number;
+}
 
 interface Outcome {
   readonly id: string;
@@ -169,7 +179,7 @@ const EDGES: readonly Edge[] = [
     id: "16",
     name: "escaped quote inside a string is literal",
     before: inFunc('\tx := "a‸b"'),
-    steps: [{ type: '\\"' }],
+    steps: [{ type: String.raw`\"` }],
     after: inFunc('\tx := "a\\"‸b"'),
     goland: "inserted literally, no pair or overtype",
   },
@@ -411,7 +421,7 @@ const EDGES: readonly Edge[] = [
     before: inFunc("\ta‸ := 1", "\tb := 2"),
     steps: [{ press: "Meta+c" }, { goTo: [5, 6] }, { press: "Meta+v" }],
     after: inFunc("\ta := 1", "\ta := 1", "\tb‸ := 2"),
-    goland: "copies line\\n; paste inserts it above the caret line",
+    goland: String.raw`copies line\n; paste inserts it above the caret line`,
   },
   {
     id: "49",
@@ -660,7 +670,9 @@ test("editor edge cases against GoLand", async ({ desk }, testInfo) => {
       home: desk.home,
       clipboard: (value) =>
         desk.application.evaluate((electron, text) => electron.clipboard.writeText(text), value),
-    }).catch((error: Error) => failed(edge, `harness: ${error.message}`));
+    }).catch((error: unknown) =>
+      failed(edge, `harness: ${error instanceof Error ? error.message : String(error)}`),
+    );
 
     results.push(outcome);
     process.stdout.write(`${report(outcome)}\n`);
@@ -788,8 +800,9 @@ async function place(page: Page, text: Locator, marked: Marked): Promise<string 
 
   if (shown !== wanted) return `status ${shown}, wanted ${wanted}`;
 
-  if (drawn.carets !== marked.carets.length)
+  if (drawn.carets !== marked.carets.length) {
     return `${String(drawn.carets)} carets drawn, wanted ${String(marked.carets.length)}`;
+  }
 
   return undefined;
 }
@@ -800,14 +813,16 @@ async function perform(
   step: Step,
   clipboard: (text: string) => Promise<void>,
 ): Promise<void> {
-  if ("type" in step)
+  if ("type" in step) {
     return page.keyboard.type(step.type, { delay: HOLD_MS }).then(() => paint(page));
+  }
 
   if ("press" in step) return press(page, step.press);
 
   if ("pressTimes" in step) {
-    for (let index = 0; index < step.pressTimes[1]; index += 1)
+    for (let index = 0; index < step.pressTimes[1]; index += 1) {
       await press(page, step.pressTimes[0]);
+    }
 
     return;
   }
@@ -835,8 +850,9 @@ async function stray(page: Page): Promise<boolean> {
 
   const found = await open.first().isVisible();
 
-  for (let attempt = 0; attempt < 3 && (await open.first().isVisible()); attempt += 1)
+  for (let attempt = 0; attempt < 3 && (await open.first().isVisible()); attempt += 1) {
     await press(page, "Escape");
+  }
 
   await expect(open.first()).toBeHidden();
 
@@ -946,8 +962,9 @@ function selectionLength(text: string, caret: Caret): number {
 function visualColumn(prefix: string): number {
   let column = 0;
 
-  for (const char of prefix)
+  for (const char of prefix) {
     column = char === "\t" ? column + TAB_COLUMNS - (column % TAB_COLUMNS) : column + 1;
+  }
 
   return column;
 }

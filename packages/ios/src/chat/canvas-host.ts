@@ -4,9 +4,13 @@ import {
   clampCanvasHeight,
   hostContextChangedNotification,
   readShellMessage,
+} from "@nyte-ai/plugin/canvas/protocol";
+import type {
+  CanvasHostContext,
+  CanvasLibrary,
+  JsonRpcId,
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
-import type { CanvasHostContext, CanvasLibrary, JsonRpcId } from "@nyte-ai/plugin/canvas/protocol";
 
 export type ShellBound = ReturnType<typeof renderNotification>;
 

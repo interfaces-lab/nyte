@@ -31,8 +31,9 @@ describe("redact", () => {
     for (const line of [
       "2026-06-01T12:00:00.000Z [process] store migration 41 failed: SQLITE_BUSY",
       '2026-06-01T12:00:00.000Z [execution] advance failed {"session":"s_1","head":"main","error":"SQLITE_BUSY"}',
-    ])
+    ]) {
       expect(redact(line, "/home/ada")).toBe(line);
+    }
   });
 });
 

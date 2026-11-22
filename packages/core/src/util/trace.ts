@@ -68,7 +68,7 @@ export function startSpan(name: SpanName, trace: string | null, detail?: SpanDet
     const end = performance.now();
     performance.measure(name, { start: started, end, detail: merged });
 
-    if (tracing.stdout)
+    if (tracing.stdout) {
       console.log(
         `NYTE_SPAN ${JSON.stringify({
           name,
@@ -78,6 +78,7 @@ export function startSpan(name: SpanName, trace: string | null, detail?: SpanDet
           detail: { ...detail, ...more },
         })}`,
       );
+    }
   };
 }
 
@@ -159,8 +160,9 @@ function readSpan(entry: PerformanceEntry): Span | null {
       typeof value === "string" ||
       typeof value === "number" ||
       typeof value === "boolean"
-    )
+    ) {
       detail[key] = value;
+    }
   }
 
   return {

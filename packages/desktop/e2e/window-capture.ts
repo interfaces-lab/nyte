@@ -43,7 +43,7 @@ JSON.stringify(all.map((w) => ({
 })));
 `;
 
-const SHOWN_MS = 5_000;
+const SHOWN_MS = 5000;
 
 /**
  * Whether the Mac's screen is locked. The window server draws no window then, so a capture can only be of the page,
@@ -118,10 +118,11 @@ async function windowNumber(window: ShownWindow): Promise<string> {
   const deadline = performance.now() + SHOWN_MS;
 
   while (!(await onScreen(Number(number), shown.frame))) {
-    if (performance.now() > deadline)
+    if (performance.now() > deadline) {
       throw new Error(
         `The window server shows no window ${number} at ${JSON.stringify(shown.frame)}.`,
       );
+    }
     await new Promise((done) => setTimeout(done, 100));
   }
 

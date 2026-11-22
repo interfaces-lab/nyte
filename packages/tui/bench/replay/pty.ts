@@ -103,10 +103,11 @@ export async function runPty(prepared: Prepared, scenario: Scenario): Promise<Pt
   const latencies: number[] = [];
   const rssMb: number[] = [];
   const debug = (what: string): void => {
-    if (process.env["BENCH_DEBUG"] === "1")
+    if (process.env["BENCH_DEBUG"] === "1") {
       process.stderr.write(
         `${(performance.now() - term.spawnedAt).toFixed(0)} ${what} frames=${String(term.frames.length)}\n`,
       );
+    }
   };
 
   debug("spawned");
@@ -124,7 +125,7 @@ export async function runPty(prepared: Prepared, scenario: Scenario): Promise<Pt
     rssMb.push(processUsage(term.pid).rssMb);
   }
 
-  await term.quiet(1_000);
+  await term.quiet(1000);
   const from = performance.now();
   const frameCount = term.frames.length;
   const cpuBefore = processUsage(term.pid).cpuMs;
@@ -167,7 +168,7 @@ const STEPS: Readonly<Record<Scenario, Step>> = {
       const painted = await term.nextFrame(
         sent,
         (frame) => char === " " || frame.text.includes(char),
-        2_000,
+        2000,
       );
       latencies.push(painted.end - sent);
       await Bun.sleep(KEY_GAP_MS);
@@ -200,7 +201,7 @@ const STEPS: Readonly<Record<Scenario, Step>> = {
       for (const [width, height] of RESIZES) {
         const sent = performance.now();
         await term.resize(width, height);
-        const painted = await term.nextFrame(sent, () => true, 2_000);
+        const painted = await term.nextFrame(sent, () => true, 2000);
         latencies.push(painted.end - sent);
         await term.quiet(150);
       }
@@ -214,7 +215,7 @@ const STEPS: Readonly<Record<Scenario, Step>> = {
       await term.quiet(100, 500);
       term.write("\r");
       await term.screenShows(next.shown);
-      await term.quiet(200, 1_000);
+      await term.quiet(200, 1000);
       latencies.push(processUsage(term.pid).rssMb);
     }
   },
@@ -236,6 +237,7 @@ async function openTerm(launch: Launch): Promise<Term> {
   let pending = "";
   let pendingBytes = 0;
   let open: { start: number; bytes: number; text: string } | null = null;
+  // oxlint-disable-next-line eslint/prefer-const -- assigned after spawn; the emulator's onData closure, created first, reads it
   let terminal: Bun.Terminal | undefined;
 
   const emulator = new EmbeddedTerminalRenderable(setup.renderer, {
@@ -373,7 +375,7 @@ async function openTerm(launch: Launch): Promise<Term> {
         timeoutMs,
         "a frame",
       ),
-    async quiet(ms, limitMs = 3_000) {
+    async quiet(ms, limitMs = 3000) {
       const limit = performance.now() + limitMs;
 
       for (;;) {
@@ -388,8 +390,9 @@ async function openTerm(launch: Launch): Promise<Term> {
       const deadline = performance.now() + timeoutMs;
 
       while (!(await screen()).includes(text)) {
-        if (performance.now() > deadline)
+        if (performance.now() > deadline) {
           throw new Error(`Timed out waiting for "${text}". Screen:\n${await screen()}`);
+        }
         await Bun.sleep(10);
       }
     },
@@ -408,18 +411,19 @@ async function openTerm(launch: Launch): Promise<Term> {
 async function readProbe(term: Term, path: string | null): Promise<number[][] | null> {
   if (path === null) return null;
   process.kill(term.pid, "SIGUSR2");
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!existsSync(path)) {
     if (performance.now() > deadline) throw new Error("The probe never wrote its samples.");
     await Bun.sleep(20);
   }
 
-  await term.exited(5_000);
+  await term.exited(5000);
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
 
-  if (typeof parsed !== "object" || parsed === null || !("samples" in parsed))
+  if (typeof parsed !== "object" || parsed === null || !("samples" in parsed)) {
     throw new Error("The probe wrote no samples.");
+  }
   const samples: unknown = parsed.samples;
 
   if (!Array.isArray(samples)) throw new Error("The probe's samples are not a list.");

@@ -17,7 +17,7 @@ export interface CiDesktopHome extends AsyncDisposable {
 export async function ciDesktopHome(parent: string, route: CiRoute): Promise<CiDesktopHome> {
   const repo = await pushedCiRepo(parent);
   const home = await ciHome({ route, root: parent });
-  const profile = `export PATH='${repo.path.replaceAll("'", "'\\''")}'\n`;
+  const profile = `export PATH='${repo.path.replaceAll("'", String.raw`'\''`)}'\n`;
   await writeFile(join(home.home, ".zshrc"), profile);
   await writeFile(join(home.home, ".profile"), profile);
   dev.off();

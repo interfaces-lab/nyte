@@ -258,10 +258,11 @@ installScripted(
       sends.push({
         end: (ending: SendEnding) => {
           if (ending === "refused") delivered.reject(REFUSED);
-          else
+          else {
             delivered.resolve(
               ending === "unsent" ? { kind: ending, reason: null } : { kind: ending },
             );
+          }
         },
       });
 
@@ -425,7 +426,7 @@ async function probeStage(
     "the editor",
   );
 
-  if (state.view !== undefined)
+  if (state.view !== undefined) {
     await until(
       () =>
         layer === "composer" ||
@@ -434,6 +435,7 @@ async function probeStage(
           : null,
       "the transcript",
     );
+  }
 
   const leave = (away: boolean): void => {
     if (layer === "composer") draw(!away);
@@ -474,13 +476,15 @@ function layoutFailures(stage: HTMLElement, region: HTMLElement): string[] {
   ]) {
     const box = element.getBoundingClientRect();
 
-    if (box.left < bounds.left - 0.5 || box.right > bounds.right + 0.5)
+    if (box.left < bounds.left - 0.5 || box.right > bounds.right + 0.5) {
       failures.push(
         `${element.tagName.toLowerCase()} spills ${(box.right - bounds.right).toFixed(1)}px past the stage`,
       );
+    }
 
-    if (box.top < bounds.top - 0.5)
+    if (box.top < bounds.top - 0.5) {
       failures.push(`${element.tagName.toLowerCase()} rises above the stage`);
+    }
   }
 
   return failures;
@@ -492,8 +496,8 @@ export async function run(): Promise<string> {
   document.body.append(host);
 
   try {
-    for (const state of STATES)
-      for (const layer of LAYERS)
+    for (const state of STATES) {
+      for (const layer of LAYERS) {
         for (const width of WIDTH_NAMES) {
           queryClient.clear();
           seedQueries();
@@ -505,13 +509,16 @@ export async function run(): Promise<string> {
             for (const failure of [
               ...layoutFailures(stage, probe.region),
               ...(await state.check(probe)),
-            ])
+            ]) {
               failures.push(`${label}: ${failure}`);
+            }
             flushSync(() => root.unmount());
           } catch (error) {
             failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
+      }
+    }
 
     return failures.length === 0 ? "passed" : failures.join("\n");
   } finally {
@@ -640,17 +647,18 @@ export function studio(): void {
     if (
       event.target instanceof HTMLElement &&
       event.target.closest("form, [contenteditable='true']") !== null
-    )
+    ) {
       return;
+    }
     const digit = Number(event.key);
     const count = STATES.length;
 
     if (Number.isInteger(digit) && digit >= 1 && digit <= count) select({ state: digit - 1 });
     else if (event.key === "ArrowRight") select({ state: (selection.state + 1) % count });
     else if (event.key === "ArrowLeft") select({ state: (selection.state - 1 + count) % count });
-    else if (event.key === "l")
+    else if (event.key === "l") {
       select({ layer: selection.layer === "composer" ? "session" : "composer" });
-    else if (event.key === "w") select({ width: selection.width === "wide" ? "narrow" : "wide" });
+    } else if (event.key === "w") select({ width: selection.width === "wide" ? "narrow" : "wide" });
   });
   select({});
 }

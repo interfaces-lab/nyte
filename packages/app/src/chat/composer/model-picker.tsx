@@ -365,10 +365,11 @@ function Empty({
 
   if (unknown) return <EmptyText title="No models available" />;
 
-  if (connected)
+  if (connected) {
     return (
       <EmptyText title="Every model is hidden">Enable models in Settings › Providers.</EmptyText>
     );
+  }
 
   return (
     <EmptyText title="No providers connected">

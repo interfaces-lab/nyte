@@ -6,7 +6,7 @@ import { loadGhostty } from "../../workbench/terminal/ghostty.ts";
 import { openTerminalSurface } from "../../workbench/terminal/terminal-surface.ts";
 import { terminalShell } from "../terminal.tsx";
 
-const LISTING = "README.md  package.json  \u001b[1;34msrc\u001b[0m";
+const LISTING = "README.md  package.json  \u001B[1;34msrc\u001B[0m";
 
 const encoder = new TextEncoder();
 

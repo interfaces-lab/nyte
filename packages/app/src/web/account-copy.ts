@@ -13,8 +13,9 @@ export class AcceptanceError extends Error {
 export function accountProblem(cause: unknown): string {
   if (cause instanceof AcceptanceError) return cause.message;
 
-  if (!(cause instanceof BrokerError))
+  if (!(cause instanceof BrokerError)) {
     return "Couldn't connect. Check your connection and try again.";
+  }
   const failure = cause.failure;
 
   switch (failure.kind) {

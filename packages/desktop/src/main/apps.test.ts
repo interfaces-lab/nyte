@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { DesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 import { windowsAppDetails } from "./apps.ts";
 
-const EXECUTABLE = "C:\\Program Files\\Nyte\\Nyte.exe";
+const EXECUTABLE = String.raw`C:\Program Files\Nyte\Nyte.exe`;
 
 test.each<{ readonly app: DesktopApp; readonly appId: string }>([
   { app: "nyte", appId: "ai.nyte.desktop" },

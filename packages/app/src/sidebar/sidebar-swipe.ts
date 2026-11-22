@@ -1,5 +1,6 @@
 import { createTheme } from "@stylexjs/stylex";
-import { useEffectEvent, useRef, useState, type RefObject } from "react";
+import { useEffectEvent, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { flushSync } from "react-dom";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { sidebarMotion } from "../theme/tokens.stylex.ts";

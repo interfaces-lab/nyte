@@ -43,7 +43,7 @@ async function descendants(): Promise<readonly string[]> {
   for (let grown = true; grown;) {
     grown = false;
 
-    for (const row of rows)
+    for (const row of rows) {
       if (
         tree.has(row.ppid) &&
         !tree.has(row.pid) &&
@@ -53,6 +53,7 @@ async function descendants(): Promise<readonly string[]> {
         tree.add(row.pid);
         grown = true;
       }
+    }
   }
 
   return rows.flatMap((row) => (row.pid !== process.pid && tree.has(row.pid) ? [row.command] : []));

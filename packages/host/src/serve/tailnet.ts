@@ -34,7 +34,7 @@ const DEFAULT_SETTINGS: TailnetSettings = {
   access: "owner",
 };
 
-const FIRST_RESTART_MS = 1_000;
+const FIRST_RESTART_MS = 1000;
 
 const LAST_RESTART_MS = 30_000;
 
@@ -73,7 +73,10 @@ const principalCheck = compile(
   }),
 );
 
-type Ending = { readonly status: TailnetStatus; readonly restart: boolean };
+interface Ending {
+  readonly status: TailnetStatus;
+  readonly restart: boolean;
+}
 
 export async function openTailnet(options: {
   readonly host: ServedHost;
@@ -284,8 +287,9 @@ export async function openTailnet(options: {
 
       if (status.state === "running") failures = 0;
 
-      if (status.state === "stopped" && status.reason !== undefined)
+      if (status.state === "stopped" && status.reason !== undefined) {
         ending = { status: { ...status, https: "unavailable" }, restart: true };
+      }
       publish(status);
     });
 
@@ -377,8 +381,9 @@ export async function openTailnet(options: {
 
     configure: (input) =>
       changes.run(async () => {
-        if (input.access === "owner" && input.tags.length > 0)
+        if (input.access === "owner" && input.tags.length > 0) {
           throw new SdkError("invalid", "A tagged node has no owner, so tags need access tailnet.");
+        }
 
         await save({
           enabled: input.enabled,
@@ -398,11 +403,12 @@ export async function openTailnet(options: {
         await save({ ...settings, enabled: false });
         await apply(undefined);
 
-        if (!signedOut)
+        if (!signedOut) {
           throw new SdkError(
             "unavailable",
             "The tailnet node is off but couldn't sign out. Try again.",
           );
+        }
 
         return current;
       }),
@@ -494,8 +500,9 @@ async function appendLog(path: string, line: string): Promise<void> {
 }
 
 function terminate(running: ChildProcess): Promise<void> {
-  if (running.pid === undefined || running.exitCode !== null || running.signalCode !== null)
+  if (running.pid === undefined || running.exitCode !== null || running.signalCode !== null) {
     return Promise.resolve();
+  }
 
   return new Promise<void>((done) => {
     const timer = setTimeout(() => running.kill("SIGKILL"), STOP_GRACE_MS);

@@ -89,8 +89,9 @@ function tailnetDetail(node: TailnetNode): string {
     case "running": {
       const name = tailnetName(node) ?? "this Mac";
 
-      if (node.https !== "available")
+      if (node.https !== "available") {
         return `Running as ${name}. Turn on HTTPS certificates in the Tailscale admin console to pair devices.`;
+      }
 
       return node.loginName === undefined
         ? `On your tailnet as ${name.split(".")[0] ?? name}`

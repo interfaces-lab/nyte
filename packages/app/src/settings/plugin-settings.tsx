@@ -60,10 +60,11 @@ export function PluginSetting({
 }): ReactElement {
   const choices = setting.choices ?? [];
 
-  if (choices.length === 0 && setting.secret === true)
+  if (choices.length === 0 && setting.secret === true) {
     return <SecretField setting={setting} disabled={disabled} onApply={onApply} />;
+  }
 
-  if (choices.length === 0 && typeof setting.value === "boolean")
+  if (choices.length === 0 && typeof setting.value === "boolean") {
     return (
       <Switch
         label={setting.title}
@@ -72,15 +73,18 @@ export function PluginSetting({
         onCheckedChange={(checked) => onApply(checked)}
       />
     );
+  }
 
-  if (choices.length === 0 && setting.schema.type === "string")
+  if (choices.length === 0 && setting.schema.type === "string") {
     return <TextField setting={setting} disabled={disabled} onApply={onApply} />;
+  }
 
   if (
     choices.length === 0 &&
     (setting.schema.type === "number" || setting.schema.type === "integer")
-  )
+  ) {
     return <NumberField setting={setting} disabled={disabled} onApply={onApply} />;
+  }
 
   const note = choices.find((choice) => choiceKey(choice.value) === choiceKey(setting.value))?.note;
 

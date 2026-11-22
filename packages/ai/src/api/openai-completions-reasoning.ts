@@ -1,4 +1,5 @@
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
 const reasoningDetailFields = {

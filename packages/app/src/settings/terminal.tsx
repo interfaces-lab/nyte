@@ -33,9 +33,9 @@ export function TerminalSettings(): ReactElement {
         setting={preferences.terminalScrollback}
         title="Scrollback"
         description="Lines each terminal keeps"
-        min={1_000}
+        min={1000}
         max={100_000}
-        step={1_000}
+        step={1000}
       />
       <SelectRow
         setting={preferences.terminalCursorStyle}

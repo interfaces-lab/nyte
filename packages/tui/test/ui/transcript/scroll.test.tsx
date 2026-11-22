@@ -19,13 +19,14 @@ function conversation(turns: number) {
   return buildView((v) => {
     let built = v;
 
-    for (let index = 1; index <= turns; index += 1)
+    for (let index = 1; index <= turns; index += 1) {
       built = built.turn(`t${String(index)}`, (t) =>
         t
           .user(`question ${String(index)}`)
           .text(`answer ${String(index)}`)
           .ended("completed"),
       );
+    }
 
     return built;
   });

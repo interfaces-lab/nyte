@@ -694,7 +694,7 @@ describe("turn", () => {
           { type: "toolCall", id: "b", name: "echo", arguments: { text: "cut" } },
         ],
         stopReason: "length",
-        usage: { output: 4_096 },
+        usage: { output: 4096 },
       },
       { content: [{ type: "text", text: "Re-issued." }] },
     );
@@ -709,11 +709,12 @@ describe("turn", () => {
 
     expect(outcomes).toHaveLength(2);
 
-    for (const outcome of outcomes)
+    for (const outcome of outcomes) {
       expect(outcome).toMatchObject({
         kind: "failed",
         message: expect.stringContaining("output token limit"),
       });
+    }
     expect(sent(fake, 1).filter((line) => line.startsWith("result:echo"))).toEqual([]);
   });
 
@@ -734,7 +735,7 @@ describe("turn", () => {
     const receipt = first;
 
     await until(() => (logged.some((event) => label(event) === "run:retrying") ? true : undefined));
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(2000);
     const end = await receipt.settled();
 
     expect(end.kind).toBe("completed");
@@ -742,7 +743,7 @@ describe("turn", () => {
 
     assert(retrying?.kind === "run" && retrying.change === "retrying");
     expect(retrying).toMatchObject({ attempt: 2, reason: "503 Service Unavailable" });
-    expect(retrying.until).toBeGreaterThan(Date.now() - 5_000);
+    expect(retrying.until).toBeGreaterThan(Date.now() - 5000);
 
     const view = await session.view();
     const run = landedRun(view.messages);
@@ -792,7 +793,7 @@ describe("turn", () => {
       { id: `${run}:a1:1`, status: { kind: "failed", failure: { class: "overloaded" } } },
     ]);
 
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(2000);
 
     expect((await receipt.settled()).kind).toBe("completed");
 

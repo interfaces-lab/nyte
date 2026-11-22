@@ -125,7 +125,7 @@ function sharedChat(
         const freshness = snapshot.freshness;
         const stopping = snapshot.stopping;
 
-        if (view !== null)
+        if (view !== null) {
           return previous !== undefined &&
             "view" in previous &&
             previous.view === view &&
@@ -133,6 +133,7 @@ function sharedChat(
             previous.stopping === stopping
             ? previous
             : { view, freshness, stopping };
+        }
         const error = freshness.kind === "stale" ? freshness.error : null;
 
         if (error === null) return undefined;

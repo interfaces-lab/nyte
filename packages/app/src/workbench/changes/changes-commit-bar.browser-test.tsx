@@ -58,7 +58,7 @@ const frame = (): Promise<void> =>
   });
 
 async function until(done: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!done()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
@@ -322,8 +322,7 @@ export async function run(): Promise<string> {
   const section = document.querySelector<HTMLElement>('section[aria-label="Pull request"]');
   check(section !== null, "the branch's pull request shows");
   check(
-    section.textContent?.includes("#12 Fix tab close") === true &&
-      section.textContent.includes("Open"),
+    section.textContent?.includes("#12 Fix tab close") && section.textContent.includes("Open"),
     `it names the pull request and its state: ${section.textContent ?? ""}`,
   );
 

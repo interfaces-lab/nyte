@@ -37,8 +37,9 @@ export function useHostEvents(): void {
         case "host_process_changed":
           queryClient.setQueryData(keys.hostProcess, event.state);
 
-          if (event.state.kind === "current" || event.state.kind === "stale")
+          if (event.state.kind === "current" || event.state.kind === "stale") {
             currentConnection()?.retry();
+          }
 
           return;
         case "server_changed":

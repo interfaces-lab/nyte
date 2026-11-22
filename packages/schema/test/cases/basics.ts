@@ -201,7 +201,7 @@ export const basicCases = {
       state: {
         kind: "ready",
         limits: [{ label: "5h", used: 25, limit: 100, resetsAt: null }],
-        observedAt: 1_000,
+        observedAt: 1000,
         stale: false,
         error: null,
       },

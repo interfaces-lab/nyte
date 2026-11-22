@@ -32,18 +32,15 @@ import { runAssistantStream } from "./assistant-stream.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
-import {
-  convertResponsesMessages,
-  convertResponsesTools,
-  type ResponsesInput,
-  type ResponsesTool,
-} from "./openai-responses-convert.ts";
+import { convertResponsesMessages, convertResponsesTools } from "./openai-responses-convert.ts";
+import type { ResponsesInput, ResponsesTool } from "./openai-responses-convert.ts";
 import {
   DAYBREAK_ACCESS_PROGRAM,
   processResponsesStream,
   withPriorityTier,
 } from "./openai-responses-stream.ts";
-import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
+import { readOpenAICompactResponse } from "./openai-compact.ts";
+import type { OpenAICompactResult } from "./openai-compact.ts";
 import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);

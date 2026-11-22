@@ -86,8 +86,9 @@ export function build(
     reload: () => input.reload(),
     session: input.handle,
     get env() {
-      if (env.env === null)
+      if (env.env === null) {
         throw new SdkError("unavailable", `Session ${session} has no environment attached.`);
+      }
 
       return env.env;
     },
@@ -101,8 +102,9 @@ export function build(
       };
     },
     get project() {
-      if (inputs === null)
+      if (inputs === null) {
         throw new SdkError("unavailable", `Session ${session} has no resources scanned.`);
+      }
 
       return inputs;
     },

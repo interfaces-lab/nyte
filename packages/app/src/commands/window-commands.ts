@@ -54,19 +54,20 @@ function toggleTerminal(): void {
 
   const terminal = view.tabs.find((tab) => tab.kind === "terminal" && tab.owner.kind === "user");
 
-  if (view.expanded && !workbenchShowsChat(view.layout) && active?.kind === "terminal")
+  if (view.expanded && !workbenchShowsChat(view.layout) && active?.kind === "terminal") {
     workbench.dispatch(viewKey, { kind: "toggle" });
-  else if (terminal !== undefined)
+  } else if (terminal !== undefined) {
     workbench.dispatch(viewKey, { kind: "activate", id: terminal.id });
-  else launch(viewKey, "terminal");
+  } else launch(viewKey, "terminal");
 }
 
 function toggleMarkdownSource(): boolean {
   if (
     keyOwner() !== undefined &&
     !focusWithin('[data-editor-panel] :is([data-slot="markdown-column"], diffs-container)')
-  )
+  ) {
     return false;
+  }
   const viewKey = workbenchViewKey(currentWorkspacePath());
   const view = workbench.getView(viewKey);
 
@@ -79,19 +80,19 @@ function toggleMarkdownSource(): boolean {
     file === undefined ||
     !opensAsMarkdown(file.path) ||
     queryClient.getQueryData<Document>(keys.document(file.path))?.kind !== "text"
-  )
+  ) {
     return false;
+  }
   fileActions.toggleSource(viewKey, file.path);
 
   return true;
 }
 
-export function openWindowInEditor(open: DesktopWindowOpen): void {
+export function openWindowInEditor(open: Extract<DesktopWindowOpen, { kind: "file" }>): void {
   if (open.workspace !== undefined) commitHostWorkspace(open.workspace);
   const view = workbenchViewKey(open.workspace?.path);
 
-  if (open.kind === "file") fileActions.open(view, { path: open.path });
-  else launch(view, "editor");
+  fileActions.open(view, { path: open.path });
   workbench.dispatch(view, { kind: "maximize" });
 }
 
@@ -214,8 +215,9 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
 }
 
 function read<T extends TSchema>(action: AppAction, schema: T, input: Json): Static<T> {
-  if (!Value.Check(schema, input))
+  if (!Value.Check(schema, input)) {
     throw new SdkError("invalid", `That is not the input ${action} takes.`);
+  }
 
   return input;
 }
@@ -224,11 +226,12 @@ function openSettings(router: RegisteredRouter, page: string | undefined): boole
   const open = settingsOpen(router);
 
   if (page === undefined) {
-    if (!open)
+    if (!open) {
       void router.navigate({
         to: "/settings/$section",
         params: { section: firstSettingsSection() },
       });
+    }
 
     return true;
   }

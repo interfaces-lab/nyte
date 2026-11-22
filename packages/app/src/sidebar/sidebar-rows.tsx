@@ -431,14 +431,14 @@ export function NeighbourWarm({
       });
     };
 
-    if (opened.value === undefined)
+    if (opened.value === undefined) {
       leave = opened.subscribe(() => {
         if (opened.value === undefined) return;
         leave?.();
         leave = undefined;
         afterPaint();
       });
-    else afterPaint();
+    } else afterPaint();
 
     return () => {
       leave?.();

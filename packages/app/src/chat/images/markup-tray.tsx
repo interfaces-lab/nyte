@@ -86,7 +86,7 @@ export function Tray(input: {
 }
 
 function Instrument(input: { readonly tool: Pen; readonly ink: Ink | undefined }): ReactElement {
-  if (input.tool === "eraser" || input.ink === undefined)
+  if (input.tool === "eraser" || input.ink === undefined) {
     return (
       <g>
         <rect x={8} y={12} width={18} height={30} rx={5} fill={RUBBER} />
@@ -94,8 +94,9 @@ function Instrument(input: { readonly tool: Pen; readonly ink: Ink | undefined }
         <rect x={7.5} y={46} width={19} height={3} {...props(styles.grip)} />
       </g>
     );
+  }
 
-  if (input.tool === "highlight")
+  if (input.tool === "highlight") {
     return (
       <g>
         <path
@@ -111,6 +112,7 @@ function Instrument(input: { readonly tool: Pen; readonly ink: Ink | undefined }
         <rect x={14.5} y={50} width={6} height={30} rx={3} fill={highlighterColor(input.ink)} />
       </g>
     );
+  }
 
   return (
     <g>

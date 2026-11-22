@@ -178,13 +178,14 @@ export function ToolCard({
     </>
   );
 
-  if (children === undefined)
+  if (children === undefined) {
     return (
       <div role="group" aria-label={label} {...props(toolCardStyles.card, hairline.ring)}>
         <div {...props(toolCardStyles.header, toolCardStyles.still)}>{header}</div>
         {preview}
       </div>
     );
+  }
 
   return (
     <Collapsible.Root onOpenChange={onOpenChange}>

@@ -8,20 +8,20 @@ import { GlassButton } from "../ui/glass-button.tsx";
 import type { OpenQuestion } from "../view-helpers.ts";
 import { controls, useTheme, radii, spacing, textStyles, tokens, typography } from "../theme.ts";
 
-type WaitingSelectionProps = {
+interface WaitingSelectionProps {
   question: OpenQuestion;
   origin?: string;
   onReply: (answers: QuestionAnswers) => Promise<ActOutcome<unknown> | undefined>;
-};
+}
 
 type AnswerState =
   | { kind: "editing" | "sending" | "sent" | "closed" }
   | { kind: "failed"; message: string };
 
-type QuestionDraft = {
+interface QuestionDraft {
   choices: QuestionAnswers[number];
   custom: string;
-};
+}
 
 export function WaitingSelection({
   question,

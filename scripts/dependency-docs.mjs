@@ -146,8 +146,9 @@ export async function discoverDependencyDocs(packageName, workspaceDirectory) {
   if (!packageRoot) throw new Error("Package not found from the specified workspace.");
   const manifestPath = await containedPath(packageRoot, "package.json");
 
-  if (!manifestPath?.info.isFile())
+  if (!manifestPath?.info.isFile()) {
     throw new Error("Package manifest is missing or is not a file.");
+  }
   const manifest = parseManifest(await readFile(manifestPath.path, "utf8"));
 
   const documents = [];
@@ -251,7 +252,7 @@ if (import.meta.main) {
     if (args.length === 1 && args[0] === "--help") {
       process.stdout.write(help);
     } else {
-      const workspaceIndex = args.findIndex((arg) => arg === "--workspace");
+      const workspaceIndex = args.indexOf("--workspace");
 
       if (args.length !== 3 || (workspaceIndex !== 0 && workspaceIndex !== 1)) {
         throw new Error("Use --workspace <directory> <package>. See --help.");

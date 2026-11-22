@@ -23,7 +23,7 @@ interface Cell {
 }
 
 function hash(x: number, y: number) {
-  const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  const n = Math.sin(x * 127.1 + y * 311.7) * 43_758.5453;
   return n - Math.floor(n);
 }
 
@@ -56,7 +56,7 @@ function layout(width: number, height: number, cellWidth: number): Cell[][] {
         const fade = wide
           ? smoothstep(width * 0.2, width * 0.62, x) * (1 - smoothstep(height * 0.82, height, y))
           : 1 - smoothstep(height * 0.4, height * 0.6, y);
-        const rim = Math.max(0, 1 - (Math.sqrt(nx * nx + ny * ny) - 1) * 3);
+        const rim = Math.max(0, 1 - (Math.hypot(nx, ny) - 1) * 3);
         const alpha = (0.07 + hash(col, row) * 0.09 + rim * 0.12) * fade;
         if (alpha > 0.01) line.push({ x, y, level: 1, alpha });
         continue;
@@ -138,8 +138,9 @@ export function AsciiField({ className }: { className?: string }) {
     const resize = (force = false) => {
       const bounds = host.getBoundingClientRect();
       const nextRatio = Math.min(window.devicePixelRatio || 1, 2);
-      if (!force && width === bounds.width && height === bounds.height && ratio === nextRatio)
+      if (!force && width === bounds.width && height === bounds.height && ratio === nextRatio) {
         return;
+      }
       width = bounds.width;
       height = bounds.height;
       ratio = nextRatio;

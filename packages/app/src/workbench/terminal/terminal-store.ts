@@ -88,7 +88,7 @@ interface TerminalSnapshot {
 
 const KEPT_OUTPUT = 64 * 1024;
 
-const SAVE_DELAY_MS = 2_000;
+const SAVE_DELAY_MS = 2000;
 
 const SAVED_PREFIX = "nyte.terminal.";
 
@@ -100,9 +100,9 @@ const savedShell = Type.Object({
 
 const encoder = new TextEncoder();
 
-const GAP_TEXT = "\r\n\u001b[2m[output skipped]\u001b[0m\r\n";
+const GAP_TEXT = "\r\n\u001B[2m[output skipped]\u001B[0m\r\n";
 
-const GAP = encoder.encode("\u0018" + GAP_TEXT);
+const GAP = encoder.encode(`\u0018${GAP_TEXT}`);
 
 let snapshot: TerminalSnapshot = { tabs: new Map() };
 
@@ -183,8 +183,9 @@ function keep(feed: Feed, data: string): void {
   feed.printed.push(data);
   feed.length += data.length;
 
-  while (feed.printed.length > 1 && feed.length - (feed.printed[0]?.length ?? 0) >= KEPT_OUTPUT)
+  while (feed.printed.length > 1 && feed.length - (feed.printed[0]?.length ?? 0) >= KEPT_OUTPUT) {
     feed.length -= feed.printed.shift()?.length ?? 0;
+  }
 }
 
 export function attachTerminalOutput(id: WorkbenchTabId, sink: TerminalOutput): void {
@@ -281,8 +282,9 @@ function resume(id: WorkbenchTabId): void {
 }
 
 onLinkReopened(() => {
-  for (const tab of snapshot.tabs.values())
+  for (const tab of snapshot.tabs.values()) {
     if (tab.kind === "shell" && tab.state.kind === "lost") resume(tab.id);
+  }
 });
 
 function postNotices(id: WorkbenchTabId, notices: readonly OscNotice[]): void {
@@ -292,11 +294,12 @@ function postNotices(id: WorkbenchTabId, notices: readonly OscNotice[]): void {
   if (attention === undefined) return;
   const title = getTerminal(id)?.title ?? "Terminal";
 
-  for (const notice of notices)
+  for (const notice of notices) {
     attention.notify({
       title: (notice.title ?? title).slice(0, TERMINAL_NOTICE_LIMITS.title),
       body: notice.body.slice(0, TERMINAL_NOTICE_LIMITS.body),
     });
+  }
 }
 
 function savedOutput(id: WorkbenchTabId) {
@@ -330,10 +333,11 @@ function forgetSaved(id: WorkbenchTabId): void {
   savedOutput(id).remove();
 }
 
-if (globalThis.window !== undefined)
+if (globalThis.window !== undefined) {
   window.addEventListener("pagehide", () => {
     for (const id of feeds.keys()) if (shellTab(id) !== undefined) save(id);
   });
+}
 
 async function readHostView(connection: Connection): Promise<HostView> {
   for await (const view of connection.watch()) return view;
@@ -407,7 +411,7 @@ function writeFailed(id: WorkbenchTabId, cause: unknown): void {
   toast.add({
     type: "error",
     title: "Couldn't write to terminal",
-    id: "terminal-write-" + id,
+    id: `terminal-write-${id}`,
     description: errorMessage(cause),
   });
 }
@@ -446,7 +450,7 @@ function startShell(
     output.get(id)?.reset();
 
     if (reattached === null && printed !== "") {
-      const restored = `${printed}\r\n\u001b[2m[restored, new shell]\u001b[0m\r\n`;
+      const restored = `${printed}\r\n\u001B[2m[restored, new shell]\u001B[0m\r\n`;
       print(id, encoder.encode(restored), restored);
     }
 
@@ -455,7 +459,7 @@ function startShell(
     const ahead = typedAhead.get(id) ?? [];
     typedAhead.delete(id);
 
-    if (ahead.length > 0)
+    if (ahead.length > 0) {
       flushing.set(
         id,
         feed.job
@@ -463,6 +467,7 @@ function startShell(
           .catch((cause: unknown) => writeFailed(id, cause))
           .finally(() => flushing.delete(id)),
       );
+    }
     save(id);
   })()
     .catch((cause: unknown) => {
@@ -544,8 +549,9 @@ function syncJobs(workspace: WorkspaceId, jobs: readonly JobView[]): void {
       tab.title === job.command &&
       tab.state.kind === job.state.kind &&
       tab.session === job.session
-    )
+    ) {
       continue;
+    }
 
     changed = true;
 
@@ -593,8 +599,9 @@ function followJob(tab: JobTerminalTab): void {
       void follow(id, feed);
     })
     .catch((cause: unknown) => {
-      if (creating.get(id) === pending)
+      if (creating.get(id) === pending) {
         updateStream(id, { kind: "failed", message: errorMessage(cause) });
+      }
     })
     .finally(() => {
       if (creating.get(id) === pending) creating.delete(id);
@@ -633,10 +640,11 @@ export const terminalActions = {
   }): Promise<void> {
     const pending = creating.get(id);
 
-    if (pending !== undefined)
+    if (pending !== undefined) {
       return pending.then(() =>
         snapshot.tabs.has(id) ? undefined : terminalActions.restore({ id, workspacePath }),
       );
+    }
 
     if (snapshot.tabs.has(id)) return Promise.resolve();
     const saved = savedOutput(id).get();
@@ -698,8 +706,9 @@ export const terminalActions = {
       return Promise.resolve();
     }
 
-    if (tab === undefined || tab.kind !== "shell" || tab.state.kind !== "running" || !feed)
+    if (tab === undefined || tab.kind !== "shell" || tab.state.kind !== "running" || !feed) {
       return Promise.resolve();
+    }
 
     const ahead = flushing.get(id);
 

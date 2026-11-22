@@ -18,8 +18,8 @@ const model = {
   reasoning: true,
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 200000,
-  maxTokens: 32000,
+  contextWindow: 200_000,
+  maxTokens: 32_000,
   compat: { forceAdaptiveThinking: true },
 } satisfies Model<"anthropic-messages">;
 

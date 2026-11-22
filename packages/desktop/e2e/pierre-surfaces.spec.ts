@@ -34,7 +34,7 @@ const XTOOLS = process.env["NYTE_PIERRE_XTOOLS"] ?? join(ROOT, "xtools");
 
 const REPOSITORY = resolve(import.meta.dirname, "../../..");
 
-const SETTLE_MS = 6_000;
+const SETTLE_MS = 6000;
 
 const CHAT_TURNS = 30;
 
@@ -187,7 +187,7 @@ function scriptFor(plans: ReadonlyMap<string, readonly Edit[]>): (request: Reque
 
     if (edits === undefined) return { content: [{ type: "text", text: `Echo: ${text}` }] };
 
-    if (request.context.messages.at(-1)?.role === "toolResult")
+    if (request.context.messages.at(-1)?.role === "toolResult") {
       return {
         content: [
           {
@@ -199,6 +199,7 @@ function scriptFor(plans: ReadonlyMap<string, readonly Edit[]>): (request: Reque
           },
         ],
       };
+    }
 
     return { content: edits.map(toolBlock), stopReason: "toolUse" };
   };
@@ -280,8 +281,9 @@ async function seedHome(parent: string): Promise<void> {
     for (const chat of chats) {
       const added = await host.workspaces.add({ kind: "local", path: join(home, chat[1]) });
 
-      if (added.kind !== "added" && added.kind !== "exists")
+      if (added.kind !== "added" && added.kind !== "exists") {
         throw new Error(`The ${chat[1]} workspace was not added: ${added.kind}`);
+      }
       const prompts = chat[2];
       const first = prompts[0] ?? "";
 
@@ -293,8 +295,9 @@ async function seedHome(parent: string): Promise<void> {
 
       await settle(chat[0], started.receipt);
 
-      for (const prompt of prompts.slice(1))
+      for (const prompt of prompts.slice(1)) {
         await settle(chat[0], await started.session.send(prompt));
+      }
     }
   } finally {
     await host.close();
@@ -358,8 +361,9 @@ async function adoptProjects(home: string): Promise<void> {
     ] as const) {
       const added = await host.workspaces.add({ kind: "local", path: join(home, folder) });
 
-      if (added.kind !== "added" && added.kind !== "exists")
+      if (added.kind !== "added" && added.kind !== "exists") {
         throw new Error(`The ${folder} workspace was not added: ${added.kind}`);
+      }
       const session = listed.items.find((item) => item.name === name);
 
       if (session === undefined) throw new Error(`${name} isn't seeded`);
@@ -381,9 +385,9 @@ async function memory(application: ElectronApplication, session: CDPSession, pid
   const raw = await megabytes(pid);
 
   await session.send("HeapProfiler.collectGarbage");
-  await new Promise((done) => setTimeout(done, 1_000));
+  await new Promise((done) => setTimeout(done, 1000));
   await session.send("HeapProfiler.collectGarbage");
-  await new Promise((done) => setTimeout(done, 2_000));
+  await new Promise((done) => setTimeout(done, 2000));
   const heap = await session.send("Runtime.getHeapUsage");
   const afterGc = await megabytes(pid);
 
@@ -607,7 +611,7 @@ async function capture(
   for (const theme of ["light", "dark"] as const) {
     await setTheme(desktop, theme);
     await target();
-    await desktop.page.waitForTimeout(1_200);
+    await desktop.page.waitForTimeout(1200);
     const box = await desktop.page.locator(region).first().boundingBox();
 
     if (box === null) throw new Error(`${region} has no box to capture`);
@@ -655,7 +659,7 @@ async function setPreference(page: Page, field: string, value: string): Promise<
   );
 }
 
-async function report<T extends object>(name: string, body: T): Promise<void> {
+async function report(name: string, body: object): Promise<void> {
   await mkdir(OUT ?? ROOT, { recursive: true });
   await writeFile(join(OUT ?? ROOT, `${LABEL}-${name}.json`), JSON.stringify(body, null, 2));
   process.stdout.write(`pierre-surface ${name}: ${JSON.stringify(body)}\n`);
@@ -728,7 +732,7 @@ test("chat: 30 tool-call diffs and code blocks, top to bottom", async ({}, testI
     const scrollLong = await watchLongTasks(page);
 
     const scroll = await profiled(window.session, "chat-scroll", () =>
-      wheelThrough(page, scroller, 120, 1_500),
+      wheelThrough(page, scroller, 120, 1500),
     );
 
     const scrollTasks = await scrollLong();
@@ -768,7 +772,7 @@ test("chat: 30 tool-call diffs and code blocks, top to bottom", async ({}, testI
 for (const review of [
   { name: "changes40", chat: CHATS.forty, files: 40 },
   { name: "review6", chat: CHATS.six, files: 6 },
-] as const)
+] as const) {
   // oxlint-disable-next-line eslint/no-empty-pattern -- Playwright reads a test's fixtures from this pattern, and the bench launches its own app
   test(`changes: ${review.name}`, async ({}, testInfo) => {
     test.skip(!scenario(review.name));
@@ -833,7 +837,7 @@ for (const review of [
       const scrollLong = await watchLongTasks(page);
 
       const scroll = await profiled(window.session, `${review.name}-scroll`, () =>
-        wheelThrough(page, scroller, 120, 2_000),
+        wheelThrough(page, scroller, 120, 2000),
       );
 
       const scrollTasks = await scrollLong();
@@ -866,6 +870,7 @@ for (const review of [
       await launched.close();
     }
   });
+}
 
 // oxlint-disable-next-line eslint/no-empty-pattern -- Playwright reads a test's fixtures from this pattern, and the bench launches its own app
 test("explorer: golang.org/x/tools", async ({}, testInfo) => {
@@ -887,7 +892,7 @@ test("explorer: golang.org/x/tools", async ({}, testInfo) => {
       .getByRole("group", { name: "Apps" })
       .getByRole("button", { name: "Code", exact: true })
       .click();
-    await launched.page.waitForTimeout(2_000);
+    await launched.page.waitForTimeout(2000);
     const code = application.windows().at(-1) ?? launched.page;
     const problems = collectErrors(code);
     await code.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
@@ -970,7 +975,7 @@ test("explorer: golang.org/x/tools", async ({}, testInfo) => {
     });
     expect(problems.pageErrors).toEqual([]);
   } catch (cause) {
-    for (const page of application.windows())
+    for (const page of application.windows()) {
       process.stdout.write(
         `debug window:\n${(
           await page
@@ -979,12 +984,14 @@ test("explorer: golang.org/x/tools", async ({}, testInfo) => {
             .catch(() => "")
         ).slice(0, 5000)}\n`,
       );
+    }
 
-    for (const [index, page] of application.windows().entries())
+    for (const [index, page] of application.windows().entries()) {
       await captureWindow(
         { application, page },
         testInfo.outputPath(`explorer-failed-${String(index)}.png`),
       ).catch(() => undefined);
+    }
     throw cause;
   } finally {
     await launched.close();

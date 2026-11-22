@@ -109,8 +109,9 @@ export class SessionConfigurator {
   }
 
   observeSelected(selected: RunChoice): void {
-    if (this.acknowledgedChoice === undefined || !sameChoice(this.acknowledgedChoice, selected))
+    if (this.acknowledgedChoice === undefined || !sameChoice(this.acknowledgedChoice, selected)) {
       return;
+    }
     this.acknowledgedChoice = undefined;
     this.reconcile();
   }
@@ -247,7 +248,7 @@ export class SessionConfigurator {
       release: () => {
         if (slot.released) return;
         slot.released = true;
-        const index = this.queue.findIndex((queued) => queued === slot);
+        const index = this.queue.indexOf(slot);
 
         if (index !== -1) this.queue.splice(index, 1);
 
@@ -268,8 +269,9 @@ export class SessionConfigurator {
     const previous = this.selected;
     this.selectedChoice = undefined;
 
-    if (!this.disposed && !sameChoice(previous, this.selected))
+    if (!this.disposed && !sameChoice(previous, this.selected)) {
       this.options.onChange(this.selected);
+    }
   }
 
   private pump(): void {

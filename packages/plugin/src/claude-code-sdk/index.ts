@@ -124,17 +124,20 @@ function answerOnce(
           thinking: { type: "disabled" },
         },
       })) {
-        if (message.type === "stream_event" && message.parent_tool_use_id === null)
+        if (message.type === "stream_event" && message.parent_tool_use_id === null) {
           translator.apply(message.event);
-        else if (message.type === "result" && message.subtype !== "success")
+        } else if (message.type === "result" && message.subtype !== "success") {
           throw new Error(message.errors.join("\n") || `Claude Code failed: ${message.subtype}`);
+        }
       }
 
-      if (output.stopReason === "pending" || output.stopReason === "aborted")
+      if (output.stopReason === "pending" || output.stopReason === "aborted") {
         throw new Error("Claude Code ended without a response.");
+      }
 
-      if (output.stopReason === "error")
+      if (output.stopReason === "error") {
         throw new Error(output.errorMessage ?? "Claude Code failed.");
+      }
       stream.push({ type: "done", reason: output.stopReason, message: output });
     } catch (error) {
       output.stopReason = options?.signal?.aborted === true ? "aborted" : "error";
@@ -169,8 +172,9 @@ export function claudeCodeSdk(start: StartQuery = query) {
     const id = options?.sessionId;
     const binding = id === undefined ? undefined : bindings.get(id);
 
-    if (id === undefined || binding === undefined)
+    if (id === undefined || binding === undefined) {
       throw new Error("Claude Code answers inside a Nyte session with the claude-code-sdk plugin.");
+    }
     const effort = effortFor(model, options?.reasoning);
     const system = getCurrentSystemPrompt(context.messages);
     const key = JSON.stringify([model.id, binding.cwd, options?.reasoning !== undefined, system]);
@@ -210,10 +214,11 @@ export function claudeCodeSdk(start: StartQuery = query) {
     session.deliver(messages);
     await session.configure(effort);
 
-    if (prompt.length > 0)
+    if (prompt.length > 0) {
       session.send(
         prompt.flatMap((message) => (message.role === "user" ? userBlocks(message) : [])),
       );
+    }
 
     return session.respond(model, keys, options?.signal);
   }

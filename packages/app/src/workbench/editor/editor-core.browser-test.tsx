@@ -8,7 +8,7 @@ import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { revealSelection } from "./editor-selection.ts";
 import { createEditor } from "./file-code-view.tsx";
-import { editorViewOptions } from "./file-editor.tsx";
+import { editorViewOptions } from "./editor-view-options.ts";
 
 declare global {
   interface Window {
@@ -257,7 +257,7 @@ export async function run(): Promise<string> {
   );
   await press("x", "KeyX", "x");
   check(
-    text.split("\n")[2]?.startsWith("func xRegister") === true,
+    text.split("\n")[2]?.startsWith("func xRegister"),
     `typing after the click replaced the old selection: ${JSON.stringify(text.split("\n")[2])}`,
   );
   await press("Backspace", "Backspace");

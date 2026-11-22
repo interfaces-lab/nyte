@@ -122,8 +122,9 @@ export function resolveRendererFile(
 
   const folder = /^\/(assets|libraries)\//u.exec(rest)?.[1];
 
-  if (folder === undefined || (folder === "libraries" && (host !== CANVAS_HOST || board)))
+  if (folder === undefined || (folder === "libraries" && (host !== CANVAS_HOST || board))) {
     return { kind: "refused", status: 404 };
+  }
   const assets = join(base, folder);
   const target = resolve(assets, `.${rest.slice(folder.length + 1)}`);
   const inside = relative(assets, target);
@@ -147,7 +148,7 @@ export const accountAnswer = Compile(
       kind: Type.Literal("token"),
       token: Type.String({
         maxLength: 16_384,
-        pattern: "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+        pattern: String.raw`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`,
       }),
     }),
     strict({ id, kind: Type.Literal("signed_out") }),

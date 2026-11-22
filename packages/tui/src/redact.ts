@@ -17,7 +17,7 @@ export function redact(text: string, home: string = homedir()): string {
   let result = text;
 
   for (const pattern of PATTERNS) result = result.replace(pattern, "[redacted]");
-  result = result.replace(ASSIGNMENT, "$1[redacted]");
+  result = result.replaceAll(ASSIGNMENT, "$1[redacted]");
 
   if (home.length > 1) result = result.split(home).join("~");
 

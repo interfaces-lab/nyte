@@ -4,26 +4,19 @@ import { randomUUID } from "expo-crypto";
 import type { CommandInfo, Connection, Delivery, ModelRef, SessionId } from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
-import {
-  MAX_ATTACHMENTS,
-  type DraftContent,
-  type DraftPart,
-  type StagedImage,
-} from "../media/attachments.ts";
+import { MAX_ATTACHMENTS } from "../media/attachments.ts";
+import type { DraftContent, DraftPart, StagedImage } from "../media/attachments.ts";
 import { resolveAttachment } from "../media/annotations.ts";
-import { parseCommandLine, type CommandLine } from "./completions.ts";
+import { parseCommandLine } from "./completions.ts";
+import type { CommandLine } from "./completions.ts";
 import type { ComposerTarget, SessionTarget } from "./composer-target.ts";
 import { useChatScope } from "./drafts.ts";
 import { returnedDraft } from "./send-answer.ts";
 import type { ThinkingLevel } from "./thinking.ts";
-import {
-  readPendingStart,
-  recordStart,
-  removeStart,
-  startText,
-  type PendingStart,
-} from "./workspace-start.ts";
-import { useStartSender, workspaceStorage, type RegistryFolders } from "./workspace-start.tsx";
+import { readPendingStart, recordStart, removeStart, startText } from "./workspace-start.ts";
+import type { PendingStart } from "./workspace-start.ts";
+import { useStartSender, workspaceStorage } from "./workspace-start.tsx";
+import type { RegistryFolders } from "./workspace-start.tsx";
 
 function buildContent(draft: string, images: readonly StagedImage[]): DraftPart[] {
   const text = draft.trim();

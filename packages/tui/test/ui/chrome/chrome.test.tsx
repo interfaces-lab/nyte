@@ -60,7 +60,7 @@ describe("notice line", () => {
         kind: "view",
         session: S1,
         view: idle,
-        freshness: { kind: "stale", since: 1_000, error: null },
+        freshness: { kind: "stale", since: 1000, error: null },
       },
     ).state;
 

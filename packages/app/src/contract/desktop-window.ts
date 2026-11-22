@@ -82,8 +82,9 @@ export function windowOpening(window: DesktopWindow): WindowOpening {
 export function parseWindowOpen(argument: string): DesktopWindowOpen {
   const open: unknown = JSON.parse(argument);
 
-  if (!Value.Check(DesktopWindowOpenType, open))
+  if (!Value.Check(DesktopWindowOpenType, open)) {
     throw new Error("The main process opened this window for something it can't show.");
+  }
 
   return open;
 }

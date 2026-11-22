@@ -139,7 +139,7 @@ function unionMs(intervals: readonly (readonly [number, number])[]): number {
     reach = to;
   }
 
-  return total / 1_000;
+  return total / 1000;
 }
 
 function classify(events: readonly TraceEvent[], span: TraceSpan): ThreadTime {
@@ -167,7 +167,7 @@ function classify(events: readonly TraceEvent[], span: TraceSpan): ThreadTime {
   const [busy, script, layout] = [atLeast(1), atLeast(2), atLeast(3)];
 
   return {
-    idle: (span.to - span.from) / 1_000 - busy,
+    idle: (span.to - span.from) / 1000 - busy,
     busy: busy - script,
     script: script - layout,
     layout,
@@ -198,7 +198,7 @@ export function splitMainThread(
   const hostWait = waiting?.idle ?? 0;
   const transfer = moving?.script ?? 0;
   const react = Math.max(0, whole.script - transfer);
-  const total = (span.to - span.from) / 1_000;
+  const total = (span.to - span.from) / 1000;
   const round = (ms: number): number => Math.round(ms * 10) / 10;
 
   return {

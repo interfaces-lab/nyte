@@ -67,8 +67,9 @@ async function fromSource(
 }
 
 async function startHost(path: string): Promise<Attached> {
-  if (!(await Bun.file(BINARY).exists()))
+  if (!(await Bun.file(BINARY).exists())) {
     throw new Error(`No installed nyte at ${BINARY}. Run \`pnpm install:tui\`, then retry.`);
+  }
 
   const probe = Bun.spawn([BINARY, "host", "--help"], {
     stdin: "ignore",
@@ -76,10 +77,11 @@ async function startHost(path: string): Promise<Attached> {
     stderr: "ignore",
   });
 
-  if ((await probe.exited) !== 0)
+  if ((await probe.exited) !== 0) {
     throw new Error(
       `${BINARY} is too old to run \`nyte host\`. Run \`pnpm install:tui\` or \`nyte update\`, then retry.`,
     );
+  }
 
   const child = Bun.spawn([BINARY, "host", "--json"], {
     stdin: "ignore",
@@ -148,8 +150,9 @@ async function drain(stream: ReadableStream<Uint8Array>): Promise<string> {
   const decoder = new TextDecoder();
   let tail = "";
 
-  for await (const chunk of stream)
-    tail = `${tail}${decoder.decode(chunk, { stream: true })}`.slice(-4_096);
+  for await (const chunk of stream) {
+    tail = `${tail}${decoder.decode(chunk, { stream: true })}`.slice(-4096);
+  }
 
   return tail;
 }

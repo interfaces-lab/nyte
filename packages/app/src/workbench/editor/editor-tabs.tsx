@@ -45,7 +45,7 @@ export function EditorTabs(input: {
   const selected = group.active?.id;
   const [room, attachStrip, watchSize] = useTabRoom(measureFiles);
   const inactive = group.tabs.filter((file) => file.id !== selected).map((file) => file.id);
-  const overflow = inactive.slice(fittingTabs(room, inactive.length));
+  const overflow = new Set(inactive.slice(fittingTabs(room, inactive.length)));
   const cap = room === undefined ? undefined : styles.cap(room.width);
 
   const focusTab = (id: WorkbenchTabId): void => {
@@ -65,8 +65,9 @@ export function EditorTabs(input: {
       const bounds = tab.getBoundingClientRect();
       const middle = bounds.left + bounds.width / 2;
 
-      if (rtl ? event.clientX > middle : event.clientX < middle)
+      if (rtl ? event.clientX > middle : event.clientX < middle) {
         return tab.dataset.editorFile ?? null;
+      }
     }
 
     return null;
@@ -96,8 +97,9 @@ export function EditorTabs(input: {
           !event.currentTarget.contains(
             event.relatedTarget instanceof Node ? event.relatedTarget : null,
           )
-        )
+        ) {
           setInsertion(undefined);
+        }
       }}
       onDrop={(event) => {
         setInsertion(undefined);
@@ -134,7 +136,7 @@ export function EditorTabs(input: {
             const name = file.displayPath.split(/[\\/]/).at(-1) ?? file.displayPath;
             const active = file.id === selected;
 
-            if (overflow.includes(file.id)) return null;
+            if (overflow.has(file.id)) return null;
 
             return (
               <ContextMenu key={file.id}>
@@ -243,9 +245,11 @@ export function EditorTabs(input: {
                     file={file}
                     onClose={() => input.onClose(file.id)}
                     onCloseOthers={() => {
-                      for (const other of group.tabs)
-                        if (other.id !== file.id && !other.dirty && !other.saving)
+                      for (const other of group.tabs) {
+                        if (other.id !== file.id && !other.dirty && !other.saving) {
                           fileActions.close(input.viewKey, other.id);
+                        }
+                      }
                       focusTab(file.id);
                     }}
                   />
@@ -293,8 +297,9 @@ export function EditorTabs(input: {
           title={`Split Editor Right (${nyte.platform === "darwin" ? "⌘\\" : "Ctrl+\\"})`}
           disabled={group.active === undefined}
           onClick={() => {
-            if (group.active !== undefined)
+            if (group.active !== undefined) {
               fileActions.split(input.viewKey, "after", group.active.id);
+            }
           }}
         />
         {input.many && (

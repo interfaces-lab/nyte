@@ -14,7 +14,7 @@ type MarkerProps =
 const SUMMARY_LINES = 40;
 
 function markerProps(message: PartMessage): MarkerProps {
-  if (isPart(message, compaction))
+  if (isPart(message, compaction)) {
     return message.status.kind === "live"
       ? { variant: "live", content: "compacting context…" }
       : {
@@ -22,9 +22,11 @@ function markerProps(message: PartMessage): MarkerProps {
           content: `context compacted · ${String(message.state.tokensBefore)} tokens before`,
           summary: message.state.summary ?? "",
         };
+  }
 
-  if (isPart(message, branchSummary))
+  if (isPart(message, branchSummary)) {
     return { variant: "border", content: "branch summary", summary: message.state.markdown };
+  }
 
   return { variant: "default", content: `[${message.partKind}]` };
 }

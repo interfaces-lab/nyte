@@ -196,7 +196,7 @@ function JobOutput(props: {
   );
 }
 
-const CLOCK_INTERVAL_MS = 1_000;
+const CLOCK_INTERVAL_MS = 1000;
 
 function metadata(task: Task, now: number): string {
   const timing = taskTiming(task);

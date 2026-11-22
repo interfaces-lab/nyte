@@ -99,10 +99,7 @@ export async function run(): Promise<string> {
   try {
     render();
     await settle();
-    check(
-      container.textContent?.includes("4 Files Changed") === true,
-      "The header reports all files",
-    );
+    check(container.textContent?.includes("4 Files Changed"), "The header reports all files");
     check(revealed.length === 0, "Synchronizing selection does not reveal a file");
     row("src/beta.ts").click();
     check(revealed.at(-1) === "src/beta.ts", "Native selection reveals that file");
@@ -116,14 +113,11 @@ export async function run(): Promise<string> {
     check(revealed.length === 1, "Scroll-driven selection does not jump back to a diff");
     await search("alpha");
     check(rows().join("|") === "src/|src/alpha.ts", `Filtered rows: ${rows().join("|")}`);
-    check(
-      container.textContent?.includes("1 of 4 Files Changed") === true,
-      "The filter reports its count",
-    );
+    check(container.textContent?.includes("1 of 4 Files Changed"), "The filter reports its count");
     await search("zzz");
     check(rows().length === 0, `An unmatched query clears the tree: ${rows().join("|")}`);
     check(
-      container.textContent?.includes("No files match this filter") === true,
+      container.textContent?.includes("No files match this filter"),
       "Empty search is explained",
     );
     await search("");

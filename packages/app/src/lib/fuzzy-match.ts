@@ -6,7 +6,7 @@ export function fuzzyScore(target: string, query: string): number | undefined {
 
   if (first === undefined) return 0;
 
-  if (text === needle) return 1_000;
+  if (text === needle) return 1000;
   let best: number | undefined;
 
   for (let start = text.indexOf(first); start >= 0; start = text.indexOf(first, start + 1)) {
@@ -25,8 +25,9 @@ export function fuzzyScore(target: string, query: string): number | undefined {
         before === undefined ||
         /[^\p{L}\p{N}]/u.test(before) ||
         (before !== before.toLocaleUpperCase() && current !== current?.toLocaleLowerCase())
-      )
+      ) {
         score += 12;
+      }
       score += cursor === previous + 1 ? 8 : -(cursor - previous - 1);
       previous = cursor;
     }

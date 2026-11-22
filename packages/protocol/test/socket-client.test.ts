@@ -29,8 +29,9 @@ function farEnd(answering: Answering) {
     type: string,
     event: { readonly data?: unknown; readonly code?: number; readonly reason?: string },
   ): void => {
-    for (const listener of listeners.get(type) ?? [])
+    for (const listener of listeners.get(type) ?? []) {
       listener({ data: event.data, code: event.code ?? 0, reason: event.reason ?? "" });
+    }
   };
 
   const answer = (frame: Json): void => {
@@ -58,10 +59,11 @@ function farEnd(answering: Answering) {
     if (typeof op !== "string") return;
     calls.push(op);
 
-    if (answering === "probes" && op === "events.unsubscribe")
+    if (answering === "probes" && op === "events.unsubscribe") {
       emit("message", {
         data: JSON.stringify({ c: "e", type: "result", id: frame["id"], output: null }),
       });
+    }
   };
 
   const socket: SocketLike = {
@@ -132,8 +134,8 @@ describe("a host socket", () => {
       answering: "nothing",
       call: false,
       asked: true,
-      alive: 1_999,
-      lost: 2_000,
+      alive: 1999,
+      lost: 2000,
     },
   ] as const)(
     "counts itself lost $case, and fails what was pending as a lost link",

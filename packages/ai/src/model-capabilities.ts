@@ -20,10 +20,10 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
 
   const longWrite = usage.cacheWrite1h ?? 0;
   const shortWrite = usage.cacheWrite - longWrite;
-  usage.cost.input = (rates.input / 1000000) * usage.input;
-  usage.cost.output = (rates.output / 1000000) * usage.output;
-  usage.cost.cacheRead = (rates.cacheRead / 1000000) * usage.cacheRead;
-  usage.cost.cacheWrite = (rates.cacheWrite * shortWrite + rates.input * 2 * longWrite) / 1000000;
+  usage.cost.input = (rates.input / 1_000_000) * usage.input;
+  usage.cost.output = (rates.output / 1_000_000) * usage.output;
+  usage.cost.cacheRead = (rates.cacheRead / 1_000_000) * usage.cacheRead;
+  usage.cost.cacheWrite = (rates.cacheWrite * shortWrite + rates.input * 2 * longWrite) / 1_000_000;
   usage.cost.total =
     usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 
@@ -54,7 +54,7 @@ export function clampThinkingLevel<TApi extends Api>(
 
   if (availableLevels.includes(level)) return level;
 
-  const requestedIndex = MODEL_THINKING_LEVELS.findIndex((candidate) => candidate === level);
+  const requestedIndex = MODEL_THINKING_LEVELS.indexOf(level);
 
   if (requestedIndex === -1) return availableLevels[0] ?? "off";
 

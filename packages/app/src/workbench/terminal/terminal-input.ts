@@ -38,8 +38,8 @@ const MAC_EDITING = new Map([
   ["Meta+ArrowLeft", "\u0001"],
   ["Meta+ArrowRight", "\u0005"],
   ["Meta+Backspace", "\u0015"],
-  ["Alt+ArrowLeft", "\u001bb"],
-  ["Alt+ArrowRight", "\u001bf"],
+  ["Alt+ArrowLeft", "\u001Bb"],
+  ["Alt+ArrowRight", "\u001Bf"],
 ]);
 
 function appChord(event: KeyboardEvent, mac: boolean): boolean {
@@ -122,7 +122,7 @@ export function attachInput(host: InputHost): () => void {
   const preedit = (text: string | null): void => {
     textarea.style.opacity = text === null ? "0" : "1";
     textarea.style.width =
-      text === null ? "1px" : String(Math.max(1, Array.from(text).length) * 2 + 1) + "ch";
+      text === null ? "1px" : `${String(Math.max(1, Array.from(text).length) * 2 + 1)}ch`;
   };
 
   const compositionstart = (): void => {

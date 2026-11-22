@@ -67,7 +67,7 @@ interface ServingSessionOptions {
   readonly owner: ServingOwner;
 }
 
-const READINESS_WINDOW_MS = (ENROLLMENT_LIFETIME_SECONDS + ENROLLMENT_READINESS_SECONDS) * 1_000;
+const READINESS_WINDOW_MS = (ENROLLMENT_LIFETIME_SECONDS + ENROLLMENT_READINESS_SECONDS) * 1000;
 
 interface HeldLease {
   readonly devices: ReadonlySet<string>;
@@ -281,10 +281,11 @@ export class ServingSession {
       !this.live() ||
       answer.sentAt < this.resetAt ||
       trust.behindLease(this.environmentId, claims)
-    )
+    ) {
       return false;
+    }
     const now = Date.now();
-    const expiresAt = Math.min(claims.exp * 1_000, answer.sentAt + LEASE_LIFETIME_SECONDS * 1_000);
+    const expiresAt = Math.min(claims.exp * 1000, answer.sentAt + LEASE_LIFETIME_SECONDS * 1000);
 
     if (expiresAt <= now) return false;
     trust.accept(this.environmentId, claims);
@@ -310,8 +311,9 @@ export class ServingSession {
       previous === undefined ||
       removed.length > 0 ||
       [...devices].some((id) => !previous.devices.has(id))
-    )
+    ) {
       owner.changed();
+    }
 
     this.pruneInactive(lease);
 
@@ -323,7 +325,7 @@ export class ServingSession {
   private pruneInactive(lease: HeldLease): void {
     const { store, owner } = this.options;
     const link = store.currentLink(this.environmentId);
-    const settled = lease.sentAt - (ENROLLMENT_LIFETIME_SECONDS + CLOCK_TOLERANCE_SECONDS) * 1_000;
+    const settled = lease.sentAt - (ENROLLMENT_LIFETIME_SECONDS + CLOCK_TOLERANCE_SECONDS) * 1000;
 
     const inactive = new Set(
       (link?.devices ?? [])
@@ -431,8 +433,9 @@ export class ServingSession {
       now <
         previous.at +
           (previous.state === "renewed" ? timing.readinessThrottleMs : timing.readinessRetryMs)
-    )
+    ) {
       return Promise.resolve();
+    }
     const refresh: Refresh = { at: now, state: "pending", done: Promise.resolve() };
 
     const answered = this.beat().then((outcome) => {
@@ -466,44 +469,49 @@ export class ServingSession {
     if (
       claims.sub !== link.owner.id ||
       trust.behindGeneration(this.environmentId, claims.generation)
-    )
+    ) {
       return refused(403, "forbidden");
+    }
     let outcome: "recorded" | "replaced" | "gone" | "conflict" | "limit";
 
     try {
       outcome = await store.update((file) => {
         const current = file.link;
 
-        if (current === null || current.environment.id !== this.environmentId)
+        if (current === null || current.environment.id !== this.environmentId) {
           return { file, result: "gone" };
+        }
         const now = Date.now();
 
         const consumed = current.consumed.filter(
-          (entry) => (entry.exp + CLOCK_TOLERANCE_SECONDS) * 1_000 > now,
+          (entry) => (entry.exp + CLOCK_TOLERANCE_SECONDS) * 1000 > now,
         );
 
         const existing = current.devices.find((device) => device.id === claims.deviceId);
 
-        if (consumed.some((entry) => entry.jti === claims.jti))
+        if (consumed.some((entry) => entry.jti === claims.jti)) {
           return {
             file,
             result: existing?.digest === claims.digest ? "recorded" : "conflict",
           };
+        }
 
         if (
           existing !== undefined ||
           current.revocations.some((entry) => entry.deviceId === claims.deviceId) ||
           current.devices.some((device) => device.digest === claims.digest)
-        )
+        ) {
           return { file, result: "conflict" };
+        }
         const kept = current.devices.filter((device) => device.clientId !== claims.clientId);
 
         if (
           kept.length >= DEVICE_LIMIT ||
           kept.length + current.revocations.length >= REVOCATION_LIMIT ||
           consumed.length >= CONSUMED_LIMIT
-        )
+        ) {
           return { file, result: "limit" };
+        }
 
         const device: StoredDevice = {
           id: claims.deviceId,

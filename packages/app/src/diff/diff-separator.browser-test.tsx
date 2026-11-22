@@ -21,7 +21,7 @@ const wholeFile = (second: string, last: string): string =>
   ].join("\n");
 
 async function until(predicate: () => boolean): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error("Context expansion did not render");
@@ -55,8 +55,9 @@ export async function run(): Promise<string> {
     const shadow = () => host.querySelector("diffs-container")?.shadowRoot;
     await until(() => shadow()?.querySelector("[data-expand-button]") instanceof Element);
 
-    if (shadow()?.textContent?.includes("line20"))
+    if (shadow()?.textContent?.includes("line20")) {
       throw new Error("Context should start collapsed");
+    }
 
     const button = Array.from(shadow()?.querySelectorAll("[data-expand-button]") ?? []).find(
       (element) => element.getBoundingClientRect().width > 0,

@@ -1,5 +1,6 @@
 import { css, html } from "react-strict-dom";
-import { SymbolView, type SFSymbol } from "expo-symbols";
+import { SymbolView } from "expo-symbols";
+import type { SFSymbol } from "expo-symbols";
 import { controls, list, useTheme } from "../theme.ts";
 
 export function IconTile({ name, color }: { name: SFSymbol; color?: string }) {

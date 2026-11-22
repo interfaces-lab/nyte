@@ -57,8 +57,9 @@ it("pages a head's older messages and their turns into its views and keeps them 
   const { session, receipt } = await connection.sessions.start({ content: "First." });
   await receipt.settled();
 
-  for (const text of ["Second.", "Third."])
+  for (const text of ["Second.", "Third."]) {
     await (await session.send(text, { delivery: "queue" })).settled();
+  }
 
   const views = rowViews(connection, session, 3);
   const iterator = views[Symbol.asyncIterator]();
@@ -336,8 +337,9 @@ it("refreshes a retained leading prompt from the host's newer record of the same
   let state = emptyFold({ session: asId("s1"), principal: asId("ada") });
 
   const play = (...events: readonly DurableEvent[]) => {
-    for (const event of events)
+    for (const event of events) {
       state = fold(state, { seq: asSeq(state.seq + 1), at: state.seq, ...event });
+    }
 
     return readView(state, main, { tail: 2 });
   };

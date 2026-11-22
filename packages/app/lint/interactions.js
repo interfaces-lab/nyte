@@ -142,8 +142,9 @@ export default {
               elementName(row.name) !== "Row" ||
               ((interactive === undefined || literal(interactive.value) === false) &&
                 literal(attribute(row, "variant")?.value) !== "nav")
-            )
+            ) {
               continue;
+            }
 
             context.report({
               node,
@@ -237,8 +238,9 @@ export default {
             readName(node.name) !== "Pressable" ||
             attribute(node, "accessibilityRole") ||
             attribute(node, "accessibilityLabel")
-          )
+          ) {
             return;
+          }
           context.report({
             node,
             message:
@@ -278,8 +280,9 @@ export default {
           if (
             parent?.type === "JSXAttribute" &&
             !["meta", "description"].includes(readName(parent.name))
-          )
+          ) {
             return;
+          }
 
           const [test, branches] =
             expression.type === "ConditionalExpression"
@@ -318,8 +321,9 @@ export default {
           text
             .split(/\s+/)
             .every((word, index) => (index > 0 && smallWords.has(word)) || !/^[a-z]/.test(word))
-        )
+        ) {
           return;
+        }
 
         const titled = text
           .split(" ")

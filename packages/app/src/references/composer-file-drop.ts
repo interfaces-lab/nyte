@@ -41,9 +41,9 @@ export function setWorkbenchDrag(files: readonly MentionFile[]): void {
 }
 
 export function carriesWorkbenchFiles(event: ComposerFileDropEvent): boolean {
-  const types = Array.from(event.dataTransfer?.types ?? []);
+  const types = new Set(Array.from(event.dataTransfer?.types ?? []));
 
-  return workbenchDrag.length > 0 && types.includes("text/plain") && !types.includes("Files");
+  return workbenchDrag.length > 0 && types.has("text/plain") && !types.has("Files");
 }
 
 export function droppedWorkbenchFiles(event: ComposerFileDropEvent): readonly MentionFile[] {
@@ -68,8 +68,9 @@ function dropHandlers(args: {
     onDragOver: (event: ComposerFileDropEvent) => {
       event.preventDefault();
 
-      if (event.dataTransfer !== null)
+      if (event.dataTransfer !== null) {
         event.dataTransfer.dropEffect = accept(event) ? "copy" : "none";
+      }
     },
     onDrop: (event: ComposerFileDropEvent) => {
       event.preventDefault();

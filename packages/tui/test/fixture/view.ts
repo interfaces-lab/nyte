@@ -167,10 +167,10 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
   const parts: PartView[] = [];
   const turns: TurnInfo[] = [];
   let execution: Execution = { kind: "idle", lastRun: null };
-  let clock = 1_000;
+  let clock = 1000;
   let counter = 0;
 
-  const tick = (): number => (clock += 1_000);
+  const tick = (): number => (clock += 1000);
   const nextId = (id: string | undefined): MessageId => asId(id ?? `m${(counter += 1)}`);
   const lastRun = (): string => turns.findLast((turn) => turn.run !== null)?.run ?? "run-1";
 
@@ -333,7 +333,7 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
     seenThrough: null,
     background: [],
     configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
-    context: { tokens: 1_000, window: 100_000, lastRequest: null },
+    context: { tokens: 1000, window: 100_000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -359,8 +359,8 @@ export function followed(view: SessionView, id = "s1"): FollowedSession {
         background: { working: 0, waiting: 0 },
       },
     ],
-    createdAt: 1_000,
-    lastActivityAt: 1_000,
+    createdAt: 1000,
+    lastActivityAt: 1000,
   };
 
   return {
@@ -604,15 +604,17 @@ function queued(message: Message, idle: boolean): message is QueuedMessage {
   if (message.kind !== "user") return false;
   const steer = message.delivery === "steer";
 
-  if (message.status.kind === "unsent")
+  if (message.status.kind === "unsent") {
     return message.status.retrying !== null || (!idle && !steer);
+  }
 
   if (
     message.status.kind !== "pending" ||
     message.source.kind === "child" ||
     message.source.kind === "job"
-  )
+  ) {
     return false;
+  }
   const schedule = message.status.schedule;
 
   return (
@@ -626,8 +628,9 @@ function buildSchedule(spec: ScheduleSpec): Schedule {
 }
 
 function buildSource(spec: SourceSpec): MessageSource {
-  if (spec.kind === "child")
+  if (spec.kind === "child") {
     return { kind: "child", session: asId(spec.session), end: spec.end ?? "completed" };
+  }
 
   if (spec.kind === "job") return { kind: "job", job: asId(spec.job) };
 

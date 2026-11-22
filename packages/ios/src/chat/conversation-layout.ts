@@ -1,10 +1,10 @@
 import { conversation } from "../theme.ts";
 
-export type ConversationLayout = {
+export interface ConversationLayout {
   contentWidth: number;
   paddingLeft: number;
   paddingRight: number;
-};
+}
 
 export function conversationLayout(
   viewportWidth: number,

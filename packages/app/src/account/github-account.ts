@@ -12,7 +12,7 @@ import { nyte } from "../contract/nyte.ts";
 import { connected } from "../data/connection.ts";
 import { startupReadsReleased } from "../data/startup.ts";
 
-const SIGNING_IN_POLL_MS = 2_000;
+const SIGNING_IN_POLL_MS = 2000;
 
 const CHECKS_POLL_MS = 15_000;
 

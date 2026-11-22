@@ -41,7 +41,10 @@ const CONTEXT_NAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.m
 
 type RealPath = (path: string) => Promise<string | null>;
 
-type Reader = { readonly files: FilesApi; readonly real: RealPath | null };
+interface Reader {
+  readonly files: FilesApi;
+  readonly real: RealPath | null;
+}
 
 type FoundContext = Omit<ContextFile, "id"> & {
   readonly name: string;
@@ -208,12 +211,13 @@ export const resourcesPlugin: Plugin<"core"> = {
       contribute: {
         skills: [
           (draft) => {
-            for (const skill of inputs.skills)
+            for (const skill of inputs.skills) {
               draft.set(skill.name, {
                 name: skill.name,
                 description: skill.description,
                 location: skill.location,
               });
+            }
           },
         ],
         prompt: [
@@ -782,8 +786,9 @@ async function findContext(
   if (found === undefined) return null;
   const path = at(found.name);
 
-  if (reader.real === null || directory === null)
+  if (reader.real === null || directory === null) {
     return { path, scope, content: found.content, name: found.name, real: path, entry: path };
+  }
 
   const [real, realDirectory, entry] = await Promise.all([
     reader.real(path),
@@ -878,8 +883,9 @@ async function listDirectChildren(
         ? entry.path.slice(directory.length + 1)
         : entry.path;
 
-      if (kinds.includes(entry.kind) && relative !== "" && !relative.includes("/"))
+      if (kinds.includes(entry.kind) && relative !== "" && !relative.includes("/")) {
         children.set(relative, entry.kind);
+      }
     }
   }
 
@@ -921,8 +927,9 @@ function frontmatterLines(block: string): ReadonlyMap<string, string> {
     const key = pair?.[1];
     const value = pair?.[2]?.trim();
 
-    if (key !== undefined && value !== undefined && value !== "")
+    if (key !== undefined && value !== undefined && value !== "") {
       fields.set(key, value.replace(/^(["'])(.*)\1$/, "$2"));
+    }
   }
 
   return fields;

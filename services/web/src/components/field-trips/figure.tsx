@@ -50,7 +50,6 @@ export function TripVideo(props: {
 }) {
   return (
     <figure className="design-trip-figure" data-size="sheet">
-      {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- The clips have no sound and no speech. */}
       <video
         src={props.src}
         poster={props.poster}

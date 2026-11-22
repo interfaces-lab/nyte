@@ -7,7 +7,7 @@ import { Type } from "typebox";
 const PackageManifest = compile(Type.Object({ version: Type.String() }));
 
 /** How to find, start and configure one language server. */
-export type ServerSpec = {
+export interface ServerSpec {
   readonly language: LanguageName;
   readonly program: string;
   readonly arguments: readonly string[];
@@ -17,7 +17,7 @@ export type ServerSpec = {
   readonly settings: Json;
   /** The initialization options for a server at `root`, and what it runs on when the server does not say, such as the TypeScript it found. */
   prepare(root: string): Promise<{ readonly options: Json; readonly runsOn: string | null }>;
-};
+}
 
 const GO_OPTIONS = {
   usePlaceholders: false,
@@ -127,9 +127,11 @@ export async function findProjectRoot(
     let folder = dirname(path);
     folder.startsWith(`${workspace}${sep}`);
     folder = dirname(folder)
-  )
-    for (const marker of spec.markers)
+  ) {
+    for (const marker of spec.markers) {
       if ((await stat(join(folder, marker)).catch(() => null)) !== null) return folder;
+    }
+  }
 
   return workspace;
 }

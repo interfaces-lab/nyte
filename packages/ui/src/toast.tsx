@@ -195,20 +195,22 @@ const STATUS_ICON = new Map(
 );
 
 export function ToastGlyph({ type: kind }: { readonly type: string | undefined }): ReactElement {
-  if (kind === "loading")
+  if (kind === "loading") {
     return (
       <span {...props(styles.glyph)}>
         <Spinner />
       </span>
     );
+  }
   const status = kind === undefined ? undefined : STATUS_ICON.get(kind);
 
-  if (status === undefined)
+  if (status === undefined) {
     return (
       <span {...props(styles.glyph, styles.plainGlyph)}>
         <Icon name="circle-info" size="md" />
       </span>
     );
+  }
 
   return (
     <span {...props(status.intent, styles.glyph)}>

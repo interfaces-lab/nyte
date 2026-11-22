@@ -82,11 +82,12 @@ export function revertEdit(
   const through = from + change.added.length;
   const last = text.lineCount - 1;
 
-  if (through <= last)
+  if (through <= last) {
     return {
       range: { start: { line: from, character: 0 }, end: { line: through, character: 0 } },
       newText: change.removed.map((line) => `${line}\n`).join(""),
     };
+  }
 
   const lead = from === 0 || change.removed.length === 0 ? "" : "\n";
 

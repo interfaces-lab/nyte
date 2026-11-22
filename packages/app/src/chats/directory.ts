@@ -66,8 +66,9 @@ export function describeChats(
         known.workspaces === workspaces &&
         known.projects === projects &&
         previous.get(session.id) === known.chat
-      )
+      ) {
         return [session.id, known.chat] as const;
+      }
       const head = mainHead(session);
       const project = coordinatedProject(session);
       const attention = headAttention(session);

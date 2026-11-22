@@ -22,8 +22,9 @@ let context:
   | undefined;
 
 self.addEventListener("message", (event: MessageEvent<unknown>) => {
-  if (!Value.Check(structureRequest, event.data))
+  if (!Value.Check(structureRequest, event.data)) {
     throw new Error("Invalid file structure request.");
+  }
   pending = event.data;
 
   if (!running) void parsePending();

@@ -119,11 +119,13 @@ function readTranscript(body: Static<typeof MessagesRequestSchema>) {
       const content = blocks.flatMap((block): (TextContent | ThinkingContent | ToolCall)[] => {
         if (block.type === "text") return [{ type: "text", text: block.text ?? "" }];
 
-        if (block.type === "thinking")
+        if (block.type === "thinking") {
           return [{ type: "thinking", thinking: block.thinking ?? "" }];
+        }
 
-        if (block.type !== "tool_use" || block.id === undefined || block.name === undefined)
+        if (block.type !== "tool_use" || block.id === undefined || block.name === undefined) {
           return [];
+        }
         names.set(block.id, block.name);
 
         return [{ type: "toolCall", id: block.id, name: block.name, arguments: block.input ?? {} }];
@@ -255,7 +257,7 @@ async function streamAnswer(
         });
         break;
       case "toolcall_end":
-        if (!argued.has(event.contentIndex))
+        if (!argued.has(event.contentIndex)) {
           frame(response, "content_block_delta", {
             index: event.contentIndex,
             delta: {
@@ -263,6 +265,7 @@ async function streamAnswer(
               partial_json: JSON.stringify(event.toolCall.arguments),
             },
           });
+        }
         frame(response, "content_block_stop", { index: event.contentIndex });
         break;
       case "done":
@@ -275,16 +278,18 @@ async function streamAnswer(
 
         return;
       case "error":
-        if (!response.headersSent)
+        if (!response.headersSent) {
           response.writeHead(200, {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-store",
           });
+        }
 
-        if (event.reason === "error")
+        if (event.reason === "error") {
           frame(response, "error", {
             error: { type: "api_error", message: event.error.errorMessage ?? "Scripted error." },
           });
+        }
         response.end();
 
         return;
@@ -367,8 +372,9 @@ export async function serveScriptedModel(
   });
   const address = server.address();
 
-  if (address === null || typeof address === "string")
+  if (address === null || typeof address === "string") {
     throw new Error("The model server has no port.");
+  }
   origin = `http://127.0.0.1:${String(address.port)}`;
 
   const endpoint: ScriptedEndpoint = {
@@ -409,7 +415,7 @@ export function polishAnswers(home: string, places: string): (request: Request) 
     if (title !== null) return { content: [{ type: "text", text: title }] };
 
     if (opensWith(request, CI_PROMPT)) {
-      if (request.context.messages.at(-1)?.role === "user")
+      if (request.context.messages.at(-1)?.role === "user") {
         ci = ciScript({
           skill: join(home, ".agents", "skills", "ci-triage", "SKILL.md"),
           route: getCurrentTools(request.context.messages).some(
@@ -418,6 +424,7 @@ export function polishAnswers(home: string, places: string): (request: Request) 
             ? "mcp"
             : "gh",
         });
+      }
 
       if (ci !== undefined) return ci.answer(request);
     }
@@ -531,14 +538,15 @@ export async function launchPackaged(input: {
   const close = async (): Promise<void> => {
     const tree = await inspectProcessTree(child.pid);
     await application.close().catch(() => undefined);
-    const left = tree === null ? [] : await survivors(tree, 5_000);
+    const left = tree === null ? [] : await survivors(tree, 5000);
 
     for (const row of left) process.kill(row.pid, "SIGKILL");
 
-    if (left.length > 0)
+    if (left.length > 0) {
       throw new Error(
         `The desktop's processes outlived close(): ${left.map((row) => `${String(row.pid)} ${row.command}`).join(", ")}`,
       );
+    }
   };
 
   try {

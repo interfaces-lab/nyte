@@ -11,7 +11,7 @@ import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
 const folders: string[] = [];
 
-const REPLAY_EVENTS = 1_024;
+const REPLAY_EVENTS = 1024;
 
 afterEach(async () => {
   await Promise.all(folders.splice(0).map((path) => rm(path, { recursive: true, force: true })));
@@ -78,7 +78,7 @@ it("shows a 0.0.18 chat's whole changed-files list after the store migrates", as
     JSON.stringify({ head: null, kind: "seen", principal: "nobody", commit: null }),
   );
 
-  for (const files of [[file("a", 1)], [file("b", 1)], [file("a", 2), file("c", 1)]])
+  for (const files of [[file("a", 1)], [file("b", 1)], [file("a", 2), file("c", 1)]]) {
     query(
       path,
       "INSERT INTO log (session, seq, at, event) SELECT ?, MAX(seq) + 1, 1, ? FROM log WHERE session = ? RETURNING seq",
@@ -86,6 +86,7 @@ it("shows a 0.0.18 chat's whole changed-files list after the store migrates", as
       JSON.stringify({ head: null, kind: "changes", files }),
       session,
     );
+  }
 
   expect(await viewChanges(path, session)).toEqual([file("a", 2), file("c", 1)]);
   expect(

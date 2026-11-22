@@ -168,8 +168,9 @@ export function createRows(transport: Transport, link: Link): Rows {
         try {
           return await call(name, input, options);
         } catch (error) {
-          if (!linkLost(error) || link.signal.aborted || options?.signal?.aborted === true)
+          if (!linkLost(error) || link.signal.aborted || options?.signal?.aborted === true) {
             throw error;
+          }
           dev("sdk", "wait retrying", { name, attempts });
           await backoff(
             link,
@@ -274,11 +275,12 @@ function resumable<N extends OperationName>(
               return { done: false, value: value.value };
             }
 
-            if (reopened)
+            if (reopened) {
               throw new SdkError(
                 "invalid",
                 `The host sends ${name} frames this client cannot read.`,
               );
+            }
             reopened = true;
             frames = null;
             void current.return?.();

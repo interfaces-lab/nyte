@@ -8,8 +8,9 @@ export function usePlanningTime(planning: boolean, newest: MessageId | undefined
   const started = useRef<{ period: number; at: number }>(undefined);
   const id = period.id;
 
-  if (period.planning !== planning || period.newest !== newest)
+  if (period.planning !== planning || period.newest !== newest) {
     setPeriod({ planning, newest, id: id + 1 });
+  }
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- planning timers for the current period
   useLayoutEffect(() => {

@@ -177,11 +177,12 @@ async function receive(line) {
       cancels.get(message.params.sessionId)?.();
       break;
     default:
-      if (message.id !== undefined)
+      if (message.id !== undefined) {
         send({
           id: message.id,
-          error: { code: -32601, message: `${message.method} is not handled.` },
+          error: { code: -32_601, message: `${message.method} is not handled.` },
         });
+      }
   }
 }
 

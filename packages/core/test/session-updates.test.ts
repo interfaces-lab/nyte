@@ -54,10 +54,10 @@ it("updates directory rows from another host while keeping unread state specific
     const root = await store.refs.get(sessionRef(session.id));
     const commit = await store.objects.put({ message: "A new tip" });
     await store.refs.set([{ name: headRef(session.id, main), target: commit }]);
-    expect(shared(await changed(local, (row) => row.heads[0]?.unread === true))).toMatchObject([
+    expect(shared(await changed(local, (row) => row.heads[0]?.unread))).toMatchObject([
       { heads: [{ unread: true }] },
     ]);
-    expect(shared(await changed(other, (row) => row.heads[0]?.unread === true))).toMatchObject([
+    expect(shared(await changed(other, (row) => row.heads[0]?.unread))).toMatchObject([
       { heads: [{ unread: true }] },
     ]);
     await store.refs.set([
@@ -66,7 +66,7 @@ it("updates directory rows from another host while keeping unread state specific
         target: await store.objects.put(envelope("seen", { commit }, 1)),
       },
     ]);
-    expect(shared(await changed(local, (row) => row.heads[0]?.unread === false))).toMatchObject([
+    expect(shared(await changed(local, (row) => !row.heads[0]?.unread))).toMatchObject([
       { heads: [{ unread: false }] },
     ]);
     expect(await store.refs.get(sessionRef(session.id))).toEqual(root);

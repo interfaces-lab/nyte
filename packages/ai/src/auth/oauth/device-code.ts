@@ -22,13 +22,13 @@ export type OAuthDeviceCodePollResult<T> =
   | OAuthDeviceCodeIncompletePollResult
   | { status: "complete"; value: T };
 
-export type OAuthDeviceCodePollOptions<T> = {
+export interface OAuthDeviceCodePollOptions<T> {
   intervalSeconds?: number;
   expiresInSeconds?: number;
   waitBeforeFirstPoll?: boolean;
   poll: () => Promise<OAuthDeviceCodePollResult<T>>;
   signal: AbortSignal;
-};
+}
 
 export function abortableSleep(
   ms: number,

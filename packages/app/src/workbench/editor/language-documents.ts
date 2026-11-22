@@ -82,13 +82,15 @@ export const languageDocuments = {
     if (family === undefined) return;
     found.wanted.add(family);
 
-    for (const buffer of buffers)
+    for (const buffer of buffers) {
       if (
         languageFamily(buffer.path) === family &&
         !found.held.has(buffer.path) &&
         buffer.contents !== buffer.savedContents
-      )
+      ) {
         open(found, buffer.path, buffer.contents);
+      }
+    }
 
     await Promise.all(
       [...found.held.values()].map((held) => Promise.all([held.document, held.sent])),

@@ -56,7 +56,7 @@ console.info(
 async function markdownTable(): Promise<string> {
   const rows: string[][] = [];
 
-  for (const motion of MOTIONS)
+  for (const motion of MOTIONS) {
     for (const variant of ["prose", "streamdown", "words"] as const) {
       const fixtures = await measureGate(
         new URL("./markdown.bench.tsx", import.meta.url),
@@ -84,6 +84,7 @@ async function markdownTable(): Promise<string> {
         ]),
       );
     }
+  }
 
   return table(
     [

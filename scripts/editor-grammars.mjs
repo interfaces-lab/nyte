@@ -37,12 +37,13 @@ for (const grammar of manifest.grammars) {
   }
 }
 
-for (const license of manifest.licenses)
+for (const license of manifest.licenses) {
   assert.equal(
     digest(await readFile(new URL(`licenses/${license.file}`, directory))),
     license.sha256,
     `${license.file}: license hash`,
   );
+}
 
 assert.equal(
   digest(
@@ -95,7 +96,7 @@ const assets = `${imports.join("\n")}
 export { runtimeUrl };
 
 export const fileStructureAssets = {
-${manifest.grammars.map((grammar) => `  ${grammar.language}: { wasm: ${grammar.language}Wasm, folds: ${variable(grammar.foldQuery)}Query, symbols: ${grammar.symbolQuery === null ? "undefined" : variable(grammar.symbolQuery) + "Query"} },`).join("\n")}
+${manifest.grammars.map((grammar) => `  ${grammar.language}: { wasm: ${grammar.language}Wasm, folds: ${variable(grammar.foldQuery)}Query, symbols: ${grammar.symbolQuery === null ? "undefined" : `${variable(grammar.symbolQuery)}Query`} },`).join("\n")}
 } satisfies Record<StructureLanguage, { readonly wasm: string; readonly folds: string; readonly symbols: string | undefined }>;
 `;
 
@@ -129,12 +130,13 @@ for (const entry of [
   assert.equal(formatted.errors.length, 0, entry.file);
 
   if (write) await writeFile(path, formatted.code);
-  else
+  else {
     assert.equal(
       await readFile(path, "utf8"),
       formatted.code,
       `${entry.file}: run node scripts/editor-grammars.mjs --write`,
     );
+  }
 }
 
 console.log(
@@ -154,7 +156,7 @@ async function refreshAssets() {
         assert.equal(response.ok, true, grammar.archive);
         const bytes = Buffer.from(await response.arrayBuffer());
         assert.equal(
-          "sha512-" + createHash("sha512").update(bytes).digest("base64"),
+          `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
           grammar.integrity,
         );
         archive = join(temporary, `${archives.size}.tgz`);

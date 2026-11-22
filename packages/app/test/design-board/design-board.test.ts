@@ -120,7 +120,7 @@ async function visibleWords(open: OpenBoard, words: readonly string[]): Promise<
     words.map((text) => open.board.getByText(text, { exact: true }).isVisible()),
   );
 
-  return words.filter((_text, index) => shown[index] === true);
+  return words.filter((_text, index) => shown[index]);
 }
 
 async function pressLabel(open: OpenBoard, name: string): Promise<{ x: number; y: number }> {
@@ -370,8 +370,9 @@ describe("the design board in headless Chromium", () => {
 
     await open.board.locator('[data-ring="edit"]').waitFor({ state: "detached" });
 
-    for (const refusal of row.refusals)
+    for (const refusal of row.refusals) {
       await open.board.locator('[data-ring="you"] [role="status"]').getByText(refusal).waitFor();
+    }
 
     expect(await statuses(open)).toEqual(row.refusals);
     expect(await title(open).textContent()).toBe(row.shows);

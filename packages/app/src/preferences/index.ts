@@ -122,7 +122,7 @@ export const preferences = {
   ),
   terminalScrollback: definePreference(
     { key: TERMINAL, field: "scrollback" },
-    integer(1_000, 100_000),
+    integer(1000, 100_000),
     10_000,
   ),
   terminalCursorStyle: definePreference(

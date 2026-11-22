@@ -337,8 +337,9 @@ export function useGestures(input: {
         [...node.childNodes].some(
           (child) => child.nodeType === Node.TEXT_NODE && (child.textContent ?? "").trim() !== "",
         )
-      )
+      ) {
         setReadOnly(node);
+      }
     },
     keyDown: (event, pages) => {
       if (!pages.onKey(event) && event.key === "Escape") select(null);

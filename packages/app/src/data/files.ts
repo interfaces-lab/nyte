@@ -25,8 +25,9 @@ async function scanFiles(folder: SelectedWorkspace | undefined): Promise<readonl
   const entries: MentionFile[] = [];
 
   for await (const frame of files.scan({ ignored: "exclude" })) {
-    if (frame.kind === "entries")
+    if (frame.kind === "entries") {
       entries.push(...frame.entries.map((entry) => mentionFile(folder.path, entry)));
+    }
   }
 
   return entries;
@@ -74,7 +75,7 @@ export function mentionFile(
 export function mentionFileAt(path: string, kind: MentionFile["kind"]): MentionFile {
   const target = kind === "folder" ? `${path}/` : path;
   const url = new URL("file://");
-  url.pathname = target.replace(
+  url.pathname = target.replaceAll(
     /[%\\\n\r\t()]/gu,
     (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
   );

@@ -111,8 +111,9 @@ export class FileSettingsStore {
     return this.writes.run(async () => {
       const current = readSettings(this.globalPath);
 
-      if (current.kind === "invalid")
+      if (current.kind === "invalid") {
         throw new Error(`Fix ${current.problem.path} first: ${current.problem.reason}`);
+      }
       await writeSettingsPatch(this.globalPath, patch);
     });
   }

@@ -15,13 +15,13 @@ const STATUS_LABELS = {
   running: "Running",
   issues: "Running with Issues",
   stopped: "Stopped",
-} as const satisfies { readonly [S in HostStatus]: string };
+} as const satisfies Readonly<Record<HostStatus, string>>;
 
 const STATUS_COLORS = {
   running: [52, 199, 89],
   issues: [255, 159, 10],
   stopped: [255, 59, 48],
-} as const satisfies { readonly [S in HostStatus]: readonly [number, number, number] };
+} as const satisfies Readonly<Record<HostStatus, readonly [number, number, number]>>;
 
 const MAC_VERSION = process.getSystemVersion().split(".").map(Number);
 
@@ -31,7 +31,7 @@ const SUBLABELS =
 const ISSUE_LABELS = {
   approval: "Approve Nyte Host in System Settings > Login Items",
   unreachable: "Nyte can't connect to the host",
-} as const satisfies { readonly [I in HostIssue]: string };
+} as const satisfies Readonly<Record<HostIssue, string>>;
 
 export interface HostTrayOptions {
   readonly agent: HostAgent;
@@ -141,7 +141,7 @@ function items(
     ...versions.map((label): MenuItemConstructorOptions => ({
       label,
       toolTip: "Copy Versions",
-      click: () => clipboard.writeText(versions.join("\n")),
+      click: () => void clipboard.writeText(versions.join("\n")),
     })),
     { type: "separator" },
     { label: "Check for Updates…", click: () => options.checkForUpdates() },
@@ -161,7 +161,7 @@ function badgedIcon(source: NativeImage, color: readonly [number, number, number
     const radius = size * 0.11;
     const gap = size * 0.05;
 
-    for (let y = 0; y < size; y++)
+    for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const distance = Math.hypot(x + 0.5 - center, y + 0.5 - center);
         const keep = 1 - Math.max(0, Math.min(1, radius + gap - distance + 0.5));
@@ -172,6 +172,7 @@ function badgedIcon(source: NativeImage, color: readonly [number, number, number
         pixels[at + 2] = Math.round((pixels[at + 2] ?? 0) * keep + color[0] * dot);
         pixels[at + 3] = Math.round((pixels[at + 3] ?? 0) * keep + 255 * dot);
       }
+    }
 
     image.addRepresentation({ scaleFactor, width: size, height: size, buffer: pixels });
   }

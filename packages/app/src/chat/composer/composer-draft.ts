@@ -62,8 +62,9 @@ export function unsentNotice(
   const restore = notice?.restore ?? null;
   const restored = joinedRestore(restore === null ? unsent : [restore, ...unsent]);
 
-  if (notice === null || restore === null)
+  if (notice === null || restore === null) {
     return { kind: "error", message: UNSENT_NOTICE, restore: restored };
+  }
 
   return { ...notice, restore: restored };
 }
@@ -122,8 +123,9 @@ export function persistedDraft(draft: SessionDraft): ComposerViewState {
     edit === null ||
     (edit.view.draft === contentDraftText(edit.message.content) &&
       edit.view.attachments.length === 0)
-  )
+  ) {
     return draft.composer;
+  }
 
   return draftWith(draft.composer, { text: edit.view.draft, attachments: edit.view.attachments });
 }
@@ -211,7 +213,7 @@ export function keptSending(draft: SessionDraft, sent: Sending): SessionDraft {
 export function refusedDraft(draft: SessionDraft, message: string, sent: Restore): SessionDraft {
   const offered = draft.notice?.restore ?? null;
 
-  if (draft.composer.draft !== "")
+  if (draft.composer.draft !== "") {
     return {
       ...draft,
       notice: {
@@ -220,6 +222,7 @@ export function refusedDraft(draft: SessionDraft, message: string, sent: Restore
         restore: offered === null ? sent : joinedRestore([offered, sent]),
       },
     };
+  }
 
   return {
     ...draft,

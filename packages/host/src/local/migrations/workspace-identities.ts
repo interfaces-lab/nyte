@@ -16,8 +16,9 @@ export async function migrateLocalWorkspaceIdentities(connection: StoreConnectio
     const marker = await readHeld(connection, await connection.refs.get(MIGRATION));
     const pending = Value.Check(MigrationState, marker?.object) ? marker.object.pending : null;
 
-    if (marker !== null && pending === null)
+    if (marker !== null && pending === null) {
       throw new SdkError("internal", "The workspace identity migration state is malformed.");
+    }
 
     if (pending?.length === 0) return;
 
@@ -57,8 +58,9 @@ export async function migrateLocalWorkspaceIdentities(connection: StoreConnectio
         metadata.birthtimeNs === 0n ||
         metadata.birthtimeNs / 1_000_000n > BigInt(Math.floor(record.createdAt)) ||
         record.identity !== sha256(`${metadata.dev}:${metadata.ino}`)
-      )
+      ) {
         continue;
+      }
 
       const identity = asId<"environment-identity">(
         sha256(`${metadata.birthtimeNs}:${metadata.ino}`),
@@ -78,8 +80,9 @@ export async function migrateLocalWorkspaceIdentities(connection: StoreConnectio
       pending !== null &&
       pending.length === remaining.length &&
       remaining.every((name, index) => pending[index] === name)
-    )
+    ) {
       return;
+    }
 
     updates.push({
       name: MIGRATION,

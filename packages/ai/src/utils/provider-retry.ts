@@ -82,8 +82,9 @@ function getRetryDelayMs(
 ): number {
   const requested = requestedRetryDelayMs(error);
 
-  if (requested !== undefined)
+  if (requested !== undefined) {
     return validateServerRetryDelayMs(requested, maxRetryDelayMs, error.message);
+  }
 
   const exponentialDelay = Math.min(0.5 * 2 ** retryIndex, 8) * 1000;
 
@@ -115,8 +116,9 @@ export async function retryProviderRequest<T>(
         !carriesHttpStatus(error) ||
         !sdkPolicyRetries(error) ||
         options.retryable?.(error) === false
-      )
+      ) {
         throw error;
+      }
 
       const retryIndex = maxRetries - retriesRemaining;
       retriesRemaining--;
