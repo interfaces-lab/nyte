@@ -13,7 +13,9 @@ import type {
   SimpleStreamOptions,
   TranscriptContext,
 } from "@nyte-ai/ai";
-import type { ExecutionEnv, PluginApi, ToolDefinition } from "@nyte-ai/core";
+import type { CreateElicitationResponse } from "@agentclientprotocol/sdk/unstable";
+import type { ExecutionEnv, PluginApi, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
+import type { ToolResult } from "@nyte-ai/schema";
 import { standard } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { Plugin } from "../core.ts";
@@ -22,6 +24,9 @@ import type { AcpAgent, AgentRoute } from "./catalog.ts";
 import { AcpProcess } from "./connection.ts";
 import type { AgentChoice } from "./connection.ts";
 import type { AcpThread } from "./thread.ts";
+import type { AgentForm } from "./forms.ts";
+import { question } from "../question/question.ts";
+import { answerInput } from "../question/schema.ts";
 import { messageKey, transcriptText, userBlocks } from "./transcript.ts";
 import { MIRROR_TOOL, mirrorArguments, mirrorClass } from "./translate.ts";
 import type { MirrorArguments } from "./translate.ts";
@@ -63,8 +68,13 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
 
       if (thread === undefined || thread.closed || args.thread !== thread.prefix)
         throw new Error(NOT_RUNNING);
+      const form = thread.findForm(args.id);
+
+      if (form !== undefined) return askForm(thread, args.id, form, invocation);
       thread.recording(args.id);
-      const output = await thread.result(args.id, invocation.signal);
+      const output = await thread.result(args.id, invocation.signal, (text) =>
+        invocation.progress({ text }),
+      );
 
       if (output.failed)
         throw new Error(output.text === "" ? "The tool call failed." : output.text);
@@ -72,6 +82,44 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
       return { content: [{ kind: "text", text: output.text }] };
     },
   };
+}
+
+async function askForm(
+  thread: AcpThread,
+  id: string,
+  form: AgentForm,
+  invocation: ToolInvocation,
+): Promise<ToolResult<unknown>> {
+  let response: CreateElicitationResponse = { action: "cancel" };
+
+  try {
+    const part = await invocation.session.parts.create(question, {
+      state: { call: invocation.call, questions: [...form.questions], phase: { kind: "asking" } },
+      placement: { kind: "modal" },
+    });
+    const outcome = await invocation.wait({ kind: "part", part: part.id });
+    const checked =
+      outcome.kind === "part" && outcome.answer?.action === "answer"
+        ? await answerInput["~standard"].validate(outcome.answer.input)
+        : undefined;
+
+    response =
+      checked !== undefined && !(checked instanceof Promise) && checked.issues === undefined
+        ? form.respond(checked.value.answers)
+        : { action: "decline" };
+
+    return {
+      content: [
+        {
+          kind: "text",
+          text: response.action === "accept" ? "The user answered." : "The user declined.",
+        },
+      ],
+      parts: [part.id],
+    };
+  } finally {
+    thread.answerForm(id, response);
+  }
 }
 
 export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {

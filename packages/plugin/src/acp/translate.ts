@@ -73,6 +73,8 @@ export function mirrorClass(args: MirrorArguments): ToolClass {
     case "delete":
     case "move":
       return path === undefined ? { kind: "custom", label: args.title } : { kind: "edit", path };
+    case "subagent":
+      return { kind: "delegate", child: null, role: "task", title: args.title };
     case "execute":
       return {
         kind: "shell",

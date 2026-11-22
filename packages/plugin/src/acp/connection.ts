@@ -9,14 +9,22 @@ import {
 } from "@agentclientprotocol/sdk/unstable";
 import type {
   ClientConnection,
+  CreateElicitationResponse,
   InitializeResponse,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
   SessionConfigOption,
   SessionConfigSelectOption,
+  SessionUpdate,
 } from "@agentclientprotocol/sdk/unstable";
 import { processEnvironment } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 import manifest from "../../package.json" with { type: "json" };
 import type { AcpAgent } from "./catalog.ts";
+import { Value } from "typebox/value";
+import { createDialect } from "./dialects.ts";
+import { formRequest } from "./forms.ts";
+import type { Dialect } from "./dialects.ts";
 import { AcpThread } from "./thread.ts";
 import type { AcpApprove } from "./thread.ts";
 
@@ -79,7 +87,9 @@ export class AcpProcess {
   readonly agent: AcpAgent;
   readonly #pipe: Pipe;
   readonly #connection: ClientConnection;
+  readonly #dialect: Dialect;
   readonly #threads = new Map<string, AcpThread>();
+  readonly #parentSessions = new Map<string, string>();
   readonly #options = new Map<string, readonly SessionConfigOption[]>();
   readonly #ready: Promise<InitializeResponse>;
   #stderr = "";
@@ -87,22 +97,30 @@ export class AcpProcess {
 
   private constructor(agent: AcpAgent, connect: (stderr: (bytes: Uint8Array) => void) => Pipe) {
     this.agent = agent;
+    this.#dialect = createDialect(agent.dialect);
 
-    const app = client({ name: "nyte" })
-      .onNotification(methods.client.session.update, (context) => {
-        const { sessionId, update } = context.params;
+    const sessionClient = client({ name: "nyte" })
+      .onNotification(methods.client.session.update, (context) =>
+        this.#takeUpdate(context.params.sessionId, context.params.update),
+      )
+      .onRequest(methods.client.session.requestPermission, (context) =>
+        this.#askPermission(context.params),
+      )
+      .onRequest(methods.client.elicitation.create, (context) => this.#askForm(context.params));
 
-        if (update.sessionUpdate === "config_option_update")
-          this.#options.set(sessionId, update.configOptions);
-        this.#threads.get(sessionId)?.update(update);
-      })
-      .onRequest(
-        methods.client.session.requestPermission,
-        async (context) =>
-          (await this.#threads.get(context.params.sessionId)?.permission(context.params)) ?? {
-            outcome: { outcome: "cancelled" },
+    const app = [...this.#dialect.notifications].reduce(
+      (built, [method, readReport]) =>
+        built.onNotification(
+          method,
+          (params: unknown) => params,
+          (context) => {
+            const report = readReport(context.params);
+
+            if (report !== undefined) this.#threads.get(report.sessionId)?.reportSubagent(report);
           },
-      );
+        ),
+      sessionClient,
+    );
 
     const decoder = new TextDecoder();
 
@@ -118,7 +136,15 @@ export class AcpProcess {
 
     this.#ready = this.#connection.agent.request(methods.agent.initialize, {
       protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      clientCapabilities: {
+        fs: { readTextFile: false, writeTextFile: false },
+        terminal: false,
+        subagents: {},
+        elicitation: { form: {} },
+        ...(this.#dialect.capabilityMeta === undefined
+          ? {}
+          : { _meta: this.#dialect.capabilityMeta }),
+      },
       clientInfo: { name: "nyte", title: "Nyte", version: manifest.version },
     });
 
@@ -231,6 +257,7 @@ export class AcpProcess {
 
     const thread = new AcpThread(`acp-${randomUUID().slice(0, 8)}-`, {
       cwd,
+      dialect: this.#dialect,
       approve,
       prompt: (blocks) =>
         this.#connection.agent.request(methods.agent.session.prompt, {
@@ -290,6 +317,10 @@ export class AcpProcess {
       if (known === thread) {
         this.#threads.delete(id);
         this.#options.delete(id);
+
+        for (const [child, parent] of this.#parentSessions) {
+          if (parent === id) this.#parentSessions.delete(child);
+        }
         thread.close();
       }
   }
@@ -300,9 +331,54 @@ export class AcpProcess {
 
     for (const thread of this.#threads.values()) thread.close(reason);
     this.#threads.clear();
+    this.#parentSessions.clear();
     this.#options.clear();
     this.#connection.close();
     void this.#pipe.stop().catch(() => undefined);
+  }
+
+  #takeUpdate(sessionId: string, update: SessionUpdate): void {
+    const parent = this.#parentSessions.get(sessionId);
+
+    if (parent !== undefined) {
+      this.#threads.get(parent)?.update(update, sessionId);
+
+      return;
+    }
+
+    if (update.sessionUpdate === "config_option_update") {
+      this.#options.set(sessionId, update.configOptions);
+    }
+
+    if (update.sessionUpdate === "subagent_update") {
+      this.#parentSessions.set(update.sessionId, sessionId);
+    }
+
+    this.#threads.get(sessionId)?.update(update, this.#dialect.findSubagent(update));
+  }
+
+  async #askPermission(request: RequestPermissionRequest): Promise<RequestPermissionResponse> {
+    const parent = this.#parentSessions.get(request.sessionId);
+
+    const subagent =
+      parent === undefined
+        ? this.#dialect.findSubagent({ sessionUpdate: "tool_call_update", ...request.toolCall })
+        : request.sessionId;
+
+    const thread = this.#threads.get(parent ?? request.sessionId);
+
+    return (await thread?.permission(request, subagent)) ?? { outcome: { outcome: "cancelled" } };
+  }
+
+  async #askForm(request: unknown): Promise<CreateElicitationResponse> {
+    if (!Value.Check(formRequest, request) || request.sessionId === undefined) {
+      return { action: "decline" };
+    }
+
+    const parent = this.#parentSessions.get(request.sessionId);
+    const thread = this.#threads.get(parent ?? request.sessionId);
+
+    return thread === undefined ? { action: "decline" } : thread.askForm(request);
   }
 
   private newSession(cwd: string) {

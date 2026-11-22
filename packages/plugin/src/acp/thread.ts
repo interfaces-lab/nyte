@@ -1,5 +1,6 @@
 import type {
   ContentBlock,
+  CreateElicitationResponse,
   PermissionOption,
   PromptResponse,
   RequestPermissionRequest,
@@ -7,6 +8,7 @@ import type {
   SessionUpdate,
   ToolCallContent,
   ToolCallStatus,
+  SubagentUpdate,
   ToolCallUpdate,
 } from "@agentclientprotocol/sdk/unstable";
 import { posix } from "node:path";
@@ -24,6 +26,9 @@ import {
   Translator,
 } from "./translate.ts";
 import type { MirrorArguments } from "./translate.ts";
+import type { Dialect, SubagentReport } from "./dialects.ts";
+import { readForm } from "./forms.ts";
+import type { AgentForm, FormRequest } from "./forms.ts";
 
 type Recording = "recording" | "skipped";
 
@@ -36,6 +41,13 @@ type ThreadEvent =
   | { readonly kind: "stop"; readonly response: PromptResponse }
   | { readonly kind: "aborted" };
 
+interface Subagent {
+  status: SubagentReport["status"];
+  result: string | undefined;
+  message: string;
+  activity: string | undefined;
+}
+
 interface ToolState {
   title: string;
   kind: string;
@@ -44,6 +56,7 @@ interface ToolState {
   paths: string[];
   content: ToolCallContent[];
   rawOutput: unknown;
+  subagent: Subagent | undefined;
 }
 
 export interface AcpToolOutput {
@@ -53,6 +66,7 @@ export interface AcpToolOutput {
 
 export interface AcpChannel {
   readonly cwd: string;
+  readonly dialect: Dialect;
   prompt(blocks: readonly ContentBlock[]): Promise<PromptResponse>;
   cancel(): void;
   readonly approve: AcpApprove;
@@ -107,6 +121,29 @@ function answer(
     : { outcome: { outcome: "selected", optionId: option.optionId } };
 }
 
+function emptyTool(): ToolState {
+  return {
+    title: "Tool",
+    kind: "other",
+    status: "pending",
+    input: {},
+    paths: [],
+    content: [],
+    rawOutput: undefined,
+    subagent: undefined,
+  };
+}
+
+function readSubagentUpdate(update: SubagentUpdate): SubagentReport {
+  const report = { child: update.sessionId, title: update.title ?? undefined };
+  const state = update.state;
+
+  if (state?.state !== "idle" || !("stopReason" in state)) return { ...report, status: "running" };
+  const failed = state.stopReason === "error" || state.stopReason === "refusal";
+
+  return { ...report, status: failed ? "failed" : "completed" };
+}
+
 function guardedFirst(cwd: string, paths: readonly string[]): string[] {
   const root = posix.resolve(cwd);
 
@@ -140,7 +177,14 @@ export class AcpThread {
   readonly #channel: AcpChannel;
   readonly #events = new Inbox<ThreadEvent>();
   readonly #tools = new Map<string, ToolState>();
+  readonly #subagentTools = new Map<string, string>();
+  readonly #subagentCalls = new Map<string, ToolState>();
   readonly #permissions = new Map<string, AbortController>();
+  readonly #subagentApprovals = new Set<AbortController>();
+  readonly #pendingForms = new Map<
+    string,
+    { readonly form: AgentForm; readonly reply: PromiseWithResolvers<CreateElicitationResponse> }
+  >();
   readonly #recordings = new Map<string, PromiseWithResolvers<Recording>>();
   readonly #changes = new Set<() => void>();
   readonly #queue: (readonly ContentBlock[])[] = [];
@@ -161,7 +205,51 @@ export class AcpThread {
     else this.#start(blocks);
   }
 
-  update(update: SessionUpdate): void {
+  update(update: SessionUpdate, subagent?: string): void {
+    if (update.sessionUpdate === "subagent_update")
+      this.#recordSubagent(readSubagentUpdate(update));
+    else if (subagent !== undefined) this.#applySubagentUpdate(subagent, update);
+    else this.#applyOwnUpdate(update);
+
+    this.#changed();
+  }
+
+  async askForm(request: FormRequest): Promise<CreateElicitationResponse> {
+    if (this.#failure !== undefined) return { action: "cancel" };
+    const id = `ask-${this.#tools.size}`;
+    const form = readForm(request);
+    const reply = Promise.withResolvers<CreateElicitationResponse>();
+    this.#pendingForms.set(id, { form, reply });
+    const title = form.questions.map((item) => item.header).join(", ");
+    this.#tools.set(id, { ...emptyTool(), title, kind: "question" });
+    this.#events.push({ kind: "tool", id });
+    this.#changed();
+
+    try {
+      return await reply.promise;
+    } finally {
+      this.#pendingForms.delete(id);
+    }
+  }
+
+  findForm(id: string): AgentForm | undefined {
+    return this.#pendingForms.get(id)?.form;
+  }
+
+  answerForm(id: string, response: CreateElicitationResponse): void {
+    const tool = this.#tools.get(id);
+
+    if (tool !== undefined) tool.status = response.action === "accept" ? "completed" : "failed";
+    this.#pendingForms.get(id)?.reply.resolve(response);
+    this.#changed();
+  }
+
+  reportSubagent(report: SubagentReport): void {
+    this.#recordSubagent(report);
+    this.#changed();
+  }
+
+  #applyOwnUpdate(update: SessionUpdate): void {
     switch (update.sessionUpdate) {
       case "agent_message_chunk":
         if (update.content.type === "text")
@@ -178,15 +266,20 @@ export class AcpThread {
       default:
         break;
     }
-
-    this.#changed();
   }
 
-  async permission(request: RequestPermissionRequest): Promise<RequestPermissionResponse> {
+  async permission(
+    request: RequestPermissionRequest,
+    subagent?: string,
+  ): Promise<RequestPermissionResponse> {
     const id = request.toolCall.toolCallId;
+    const options = this.#channel.dialect.filterPermissionOptions(request.options);
+
+    if (subagent !== undefined || this.#subagentCalls.has(id))
+      return this.#approveSubagentCall(request, options);
     this.#see(request.toolCall);
 
-    if (this.#failure !== undefined) return answer("cancelled", request.options);
+    if (this.#failure !== undefined) return answer("cancelled", options);
     const asking = new AbortController();
     this.#permissions.set(id, asking);
     this.#changed();
@@ -200,7 +293,7 @@ export class AcpThread {
       ]);
 
       if (recorded !== "recording")
-        return answer(recorded === "skipped" ? "reject" : "cancelled", request.options);
+        return answer(recorded === "skipped" ? "reject" : "cancelled", options);
       const args = this.#arguments(id);
       const name = args.kind === "other" ? args.title : args.kind;
       const verdict = await this.#channel.approve(
@@ -208,12 +301,40 @@ export class AcpThread {
         asking.signal,
       );
 
-      if (asking.signal.aborted) return answer("cancelled", request.options);
+      if (asking.signal.aborted) return answer("cancelled", options);
 
-      return answer(verdict.kind === "allow" ? "allow" : "reject", request.options);
+      return answer(verdict.kind === "allow" ? "allow" : "reject", options);
     } finally {
       this.#permissions.delete(id);
       this.#changed();
+    }
+  }
+
+  async #approveSubagentCall(
+    request: RequestPermissionRequest,
+    options: readonly PermissionOption[],
+  ): Promise<RequestPermissionResponse> {
+    if (this.#failure !== undefined) return answer("cancelled", options);
+    const tool = this.#applyToolUpdate(
+      this.#subagentCalls.get(request.toolCall.toolCallId) ?? emptyTool(),
+      request.toolCall,
+    );
+    this.#subagentCalls.set(request.toolCall.toolCallId, tool);
+    const asking = new AbortController();
+    this.#subagentApprovals.add(asking);
+
+    try {
+      const args = this.#arguments(request.toolCall.toolCallId, tool);
+      const verdict = await this.#channel.approve(
+        { name: args.kind === "other" ? args.title : args.kind, class: mirrorClass(args) },
+        asking.signal,
+      );
+
+      if (asking.signal.aborted) return answer("cancelled", options);
+
+      return answer(verdict.kind === "allow" ? "allow" : "reject", options);
+    } finally {
+      this.#subagentApprovals.delete(asking);
     }
   }
 
@@ -222,6 +343,8 @@ export class AcpThread {
   }
 
   skip(id: string): void {
+    if (this.#pendingForms.has(id)) this.answerForm(id, { action: "decline" });
+
     if (this.#tools.has(id)) this.#recording(id).resolve("skipped");
   }
 
@@ -289,19 +412,33 @@ export class AcpThread {
     return stream;
   }
 
-  async result(id: string, signal: AbortSignal): Promise<AcpToolOutput> {
+  async result(
+    id: string,
+    signal: AbortSignal,
+    onProgress: (text: string) => void = () => undefined,
+  ): Promise<AcpToolOutput> {
     const settled = () => {
-      const status = this.#tools.get(id)?.status;
+      const tool = this.#tools.get(id);
+      const finished =
+        tool?.subagent === undefined
+          ? tool?.status === "completed" || tool?.status === "failed"
+          : tool.subagent.status !== "running";
 
       return (
-        status === "completed" ||
-        status === "failed" ||
-        !this.#running ||
-        [...this.#permissions.keys()].some((other) => other !== id)
+        finished || !this.#running || [...this.#permissions.keys()].some((other) => other !== id)
       );
     };
 
+    let lastProgress: string | undefined;
+
     while (!settled() && this.#failure === undefined) {
+      const activity = this.#tools.get(id)?.subagent?.activity;
+
+      if (activity !== undefined && activity !== lastProgress) {
+        lastProgress = activity;
+        onProgress(activity);
+      }
+
       if (signal.aborted) {
         this.cancel();
         signal.throwIfAborted();
@@ -322,6 +459,15 @@ export class AcpThread {
     const tool = this.#tools.get(id);
 
     if (tool === undefined) throw this.#failure ?? new Error("The agent did not report this call.");
+    const subagent = tool.subagent;
+
+    if (subagent !== undefined) {
+      return {
+        text:
+          subagent.result ?? (subagent.message.trim() || toolText(tool.content, tool.rawOutput)),
+        failed: subagent.status === "failed",
+      };
+    }
 
     return { text: toolText(tool.content, tool.rawOutput), failed: tool.status === "failed" };
   }
@@ -329,7 +475,13 @@ export class AcpThread {
   cancel(): void {
     this.#queue.length = 0;
 
-    for (const asking of this.#permissions.values()) asking.abort();
+    for (const asking of [...this.#permissions.values(), ...this.#subagentApprovals]) {
+      asking.abort();
+    }
+
+    for (const pending of this.#pendingForms.values()) {
+      pending.reply.resolve({ action: "cancel" });
+    }
 
     if (this.#running) this.#channel.cancel();
   }
@@ -367,34 +519,90 @@ export class AcpThread {
   }
 
   #see(update: ToolCallUpdate): void {
-    const known = this.#tools.get(update.toolCallId);
+    const id = update.toolCallId;
+    const report = this.#channel.dialect.readSubagent(update);
+    const owner = report === undefined ? undefined : this.#subagentTools.get(report.child);
 
-    const tool: ToolState = known ?? {
-      title: "Tool",
-      kind: "other",
-      status: "pending",
-      input: {},
-      paths: [],
-      content: [],
-      rawOutput: undefined,
-    };
+    if (report !== undefined && owner !== undefined && owner !== id) {
+      this.#subagentCalls.set(
+        id,
+        this.#applyToolUpdate(this.#subagentCalls.get(id) ?? emptyTool(), update),
+      );
+      this.#recordSubagent(report);
 
-    tool.title = update.title ?? tool.title;
-    tool.kind = update.kind ?? tool.kind;
+      return;
+    }
+
+    const known = this.#tools.get(id);
+    const tool = this.#applyToolUpdate(known ?? emptyTool(), update);
+
+    if (known === undefined) this.#tools.set(id, tool);
+
+    if (report !== undefined) this.#recordSubagent(report, id);
+
+    if (known === undefined) this.#events.push({ kind: "tool", id });
+  }
+
+  #applyToolUpdate(tool: ToolState, update: ToolCallUpdate): ToolState {
+    tool.title = this.#channel.dialect.readTitle(update) ?? update.title ?? tool.title;
+    tool.kind = tool.subagent === undefined ? (update.kind ?? tool.kind) : "subagent";
     tool.status = update.status ?? tool.status;
     tool.input = Value.Check(input, update.rawInput) ? update.rawInput : tool.input;
     tool.paths = update.locations?.map((location) => location.path) ?? tool.paths;
     tool.content = update.content ?? tool.content;
     tool.rawOutput = update.rawOutput ?? tool.rawOutput;
 
-    if (known !== undefined) return;
-    this.#tools.set(update.toolCallId, tool);
-    this.#events.push({ kind: "tool", id: update.toolCallId });
+    return tool;
   }
 
-  #arguments(id: string): MirrorArguments {
-    const tool = this.#tools.get(id);
+  #recordSubagent(report: SubagentReport, carrier?: string): Subagent {
+    const id = this.#subagentTools.get(report.child) ?? carrier ?? `subagent-${report.child}`;
+    this.#subagentTools.set(report.child, id);
+    const known = this.#tools.get(id);
+    const tool = known ?? { ...emptyTool(), title: "Subagent" };
+    const subagent = tool.subagent ?? {
+      status: report.status,
+      result: undefined,
+      message: "",
+      activity: undefined,
+    };
 
+    subagent.status = report.status;
+    subagent.result = report.result ?? subagent.result;
+    tool.subagent = subagent;
+    tool.kind = "subagent";
+    tool.title = report.title ?? (tool.title === "Tool" ? "Subagent" : tool.title);
+
+    if (known === undefined) {
+      this.#tools.set(id, tool);
+      this.#events.push({ kind: "tool", id });
+    }
+
+    return subagent;
+  }
+
+  #applySubagentUpdate(child: string, update: SessionUpdate): void {
+    const known = this.#subagentTools.get(child);
+    const subagent =
+      (known === undefined ? undefined : this.#tools.get(known)?.subagent) ??
+      this.#recordSubagent({ child, status: "running" });
+
+    if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
+      subagent.message += update.content.text;
+
+      return;
+    }
+
+    if (update.sessionUpdate !== "tool_call" && update.sessionUpdate !== "tool_call_update") return;
+    const tool = this.#applyToolUpdate(
+      this.#subagentCalls.get(update.toolCallId) ?? emptyTool(),
+      update,
+    );
+    this.#subagentCalls.set(update.toolCallId, tool);
+    subagent.activity = tool.title;
+  }
+
+  #arguments(id: string, tool = this.#tools.get(id)): MirrorArguments {
     return {
       thread: this.prefix,
       id,

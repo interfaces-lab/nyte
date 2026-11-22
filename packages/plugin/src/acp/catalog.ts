@@ -19,6 +19,7 @@ import { executable, findOnPath } from "../find-on-path.ts";
 import { AcpProcess, choices, findOption } from "./connection.ts";
 import type { AgentChoice } from "./connection.ts";
 import { ACP_API } from "./translate.ts";
+import type { DialectName } from "./dialects.ts";
 
 const PROBE_TIMEOUT_MS = 5_000;
 
@@ -31,6 +32,7 @@ export interface AcpAgent {
   readonly args: readonly string[];
   readonly env: Readonly<Record<string, string>>;
   readonly mode?: string;
+  readonly dialect?: DialectName;
 }
 
 export interface AgentRoute {

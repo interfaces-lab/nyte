@@ -14,6 +14,7 @@ import type { ServerHost } from "@nyte-ai/core/server";
 import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import approvals from "@nyte-ai/plugin/core/approvals";
+import autoresearch from "@nyte-ai/plugin/core/autoresearch";
 import { acpAgents } from "@nyte-ai/plugin/core/acp";
 import type { AcpAgent } from "@nyte-ai/plugin/core/acp";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
@@ -67,7 +68,43 @@ const STORE_POLL_MS = 500;
 const ACP_AGENTS: readonly AcpAgent[] = [
   { id: "antigravity", name: "Google Antigravity", command: "agy", args: ["acp"], env: {} },
   { id: "grok", name: "Grok", command: "grok", args: ["agent", "stdio"], env: {} },
+  {
+    id: "kiro",
+    name: "Kiro",
+    command: "kiro-cli",
+    args: ["acp", "--agent-engine=v3", "--auth-method=cli"],
+    env: {},
+  },
   { id: "fx", name: "fx", command: "fx", args: ["acp"], env: {}, mode: "ask" },
+  { id: "devin", name: "Devin", command: "devin", args: ["acp"], env: {}, dialect: "devin" },
+  {
+    id: "copilot-cli",
+    name: "Copilot CLI",
+    command: "copilot",
+    args: ["--acp"],
+    env: {},
+    dialect: "copilot",
+  },
+  { id: "kimi-code", name: "Kimi Code", command: "kimi", args: ["acp"], env: {} },
+  {
+    id: "droid",
+    name: "Factory Droid",
+    command: "droid",
+    args: ["exec", "--output-format", "acp-daemon"],
+    env: {},
+  },
+  { id: "opencode-cli", name: "OpenCode", command: "opencode", args: ["acp"], env: {} },
+  {
+    id: "claude-agent",
+    name: "Claude Agent",
+    command: "claude-agent-acp",
+    args: [],
+    env: {},
+    dialect: "claude",
+  },
+  { id: "glm", name: "GLM Agent", command: "glm-acp-agent", args: [], env: {} },
+  { id: "mistral-vibe", name: "Mistral Vibe", command: "vibe-acp", args: [], env: {} },
+  { id: "omp", name: "Oh My Pi", command: "omp", args: ["acp"], env: {} },
 ];
 
 export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models" | "plugins"> & {
@@ -167,6 +204,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     canvas,
     designGuide,
     languageTools,
+    autoresearch,
     claudeCodeSdk().plugin,
     ...acpAgents(ACP_AGENTS),
   ];
