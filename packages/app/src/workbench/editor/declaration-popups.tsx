@@ -16,7 +16,7 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { PIERRE_EDITOR_HIGHLIGHTER_OPTIONS } from "@nyte-ai/ui/worker-pool";
 import type { SelectedWorkspace, ThemePreference } from "../../contract/bridge.ts";
 import { ChatScope } from "../../chat/chat-scope.tsx";
-import { Prose } from "../../chat/markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { documentsApi } from "../../data/documents.ts";
 import { CodeActionsMenu } from "./code-actions-menu.tsx";
 import type { Landing } from "./declaration.ts";

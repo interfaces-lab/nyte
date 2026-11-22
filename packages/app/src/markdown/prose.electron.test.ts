@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { testRenderer } from "../../../test/renderer.ts";
+import { testRenderer } from "../../test/renderer.ts";
 
 test(
   "prose keeps one tree across settle and streams Mermaid as source",

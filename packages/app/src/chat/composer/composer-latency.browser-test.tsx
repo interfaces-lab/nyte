@@ -10,7 +10,7 @@ import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerDocumentState } from "./composer-document.ts";
-import { Prose } from "../markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { errorMessage } from "../../contract/errors.ts";
 
 const WORDS =

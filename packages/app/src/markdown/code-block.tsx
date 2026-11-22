@@ -4,11 +4,11 @@ import { Fragment, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
-import { loadDeferred, useDeferred } from "../../lib/deferred.tsx";
-import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
+import { loadDeferred, useDeferred } from "../lib/deferred.tsx";
+import type { DeferredRuntimes } from "../lib/deferred-entries.ts";
 import type { CodeStream } from "./highlight-code.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
+import { useCopyConfirmation } from "../components/copy-confirmation.ts";
 import { codeBlockStyles } from "./prose.stylex.ts";
 
 interface HighlightedCode {

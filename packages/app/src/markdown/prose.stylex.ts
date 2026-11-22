@@ -1,6 +1,6 @@
 import { create, keyframes } from "@stylexjs/stylex";
 import { control, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { conversation } from "../../theme/schema.stylex.ts";
+import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const FADE_MS = 150;

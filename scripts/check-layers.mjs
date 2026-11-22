@@ -17,6 +17,7 @@ const ENTRIES = [
       ["diff", "references"],
       [
         "chat",
+        "markdown",
         "canvas",
         "studio",
         "workbench",

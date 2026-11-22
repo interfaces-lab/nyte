@@ -1,4 +1,4 @@
-import { publishDeferred } from "../../lib/deferred.tsx";
+import { publishDeferred } from "../lib/deferred.tsx";
 import {
   finishCode,
   highlightCode,

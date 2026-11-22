@@ -1,10 +1,10 @@
-import { clientCapabilities } from "../../contract/client-actions.ts";
-import { nyte } from "../../contract/nyte.ts";
-import { openExternal } from "../../lib/open-external.ts";
+import { clientCapabilities } from "../contract/client-actions.ts";
+import { nyte } from "../contract/nyte.ts";
+import { openExternal } from "../lib/open-external.ts";
 import { toast } from "@nyte-ai/ui/toast";
-import { errorMessage } from "../../contract/errors.ts";
-import { preferences } from "../../preferences/index.ts";
-import type { ReferenceOpener } from "../../references/reference-opener.tsx";
+import { errorMessage } from "../contract/errors.ts";
+import { preferences } from "../preferences/index.ts";
+import type { ReferenceOpener } from "../references/reference-opener.tsx";
 
 async function confirmAndOpen(url: URL): Promise<void> {
   const trusted = preferences.trustedLinkHosts.get();

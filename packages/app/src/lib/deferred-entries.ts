@@ -1,7 +1,7 @@
-import type { codeRuntime } from "../chat/markdown/code.deferred.tsx";
+import type { codeRuntime } from "../markdown/code.deferred.tsx";
 import type { imageViewerRuntime } from "../chat/images/image-viewer.deferred.tsx";
-import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
-import type { mermaidRuntime } from "../chat/markdown/mermaid.deferred.ts";
+import type { highlightRuntime } from "../markdown/highlight.deferred.ts";
+import type { mermaidRuntime } from "../markdown/mermaid.deferred.ts";
 import type { previewsRuntime } from "../settings/previews/previews.deferred.tsx";
 import type { needsYouRuntime } from "../shell/needs-you-list.deferred.tsx";
 import type { ghosttyRuntime } from "../workbench/terminal/ghostty.deferred.ts";
@@ -14,15 +14,15 @@ export const deferredEntries = {
     packages: [],
   },
   code: {
-    module: new URL("../chat/markdown/code.deferred.tsx", import.meta.url).href,
+    module: new URL("../markdown/code.deferred.tsx", import.meta.url).href,
     packages: ["@pierre/diffs/", "shiki/"],
   },
   highlight: {
-    module: new URL("../chat/markdown/highlight.deferred.ts", import.meta.url).href,
+    module: new URL("../markdown/highlight.deferred.ts", import.meta.url).href,
     packages: ["@pierre/highlights/"],
   },
   mermaid: {
-    module: new URL("../chat/markdown/mermaid.deferred.ts", import.meta.url).href,
+    module: new URL("../markdown/mermaid.deferred.ts", import.meta.url).href,
     packages: ["beautiful-mermaid/", "elkjs/"],
   },
   workbench: {

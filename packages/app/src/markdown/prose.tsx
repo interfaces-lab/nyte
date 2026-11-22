@@ -13,20 +13,20 @@ import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { filesFor, mentionFilesOptions } from "../../data/files.ts";
-import type { MentionFile } from "../../data/files.ts";
-import { blobUrlQuery } from "../../lib/use-blob-url.ts";
+import { filesFor, mentionFilesOptions } from "../data/files.ts";
+import type { MentionFile } from "../data/files.ts";
+import { blobUrlQuery } from "../lib/use-blob-url.ts";
 import {
   fileFromUrl,
   inlineCodeReference,
   referenceTitle,
-} from "../../references/message-references.ts";
-import type { MessageReference } from "../../references/message-references.ts";
-import { useReferenceOpener } from "../../references/reference-opener.tsx";
-import type { ReferenceOpener } from "../../references/reference-opener.tsx";
-import { useChatFolder } from "../chat-folder.ts";
-import { ImageViewer } from "../images/image-viewer.tsx";
-import { SubagentCitation } from "../tools/subagent-call.tsx";
+} from "../references/message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
+import { useReferenceOpener } from "../references/reference-opener.tsx";
+import type { ReferenceOpener } from "../references/reference-opener.tsx";
+import { useChatFolder } from "../chat/chat-folder.ts";
+import { ImageViewer } from "../chat/images/image-viewer.tsx";
+import { SubagentCitation } from "../chat/tools/subagent-call.tsx";
 import { openConversationLink } from "./external-link.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MarkdownTable } from "./markdown-table.tsx";

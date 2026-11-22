@@ -1,10 +1,10 @@
-import "../../../test/window-bridge.ts";
+import "../../test/window-bridge.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import "../../theme/tokens.stylex.ts";
+import "../theme/tokens.stylex.ts";
 import { Prose } from "./prose.tsx";
 
 function check(condition: boolean, message: string): void {

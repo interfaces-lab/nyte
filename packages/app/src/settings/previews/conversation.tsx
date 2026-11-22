@@ -4,7 +4,7 @@ import type { PatchEntry, ToolClass } from "@nyte-ai/schema";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { Prose } from "../../chat/markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { StepGroupView } from "../../chat/transcript/step-group.tsx";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { conversation } from "../../theme/schema.stylex.ts";

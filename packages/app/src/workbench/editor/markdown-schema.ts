@@ -13,7 +13,7 @@ import { goToNextCell, tableEditing } from "@tiptap/pm/tables";
 import { props } from "@stylexjs/stylex";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { codeBlockStyles, proseStyles } from "../../chat/markdown/prose.stylex.ts";
+import { codeBlockStyles, proseStyles } from "../../markdown/prose.stylex.ts";
 import { markdownStyles } from "./markdown.stylex.ts";
 
 function kept(value: unknown): Attribute {

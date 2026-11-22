@@ -15,7 +15,7 @@ import {
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { windowTabs } from "../../tabs/window-tabs.ts";
-import { proseStyles } from "../markdown/prose.stylex.ts";
+import { proseStyles } from "../../markdown/prose.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
 import { QuestionDockContext } from "./questions-state.ts";
