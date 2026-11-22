@@ -222,7 +222,7 @@ describe.each(fixtures.filter((fixture) => fixture.runnable))("matrix: $folder",
     async renameFiles(probe) {
       const outcome = await language.renameFiles({
         files: [
-          { from: probe.file, to: join(dirname(probe.file), `moved-${basename(probe.file)}`) },
+          { from: probe.file, to: join(dirname(probe.file), `moved_${basename(probe.file)}`) },
         ],
       });
 
