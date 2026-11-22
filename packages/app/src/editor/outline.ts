@@ -86,6 +86,7 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
       ],
     ],
   ],
+  ["toml", [[/^\s*\[{1,2}\s*([^\]]+?)\s*\]{1,2}\s*(?:#.*)?$/u, "heading"]]],
 ]);
 
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {

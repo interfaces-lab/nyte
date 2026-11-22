@@ -255,6 +255,22 @@
       "licenseFile": "@l1xnan--tree-sitter-sql.txt",
       "foldQuery": "sql.scm",
       "symbolQuery": "sql-symbols.scm"
+    },
+    {
+      "language": "toml",
+      "aliases": ["toml"],
+      "package": "@tree-sitter-grammars/tree-sitter-toml",
+      "version": "0.7.0",
+      "archive": "https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-toml/-/tree-sitter-toml-0.7.0.tgz",
+      "integrity": "sha512-873Kl518Qm5ghbWadISY41rwFjee0v+2bU4twwvAw2VAJcWwj2vBo3F3hOCXfbqHaFiqc4qh6eLhkMl2YZJS0g==",
+      "entry": "package/tree-sitter-toml.wasm",
+      "sha256": "1ac6a83826c35a68857f8325e00c78f6bcbef4eb6db3931a6cf3041f76e5e09f",
+      "bytes": 24040,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "@tree-sitter-grammars--tree-sitter-toml.txt",
+      "foldQuery": "toml.scm",
+      "symbolQuery": "toml-symbols.scm"
     }
   ],
   "runtime": {
@@ -355,6 +371,11 @@
       "file": "@l1xnan--tree-sitter-sql.txt",
       "sha256": "3b3e4e4252d5d7d1c18e1257005f23242bf0580ad619204fd093c99b8c56748d",
       "source": "https://registry.npmjs.org/@l1xnan/tree-sitter-sql/-/tree-sitter-sql-0.4.7.tgz#package/LICENSE"
+    },
+    {
+      "file": "@tree-sitter-grammars--tree-sitter-toml.txt",
+      "sha256": "b727eee929bee836e8102cecf749a795b199f291b58c885bcd81cae727ac5a46",
+      "source": "https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-toml/-/tree-sitter-toml-0.7.0.tgz#package/LICENSE"
     }
   ]
 }
