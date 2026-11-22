@@ -33,6 +33,7 @@ export interface KeySituation {
   readonly menuOpen: boolean;
   readonly canStop: boolean;
   readonly canRecall: boolean;
+  readonly canCycleMode: boolean;
 }
 
 type KeyState = EnterKeyState & {
@@ -49,6 +50,7 @@ export type KeyAction =
   | { readonly kind: "cancel-edit" }
   | { readonly kind: "swallow" }
   | { readonly kind: "dismiss-tray" }
+  | { readonly kind: "cycle-mode" }
   | { readonly kind: "stop" };
 
 const PASS: KeyAction = { kind: "pass" };
@@ -59,12 +61,14 @@ export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
   if (situation.from === "form") return formKey(situation, key);
   const recall = recallDirection(key);
 
-  if (recall !== undefined)
+  if (recall !== undefined) {
     return situation.canRecall ? { kind: "recall", direction: recall } : PASS;
+  }
   const enter = composerEnterAction(key);
 
-  if ((enter === "submit" || enter === "submit-alternate") && key.repeat)
+  if ((enter === "submit" || enter === "submit-alternate") && key.repeat) {
     return { kind: "swallow" };
+  }
 
   if (enter === "submit-alternate") return { kind: "submit", action: enter };
 
@@ -78,10 +82,23 @@ export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
       : { kind: "submit", action: enter };
   }
 
+  if (
+    key.key === "Tab" &&
+    key.shiftKey &&
+    !key.ctrlKey &&
+    !key.metaKey &&
+    !key.altKey &&
+    situation.canCycleMode &&
+    !situation.menuOpen
+  ) {
+    return { kind: "cycle-mode" };
+  }
+
   if (key.key !== "Escape" || situation.menuOpen || situation.disabled) return PASS;
 
-  if (situation.editing)
+  if (situation.editing) {
     return situation.submitting ? { kind: "swallow" } : { kind: "cancel-edit" };
+  }
 
   if (situation.trayOpen) return { kind: "dismiss-tray" };
 
@@ -100,8 +117,9 @@ function formKey(situation: KeySituation, key: KeyState): KeyAction {
     situation.submitting ||
     situation.menuOpen ||
     !situation.editing
-  )
+  ) {
     return PASS;
+  }
 
   return { kind: "cancel-edit" };
 }

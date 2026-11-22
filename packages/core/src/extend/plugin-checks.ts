@@ -2,6 +2,7 @@ import type { PluginCheckReport, Schema, ValidationIssue } from "@nyte-ai/schema
 import { resolveSetting } from "../contract/plugin.ts";
 import type { Plugin } from "../contract/plugin.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
+import { readTint } from "../util/tint.ts";
 import { RESERVED_PART_KINDS } from "./part-definitions.ts";
 
 export interface Preflight {
@@ -10,7 +11,7 @@ export interface Preflight {
   readonly ok: boolean;
 }
 
-const RESERVED_IDS: readonly string[] = ["models", "settings"];
+const RESERVED_IDS: ReadonlySet<string> = new Set(["models", "settings"]);
 
 export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckReport {
   return {
@@ -40,20 +41,33 @@ export function preflight(
       issues.push({ severity: "error", path, message, source: { plugin: plugin.id } });
     };
 
-    if (taken.has(plugin.id) || plugins.filter((other) => other.id === plugin.id).length > 1)
+    if (taken.has(plugin.id) || plugins.filter((other) => other.id === plugin.id).length > 1) {
       error(["id"], `More than one plugin is named ${plugin.id}.`);
+    }
 
-    if (RESERVED_IDS.includes(plugin.id))
+    if (RESERVED_IDS.has(plugin.id)) {
       error(["id"], `The plugin id ${plugin.id} is reserved for the host.`);
+    }
 
     if (plugin.id.includes("/")) error(["id"], `The plugin id ${plugin.id} contains "/".`);
+
+    for (const setting of plugin.contribute?.settings ?? []) {
+      const color = "mode" in setting ? setting.mode?.color : undefined;
+
+      if (color !== undefined && readTint(color) === undefined) {
+        error(
+          ["settings", setting.id, "mode", "color"],
+          `${color} isn't a CSS colour. Write one such as #8b5cf6 or oklch(0.62 0.21 293).`,
+        );
+      }
+    }
 
     const kind = plugin.environment?.kind;
 
     if (kind !== undefined && issues.length === 0) {
-      if (providers.has(kind))
+      if (providers.has(kind)) {
         error(["environment"], `Another plugin provides the ${kind} environment.`);
-      else providers.add(kind);
+      } else providers.add(kind);
     }
 
     for (const { path, schema, direction } of listContributionSchemas(plugin)) {

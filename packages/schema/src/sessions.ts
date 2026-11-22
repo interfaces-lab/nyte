@@ -158,6 +158,23 @@ export type PresetPage =
 /** Where a setting shows: a preset page, or any other text, which is the title of a page of its own. */
 export type SettingPage = PresetPage | (string & {});
 
+/** A mode's colour as OKLCH hue in degrees and chroma; a client takes lightness from its theme. */
+export const SettingTintType = Type.Object({ hue: Type.Number(), chroma: Type.Number() });
+
+export type SettingTint = Decoded<typeof SettingTintType>;
+
+/**
+ * A chat switch shown as a composer mode: a chip while it is on, and a step of the composer's mode
+ * key. `icon` names a glyph from the client's icon set; a client without it draws the chip without
+ * one.
+ */
+export const SettingModeInfoType = Type.Object({
+  icon: Type.String(),
+  tint: Type.Optional(SettingTintType),
+});
+
+export type SettingModeInfo = Decoded<typeof SettingModeInfoType>;
+
 /**
  * A setting as a client draws it. The field comes from the setting, in this order: a menu when it
  * has `choices`; a masked field when it is `secret` and holds a `SecretValue`; a switch, a text
@@ -174,6 +191,7 @@ export const SettingInfoType = Type.Object({
   /** A `PresetPage`, or the title of a page of its own; absent, the setting is a general one. */
   page: Type.Optional(Type.String()),
   secret: Type.Optional(Type.Literal(true)),
+  mode: Type.Optional(SettingModeInfoType),
   schema: JsonObjectType,
   choices: nullable(
     Type.Array(

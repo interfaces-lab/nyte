@@ -166,6 +166,35 @@ The preset pages are `server`, `profile`, `general`, `notifications`, `appearanc
   they name a `page`.
 - The terminal lists settings that have `choices` under `/settings`.
 
+### Composer modes [#modes]
+
+A per-chat switch with `mode` shows in the desktop composer: a chip beside the model while it is on,
+and a step of Shift+Tab in the message field.
+
+```ts title="plan-mode.ts"
+import type { SettingDefinition } from "@nyte-ai/plugin/core";
+
+const plan = {
+  id: "plan.mode",
+  title: "Plan",
+  type: "switch",
+  scope: "chat",
+  mode: { icon: "list", color: "oklch(0.62 0.21 293)" },
+} satisfies SettingDefinition;
+```
+
+- `mode` needs `type: "switch"` and `scope: "chat"`; the types refuse any other setting.
+- `icon` is one of the app's icon names, such as `list`, `git-branch` or `test-tube`. A name the
+  app lacks draws the chip without an icon.
+- `color` is any CSS colour, such as `#8b5cf6`, `rebeccapurple` or `oklch(0.62 0.21 293)`. The chip
+  keeps its hue and chroma and takes lightness from the theme, so it reads in light and dark mode. A
+  colour that doesn't parse is reported on the plugin.
+- Modes are exclusive. Shift+Tab steps off, then each mode in turn, turning the others off.
+  Clicking a chip turns its mode off.
+- What the mode does is up to the plugin: gate tools and prompt sections with
+  `when: (chat) => chat.settings["plan.mode"] === true`.
+- The terminal doesn't show modes yet. A command that sets the switch works everywhere.
+
 ### Secrets [#secrets]
 
 A `secret` setting keeps a value the host seals and never sends back to a client:

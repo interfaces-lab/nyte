@@ -28,6 +28,7 @@ import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerSurface } from "./composer-frame.tsx";
 import { sessionModel } from "./model-picker-state.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
+import { ModeChips, useComposerModes } from "./composer-modes.tsx";
 import { ComposerQueue } from "./composer-queue.tsx";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
@@ -63,7 +64,7 @@ import { useChatFolder } from "../chat-folder.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 
-const OUTAGE_GRACE_MS = 1_500;
+const OUTAGE_GRACE_MS = 1500;
 
 function messageReceipt(sessionId: SessionId, message: UserMessage) {
   return connection().session(sessionId).receipt(asId<"receipt">(message.id));
@@ -160,6 +161,8 @@ export function Composer({
 
   const questions = useQuestionDock(sessionId);
   const pluginCatalog = usePluginCatalog(sessionId);
+  const modes = useComposerModes(sessionId, pluginCatalog.data?.settings);
+  const showsModes = questions === undefined && surface !== "side-chat";
   const floating = floatingMount !== null;
   const [portal] = useState(portalHost);
   const inlineSlot = useRef<HTMLDivElement | null>(null);
@@ -348,12 +351,12 @@ export function Composer({
       .then(
         (outcome) => {
           switch (outcome.kind) {
+            case "sent":
+            case "missing":
+              return;
             case "revised":
               setRowAction(item.id, null);
 
-              return;
-            case "sent":
-            case "missing":
               return;
             default: {
               const _exhaustive: never = outcome;
@@ -581,6 +584,7 @@ export function Composer({
                 ? () => steerPending(nextIdleQueued)
                 : undefined
             }
+            onCycleMode={showsModes ? modes.cycle : undefined}
             onRecall={
               questions === undefined && target === null
                 ? (direction) =>
@@ -608,11 +612,14 @@ export function Composer({
             onAttachmentRemove={(id) => dispatch({ kind: "detached", id })}
             model={
               questions === undefined ? (
-                <SessionModelChip
-                  sessionId={sessionId}
-                  open={modelPickerOpen}
-                  onOpenChange={setModelPickerOpen}
-                />
+                <>
+                  {showsModes && <ModeChips modes={modes} />}
+                  <SessionModelChip
+                    sessionId={sessionId}
+                    open={modelPickerOpen}
+                    onOpenChange={setModelPickerOpen}
+                  />
+                </>
               ) : undefined
             }
             inputRef={attachInput}

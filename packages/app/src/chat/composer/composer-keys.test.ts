@@ -72,6 +72,7 @@ const SITUATION: KeySituation = {
   menuOpen: false,
   canStop: false,
   canRecall: false,
+  canCycleMode: false,
 };
 
 const KEY = {

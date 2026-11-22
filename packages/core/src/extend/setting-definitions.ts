@@ -47,6 +47,7 @@ export async function settingInfos(
         placeholder: definition.placeholder,
         page: definition.page,
         secret: definition.secret,
+        mode: definition.mode,
         schema,
         choices:
           definition.choices?.flatMap((choice) =>
@@ -81,7 +82,7 @@ async function shownOnHost(
 
   return defined.filter((entry) => {
     try {
-      return entry.definition.when === undefined || entry.definition.when(chat) === true;
+      return entry.definition.when === undefined || entry.definition.when(chat);
     } catch {
       return false;
     }

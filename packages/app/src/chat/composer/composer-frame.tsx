@@ -16,7 +16,8 @@ import { clientActionAriaShortcut, clientActions } from "../../contract/client-a
 import type { RunningMessagePreference } from "../../preferences/index.ts";
 import { ImagePreview } from "../markdown/image-preview.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
-import { ComposerEditor, type ComposerEditorHandle } from "./composer-editor.tsx";
+import { ComposerEditor } from "./composer-editor.tsx";
+import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { useComposerSuggestions } from "./composer-suggestions.tsx";
 import type { ComposerMentionFiles, ComposerSuggestionCatalog } from "./composer-suggestions.tsx";
 import {
@@ -73,6 +74,7 @@ interface ComposerFrameProps {
   floating?: boolean;
   onSteerQueued?: () => void;
   onRecall?: (direction: RecallDirection) => boolean;
+  onCycleMode?: () => void;
   model?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
@@ -109,6 +111,7 @@ export function ComposerFrame({
   floating = false,
   onSteerQueued,
   onRecall,
+  onCycleMode,
   model,
   inputRef,
   suggestionCatalog,
@@ -293,6 +296,7 @@ export function ComposerFrame({
       menuOpen: suggestionMenu.open,
       canStop: busy && !stopping && onAbort !== undefined,
       canRecall: onRecall !== undefined,
+      canCycleMode: onCycleMode !== undefined,
     };
   };
 
@@ -331,6 +335,11 @@ export function ComposerFrame({
       case "stop":
         event.preventDefault();
         onAbort?.();
+
+        return;
+      case "cycle-mode":
+        event.preventDefault();
+        onCycleMode?.();
 
         return;
       default: {
@@ -521,12 +530,13 @@ export function ComposerFrame({
 
         const files = droppedWorkbenchFiles(event);
 
-        if (files.length > 0)
+        if (files.length > 0) {
           areaRef.current?.dropReferences(
             files.map((file) => ({ kind: "file", file })),
             event.clientX,
             event.clientY,
           );
+        }
       }}
       onDragEnd={() => setDragging(undefined)}
       {...props(

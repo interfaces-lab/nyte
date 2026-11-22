@@ -18,6 +18,7 @@ import type {
   Schema,
   SessionId,
   SessionInfo,
+  SettingModeInfo,
   SettingPage,
   Submission,
   SubmitDraft,
@@ -34,6 +35,7 @@ import type {
 import { SecretValueType, standard } from "@nyte-ai/schema";
 import type { Provider } from "@nyte-ai/ai";
 import { Type } from "typebox";
+import { readTint } from "../util/tint.ts";
 import type { Connection, PluginStorage } from "./host.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
 import type { Session } from "./session.ts";
@@ -124,7 +126,17 @@ export type SettingDefinition<T = unknown> = {
       readonly default?: number;
       readonly choices?: Choices<number>;
     }
-  | { readonly type: "switch"; readonly default?: boolean }
+  | { readonly type: "switch"; readonly default?: boolean; readonly mode?: undefined }
+  | {
+      readonly type: "switch";
+      readonly default?: boolean;
+      readonly scope: "chat";
+      /**
+       * Shows the switch as a composer mode: a chip while it is on, and a step of the mode key.
+       * Modes are exclusive: turning one on from the composer turns the chat's others off.
+       */
+      readonly mode: SettingMode;
+    }
   | { readonly type: "secret" }
   | {
       readonly schema: Schema<T>;
@@ -140,6 +152,16 @@ export type SettingDefinition<T = unknown> = {
     }
 );
 
+/**
+ * How a chat switch shows as a composer mode. `icon` names a glyph from the client's icon set.
+ * `color` is any CSS colour, such as `#8b5cf6` or `oklch(0.62 0.21 293)`; the chip keeps its hue
+ * and chroma, and a colour that doesn't parse is reported on the plugin.
+ */
+export interface SettingMode {
+  readonly icon: string;
+  readonly color?: string;
+}
+
 /** A setting with every default filled in: what core stores, checks and sends. */
 export interface ResolvedSetting<T = unknown> {
   readonly id: string;
@@ -152,6 +174,7 @@ export interface ResolvedSetting<T = unknown> {
   readonly scope: "host" | "chat";
   readonly page?: string;
   readonly secret?: true;
+  readonly mode?: SettingModeInfo;
   readonly when?: When;
 }
 
@@ -176,7 +199,7 @@ export function resolveSetting(definition: SettingDefinition): ResolvedSetting {
     when: definition.when,
   };
 
-  if ("schema" in definition)
+  if ("schema" in definition) {
     return {
       ...shared,
       schema: definition.schema,
@@ -184,6 +207,7 @@ export function resolveSetting(definition: SettingDefinition): ResolvedSetting {
       default: definition.default,
       secret: definition.secret,
     };
+  }
 
   switch (definition.type) {
     case "text":
@@ -202,7 +226,15 @@ export function resolveSetting(definition: SettingDefinition): ResolvedSetting {
         default: definition.default ?? definition.choices?.[0]?.value ?? 0,
       };
     case "switch":
-      return { ...shared, schema: SWITCH, default: definition.default ?? false };
+      return {
+        ...shared,
+        schema: SWITCH,
+        default: definition.default ?? false,
+        mode:
+          definition.mode === undefined
+            ? undefined
+            : { icon: definition.mode.icon, tint: readTint(definition.mode.color) },
+      };
     case "secret":
       return { ...shared, schema: SECRET, default: null, secret: true };
     default: {
@@ -349,7 +381,7 @@ export type RuntimeVerdict =
   | { readonly kind: "allow" }
   | { readonly kind: "deny"; readonly reason: string };
 
-export type SideTable = {
+export interface SideTable {
   core: {
     api: {
       readonly session: Session;
@@ -376,7 +408,7 @@ export type SideTable = {
     };
   };
   client: { api: ClientApi; plugin: {} };
-};
+}
 
 export type Side = keyof SideTable;
 
@@ -410,12 +442,12 @@ export interface Renderer<K extends PartDefinition = PartDefinition, View = unkn
   ): View;
 }
 
-export type Row<Item, S extends Side> = {
+export interface Row<Item, S extends Side> {
   readonly item: Item;
   readonly sides: S;
-};
+}
 
-export type ContributionTable = {
+export interface ContributionTable {
   tools: Row<ToolDefinition, "core">;
   prompt: Row<PromptSection, "core">;
   agents: Row<Agent, "core">;
@@ -427,7 +459,7 @@ export type ContributionTable = {
   settings: Row<SettingDefinition, Side>;
   renderers: Row<Renderer, "client">;
   keybindings: Row<Keybinding, "client">;
-};
+}
 
 export type Available<Table, S extends Side> = {
   [
@@ -467,28 +499,28 @@ export type Contributed<S extends Side> = {
   )[];
 };
 
-export type Observe<Event, S extends Side> = {
+export interface Observe<Event, S extends Side> {
   event: Event;
   result: void;
   sides: S;
   phase: "observe";
-};
+}
 
-export type Transform<Value, S extends Side> = {
+export interface Transform<Value, S extends Side> {
   event: Value;
   result: Value;
   sides: S;
   phase: "transform";
-};
+}
 
-export type Decide<Value, S extends Side> = {
+export interface Decide<Value, S extends Side> {
   event: Value;
   result: Decision<Value>;
   sides: S;
   phase: "decide";
-};
+}
 
-export type HookTable = {
+export interface HookTable {
   session_activated: Observe<{ readonly session: Session }, "core">;
 
   before_send: Decide<Submission, "core">;
@@ -536,7 +568,7 @@ export type HookTable = {
   session_closed: Observe<{ readonly session: Session }, "client">;
 
   app_closing: Observe<void, "client">;
-};
+}
 
 export type HookName<S extends Side> = keyof Available<HookTable, S>;
 
@@ -582,10 +614,10 @@ export type PluginApi<S extends Side> = S extends Side
 export type Hooks<S extends Side> = { readonly [N in HookName<S>]?: HookEntry<S, N> };
 
 /** What an activation adds beside the plugin's declared items and hooks. An empty object adds nothing. */
-export type Additions<S extends Side> = {
+export interface Additions<S extends Side> {
   readonly contribute?: Contributed<S>;
   readonly hooks?: Hooks<S>;
-};
+}
 
 export type Plugin<S extends Side> = {
   readonly id: string;
