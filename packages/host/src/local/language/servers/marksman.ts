@@ -23,9 +23,11 @@ export const MARKSMAN: ServerSpec = {
   rootMarkers: [".marksman.toml", ".git"],
   requiresRootMarker: false,
   program: "marksman",
+  probe: ["--version"],
   arguments: ["server"],
   install: {
     kind: "release",
+    package: "marksman",
     version: VERSION,
     assets: {
       "darwin-arm64": MACOS,
