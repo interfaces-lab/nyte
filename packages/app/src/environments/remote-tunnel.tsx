@@ -28,7 +28,7 @@ const TITLE = "Cloudflare Tunnel";
 
 type ConfiguredTunnel = Extract<CloudflareTunnelView, { kind: "configured" }>;
 
-export function tunnelStatus(connection: TunnelConnection): ConnectionStanding {
+function tunnelStatus(connection: TunnelConnection): ConnectionStanding {
   switch (connection.kind) {
     case "stopped":
       return { tone: "off", status: "Stopped" };
