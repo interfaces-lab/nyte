@@ -2,9 +2,9 @@ import type { ReactElement } from "react";
 import { useHostState } from "../data/host.ts";
 import { DesignPanel } from "../studio/design-panel.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { useWorkbenchViewKey } from "./paths.ts";
-import { workbench } from "./store.ts";
-import { useWorkbenchWorkspace } from "./workbench-workspace.tsx";
+import { useWorkbenchViewKey } from "../workbench/paths.ts";
+import { workbench } from "../workbench/store.ts";
+import { useWorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
 
 /** The Design tab: the designs of the workspace the workbench is browsing. */
 export function DesignTab(): ReactElement {
