@@ -10,7 +10,7 @@ import { menu, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
-import { ChatScope } from "../chat/chat-scope.tsx";
+import { ReferenceScope } from "./reference-scope.tsx";
 import { Prose } from "../markdown/prose.tsx";
 import type { RankedCompletion } from "./completion.ts";
 import { SymbolKindGlyph } from "./symbol-kind.tsx";
@@ -119,9 +119,9 @@ export function CompletionList({
                   <div {...props(text.code, styles.signature)}>{shown.type}</div>
                 )}
                 {shown.documentation !== "" && (
-                  <ChatScope folder={folder}>
+                  <ReferenceScope folder={folder}>
                     <Prose markdown={shown.documentation} />
-                  </ChatScope>
+                  </ReferenceScope>
                 )}
               </div>
             )}

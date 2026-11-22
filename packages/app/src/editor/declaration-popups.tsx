@@ -15,7 +15,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { PIERRE_EDITOR_HIGHLIGHTER_OPTIONS } from "@nyte-ai/ui/worker-pool";
 import type { SelectedWorkspace, ThemePreference } from "../contract/bridge.ts";
-import { ChatScope } from "../chat/chat-scope.tsx";
+import { ReferenceScope } from "./reference-scope.tsx";
 import { Prose } from "../markdown/prose.tsx";
 import { documentsApi } from "../data/documents.ts";
 import { CodeActionsMenu } from "./code-actions-menu.tsx";
@@ -232,9 +232,9 @@ export function DeclarationPopups({
                 onPointerEnter={onHover.enter}
                 onPointerLeave={onHover.leave}
               >
-                <ChatScope folder={folder}>
+                <ReferenceScope folder={folder}>
                   <Prose markdown={popup.markdown} />
-                </ChatScope>
+                </ReferenceScope>
               </Popover.Popup>
             </Popover.Positioner>
           </Popover.Portal>
