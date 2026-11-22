@@ -35,6 +35,7 @@
     "./core/codemode-runtime": "./src/codemode-runtime.ts",
     "./core/codemode-worker": "./src/codemode-worker.ts",
     "./core/language-tools": "./src/language-tools.ts",
+    "./core/machine-bridge": "./src/machine-bridge.ts",
     "./core/openai-astra-context": "./src/openai-astra-context.ts",
     "./core/openai-compaction": "./src/openai-compaction.ts",
     "./core/question": "./src/question/question.ts",
@@ -138,6 +139,10 @@
       "./core/desktop-settings": {
         "types": "./dist/src/desktop-settings/desktop-settings.d.ts",
         "import": "./dist/src/desktop-settings/desktop-settings.js"
+      },
+      "./core/machine-bridge": {
+        "types": "./dist/src/machine-bridge.d.ts",
+        "import": "./dist/src/machine-bridge.js"
       },
       "./core/language-tools": {
         "types": "./dist/src/language-tools.d.ts",

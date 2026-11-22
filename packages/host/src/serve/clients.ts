@@ -308,20 +308,42 @@ export function performFor(
   return sharedClients(server).perform({ client: HOST_REQUESTER.client, principal }, request);
 }
 
+export function findOffering(
+  server: ServerHost,
+  action: string,
+  principal?: PrincipalId,
+): ClientRow | undefined {
+  return sharedClients(server)
+    .rows()
+    .find(
+      (row) =>
+        (principal === undefined || row.principal === principal) &&
+        row.actions.some((declared) => declared.name === action),
+    );
+}
+
 export function performOffered(
   server: ServerHost,
-  request: { readonly action: string; readonly input: Json; readonly timeoutMs: number },
+  request: {
+    readonly action: string;
+    readonly input: Json;
+    readonly timeoutMs: number;
+    readonly principal?: PrincipalId;
+  },
 ): Promise<Json> {
-  const clients = sharedClients(server);
-  const target = clients
-    .rows()
-    .find((row) => row.actions.some((action) => action.name === request.action));
+  const { principal, ...asked } = request;
+  const target = findOffering(server, asked.action, principal);
 
   if (target === undefined) {
     return Promise.reject(
-      new SdkError("not_supported", `No connected client offers ${request.action}.`),
+      new SdkError(
+        "not_supported",
+        principal === undefined
+          ? `No connected client offers ${asked.action}.`
+          : `No client connected as ${principal} offers ${asked.action}.`,
+      ),
     );
   }
 
-  return clients.perform(HOST_REQUESTER, { ...request, client: target.id });
+  return performFor(server, principal ?? HOST_REQUESTER.principal, { ...asked, client: target.id });
 }

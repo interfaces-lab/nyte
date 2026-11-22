@@ -54,7 +54,7 @@ import { createMcpHub } from "./mcp-client/hub.ts";
 import type { ClientMetadataFetch } from "./mcp-server/client-metadata.ts";
 import { openMcpServer } from "./mcp-server/server.ts";
 import { createViewCompiler } from "./plugins/views.ts";
-import { performFor, performOffered, sharedClients } from "./serve/clients.ts";
+import { findOffering, performFor, performOffered, sharedClients } from "./serve/clients.ts";
 import { createPluginLoader } from "./plugins/loader.ts";
 import type { PluginImport } from "./plugins/loader.ts";
 import { defaultSecrets } from "./keys/secrets.ts";
@@ -162,15 +162,12 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
   let server: ServerHost | null = null;
 
   const actions: ClientActions = {
-    offered: (action) =>
-      server !== null &&
-      sharedClients(server)
-        .rows()
-        .some((row) => row.actions.some((declared) => declared.name === action)),
-    perform: (action, input, timeoutMs) =>
+    offered: (action, principal) =>
+      server !== null && findOffering(server, action, principal) !== undefined,
+    perform: (action, input, timeoutMs, principal) =>
       server === null
         ? Promise.reject(new SdkError("unavailable", "The host is still opening.", { retry: true }))
-        : performOffered(server, { action, input, timeoutMs }),
+        : performOffered(server, { action, input, timeoutMs, principal }),
   };
 
   const given = [...(options.plugins ?? []), ...(options.clientPlugins?.(actions) ?? [])];

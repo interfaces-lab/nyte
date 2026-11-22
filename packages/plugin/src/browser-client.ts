@@ -8,6 +8,7 @@ import type {
   PageOutcome,
   PageSnapshot,
   PageView,
+  PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -24,8 +25,10 @@ import type { Plugin } from "@nyte-ai/plugin/core";
  * @since 0.1.0
  */
 export interface ClientActions {
-  offered(action: string): boolean;
-  perform(action: string, input: Json, timeoutMs: number): Promise<Json>;
+  /** With `principal`, whether a client connected as that principal offers it. */
+  offered(action: string, principal?: PrincipalId): boolean;
+  /** With `principal`, asks only a client connected as that principal, on its behalf. */
+  perform(action: string, input: Json, timeoutMs: number, principal?: PrincipalId): Promise<Json>;
 }
 
 export const BROWSER_ACTION = {
