@@ -58,7 +58,7 @@ decides what happens next:
 | `run` returns           | Result                                                                 |
 | ----------------------- | ---------------------------------------------------------------------- |
 | A string                | The client shows the string to the user                                |
-| `{ prompt }`            | The host sends `prompt` to the chat as the user's message              |
+| `{ prompt }`            | The host sends `prompt` to the chat; clients show the command's title  |
 | `{ workspace, output }` | The host moves the chat to `workspace`, then the client shows `output` |
 | Nothing                 | Nothing more                                                           |
 
@@ -189,8 +189,13 @@ const plan = {
 - `color` is any CSS colour, such as `#8b5cf6`, `rebeccapurple` or `oklch(0.62 0.21 293)`. The chip
   keeps its hue and chroma and takes lightness from the theme, so it reads in light and dark mode. A
   colour that doesn't parse is reported on the plugin.
-- Modes are exclusive. Shift+Tab steps off, then each mode in turn, turning the others off.
-  Clicking a chip turns its mode off.
+- Modes are exclusive. Turning one on, from the composer, a command or `settings.set`, turns the
+  chat's other modes off. Shift+Tab steps off, then each mode in turn. Clicking a chip turns its
+  mode off.
+- A mode picked in a new chat's composer starts with that chat. That composer offers the modes of
+  the plugins the host loads for every chat.
+- A change takes effect at once, in a running turn too: a tool or prompt section gated on the mode
+  comes or goes with the turn's next request.
 - What the mode does is up to the plugin: gate tools and prompt sections with
   `when: (chat) => chat.settings["plan.mode"] === true`.
 - The terminal doesn't show modes yet. A command that sets the switch works everywhere.

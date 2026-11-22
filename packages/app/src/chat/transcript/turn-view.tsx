@@ -26,6 +26,7 @@ import { Prose } from "../markdown/prose.tsx";
 import { SubagentGroupView, SubagentReportLine } from "../tools/subagent-call.tsx";
 import { ResponseView } from "./reply-view.tsx";
 import { AnswerLine } from "./answer-line.tsx";
+import { ActionLine } from "./action-line.tsx";
 import type { ComposerSubmission } from "../composer/composer-document.ts";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
@@ -481,6 +482,12 @@ function userRow(
 
     case "answer": {
       const line = <AnswerLine message={view.message} held={view.held} />;
+
+      return view.wrapped ? <div {...props(liveTurnStyles.root)}>{line}</div> : line;
+    }
+
+    case "action": {
+      const line = <ActionLine label={view.label} held={view.held} />;
 
       return view.wrapped ? <div {...props(liveTurnStyles.root)}>{line}</div> : line;
     }

@@ -5,7 +5,6 @@ import type { AuthCheck } from "@nyte-ai/ai";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import { calculateUsage } from "../src/agent/request.ts";
-import { collectContributions } from "../src/engine/contributions.ts";
 import { createLogin, modelInfo, settingsVersion } from "../src/extend/models.ts";
 import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
@@ -210,7 +209,7 @@ describe("models", () => {
         head: main,
         selected: null,
         patch: null,
-        contributions: collectContributions(host.kernel.plugins.runtime(session.id)),
+        contributions: host.kernel.plugins.runtime(session.id).contributions(),
       }),
     ).toMatchObject({ model: smart, thinking: "low" });
   });
@@ -532,11 +531,11 @@ describe("resolveConfiguration", () => {
         head: main,
         selected,
         patch,
-        contributions: collectContributions(host.kernel.plugins.runtime(session.id)),
+        contributions: host.kernel.plugins.runtime(session.id).contributions(),
       });
 
     const version = await settingsVersion(
-      collectContributions(host.kernel.plugins.runtime(session.id)).settings,
+      host.kernel.plugins.runtime(session.id).contributions().settings,
     );
 
     const base = await resolve(null);

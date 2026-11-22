@@ -140,9 +140,14 @@ again, `create` returns the same part instead of a second one.
 | `{ kind: "transcript", role: "step" }`   | In the chat history, as a step of the work        |
 | `{ kind: "transcript", role: "note" }`   | In the chat history, as a side note               |
 | `{ kind: "modal" }`                      | Over the chat, as a request the user answers once |
+| `{ kind: "tray" }`                       | Above the composer, until the plugin closes it    |
 
 A modal part keeps the first action that succeeds as its answer. Once the part closes, `act`
 returns `closed`.
+
+A tray part stays above the composer through later turns, stopped runs and reloads, until the plugin
+calls `close()`. The desktop and web apps draw a tray part with its view, newest first. The terminal
+doesn't show tray parts yet.
 
 ## Ask and wait for the answer [#wait]
 
@@ -188,16 +193,19 @@ const outcome = await part.act("toggle", { index: 0 });
 `act` checks `input` against the action's schema and throws `SdkError("invalid")` when it doesn't
 match. Otherwise it runs `onAction` and resolves with an outcome:
 
-| Outcome                        | When                                                                  |
-| ------------------------------ | --------------------------------------------------------------------- |
-| `{ kind: "ok", output }`       | The action ran                                                        |
-| `{ kind: "rejected", reason }` | `onAction` threw `SdkError("invalid", reason)`                        |
-| `{ kind: "failed", message }`  | `onAction` threw anything else, or returned output its schema rejects |
-| `{ kind: "unknown-action" }`   | The part has no such action                                           |
-| `{ kind: "closed" }`           | The part is a modal that already closed                               |
-| `{ kind: "no-owner" }`         | The plugin that defined the kind isn't loaded                         |
+| Outcome                        | When                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `{ kind: "ok", output }`       | The action ran                                                          |
+| `{ kind: "rejected", reason }` | `onAction` threw `SdkError("invalid", reason)`                          |
+| `{ kind: "failed", message }`  | `onAction` threw anything else, or returned output its schema rejects   |
+| `{ kind: "unknown-action" }`   | The part has no such action                                             |
+| `{ kind: "closed" }`           | The part closed while the action ran, or is a modal that already closed |
+| `{ kind: "no-owner" }`         | The plugin that defined the kind isn't loaded                           |
 
 An action with no `onAction` still succeeds. On a modal part, that records the answer.
+
+An action that closes its own part, such as a dismiss button on a tray, resolves `closed` too. Its
+`onAction` still runs to the end.
 
 ## Change a part [#update]
 
@@ -226,8 +234,8 @@ The rest of the action context:
 ## Read parts from a client [#read]
 
 A part placed in the transcript is a row of the session's `messages` table, with `kind: "part"`. A
-modal part is a row of the session's `parts` table, a `PartView`. Each update to the part's state
-reaches clients as a change event that replaces its row. A client finds both in the `SessionView`
+modal or tray part is a row of the session's `parts` table, a `PartView`. Each update to the part's
+state reaches clients as a change event that replaces its row. A client finds both in the `SessionView`
 that `session.view()` returns, or in the `HeadView` that `headView()` builds from a head store's
 rows.
 

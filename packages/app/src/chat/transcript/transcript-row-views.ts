@@ -49,6 +49,12 @@ export type UserRowView =
       readonly wrapped: boolean;
     }
   | {
+      readonly kind: "action";
+      readonly label: string;
+      readonly held: boolean;
+      readonly wrapped: boolean;
+    }
+  | {
       readonly kind: "user";
       readonly message: UserMessage;
       readonly content: UserContent;
@@ -144,12 +150,16 @@ export function userRowView(row: PromptRow | PartRow): UserRowView | undefined {
 
   if (showsAnswer(message)) return { kind: "answer", message, held, wrapped: prompt };
 
+  if (message.source.kind === "action") {
+    return { kind: "action", label: message.source.label, held, wrapped: prompt };
+  }
+
   return {
     kind: "user",
     message,
-    content: message.source.kind === "action" ? message.source.label : message.content,
+    content: message.content,
     pending: row.kind === "prompt" && row.pending,
-    editable: !prompt && message.source.kind !== "action",
+    editable: !prompt,
   };
 }
 

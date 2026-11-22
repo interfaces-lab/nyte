@@ -14,6 +14,8 @@ const configType = Type.Object({
   metric: Type.String(),
   unit: Type.String(),
   direction: Type.Enum(DIRECTIONS),
+  branch: Type.String(),
+  commit: Type.String(),
 });
 
 const runType = Type.Object({

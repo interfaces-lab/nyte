@@ -647,14 +647,30 @@ async function resolvePatch(
   const thinking = await selectThinkingLevel(kernel, model, patch.thinking, kept);
 
   if (thinking === null) issues.push(issue(["thinking"], `${ref.id} does not accept that level.`));
-  const settings = { ...selected?.settings, ...patch.settings };
   const definitions = sessionScoped(input.contributions.settings);
+  const modes = definitions.filter((definition) => definition.mode !== undefined);
+  const turnedOn = modes.findLast((mode) => patch.settings?.[mode.id] === true);
+  const chosen = { ...selected?.settings, ...patch.settings };
+
+  const settings = {
+    ...chosen,
+    ...(turnedOn !== undefined &&
+      Object.fromEntries(
+        modes.flatMap((mode) =>
+          mode.id !== turnedOn.id && (chosen[mode.id] ?? mode.default) === true
+            ? [[mode.id, false]]
+            : [],
+        ),
+      )),
+  };
 
   for (const [id, value] of Object.entries(settings)) {
     const definition = definitions.find((entry) => entry.id === id);
 
     if (definition === undefined) {
-      issues.push(issue(["settings", id], `No session setting is named ${id}.`));
+      if (patch.settings?.[id] !== undefined) {
+        issues.push(issue(["settings", id], `No session setting is named ${id}.`));
+      }
       continue;
     }
 

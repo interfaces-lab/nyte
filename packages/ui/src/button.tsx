@@ -184,6 +184,19 @@ const ghostFill = {
 
 const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
+  soft: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${role.contentAccent} 12%, transparent)`,
+      [disabled]: role.fillTertiary,
+    },
+    backgroundImage: {
+      default: "none",
+      ":hover:not([data-disabled])": { [media.hover]: role.layerHover },
+      ":active:not([data-disabled])": role.layerPressed,
+      "[data-pressed]:not([data-disabled])": role.layerPressed,
+      '[aria-expanded="true"]:not([data-disabled])': role.layerPressed,
+    },
+  },
   outline: {
     backgroundColor: { default: role.bgElevated, [disabled]: role.fillTertiary },
     backgroundImage: {

@@ -125,7 +125,7 @@ export async function createPart<K extends PartDefinition>(
 
   const id = typeof acquired === "string" ? asId<"part">(acquired) : minted;
   const transcript = input.placement.kind === "transcript";
-  const run = transcript ? null : (from?.run ?? null);
+  const run = input.placement.kind === "modal" ? (from?.run ?? null) : null;
   const name = partRef(session, id);
 
   const landedBefore =

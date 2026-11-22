@@ -127,7 +127,7 @@ const KIT_GUIDE = [
   'Charts; yFormat, valueFormat and format are functions (n) => string that carry units: LineChart {series: {id, data: {x, y}[]}[], yFormat, area}, BarChart {data: object[], keys: string[], indexBy, layout: "vertical" | "horizontal", mode: "grouped" | "stacked", valueFormat}, PieChart {data: {id, value}[], donut} for up to 5 parts, BarList {data: {label, value}[], format}, StackedBars {label, series: {key, label, tint}[], buckets: {key, label, values}[], format}, Sparkline {values}',
   "Controls: Button, Tabs, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ToggleGroup, Toggle, Switch, Checkbox, Slider, Tooltip, TooltipTrigger, TooltipContent, Collapsible, Spinner. useNivoTheme() gives a @nivo chart its {theme, colors}; useColorScheme()",
   'Other tone props: "neutral" | "info" | "success" | "warning" | "danger". tint: a colour name such as "blue" or "green".',
-  'Icon names are the app\'s icon set in kebab-case, such as "git-branch", "warning" or "circle-check"; a name it lacks logs the closest ones, which canvas_preview shows.',
+  'Icon names are the app\'s icon set in kebab-case, such as "git-branch", "warning" or "circle-check"; a name it lacks logs the closest ones to the console.',
 ].join("\n");
 
 export const CANVAS_PROMPT = {

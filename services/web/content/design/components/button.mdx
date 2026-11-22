@@ -1,6 +1,6 @@
 ---
 title: Button
-description: "Buttons and links with seven variants, six sizes, pill shapes, and joined actions"
+description: "Buttons and links with eight variants, six sizes, pill shapes, and joined actions"
 ---
 
 ```ts title="Import"
@@ -44,6 +44,7 @@ Wrap `SplitButton.MenuTrigger` in the menu's trigger. See [Joined actions](#join
 ```tsx
 <Button>Ghost</Button>
 <Button variant="outline">Outline</Button>
+<Button variant="soft" tone="success">Soft</Button>
 <Button variant="solid" tone="primary">Solid</Button>
 <Button variant="solid" tone="danger">Danger</Button>
 <Button variant="plain">Plain</Button>
@@ -120,21 +121,21 @@ Wrap `SplitButton.MenuTrigger` in the menu's trigger. See [Joined actions](#join
 `Button` takes Base UI props with the `iconOnly` restrictions below. `className` and `style` accept
 Base UI button-state callbacks. `ButtonLink` takes native `<a>` attributes and plain styling values.
 
-| Prop                 | Type                                                                          | Default                                       | Description                                            |
-| -------------------- | ----------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
-| `variant`            | `"ghost" \| "outline" \| "solid" \| "plain" \| "quiet" \| "text" \| "inline"` | `"ghost"`                                     | `quiet` is `plain` with 4px inline padding.            |
-| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"`                | `"primary"` for `text`, otherwise `"neutral"` |                                                        |
-| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                               | `"md"`                                        |                                                        |
-| `iconOnly`           | `boolean`                                                                     | `false`                                       |                                                        |
-| `pill`               | `boolean`                                                                     | `false`                                       | Fully rounded ends.                                    |
-| `icon`               | `IconName`                                                                    |                                               | Leading or standalone glyph.                           |
-| `children`           | `ReactNode`                                                                   |                                               | Required for visible-text controls.                    |
-| `xstyle`             | `ButtonLayout`                                                                |                                               | Placement, width, and border radius.                   |
-| `className`, `style` | See [Theming](/design/theming)                                                |                                               |                                                        |
-| `loading`            | `boolean`                                                                     | `false`                                       | Button only. Shows a `Loader` and disables activation. |
-| `disabledReason`     | `string`                                                                      |                                               | Button only. Shown as the `title` while `disabled`.    |
-| `aria-label`         | `string`                                                                      | Required when `iconOnly`                      | Not accepted on visible-text controls.                 |
-| `href`               | `string`                                                                      | Required for ButtonLink                       |                                                        |
+| Prop                 | Type                                                                                    | Default                                       | Description                                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `variant`            | `"ghost" \| "soft" \| "outline" \| "solid" \| "plain" \| "quiet" \| "text" \| "inline"` | `"ghost"`                                     | `soft` fills with its scope's accent at 12%, for a state that is on. `quiet` is `plain` with 4px inline padding. |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"`                          | `"primary"` for `text`, otherwise `"neutral"` |                                                                                                                  |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                                         | `"md"`                                        |                                                                                                                  |
+| `iconOnly`           | `boolean`                                                                               | `false`                                       |                                                                                                                  |
+| `pill`               | `boolean`                                                                               | `false`                                       | Fully rounded ends.                                                                                              |
+| `icon`               | `IconName`                                                                              |                                               | Leading or standalone glyph.                                                                                     |
+| `children`           | `ReactNode`                                                                             |                                               | Required for visible-text controls.                                                                              |
+| `xstyle`             | `ButtonLayout`                                                                          |                                               | Placement, width, and border radius.                                                                             |
+| `className`, `style` | See [Theming](/design/theming)                                                          |                                               |                                                                                                                  |
+| `loading`            | `boolean`                                                                               | `false`                                       | Button only. Shows a `Loader` and disables activation.                                                           |
+| `disabledReason`     | `string`                                                                                |                                               | Button only. Shown as the `title` while `disabled`.                                                              |
+| `aria-label`         | `string`                                                                                | Required when `iconOnly`                      | Not accepted on visible-text controls.                                                                           |
+| `href`               | `string`                                                                                | Required for ButtonLink                       |                                                                                                                  |
 
 ### ButtonGroup and SplitButton
 

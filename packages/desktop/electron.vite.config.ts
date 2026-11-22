@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
 import { resolvePhotonWasmPath } from "@nyte-ai/host/images";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
-import { partViewFiles } from "@nyte-ai/plugin/part-view-files";
+import { assertSingleFilePartView, partViewFiles } from "@nyte-ai/plugin/part-view-files";
 import { build, defaultClientConditions } from "vite";
 import type { Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
@@ -87,16 +87,21 @@ function partViews(): Plugin {
   return {
     name: "nyte:part-views",
     async transform(code, id) {
+      if (id.includes("?")) return null;
+
       const views = partViewFiles(code, id);
 
       if (views.length === 0) return null;
 
       const references = await Promise.all(
         views.map(async (view) => {
+          const source = await readFile(view.path, "utf8");
+          await assertSingleFilePartView(view.path, source);
+
           const reference = this.emitFile({
             type: "asset",
             name: basename(view.path),
-            source: await readFile(view.path, "utf8"),
+            source,
           });
 
           emitted.add(reference);
@@ -121,14 +126,20 @@ function partViews(): Plugin {
       if (!code.includes(PART_VIEW_TOKEN)) return null;
 
       return {
-        code: [...emitted].reduce(
-          (text, reference) =>
-            text.replaceAll(
-              `${PART_VIEW_TOKEN}${reference}`,
-              `./${relative(dirname(chunk.fileName), this.getFileName(reference))}`,
-            ),
-          code,
-        ),
+        code: [...emitted].reduce((text, reference) => {
+          const target = relative(dirname(chunk.fileName), this.getFileName(reference)).replaceAll(
+            "\\",
+            "/",
+          );
+
+          const specifier =
+            target.startsWith("./") || target.startsWith("../") ? target : `./${target}`;
+
+          const token = `${PART_VIEW_TOKEN}${reference}`;
+          const quoted = JSON.stringify(specifier);
+
+          return text.replaceAll(`"${token}"`, quoted).replaceAll(`'${token}'`, quoted);
+        }, code),
         map: null,
       };
     },

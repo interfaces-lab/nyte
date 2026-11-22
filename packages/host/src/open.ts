@@ -15,6 +15,7 @@ import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import approvals from "@nyte-ai/plugin/core/approvals";
 import autoresearch from "@nyte-ai/plugin/core/autoresearch";
+import plan from "@nyte-ai/plugin/core/plan";
 import { acpAgents } from "@nyte-ai/plugin/core/acp";
 import type { AcpAgent } from "@nyte-ai/plugin/core/acp";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
@@ -205,6 +206,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     designGuide,
     languageTools,
     autoresearch,
+    plan,
     claudeCodeSdk().plugin,
     ...acpAgents(ACP_AGENTS),
   ];

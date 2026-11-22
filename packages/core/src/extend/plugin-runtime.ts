@@ -404,6 +404,10 @@ export function createPluginRuntime(
     },
     plugins: () => [...active.values()].map((entry) => entry.instance.plugin),
     instance: (id) => active.get(id)?.instance,
+    contributions: () =>
+      activating && previous !== null
+        ? previous.contributions()
+        : { agents: registries.agents.list(), settings: registries.settings.list() },
     assigned: () => assigned,
     idleSince: () => (holds > 0 || activating ? null : used),
     touch() {

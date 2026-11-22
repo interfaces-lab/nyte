@@ -108,6 +108,30 @@ test.each<{
     action: { kind: "submit", action: "submit" },
   },
   {
+    name: "Shift+Tab steps to the next mode",
+    situation: { canCycleMode: true },
+    key: { key: "Tab", shiftKey: true, keyCode: 9 },
+    action: { kind: "cycle-mode" },
+  },
+  {
+    name: "a held Shift+Tab steps once",
+    situation: { canCycleMode: true },
+    key: { key: "Tab", shiftKey: true, keyCode: 9, repeat: true },
+    action: { kind: "swallow" },
+  },
+  {
+    name: "Shift+Tab moves focus when the chat has no modes",
+    situation: {},
+    key: { key: "Tab", shiftKey: true, keyCode: 9 },
+    action: PASS,
+  },
+  {
+    name: "Shift+Tab leaves an open menu alone",
+    situation: { canCycleMode: true, menuOpen: true },
+    key: { key: "Tab", shiftKey: true, keyCode: 9 },
+    action: PASS,
+  },
+  {
     name: "Enter on an empty draft while disabled submits, which does nothing",
     situation: { ...QUEUED_EMPTY, disabled: true },
     key: {},

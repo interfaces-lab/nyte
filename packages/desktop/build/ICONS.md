@@ -1,21 +1,21 @@
 # Desktop icon assets
 
-The artwork is two circles on a grid of 8 cells. The moon has a radius of 3 cells and sits at the plate's centre, with a notch the size of the light cut from its rim. The light has a radius of 2 cells and sits in the notch, √2 cells from the moon's centre. With no turn it is one cell up and one cell right of that centre. The saved design turns the mark 20° clockwise, which puts the light's centre at (5.28, 3.40).
+The artwork is four crescent moons facing the centre, built on the golden ratio φ. On Icon Composer's 1024 canvas the unit is u = 616 / 47 × 1024 / 824. The right moons are 21u across and the left ones 21u / √φ. Each crescent is a disc with a bite cut out: the bite is the disc divided by φ, faces the centre at 45° and its edge passes through the disc's centre. The discs line up on their inner edges, 3u apart across and 5u apart down, and the mark is centred on the plate.
 
-The moon and the light are two pieces of glass, the moon in front. Both are 40% see-through. macOS throws its own shadows straight down, so a faint shadow of the moon on the light is also painted in, as a picture layer on the light.
+The moons are two glass groups: the near pair on the right in front, the far pair on the left slightly more see-through behind. Specular is off, because it draws a dark rim along the thin crescent tips. A third group holds a soft glow under each moon. All the moons share one light at the centre of the mark, so their inner edges are brightest.
 
 The icon has two looks.
 
-| Look | Plate | Moon | Light |
+| Look | Plate | Moons | Glow |
 | --- | --- | --- | --- |
-| Night | `#232a44` to `#0c1020` | `#647fcb` at the light, paling to `#c1d0f6` | `#fff9d8` |
-| Day | `#d4dffb` to `#aabdec` | `#4862b1` at the light, paling to `#8ea6e6` | `#ffffff` |
+| Night | `#232a44` to `#0c1020` | `#eef2fd` at the centre, deepening to `#8199dc` | Full |
+| Day | `#e6ecfb` to `#c4d0f0` | `#7d95dc` at the centre, deepening to `#3b519f` | 35% |
 
-macOS 26 and later pick the look from the Icon & widget style setting. Default shows the day look, even when the system is in dark mode, and Dark shows the night look. Every other file here is the night look.
+macOS 26 and later pick the look from the Icon & widget style setting. Default shows the day look, even when the system is in dark mode, and Dark shows the night look. Tinted uses the night moons, so they stay bright on the dark plate. Every other file here is the night look.
 
 | File | What it is |
 | --- | --- |
-| `icon.icon` | The Icon Composer document. The moon is one group, the light and the painted shadow another, and it holds both looks |
+| `icon.icon` | The Icon Composer document. The near moons, the far moons and the glow are three groups, and it holds both looks |
 | `Assets.car` | `icon.icon` compiled with `actool`. macOS 26 and later draw the app icon from it as Liquid Glass. `CFBundleIconName` in the packaged app's `Info.plist` names it |
 | `icon.icns` | The night look for macOS before 26 and for development builds. An 824px plate on the 1024px canvas with the drop shadow in the margin, following Apple's macOS icon grid |
 | `icon.png` | The 1024px image from `icon.icns` |
@@ -26,7 +26,7 @@ macOS 26 and later pick the look from the Icon & widget style setting. Default s
 | `icon-ios.svg` | The flat SVG on a square plate, with no padding and no corner radius, because iOS applies its own mask |
 | `icon-ios.png` | The 1024px opaque render of `icon-ios.svg`. The mobile app's `app.json` points at it |
 
-`Assets.car`, `icon.icns`, `icon.png`, `icon.ico` and `../resources/icon.png` are pictures of `icon.icon` as macOS lights it. The SVG files are drawn flat from the same circles, for the places that need a vector.
+`Assets.car`, `icon.icns`, `icon.png`, `icon.ico` and `../resources/icon.png` are pictures of `icon.icon` as macOS lights it. The SVG files are drawn flat from the same circles, for the places that need a vector. `icon-ios.png` is rendered from `icon-ios.svg`.
 
 The web app's and the docs site's `icon.svg` are copies of `icon-macos.svg`. The docs site's `app-icon.png` is a copy of `../resources/icon.png`, and its `apple-icon.png` is `icon-ios.png` at 256px.
 
@@ -42,7 +42,7 @@ The copy is cached under `node_modules/.cache/nyte-electron`. The cache key hold
 
 Icon Composer, `ictool` and an `actool` that reads `.icon` files ship with Xcode 26 and later. `ictool` is inside Icon Composer's app bundle, under `Contents/Executables`.
 
-1. Edit `icon.icon` in Icon Composer. It cannot turn a layer, so a turn means drawing the moon, the light and the shadow picture again.
+1. Edit `icon.icon` in Icon Composer. It cannot turn a layer, so a turn means drawing the crescents again.
 2. Compile `Assets.car`. `actool` names the icon after the file, and the packaged app asks for `Icon`, so compile a copy with that name.
 
    ```sh

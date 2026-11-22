@@ -18,6 +18,9 @@ import { composerSendPlan } from "./composer-plan.ts";
 import { omittedMessage } from "./composer-draft.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
+import { cycleModes, modeControl, readModes } from "./composer-modes.tsx";
+import { hostWatch } from "../../data/watches.ts";
+import { useWatchSelect } from "../../data/watch-store.ts";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
 import {
   usePaneActions,
@@ -100,6 +103,14 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
 
   const held = status.kind === "waiting" || status.kind === "starting";
   const [pickerOpen, setPickerOpen] = useState(false);
+  const hostSettings = useWatchSelect(hostWatch("host"), (state) => state.value?.settings);
+
+  const modes = {
+    modes: readModes(hostSettings, viewState.modes),
+    set: (values: Readonly<Record<string, boolean>>) =>
+      updateViewState((state) => ({ ...state, modes: values })),
+  };
+
   const attachments = viewState.composer.attachments;
   const [intake, setIntake] = useState(NO_INTAKE);
   const editorRef = useRef<ComposerEditorHandle | null>(null);
@@ -128,6 +139,12 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
     if (plan.kind !== "message") return;
+    updateViewState((state) => ({
+      ...state,
+      modes: Object.fromEntries(
+        modes.modes.filter((mode) => mode.on).map((mode) => [mode.id, true]),
+      ),
+    }));
     const draft = viewStore.readBlank(paneId);
 
     const waiting = viewStore.beginSend(paneId, {
@@ -243,6 +260,8 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
               setIntake((current) => nextIntake(current, { kind: "cleared" }));
             }}
             inputRef={attachInput}
+            onCycleMode={cycleModes(modes)}
+            modes={modeControl(modes)}
             model={
               <ModelPicker
                 catalog={catalog.data}

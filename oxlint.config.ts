@@ -85,6 +85,11 @@ const reflectGlobal = {
     "Use typed property access or direct invocation. Suppress this rule only for genuine reflection.",
 };
 
+const canvasKitImport = {
+  name: "nyte/canvas",
+  message: "nyte/canvas only resolves in the canvas runtime. Import it only from *.view.tsx files.",
+};
+
 export default defineConfig({
   ignorePatterns: [
     "output/**",
@@ -438,9 +443,22 @@ export default defineConfig({
       },
     },
     {
+      files: ["packages/plugin/src/**"],
+      excludeFiles: ["packages/plugin/src/**/*.view.tsx"],
+      rules: {
+        "eslint/no-restricted-imports": [
+          "error",
+          { paths: [...runtimeLoadImports, canvasKitImport], patterns: uiLibraryImports },
+        ],
+      },
+    },
+    {
       files: ["packages/plugin/src/codemode-runtime.ts"],
       rules: {
-        "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
+        "eslint/no-restricted-imports": [
+          "error",
+          { paths: [canvasKitImport], patterns: uiLibraryImports },
+        ],
       },
     },
     {

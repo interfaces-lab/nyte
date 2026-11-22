@@ -121,7 +121,7 @@ export async function mount(): Promise<void> {
             Could not run the task.
           </div>
         </div>
-        {(["ghost", "outline", "plain", "quiet", "text"] as const).flatMap((variant) =>
+        {(["ghost", "soft", "outline", "plain", "quiet", "text"] as const).flatMap((variant) =>
           ["rest", "open", "disabled"].map((state) => (
             <Button
               key={`${variant}-${state}`}

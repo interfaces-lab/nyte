@@ -28,7 +28,7 @@ import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerSurface } from "./composer-frame.tsx";
 import { sessionModel } from "./model-picker-state.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
-import { ModeChips, useComposerModes } from "./composer-modes.tsx";
+import { cycleModes, modeControl, useSessionModes } from "./composer-modes.tsx";
 import { ComposerQueue } from "./composer-queue.tsx";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
@@ -161,7 +161,7 @@ export function Composer({
 
   const questions = useQuestionDock(sessionId);
   const pluginCatalog = usePluginCatalog(sessionId);
-  const modes = useComposerModes(sessionId, pluginCatalog.data?.settings);
+  const modes = useSessionModes(sessionId, pluginCatalog.data?.settings);
   const showsModes = questions === undefined && surface !== "side-chat";
   const floating = floatingMount !== null;
   const [portal] = useState(portalHost);
@@ -584,7 +584,8 @@ export function Composer({
                 ? () => steerPending(nextIdleQueued)
                 : undefined
             }
-            onCycleMode={showsModes ? modes.cycle : undefined}
+            onCycleMode={showsModes ? cycleModes(modes) : undefined}
+            modes={showsModes ? modeControl(modes) : undefined}
             onRecall={
               questions === undefined && target === null
                 ? (direction) =>
@@ -612,14 +613,11 @@ export function Composer({
             onAttachmentRemove={(id) => dispatch({ kind: "detached", id })}
             model={
               questions === undefined ? (
-                <>
-                  {showsModes && <ModeChips modes={modes} />}
-                  <SessionModelChip
-                    sessionId={sessionId}
-                    open={modelPickerOpen}
-                    onOpenChange={setModelPickerOpen}
-                  />
-                </>
+                <SessionModelChip
+                  sessionId={sessionId}
+                  open={modelPickerOpen}
+                  onOpenChange={setModelPickerOpen}
+                />
               ) : undefined
             }
             inputRef={attachInput}

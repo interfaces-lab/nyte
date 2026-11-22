@@ -91,7 +91,7 @@ export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
     situation.canCycleMode &&
     !situation.menuOpen
   ) {
-    return { kind: "cycle-mode" };
+    return key.repeat ? { kind: "swallow" } : { kind: "cycle-mode" };
   }
 
   if (key.key !== "Escape" || situation.menuOpen || situation.disabled) return PASS;

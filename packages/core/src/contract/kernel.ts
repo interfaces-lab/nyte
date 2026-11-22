@@ -392,6 +392,9 @@ export interface PluginRuntime {
 
   instance(id: string): PluginInstance | undefined;
 
+  /** The agents and settings the session runs with. While a reload activates, they stay the previous runtime's, as its hooks do. */
+  contributions(): Contributions;
+
   /** The session record's plugins as of this runtime's last load; null when the session has none assigned. */
   assigned(): readonly AssignedPlugin[] | null;
 

@@ -258,9 +258,9 @@ test.each<
     { kind: "answer", held: true, wrapped: true },
   ],
   [
-    "an action prompt draws its label",
+    "an action prompt draws its label as a line",
     prompt(ACTION, false, false),
-    { kind: "user", content: "Run checks", pending: false, editable: false },
+    { kind: "action", label: "Run checks", held: false, wrapped: true },
   ],
   [
     "a user message in a turn is editable",
@@ -268,9 +268,9 @@ test.each<
     { kind: "user", content: "Content", pending: false, editable: true },
   ],
   [
-    "an action in a turn draws its label and is not editable",
+    "an action in a turn draws its label as a line",
     part(user(ACTION)),
-    { kind: "user", content: "Run checks", pending: false, editable: false },
+    { kind: "action", label: "Run checks", held: false, wrapped: false },
   ],
   [
     "a shell message in a turn is editable",

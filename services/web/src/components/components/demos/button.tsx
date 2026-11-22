@@ -6,6 +6,9 @@ export function ButtonVariantsDemo() {
     <>
       <Button>Ghost</Button>
       <Button variant="outline">Outline</Button>
+      <Button variant="soft" tone="success">
+        Soft
+      </Button>
       <Button variant="solid" tone="primary">
         Solid
       </Button>

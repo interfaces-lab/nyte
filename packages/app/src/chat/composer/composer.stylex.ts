@@ -562,6 +562,17 @@ export const composerStyles = create({
   addButtonCompact: { gridArea: "add" },
   pillButton: { borderRadius: radius.pill },
   addMenu: { width: 260, maxWidth: "calc(100vw - 24px)" },
+  modeSlot: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.s1,
+    flexShrink: 0,
+  },
+  modeSlotCompact: { gridArea: "modes" },
+  layoutCompactModes: {
+    gridTemplateColumns: `${control.heightMd} minmax(64px, 1fr) auto minmax(0, auto) auto`,
+    gridTemplateAreas: '"add editor modes model send"',
+  },
   modelSlot: {
     display: "inline-flex",
     alignItems: "center",

@@ -108,7 +108,9 @@ export async function readSettingValues(
 
 export function findSettingDefinition(kernel: Kernel, id: string): Defined | undefined {
   return (
-    staticHostDefinitions(kernel).find((entry) => entry.definition.id === id) ??
+    staticDefinitions(kernel).find(
+      (entry) => entry.definition.scope === "host" && entry.definition.id === id,
+    ) ??
     [...kernel.plugins.runtimes().values()]
       .flatMap((runtime) => runtime.registries.settings.entries())
       .map((entry) => ({ definition: resolveSetting(entry.item), owner: entry.owner }))
@@ -120,7 +122,9 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
   const seen = new Set<string>();
 
   return [
-    ...staticHostDefinitions(kernel),
+    ...staticDefinitions(kernel).filter(
+      (entry) => entry.definition.scope === "host" || entry.definition.mode !== undefined,
+    ),
     ...[...kernel.plugins.runtimes().values()].flatMap((runtime) =>
       runtime.registries.settings
         .entries()
@@ -135,10 +139,11 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
   });
 }
 
-function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
+function staticDefinitions(kernel: Kernel): readonly Defined[] {
   return [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap((plugin) =>
-    (plugin.contribute?.settings ?? [])
-      .map((entry) => ({ definition: resolveSetting(entry), owner: plugin.id }))
-      .filter((entry) => entry.definition.scope === "host"),
+    (plugin.contribute?.settings ?? []).map((entry) => ({
+      definition: resolveSetting(entry),
+      owner: plugin.id,
+    })),
   );
 }

@@ -75,6 +75,7 @@ interface ComposerFrameProps {
   onSteerQueued?: () => void;
   onRecall?: (direction: RecallDirection) => boolean;
   onCycleMode?: () => void;
+  modes?: ReactNode;
   model?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
@@ -112,6 +113,7 @@ export function ComposerFrame({
   onSteerQueued,
   onRecall,
   onCycleMode,
+  modes,
   model,
   inputRef,
   suggestionCatalog,
@@ -582,6 +584,7 @@ export function ComposerFrame({
           geometry === "new-chat" && composerStyles.layoutNewChat,
           compact && composerStyles.layoutCompact,
           compact && sideChat && composerStyles.layoutSideChatCompact,
+          compact && !sideChat && modes !== undefined && composerStyles.layoutCompactModes,
         )}
       >
         <div {...props(composerStyles.editor, compact && composerStyles.editorCompact)}>
@@ -686,6 +689,13 @@ export function ComposerFrame({
                     )}
                 </MenuContent>
               </Menu>
+              {modes !== undefined && (
+                <span
+                  {...props(composerStyles.modeSlot, compact && composerStyles.modeSlotCompact)}
+                >
+                  {modes}
+                </span>
+              )}
               <span
                 {...props(composerStyles.modelSlot, compact && composerStyles.modelSlotCompact)}
               >

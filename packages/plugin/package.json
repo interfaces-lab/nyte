@@ -18,6 +18,7 @@
     "./core": "./src/core.ts",
     "./core/approvals": "./src/approvals/approvals.ts",
     "./core/autoresearch": "./src/autoresearch/autoresearch.ts",
+    "./core/plan": "./src/plan/plan.ts",
     "./core/acp": "./src/acp/index.ts",
     "./core/bash-description": "./src/bash-description.ts",
     "./core/browser-client": "./src/browser-client.ts",
@@ -73,6 +74,14 @@
       "./core/approvals": {
         "types": "./dist/src/approvals/approvals.d.ts",
         "import": "./dist/src/approvals/approvals.js"
+      },
+      "./core/autoresearch": {
+        "types": "./dist/src/autoresearch/autoresearch.d.ts",
+        "import": "./dist/src/autoresearch/autoresearch.js"
+      },
+      "./core/plan": {
+        "types": "./dist/src/plan/plan.d.ts",
+        "import": "./dist/src/plan/plan.js"
       },
       "./core/acp": {
         "types": "./dist/src/acp/index.d.ts",
@@ -178,6 +187,10 @@
         "types": "./dist/src/web/index.d.ts",
         "import": "./dist/src/web/index.js"
       },
+      "./part-view-files": {
+        "types": "./dist/src/part-view-files.d.ts",
+        "import": "./dist/src/part-view-files.js"
+      },
       "./client": {
         "types": "./dist/src/client.d.ts",
         "import": "./dist/src/client.js"
@@ -257,7 +270,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.views.json",
+    "typecheck": "tsc --noEmit",
     "build:package": "bun ../../scripts/sdk-packages.mjs build plugin"
   },
   "dependencies": {

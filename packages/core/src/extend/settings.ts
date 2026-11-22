@@ -9,7 +9,6 @@ import type {
 import type { SettingsApi } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Setting, ResolvedSetting } from "../contract/plugin.ts";
-import { collectContributions } from "../engine/contributions.ts";
 import { WORKSPACE_TRUST } from "../env/trust.ts";
 import { dropScans, readTrust, trustChanged } from "../env/workspaces.ts";
 import { commit } from "../watch/commit.ts";
@@ -266,7 +265,7 @@ export async function configure(
       head,
       selected: entry.selected,
       patch,
-      contributions: collectContributions(runtime),
+      contributions: runtime.contributions(),
     });
 
     if (resolved.kind !== "exact") return resolved;
