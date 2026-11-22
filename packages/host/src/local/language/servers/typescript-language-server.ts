@@ -1,11 +1,7 @@
-import { readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { compile } from "@nyte-ai/schema";
-import { Type } from "typebox";
+import { join } from "node:path";
 import type { Install, Project, ServerSpec } from "../spec.ts";
+import { findPackage, readPackage } from "./packages.ts";
 import packages from "./typescript-language-server.lock.json" with { type: "json" };
-
-const PackageManifest = compile(Type.Object({ version: Type.String() }));
 
 const PREFERENCES = {
   includeInlayParameterNameHints: "literals",
@@ -54,49 +50,24 @@ export const TYPESCRIPT_LANGUAGE_SERVER: ServerSpec = {
   settings: { typescript: LANGUAGE, javascript: LANGUAGE },
   async prepare(project) {
     const typescript =
-      (await findUpward(project.root, join("node_modules", "typescript"))) ??
-      (await findPinnedTypeScript(project));
+      (await findPackage(project.root, "typescript")) ?? (await findPinnedTypeScript(project));
 
-    const manifest =
-      typescript === null
-        ? null
-        : await readFile(join(typescript, "package.json"), "utf8").catch(() => null);
-
-    const version = manifest === null ? null : readPackageVersion(manifest);
-
-    if (typescript === null || version === null) return {};
+    if (typescript === null) return {};
 
     return {
       initializationOptions: {
         preferences: PREFERENCES,
-        tsserver: { path: join(typescript, "lib", "tsserver.js") },
+        tsserver: { path: join(typescript.folder, "lib", "tsserver.js") },
       },
-      runsOn: `TypeScript ${version}`,
+      runsOn: `TypeScript ${typescript.version}`,
     };
   },
 };
 
-async function findPinnedTypeScript(project: Project): Promise<string | null> {
+async function findPinnedTypeScript(project: Project) {
   const installed = await project.install(INSTALL);
 
-  return installed === null ? null : join(installed.folder, "node_modules", "typescript");
-}
-
-async function findUpward(from: string, name: string): Promise<string | null> {
-  const candidate = join(from, name);
-
-  if ((await stat(candidate).catch(() => null)) !== null) return candidate;
-  const parent = dirname(from);
-
-  return parent === from ? null : findUpward(parent, name);
-}
-
-function readPackageVersion(text: string): string | null {
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return PackageManifest.Check(value) ? value.version : null;
-  } catch {
-    return null;
-  }
+  return installed === null
+    ? null
+    : readPackage(join(installed.folder, "node_modules", "typescript"));
 }

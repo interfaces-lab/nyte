@@ -83,5 +83,6 @@ export interface ServerSpec {
   readonly installHint: string;
   readonly initializationOptions: Json;
   readonly settings: Json;
+  readonly replies?: Readonly<Record<string, Json>>;
   prepare?(project: Project): Promise<Prepared>;
 }

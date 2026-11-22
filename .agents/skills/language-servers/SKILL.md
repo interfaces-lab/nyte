@@ -35,6 +35,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 12. **`initializationOptions` and `settings` are plain data.** `settings` answers `workspace/configuration` by dotted section and is sent as `workspace/didChangeConfiguration`.
 13. **`prepare` is only for values that depend on the project's disk or on an install**, such as the path of the project's own TypeScript. It may return `initializationOptions`, `settings` and `runsOn`, each replacing the spec's own. A value you can write down goes in the data.
 37. **A server that needs a second pinned thing installs it in `prepare`.** `project.install` takes an `Install` and answers where it landed, or null when the host has no installer. The Bash server's shellcheck and a fallback TypeScript are such things. Write its `Install` as data in the spec file.
+39. **`replies` answers a server's own requests.** A request outside LSP, such as `eslint/noLibrary`, gets "method not found" unless the spec lists its method with the fixed answer to give. Use it for requests that only inform. Do not answer yes to a request that asks the editor to do something it will not do; turn off the setting that makes the server ask.
 14. **No server names outside its spec file.** If the manager, a reader or the test needs to know which server it talks to, the spec is missing a field. Stop and report what the spec cannot express.
 
 ## Pin the download

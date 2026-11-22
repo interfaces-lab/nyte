@@ -265,8 +265,15 @@ export function localLanguage(
         case "window/workDoneProgress/create":
         case "window/showMessageRequest":
           return null;
-        default:
-          throw new LspError(METHOD_NOT_FOUND, `Nyte does not answer ${method}.`);
+        default: {
+          const reply = slot.spec.replies?.[method];
+
+          if (reply === undefined) {
+            throw new LspError(METHOD_NOT_FOUND, `Nyte does not answer ${method}.`);
+          }
+
+          return reply;
+        }
       }
     },
     stderr: (text: string) => record(slot, text),
