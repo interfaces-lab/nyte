@@ -285,7 +285,7 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
         options: { tabSize: 2, insertSpaces: true },
       });
 
-      return outcome.kind === "edits" ? [outcome.kind] : [];
+      return outcome.kind === "edits" ? [outcome.kind, ...outcome.edits] : [];
     },
     async formatRange(probe) {
       const line = (await locate(probe)).line;
@@ -296,7 +296,7 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
         range: { start: { line, utf16Column: 0 }, end: { line: line + 1, utf16Column: 0 } },
       });
 
-      return outcome.kind === "edits" ? [outcome.kind] : [];
+      return outcome.kind === "edits" ? [outcome.kind, ...outcome.edits] : [];
     },
     async renameFiles(probe) {
       const outcome = await language.renameFiles({

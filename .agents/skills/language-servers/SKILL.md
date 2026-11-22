@@ -65,7 +65,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 ## The matrix
 
 25. **`matrix.json` in the fixture folder holds one row per feature**, every feature of `LanguageFeature` plus `diagnostics`.
-26. **A probe says where to ask.** `file` is the path. `after` is text in that file, and the position is right after its first occurrence, so end it inside the symbol. `query` is for workspace symbols. `says` is text the answer must contain.
+26. **A probe says where to ask.** `file` is the path. `after` is text in that file, and the position is right after its first occurrence, so end it inside the symbol. `query` is for workspace symbols. `says` is text the answer must contain. A formatter that changes nothing still answers, so give a format probe a `says` from the text it writes whenever the server formats through a second program.
 27. **`servers` lists who offers the feature**, as their status rows say once ready. **`answers` says whether the probes got an answer** through the merged API.
 28. **`vscode` says whether VS Code with the extension offers the feature by default.** Put the reason in `note` wherever it differs from `answers`.
 35. **The matrix runs the pinned version of every server**, never one from `PATH`. A row describes what Nyte ships. Without `NYTE_LANGUAGE_DOWNLOADS=1` the matrix is skipped.
