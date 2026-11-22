@@ -139,10 +139,21 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
               installer
                 .install(spec.install, () => undefined)
                 .then(async (installed) => {
-                  if (installed.kind === "binary") return [spec.name, installed.path] as const;
+                  const exports = Object.entries(installed.env);
+
+                  if (installed.kind === "binary" && exports.length === 0) {
+                    return [spec.name, installed.path] as const;
+                  }
+
                   const launcher = join(scratch, spec.name);
 
-                  await writeLauncher(launcher, installed.path);
+                  await writeLauncher(
+                    launcher,
+                    installed.kind === "binary"
+                      ? [installed.path]
+                      : [process.execPath, installed.path],
+                    exports,
+                  );
 
                   return [spec.name, launcher] as const;
                 }),
@@ -448,10 +459,19 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
   });
 });
 
-async function writeLauncher(path: string, script: string): Promise<void> {
+async function writeLauncher(
+  path: string,
+  command: readonly string[],
+  exports: readonly (readonly [string, string])[],
+): Promise<void> {
   await writeFile(
     path,
-    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`,
+    [
+      "#!/bin/sh",
+      ...exports.map((entry) => `export ${entry[0]}=${JSON.stringify(entry[1])}`),
+      `exec ${command.map((part) => JSON.stringify(part)).join(" ")} "$@"`,
+      "",
+    ].join("\n"),
     { mode: 0o755 },
   );
 }
@@ -486,7 +506,11 @@ async function copyWithPackages(
       symlink(join(installed.path, name), join(copy, "node_modules", name)),
     ),
     ...Object.entries(packages.bins).map((entry) =>
-      writeLauncher(join(copy, "node_modules", ".bin", entry[0]), join(installed.path, entry[1])),
+      writeLauncher(
+        join(copy, "node_modules", ".bin", entry[0]),
+        [process.execPath, join(installed.path, entry[1])],
+        [],
+      ),
     ),
   ]);
 

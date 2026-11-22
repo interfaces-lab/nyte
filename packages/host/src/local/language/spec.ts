@@ -44,6 +44,7 @@ export type Install = { readonly package: string; readonly version: string } & (
       readonly kind: "toolchain";
       readonly program: string;
       readonly arguments: readonly string[];
+      /** Set while the toolchain installs and again whenever what it installed runs. */
       readonly env: Readonly<Record<string, string>>;
       readonly bin: string;
     }
@@ -53,6 +54,7 @@ export interface Installed {
   readonly kind: "binary" | "script";
   readonly path: string;
   readonly folder: string;
+  readonly env: Readonly<Record<string, string>>;
 }
 
 export interface Project {
@@ -70,6 +72,8 @@ export interface Prepared {
   readonly initializationOptions?: Json;
   readonly settings?: Json;
   readonly runsOn?: string;
+  /** Added after the spec's own arguments. */
+  readonly arguments?: readonly string[];
 }
 
 export interface ServerSpec {

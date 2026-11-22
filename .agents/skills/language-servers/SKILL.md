@@ -33,7 +33,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 36. **`package` names what is downloaded, and keys the cache.** Servers that ship in one npm package share one `package` and `version` and differ in `entry`, so the package is installed once.
 11. **`runtime` names a program the server cannot run without.** The host runs it with `probe` and treats a failure as `missing` with `installHint`. Never download a runtime.
 12. **`initializationOptions` and `settings` are plain data.** `settings` answers `workspace/configuration` by dotted section and is sent as `workspace/didChangeConfiguration`.
-13. **`prepare` is only for values that depend on the project's disk or on an install**, such as the path of the project's own TypeScript. It may return `initializationOptions`, `settings` and `runsOn`, each replacing the spec's own. A value you can write down goes in the data.
+13. **`prepare` is only for values that depend on the project's disk or on an install**, such as the path of the project's own TypeScript. It may return `initializationOptions`, `settings` and `runsOn`, each replacing the spec's own, and `arguments`, added after the spec's own, for a value such as a data folder per project. A value you can write down goes in the data.
 37. **A server that needs a second pinned thing installs it in `prepare`.** `project.install` takes an `Install` and answers where it landed, or null when the host has no installer. A failed install rejects, and the server's status then shows why it did not start. A fallback TypeScript is such a thing. For a program the user may already have, such as the Bash server's shellcheck, call `project.tool` with the program, its probe and the `Install`: it answers the one on `PATH` when the probe passes and the pinned download otherwise. Write each `Install` as data in the spec file.
 39. **`replies` answers a server's own requests.** A request outside LSP, such as `eslint/noLibrary`, gets "method not found" unless the spec lists its method with the fixed answer to give. Use it for requests that only inform. Do not answer yes to a request that asks the editor to do something it will not do; turn off the setting that makes the server ask.
 14. **No server names outside its spec file.** If the manager, a reader or the test needs to know which server it talks to, the spec is missing a field. Stop and report what the spec cannot express.
@@ -42,6 +42,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 ## Pin the download
 
 15. **Prefer an upstream release, then npm, then a toolchain.** Use Open VSX only when it is the only prebuilt source.
+43. **A toolchain install runs in the environment it was built in.** Its `env`, with `{folder}` filled in, is set for the install command and again for the server process. A gem installed into Nyte's folder needs `GEM_HOME` there both times.
 16. **Pin with the script**, from the repository root. The second form writes the tarball list beside the spec.
 
     ```sh

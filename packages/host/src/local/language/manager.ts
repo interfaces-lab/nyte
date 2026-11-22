@@ -418,10 +418,17 @@ export function localLanguage(
 
     const version = download.source.version;
 
-    if (installed.kind === "binary") return { command: [installed.path], env: {}, version };
+    if (installed.kind === "binary") {
+      return { command: [installed.path], env: installed.env, version };
+    }
+
     const node = hostNode();
 
-    return { command: [...node.command, installed.path], env: node.env, version };
+    return {
+      command: [...node.command, installed.path],
+      env: { ...node.env, ...installed.env },
+      version,
+    };
   };
 
   const launch = async (slot: Slot): Promise<Run | null> => {
@@ -444,7 +451,7 @@ export function localLanguage(
     }
 
     const job = await env
-      .exec([...located.command, ...slot.spec.arguments], {
+      .exec([...located.command, ...slot.spec.arguments, ...(prepared.arguments ?? [])], {
         cwd: slot.root,
         env: located.env,
         stdio: "protocol",

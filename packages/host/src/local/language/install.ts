@@ -73,17 +73,20 @@ async function fillFolder(
 }
 
 function locate(source: Install, folder: string): Installed {
-  if (source.kind === "npm") return { kind: "script", path: join(folder, source.entry), folder };
+  if (source.kind === "npm") {
+    return { kind: "script", path: join(folder, source.entry), folder, env: {} };
+  }
 
   if (source.kind === "toolchain") {
     return {
       kind: "binary",
       path: join(folder, process.platform === "win32" ? `${source.bin}.exe` : source.bin),
       folder,
+      env: placeEnv(source.env, folder),
     };
   }
 
-  return { kind: "binary", path: join(folder, findAsset(source).bin), folder };
+  return { kind: "binary", path: join(folder, findAsset(source).bin), folder, env: {} };
 }
 
 function findAsset(source: Extract<Install, { kind: "release" }>) {
@@ -139,20 +142,28 @@ async function fill(
     throw new Error(`Installing it needs ${source.program}, which is not on PATH.`);
   }
 
-  const place = (text: string): string => text.replaceAll(INSTALL_FOLDER, folder);
   report(null);
 
-  const ran = await run(program, source.arguments.map(place), {
-    cwd: folder,
-    env: Object.fromEntries(Object.entries(source.env).map((entry) => [entry[0], place(entry[1])])),
-    timeoutMs: TOOLCHAIN_DEADLINE_MS,
-  });
+  const ran = await run(
+    program,
+    source.arguments.map((argument) => argument.replaceAll(INSTALL_FOLDER, folder)),
+    { cwd: folder, env: placeEnv(source.env, folder), timeoutMs: TOOLCHAIN_DEADLINE_MS },
+  );
 
   if (ran.code !== 0) {
     throw new Error(
       `${source.program} ${source.arguments[0] ?? ""} failed: ${ran.stderr.trim().split("\n").at(-1) ?? ""}`,
     );
   }
+}
+
+function placeEnv(
+  env: Readonly<Record<string, string>>,
+  folder: string,
+): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    Object.entries(env).map((entry) => [entry[0], entry[1].replaceAll(INSTALL_FOLDER, folder)]),
+  );
 }
 
 async function addPackage(entry: NpmPackage, folder: string): Promise<void> {
