@@ -44,9 +44,11 @@ export const RUST_ANALYZER: ServerSpec = {
   rootMarkers: ["Cargo.toml", "rust-project.json"],
   requiresRootMarker: false,
   program: "rust-analyzer",
+  probe: ["--version"],
   arguments: [],
   install: {
     kind: "release",
+    package: "rust-analyzer",
     version: VERSION,
     assets: {
       "darwin-arm64": asset(

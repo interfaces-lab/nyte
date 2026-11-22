@@ -186,6 +186,18 @@
       "answers": true,
       "vscode": true
     },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "src/main.rs",
+          "after": "fn main"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false,
+      "note": "rust-analyzer formats a range only with a nightly rustfmt and rustfmt.rangeFormatting.enable, which the extension leaves off."
+    },
     "rename": {
       "probes": [
         {
@@ -199,6 +211,50 @@
       ],
       "answers": true,
       "vscode": true
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "src/stats.rs",
+          "says": "src/main.rs"
+        }
+      ],
+      "servers": [
+        "rust-analyzer"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "src/main.rs"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "src/main.rs"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "src/main.rs",
+          "after": "fn main"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
     },
     "foldingRanges": {
       "probes": [
