@@ -4,9 +4,9 @@ import type { ModelRef, SessionId, Thinking } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import type { PaneId } from "./layout.ts";
-import type { WindowDrafts } from "../chat/composer/drafts.ts";
-import { NO_SENDING, persistedDraft, restorable } from "../chat/composer/composer-draft.ts";
-import type { SessionDraft } from "../chat/composer/composer-draft.ts";
+import type { WindowDrafts } from "../drafts/drafts.ts";
+import { NO_SENDING, persistedDraft, restorable } from "../drafts/composer-draft.ts";
+import type { SessionDraft } from "../drafts/composer-draft.ts";
 
 const KEPT_SESSION_VIEWS = 64;
 

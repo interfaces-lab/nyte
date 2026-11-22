@@ -28,8 +28,8 @@ import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { openSideChat } from "../side-chat/side-chats.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
-import { refusalMessage } from "./composer-draft.ts";
-import type { SendEnd } from "./composer-draft.ts";
+import { refusalMessage } from "../../drafts/composer-draft.ts";
+import type { SendEnd } from "../../drafts/composer-draft.ts";
 import type { EditSaved } from "./composer-session.ts";
 import { planEdit } from "./composer-plan.ts";
 import type {

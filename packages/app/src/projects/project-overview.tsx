@@ -18,7 +18,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { toast } from "@nyte-ai/ui/toast";
 import { useChatTasks, useChats } from "../chats/index.ts";
 import { composerMessageContent } from "../chat/composer/composer-plan.ts";
-import { endedDraft } from "../chat/composer/composer-draft.ts";
+import { endedDraft } from "../drafts/composer-draft.ts";
 import { deliver } from "../chat/composer/composer-send.ts";
 import type { ChatDirectory, ChildTask } from "../chats/index.ts";
 import { AgentCitationContext, Prose } from "../markdown/prose.tsx";

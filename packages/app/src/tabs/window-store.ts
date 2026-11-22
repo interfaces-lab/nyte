@@ -1,5 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
-import type { WindowDrafts } from "../chat/composer/drafts.ts";
+import type { WindowDrafts } from "../drafts/drafts.ts";
 import type { PaneId } from "../panes/layout.ts";
 import type { LayoutStore } from "../panes/layout-store.ts";
 import type { PaneCommand, PaneFocus } from "../panes/pane-commands.ts";

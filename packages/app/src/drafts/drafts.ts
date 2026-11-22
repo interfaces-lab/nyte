@@ -1,6 +1,6 @@
 import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
-import type { PaneId } from "../../panes/layout.ts";
+import type { PaneId } from "../panes/layout.ts";
 import {
   IMAGE_CONTENT,
   composerSchema,
@@ -12,20 +12,20 @@ import {
   draftHasContent,
   draftKept,
   persistableComposer,
-} from "../../panes/session-view-state.ts";
+} from "../panes/session-view-state.ts";
 import type {
   ChatDraft,
   ComposerImageAttachment,
   ComposerViewState,
   PersistedComposer,
   SessionViewState,
-} from "../../panes/session-view-state.ts";
+} from "../panes/session-view-state.ts";
 import type { SessionId } from "@nyte-ai/sdk";
 import { ModelRefType, ThinkingType, asId } from "@nyte-ai/schema";
-import { projectId } from "../../data/schemas.ts";
-import { readStored, removeStored, writeStored } from "../../lib/storage.ts";
-import type { StorageArea } from "../../lib/storage.ts";
-import { journaledReceipts } from "../../data/send-journal.ts";
+import { projectId } from "../data/schemas.ts";
+import { readStored, removeStored, writeStored } from "../lib/storage.ts";
+import type { StorageArea } from "../lib/storage.ts";
+import { journaledReceipts } from "../data/send-journal.ts";
 import { NO_SENDING, persistedDraft, restorable, unsentNotice } from "./composer-draft.ts";
 import type { ComposerNotice, Restore, Sending, SessionDraft } from "./composer-draft.ts";
 

@@ -15,8 +15,8 @@ import {
   shownDraft,
   typedDraft,
   updateShown,
-} from "./composer-draft.ts";
-import type { ComposerNotice, SessionDraft } from "./composer-draft.ts";
+} from "../../drafts/composer-draft.ts";
+import type { ComposerNotice, SessionDraft } from "../../drafts/composer-draft.ts";
 import { NO_INTAKE, nextIntake } from "./composer-files.ts";
 import type { Intake, IntakeEvent } from "./composer-files.ts";
 import { recallStep } from "./composer-history.ts";

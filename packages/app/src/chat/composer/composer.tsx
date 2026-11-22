@@ -39,8 +39,14 @@ import { loadedPrompts } from "./composer-history.ts";
 import { deliveryChoices, draftEmpty, nextToSteer } from "./composer-keys.ts";
 import { deliver, draftCommands } from "./composer-send.ts";
 import { planSubmission } from "./composer-plan.ts";
-import { endedDraft, errorNotice, handedOff, shownDraft, shownNotice } from "./composer-draft.ts";
-import type { ComposerNotice } from "./composer-draft.ts";
+import {
+  endedDraft,
+  errorNotice,
+  handedOff,
+  shownDraft,
+  shownNotice,
+} from "../../drafts/composer-draft.ts";
+import type { ComposerNotice } from "../../drafts/composer-draft.ts";
 import { editBlock, FILES_WHILE_SAVING, saving } from "./composer-session.ts";
 import type { PendingRowAction } from "./composer-session.ts";
 import { composerSession } from "./composer-effects.ts";

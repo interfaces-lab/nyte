@@ -1,10 +1,10 @@
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ReceiptId } from "@nyte-ai/sdk";
 import type { RefusedSend } from "@nyte-ai/sdk/client";
-import { errorMessage } from "../../contract/errors.ts";
-import type { ComposerImageAttachment, ComposerViewState } from "../../panes/session-view-state.ts";
-import { contentDraftText } from "../../references/message-references.ts";
-import type { ComposerDocumentState } from "./composer-document.ts";
+import { errorMessage } from "../contract/errors.ts";
+import type { ComposerImageAttachment, ComposerViewState } from "../panes/session-view-state.ts";
+import { contentDraftText } from "../references/message-references.ts";
+import type { ComposerDocumentState } from "../chat/composer/composer-document.ts";
 
 export interface Restore {
   readonly text: string;

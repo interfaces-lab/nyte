@@ -17,6 +17,7 @@ const ENTRIES = [
       ["diff", "references", "images"],
       [
         "chat",
+        "drafts",
         "markdown",
         "editor",
         "changes",

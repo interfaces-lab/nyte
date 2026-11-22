@@ -1,6 +1,6 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import { chatPanes } from "../panes/pane-layout.ts";
-import { WindowDrafts } from "../chat/composer/drafts.ts";
+import { WindowDrafts } from "../drafts/drafts.ts";
 import { Type } from "typebox";
 import { initialWindow, paneTabId, tabLayout, withoutPreviews } from "./model.ts";
 import type { OpenIntent, WindowAction } from "./model.ts";
