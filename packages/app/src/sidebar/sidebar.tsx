@@ -35,7 +35,7 @@ import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
 import { firstSettingsSection } from "../settings/index.ts";
 import type { SettingsSection } from "../settings/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { SidebarFooter } from "../account/account-footer.tsx";
+import { SidebarFooter } from "./account-footer.tsx";
 import { folderPicker } from "../panes/open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { actionIcons } from "./action-icons.ts";

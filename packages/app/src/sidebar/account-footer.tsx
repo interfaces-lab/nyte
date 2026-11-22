@@ -25,9 +25,9 @@ import { updateLabel } from "../contract/update-label.ts";
 import { closeSettings, firstSettingsSection } from "../settings/index.ts";
 import type { SettingsSection } from "../settings/index.ts";
 import { useSettingsOpen } from "../tabs/use-settings-open.ts";
-import { useConnectAction, useConnectView } from "./connect-view.ts";
-import { useGitHubAccountState, useGitHubAuth } from "./github-account.ts";
-import { sidebarStyles as styles } from "../sidebar/sidebar.stylex.ts";
+import { useConnectAction, useConnectView } from "../account/connect-view.ts";
+import { useGitHubAccountState, useGitHubAuth } from "../account/github-account.ts";
+import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 
 const FEEDBACK_URL = "https://github.com/interfaces-lab/nyte/issues/new/choose";
 

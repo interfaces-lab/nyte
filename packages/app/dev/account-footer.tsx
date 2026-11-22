@@ -11,7 +11,7 @@ import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { GitHubAccountState } from "@nyte-ai/sdk";
 import type { ConnectView, UpdateState } from "../src/contract/bridge.ts";
-import { AccountFooterMenu } from "../src/account/account-footer.tsx";
+import { AccountFooterMenu } from "../src/sidebar/account-footer.tsx";
 import { sidebarStyles as styles } from "../src/sidebar/sidebar.stylex.ts";
 import { keys } from "../src/data/query-client.ts";
 
