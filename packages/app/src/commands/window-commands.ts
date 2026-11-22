@@ -24,7 +24,8 @@ import {
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { launch, toggleExplorer } from "../workbench/commands.ts";
+import { closeTab, launch, toggleExplorer } from "../workbench/commands.ts";
+import { workbenchHasFocus } from "../workbench/focus-region.ts";
 import { fileActions } from "../editor/file-store.ts";
 import { opensAsMarkdown } from "../editor/markdown-parse.ts";
 import { activeEditorFile, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "../workbench/model.ts";
@@ -88,6 +89,35 @@ function toggleMarkdownSource(): boolean {
   return true;
 }
 
+function stepEditorHistory(step: "back" | "forward"): boolean {
+  if (keyOwner() !== undefined && !focusWithin("[data-editor-panel]")) return false;
+
+  const viewKey = workbenchViewKey(currentWorkspacePath());
+  const view = workbench.getView(viewKey);
+
+  const shown = shownWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
+
+  if (shown === null || tabSlot(shown) !== EDITOR_SLOT) return false;
+  fileActions[step](viewKey);
+
+  return true;
+}
+
+function closeFocusedWorkbenchTab(): boolean {
+  const viewKey = workbenchViewKey(currentWorkspacePath());
+  const view = workbench.getView(viewKey);
+
+  const shown = shownWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
+
+  if (shown === null || !workbenchHasFocus(view)) return false;
+
+  const activeFile = tabSlot(shown) === EDITOR_SLOT ? activeEditorFile(view) : undefined;
+
+  void closeTab(viewKey, activeFile?.id ?? tabSlot(shown));
+
+  return true;
+}
+
 export function openWindowInEditor(open: Extract<DesktopWindowOpen, { kind: "file" }>): void {
   if (open.workspace !== undefined) commitHostWorkspace(open.workspace);
   const view = workbenchViewKey(open.workspace?.path);
@@ -132,6 +162,8 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
 
       return true;
     case "tab.close":
+      if (!settingsOpen(router) && closeFocusedWorkbenchTab()) return true;
+
       if (!windowTabs.strip) return false;
 
       if (settingsOpen(router)) closeSettings(router);
@@ -206,6 +238,10 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
       return true;
     case "app.open":
       return switchApp(read(action, APP_ACTIONS[action].input, input).app);
+    case "history.back":
+      return stepEditorHistory("back");
+    case "history.forward":
+      return stepEditorHistory("forward");
     default: {
       const _exhaustive: never = action;
 

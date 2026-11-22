@@ -1,10 +1,9 @@
 import { create, props } from "@stylexjs/stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
-import { useRef, useState } from "react";
+import { useRef, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import { errorMessage } from "../contract/errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { TaskMark } from "../components/task-mark.tsx";
 import {
@@ -55,7 +54,13 @@ import type {
 } from "../workbench/model.ts";
 import { activeWorkbenchTab, tabPresentation, workbenchStripTabs } from "../workbench/selectors.ts";
 import { workbench } from "../workbench/store.ts";
-import { closeTab, endTerminal, launch } from "../workbench/commands.ts";
+import {
+  closeTab,
+  confirmTerminalClose,
+  dismissTerminalClose,
+  launch,
+  pendingTerminalClose,
+} from "../workbench/commands.ts";
 import { readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
 import { useTerminalRuntime } from "../terminal/terminal-store.ts";
@@ -85,7 +90,6 @@ const styles = create({
     alignItems: "center",
     gap: space.px,
     minWidth: 0,
-    WebkitAppRegion: "initial",
   },
   slot: { display: "flex" },
   kept: { flexShrink: 0 },
@@ -194,15 +198,6 @@ const styles = create({
   },
 });
 
-type TerminalCloseState =
-  | { readonly kind: "closed" }
-  | {
-      readonly kind: "confirming";
-      readonly id: WorkbenchTabId;
-      readonly error: string | undefined;
-    }
-  | { readonly kind: "closing"; readonly id: WorkbenchTabId };
-
 function CanvasTabContent({
   tab,
 }: {
@@ -286,7 +281,8 @@ export function WorkbenchTabStrip({
   };
 
   const terminalCloseRef = useRef<HTMLButtonElement>(null);
-  const [terminalClose, setTerminalClose] = useState<TerminalCloseState>({ kind: "closed" });
+  const pending = useSyncExternalStore(pendingTerminalClose.subscribe, pendingTerminalClose.read);
+  const terminalClose = pending.kind !== "closed" && pending.view === viewKey ? pending : undefined;
 
   const listed = workbenchStripTabs(view, scope, capabilities);
 
@@ -345,28 +341,10 @@ export function WorkbenchTabStrip({
     });
   };
 
-  const endShell = (id: WorkbenchTabId): void => {
-    setTerminalClose({ kind: "closing", id });
-    void endTerminal(viewKey, id).then(
-      () => {
-        setTerminalClose({ kind: "closed" });
-        focusSelectedTab();
-      },
-      (cause: unknown) => setTerminalClose({ kind: "confirming", id, error: errorMessage(cause) }),
-    );
-  };
-
   const close = (tab: WorkbenchStripTab): void => {
-    void closeTab(viewKey, tab.id).then(
-      (outcome) => {
-        if (outcome.kind === "closed") focusSelectedTab();
-        else if (outcome.reason === "running") {
-          setTerminalClose({ kind: "confirming", id: tab.id, error: undefined });
-        }
-      },
-      (cause: unknown) =>
-        setTerminalClose({ kind: "confirming", id: tab.id, error: errorMessage(cause) }),
-    );
+    void closeTab(viewKey, tab.id).then((outcome) => {
+      if (outcome.kind === "closed") focusSelectedTab();
+    });
   };
 
   return (
@@ -668,17 +646,19 @@ export function WorkbenchTabStrip({
         </span>
       )}
       <ConfirmDialog
-        open={terminalClose.kind !== "closed"}
-        pending={terminalClose.kind === "closing"}
-        error={terminalClose.kind === "confirming" ? terminalClose.error : undefined}
+        open={terminalClose !== undefined}
+        pending={terminalClose?.kind === "closing"}
+        error={terminalClose?.kind === "confirming" ? terminalClose.error : undefined}
         finalFocus={terminalCloseRef}
         title="Close Terminal"
         description="This ends this shell session and any processes running in it."
         confirmLabel="Close Terminal"
         pendingLabel="Closing…"
-        onOpenChange={() => setTerminalClose({ kind: "closed" })}
+        onOpenChange={dismissTerminalClose}
         onConfirm={() => {
-          if (terminalClose.kind === "confirming") endShell(terminalClose.id);
+          void confirmTerminalClose().then((closed) => {
+            if (closed) focusSelectedTab();
+          });
         }}
       />
     </div>

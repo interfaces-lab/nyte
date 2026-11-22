@@ -25,7 +25,9 @@ export type AppAction =
   | "pane.focus.next"
   | "markdown.source.toggle"
   | "window.reload"
-  | "app.open";
+  | "app.open"
+  | "history.back"
+  | "history.forward";
 
 const NOTHING = Type.Object({}, { additionalProperties: false });
 
@@ -33,7 +35,11 @@ const NOTHING = Type.Object({}, { additionalProperties: false });
 export const APP_ACTIONS = {
   "chat.new": { summary: "Starts a new chat.", input: NOTHING },
   "tab.new": { summary: "Opens a new tab.", input: NOTHING },
-  "tab.close": { summary: "Closes the active tab, or Settings when it is open.", input: NOTHING },
+  "tab.close": {
+    summary:
+      "Closes Settings when it is open, else the file or workbench tab in focus, else the active tab.",
+    input: NOTHING,
+  },
   "tab.reopen": { summary: "Reopens the tab closed last.", input: NOTHING },
   "folder.open": { summary: "Shows the folder picker.", input: NOTHING },
   "home.open": { summary: "Switches to Home, the chats outside any folder.", input: NOTHING },
@@ -78,6 +84,8 @@ export const APP_ACTIONS = {
       { additionalProperties: false },
     ),
   },
+  "history.back": { summary: "Steps back through the Editor's history.", input: NOTHING },
+  "history.forward": { summary: "Steps forward through the Editor's history.", input: NOTHING },
 } satisfies Record<AppAction, { readonly summary: string; readonly input: TSchema }>;
 
 export function namesAppAction(name: string): name is AppAction {
@@ -114,6 +122,8 @@ interface ActionDetails {
     readonly keywords: string;
     readonly group: "actions" | "settings";
   };
+  /** The entry runs before the focused element sees the key, so an editor or a terminal can't take it first. */
+  readonly early?: true;
 }
 
 type ActionDefinition = ActionDetails &
@@ -347,6 +357,7 @@ export const clientActions = {
     key: "1",
     chord: "control-shift",
     scope: "window",
+    early: true,
   },
   openCode: {
     id: "open-code",
@@ -356,6 +367,7 @@ export const clientActions = {
     key: "2",
     chord: "control-shift",
     scope: "window",
+    early: true,
   },
   openStudio: {
     id: "open-studio",
@@ -365,6 +377,7 @@ export const clientActions = {
     key: "3",
     chord: "control-shift",
     scope: "window",
+    early: true,
   },
   flipApp: {
     id: "flip-app",
@@ -374,6 +387,25 @@ export const clientActions = {
     key: "space",
     chord: "control-shift",
     scope: "window",
+    early: true,
+  },
+  goBack: {
+    id: "go-back",
+    action: "history.back",
+    label: "Back",
+    key: "[",
+    chord: "primary",
+    scope: "workspace",
+    early: true,
+  },
+  goForward: {
+    id: "go-forward",
+    action: "history.forward",
+    label: "Forward",
+    key: "]",
+    chord: "primary",
+    scope: "workspace",
+    early: true,
   },
 } as const satisfies Record<string, ActionDefinition>;
 
@@ -449,6 +481,10 @@ function pressedKey(event: Pick<KeyboardEvent, "key" | "code">): string {
   if (event.code === "Period") return ".";
 
   if (event.code === "Backquote") return "`";
+
+  if (event.code === "BracketLeft") return "[";
+
+  if (event.code === "BracketRight") return "]";
 
   if (event.code === "Space") return "space";
 

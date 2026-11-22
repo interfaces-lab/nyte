@@ -384,6 +384,7 @@ function WorkbenchViewHost({
     <WorkbenchWorkspaceContext value={workspace}>
       <section
         ref={attachPanel}
+        data-nyte-workbench=""
         hidden={panelHidden}
         aria-hidden={panelHidden}
         inert={panelHidden ? true : undefined}

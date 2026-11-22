@@ -1,6 +1,7 @@
 import type { JobView, WorkspaceId } from "@nyte-ai/sdk";
 import type { HostState } from "../contract/bridge.ts";
 import { clientCapabilities } from "../contract/client-actions.ts";
+import { errorMessage } from "../contract/errors.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
 import type { ArrivalSubject } from "../contract/desktop-window.ts";
 import { nyte, windowApp } from "../contract/nyte.ts";
@@ -13,6 +14,7 @@ import type {
   KindInput,
   LaunchKind,
   WorkbenchChangesScope,
+  WorkbenchTab,
   WorkbenchTabId,
   WorkbenchViewKey,
 } from "./model.ts";
@@ -101,17 +103,95 @@ type CloseOutcome =
   | { readonly kind: "closed" }
   | { readonly kind: "confirm"; readonly reason: "dirty" | "running" };
 
-export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<CloseOutcome> {
-  if (id === EDITOR_SLOT) return closeEditor(view);
+/** A workbench tab close that waits on the person, because the tab's terminal is still running a process. */
+export type TerminalClose =
+  | { readonly kind: "closed" }
+  | {
+      readonly kind: "confirming";
+      readonly view: WorkbenchViewKey;
+      readonly id: WorkbenchTabId;
+      readonly error: string | undefined;
+    }
+  | { readonly kind: "closing"; readonly view: WorkbenchViewKey; readonly id: WorkbenchTabId };
+
+let terminalClose: TerminalClose = { kind: "closed" };
+
+const terminalCloseListeners = new Set<() => void>();
+
+function setTerminalClose(next: TerminalClose): void {
+  terminalClose = next;
+
+  for (const notice of terminalCloseListeners) notice();
+}
+
+/** The close waiting on the person, read with `useSyncExternalStore`. */
+export const pendingTerminalClose = {
+  read: (): TerminalClose => terminalClose,
+  subscribe: (notice: () => void): (() => void) => {
+    terminalCloseListeners.add(notice);
+
+    return () => terminalCloseListeners.delete(notice);
+  },
+};
+
+/** Closes a workbench tab, the Editor slot or a file. A running terminal, or a close that fails, waits in `pendingTerminalClose` for the person. */
+export function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<CloseOutcome> {
+  if (id === EDITOR_SLOT) return Promise.resolve(closeEditor(view));
 
   const tab = workbench.getView(view).tabs.find((candidate) => candidate.id === id);
 
   if (tab?.kind === "file") {
-    return fileActions.close(view, tab.id)
-      ? { kind: "closed" }
-      : { kind: "confirm", reason: "dirty" };
+    return Promise.resolve(
+      fileActions.close(view, tab.id) ? { kind: "closed" } : { kind: "confirm", reason: "dirty" },
+    );
   }
 
+  return closeOtherTab(view, id, tab).then(
+    (outcome) => {
+      if (outcome.kind === "confirm") {
+        setTerminalClose({ kind: "confirming", view, id, error: undefined });
+      }
+
+      return outcome;
+    },
+    (cause: unknown): CloseOutcome => {
+      setTerminalClose({ kind: "confirming", view, id, error: errorMessage(cause) });
+
+      return { kind: "confirm", reason: "running" };
+    },
+  );
+}
+
+/** Ends the terminal the person confirmed closing. Resolves true once it has ended, false when it failed and waits again with the error. */
+export function confirmTerminalClose(): Promise<boolean> {
+  const pending = terminalClose;
+
+  if (pending.kind !== "confirming") return Promise.resolve(false);
+  setTerminalClose({ kind: "closing", view: pending.view, id: pending.id });
+
+  return endTerminal(pending.view, pending.id).then(
+    () => {
+      setTerminalClose({ kind: "closed" });
+
+      return true;
+    },
+    (cause: unknown) => {
+      setTerminalClose({ ...pending, error: errorMessage(cause) });
+
+      return false;
+    },
+  );
+}
+
+export function dismissTerminalClose(): void {
+  setTerminalClose({ kind: "closed" });
+}
+
+async function closeOtherTab(
+  view: WorkbenchViewKey,
+  id: WorkbenchTabId,
+  tab: WorkbenchTab | undefined,
+): Promise<CloseOutcome> {
   const terminal = tab?.kind === "terminal" ? getTerminal(id) : undefined;
 
   if (
@@ -151,7 +231,7 @@ function closeEditor(view: WorkbenchViewKey): CloseOutcome {
   return { kind: "closed" };
 }
 
-export async function endTerminal(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<void> {
+async function endTerminal(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<void> {
   await terminalActions.close(id);
   workbench.dispatch(view, { kind: "close", id });
 }

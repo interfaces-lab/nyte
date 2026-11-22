@@ -1,7 +1,7 @@
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { worktreeFiles } from "./worktree-files.ts";
 import { useChatChanges } from "./chat-changes.ts";
@@ -18,7 +18,6 @@ import {
 } from "@nyte-ai/ui/menu";
 import { revealLabel } from "../components/context-menu.ts";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
-import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
@@ -254,34 +253,6 @@ export function EditorPanel({
     setChoice({ shown: false, revision: tabs.revealRevision });
     onToggleSidebar();
   };
-
-  const stepHistory = useEffectEvent((event: KeyboardEvent): void => {
-    const target = event.target;
-
-    if (!shown || event.defaultPrevented || event.isComposing) return;
-
-    if (
-      target !== document.body &&
-      !(target instanceof Node && panelRef.current?.contains(target) === true)
-    ) {
-      return;
-    }
-    const step = historyKey(event, nyte.platform === "darwin");
-
-    if (step === undefined) return;
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (step === "forward") fileActions.forward(viewKey);
-    else fileActions.back(viewKey);
-  });
-
-  useMountEffect(() => {
-    const listener = (event: KeyboardEvent): void => stepHistory(event);
-    window.addEventListener("keydown", listener, true);
-
-    return () => window.removeEventListener("keydown", listener, true);
-  });
 
   const revealed = useRef(0);
   // oxlint-disable-next-line nyte-code/no-direct-effect -- consumes an explicit Explorer reveal request from the file store
@@ -860,31 +831,4 @@ function useCramped(body: RefObject<HTMLElement | null>): boolean {
   }, [body]);
 
   return cramped;
-}
-
-function historyKey(
-  event: {
-    readonly code: string;
-    readonly metaKey: boolean;
-    readonly ctrlKey: boolean;
-    readonly altKey: boolean;
-    readonly shiftKey: boolean;
-  },
-  mac: boolean,
-): "back" | "forward" | undefined {
-  if (event.shiftKey) return undefined;
-
-  if (mac) {
-    if (!event.metaKey || event.ctrlKey || event.altKey) return undefined;
-
-    if (event.code === "BracketLeft") return "back";
-
-    return event.code === "BracketRight" ? "forward" : undefined;
-  }
-
-  if (!event.ctrlKey || !event.altKey || event.metaKey) return undefined;
-
-  if (event.code === "ArrowLeft") return "back";
-
-  return event.code === "ArrowRight" ? "forward" : undefined;
 }

@@ -144,6 +144,18 @@ test("a key a page forwards runs the menu item a native key equivalent would", (
       mac: true,
       matches: true,
     },
+    {
+      accelerator: "CommandOrControl+[",
+      key: key({ key: "ü", code: "BracketLeft", metaKey: true }),
+      mac: true,
+      matches: true,
+    },
+    {
+      accelerator: "CommandOrControl+]",
+      key: key({ key: "[", code: "BracketLeft", ctrlKey: true }),
+      mac: false,
+      matches: false,
+    },
     { accelerator: "CommandOrControl+R", key: dvorakP, mac: true, matches: false },
     { accelerator: "CommandOrControl+P", key: dvorakP, mac: true, matches: true },
   ]) {
