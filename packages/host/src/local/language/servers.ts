@@ -8,6 +8,7 @@ import { JDTLS } from "./servers/jdtls.ts";
 import { MARKSMAN } from "./servers/marksman.ts";
 import { OXLINT } from "./servers/oxlint.ts";
 import { POSTGRES_LANGUAGE_SERVER } from "./servers/postgres-language-server.ts";
+import { RUBY_LSP } from "./servers/ruby-lsp.ts";
 import { RUFF } from "./servers/ruff.ts";
 import { RUST_ANALYZER } from "./servers/rust-analyzer.ts";
 import { SOURCEKIT_LSP } from "./servers/sourcekit-lsp.ts";
@@ -33,6 +34,7 @@ export const SERVERS: readonly CompleteSpec[] = [
   TYPESCRIPT_LANGUAGE_SERVER,
   VSCODE_ESLINT_LANGUAGE_SERVER,
   OXLINT,
+  RUBY_LSP,
   POSTGRES_LANGUAGE_SERVER,
   YAML_LANGUAGE_SERVER,
   BASH_LANGUAGE_SERVER,
