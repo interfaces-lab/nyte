@@ -191,6 +191,11 @@ export const hostOperations = {
     {},
     1,
   ),
+  "workspaces.cleanStorage input": operation(
+    OPERATIONS["workspaces.cleanStorage"].input,
+    { items: ["caches:npm"] },
+    { items: "caches:npm" },
+  ),
   "sessions.start input": operation(
     OPERATIONS["sessions.start"].input,
     {

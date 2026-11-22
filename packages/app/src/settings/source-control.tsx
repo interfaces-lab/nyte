@@ -1,19 +1,15 @@
 import type { SessionInfo } from "@nyte-ai/sdk";
-import { Button } from "@nyte-ai/ui/button";
-import { toast } from "@nyte-ai/ui/toast";
-import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { formatTimeAgo } from "../lib/format.ts";
-import { errorMessage } from "../contract/errors.ts";
 import type { Setting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
 import { useWorkspaces } from "../data/workspaces.ts";
-import { connected } from "../data/connection.ts";
 import { sessionList } from "../data/directory.ts";
 import { useWatch } from "../data/watch-store.ts";
 import { NumberRow, SettingsRow, SettingsSection, TextRow } from "./rows.tsx";
+import { StorageSection } from "./storage-cleanup.tsx";
 
 const branchPrefix = pluginSetting("worktrees.branchPrefix", Type.String());
 
@@ -56,36 +52,10 @@ export function SourceControlSettings(): ReactElement {
           min={0}
           max={500}
         />
-        <CleanNowRow />
       </SettingsSection>
+      <StorageSection />
       <WorktreesSection />
     </>
-  );
-}
-
-function CleanNowRow(): ReactElement {
-  const clean = useMutation({
-    mutationFn: async () => (await connected()).workspaces.cleanWorktrees(),
-    onSuccess: (outcome) =>
-      toast.add({
-        type: "success",
-        title:
-          outcome.cleaned === 0
-            ? "Nothing to clean"
-            : `Cleaned ${String(outcome.cleaned)} ${outcome.cleaned === 1 ? "worktree" : "worktrees"}`,
-      }),
-    onError: (cause) => toast.add({ type: "error", title: errorMessage(cause) }),
-  });
-
-  return (
-    <SettingsRow
-      title="Run cleanup"
-      description="Apply these rules now instead of at the daily check"
-    >
-      <Button variant="outline" loading={clean.isPending} onClick={() => clean.mutate()}>
-        Clean Now
-      </Button>
-    </SettingsRow>
   );
 }
 

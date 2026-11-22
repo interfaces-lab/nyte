@@ -277,6 +277,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspaces.add": ({ target, options }) => connection.workspaces.add(target, options),
     "workspaces.forget": ({ id }) => connection.workspaces.forget(id),
     "workspaces.cleanWorktrees": () => connection.workspaces.cleanWorktrees(),
+    "workspaces.scanStorage": () => connection.workspaces.scanStorage(),
+    "workspaces.cleanStorage": ({ items }) => connection.workspaces.cleanStorage(items),
 
     "sessions.start": async (input) => {
       const { session, receipt } = await connection.sessions.start(input);
@@ -590,8 +592,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await language(id)).prepareRename({ path, position }),
     "language.rename": async ({ workspace: id, path, position, name }) =>
       (await language(id)).rename({ path, position, name }),
-    "language.codeActions": async ({ workspace: id, path, range }) =>
-      (await language(id)).codeActions({ path, range }),
+    "language.codeActions": async ({ workspace: id, path, range, only }) =>
+      (await language(id)).codeActions({ path, range, only }),
     "language.resolveCodeAction": async ({ workspace: id, token }) =>
       (await language(id)).resolveCodeAction({ token }),
     "language.format": async ({ workspace: id, path, options }) =>

@@ -90,6 +90,8 @@ export function createClient(transport: Transport, context: ClientContext): Clie
       add: (target, options) => rows.call("workspaces.add", { target, options }),
       forget: (id) => rows.call("workspaces.forget", { id }),
       cleanWorktrees: () => rows.call("workspaces.cleanWorktrees", {}),
+      scanStorage: () => rows.call("workspaces.scanStorage", {}),
+      cleanStorage: (items) => rows.call("workspaces.cleanStorage", { items }),
     },
     projects: {
       create: (input) => rows.call("projects.create", { input }),

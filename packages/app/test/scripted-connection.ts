@@ -320,6 +320,8 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       add: refuse,
       forget: refuse,
       cleanWorktrees: refuse,
+      scanStorage: refuse,
+      cleanStorage: refuse,
     },
     session,
     workspace,

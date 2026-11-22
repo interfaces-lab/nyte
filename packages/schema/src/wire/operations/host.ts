@@ -40,6 +40,8 @@ import {
   WorkspaceInfoType,
   WorkspaceInspectionSchema,
   WorkspaceTargetType,
+  StorageCleanupSchema,
+  StorageScanSchema,
   WorktreeCleanupSchema,
 } from "../../workspaces.ts";
 import { BYTES, NOTHING, SESSION, wireObject, wireSchema } from "./fields.ts";
@@ -300,6 +302,22 @@ export const HOST_OPERATIONS = {
     kind: "command",
     input: NO_INPUT,
     output: WorktreeCleanupSchema,
+  },
+  "workspaces.scanStorage": {
+    ...OWNER,
+    summary:
+      "Measures the space the host's disk could get back: worktrees, project build output, tool caches and Nyte's old logs.",
+    kind: "query",
+    input: NO_INPUT,
+    output: StorageScanSchema,
+  },
+  "workspaces.cleanStorage": {
+    ...OWNER,
+    summary:
+      "Removes the scanned items named, each checked again first, and reports which it cleaned.",
+    kind: "command",
+    input: wireObject({ items: Type.Array(Type.String()) }),
+    output: StorageCleanupSchema,
   },
   "sessions.start": {
     ...PARTICIPANT,

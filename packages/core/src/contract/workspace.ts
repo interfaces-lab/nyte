@@ -24,6 +24,8 @@ import type {
   ForgetOutcome,
   FormatOutcome,
   WorktreeCleanup,
+  StorageCleanup,
+  StorageScan,
   GitCommitFiles,
   GitCommitId,
   GitCommitView,
@@ -81,6 +83,7 @@ import type {
   TrashToken,
   RestoreOutcome,
   CodeAction,
+  CodeActionKind,
   CodeActionOutcome,
   CodeActionResolveToken,
   CompletionItem,
@@ -93,12 +96,12 @@ import type {
   Hover,
   InlayHint,
   LanguageLocation,
+  LanguageFormatOutcome,
   LanguageServerView,
   RenameOutcome,
   RenameTarget,
   SignatureHelp,
   TextChange,
-  TextEdit,
   TextPosition,
   TextRange,
 } from "@nyte-ai/schema";
@@ -196,15 +199,17 @@ export interface LanguageApi {
   symbols(input: { readonly path: string }): Promise<readonly DocumentSymbol[]>;
   prepareRename(input: LanguagePosition): Promise<RenameTarget | null>;
   rename(input: LanguagePosition & { readonly name: string }): Promise<RenameOutcome>;
+  /** With `only`, just the actions of those kinds and the kinds under them, as a server offers some only when asked. */
   codeActions(input: {
     readonly path: string;
     readonly range: TextRange;
+    readonly only?: readonly CodeActionKind[];
   }): Promise<readonly CodeAction[]>;
   resolveCodeAction(input: { readonly token: CodeActionResolveToken }): Promise<CodeActionOutcome>;
   format(input: {
     readonly path: string;
     readonly options: FormatOptions;
-  }): Promise<readonly TextEdit[]>;
+  }): Promise<LanguageFormatOutcome>;
   signatureHelp(input: LanguagePosition): Promise<SignatureHelp | null>;
   inlayHints(input: {
     readonly path: string;
@@ -216,6 +221,8 @@ export type LanguagePosition = { readonly path: string; readonly position: TextP
 
 /** What a provider hands its attachment: the API, and `shutdown` to stop every server when the workspace detaches. */
 export interface LanguageService extends LanguageApi {
+  /** Follows a change to the folder's trust: trusting starts the servers that waited for it and hold documents, and withdrawing it stops every running server. */
+  trustChanged(trusted: boolean): Promise<void>;
   shutdown(): Promise<void>;
 }
 
@@ -376,6 +383,19 @@ export interface WorktreeProvider {
   clean(target: WorkspaceTarget): Promise<boolean>;
 }
 
+export interface StorageWorkspace {
+  readonly target: WorkspaceTarget;
+  readonly worktree: boolean;
+  readonly usedAt: number;
+  readonly running: boolean;
+}
+
+/** Finds what the machine's disk can get back and removes it. `clean` scans again and removes only the named items the scan still finds unblocked. */
+export interface StorageProvider {
+  scan(workspaces: readonly StorageWorkspace[]): Promise<StorageScan>;
+  clean(workspaces: readonly StorageWorkspace[], items: readonly string[]): Promise<StorageCleanup>;
+}
+
 export interface EnvironmentProvider {
   readonly kind: string;
   inspect(target: WorkspaceTarget): Promise<{
@@ -388,8 +408,13 @@ export interface EnvironmentProvider {
   readonly github?: (env: ExecutionEnv) => GitHubApi | undefined;
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
-  readonly language?: (env: ExecutionEnv) => LanguageService | undefined;
+  /** Language servers run project code, so the service starts one only while `trusted` answers that the user trusts the workspace's folder; it asks again before each start. */
+  readonly language?: (
+    env: ExecutionEnv,
+    trusted: () => Promise<boolean>,
+  ) => LanguageService | undefined;
   readonly worktrees?: WorktreeProvider;
+  readonly storage?: StorageProvider;
   /** The real path of `path` (absolute, or relative to `env.cwd`) on the machine `env` runs on: every symlink resolved and each name spelled as the disk stores it, so a case-insensitive disk answers `AGENTS.md` with the `AGENTS.MD` it holds; null where nothing resolves. Without it, context files are told apart by the paths they were read at and no worktree shadows its repository's. */
   readonly realpath?: (env: ExecutionEnv, path: string) => Promise<string | null>;
   destroy?(target: WorkspaceTarget): Promise<void>;
@@ -454,6 +479,7 @@ export interface EnvironmentRegistry {
     holder?: PageHolder | null,
   ): Promise<EnvironmentCapabilities>;
   detachWorkspace(workspace: WorkspaceId): Promise<void>;
+  trustChanged(workspace: WorkspaceId, trusted: boolean): Promise<void>;
 }
 
 export interface FilesApi {
@@ -656,6 +682,10 @@ export interface Workspaces {
   forget(id: WorkspaceId): Promise<ForgetOutcome>;
 
   cleanWorktrees(): Promise<WorktreeCleanup>;
+
+  scanStorage(): Promise<StorageScan>;
+
+  cleanStorage(items: readonly string[]): Promise<StorageCleanup>;
 }
 
 export interface Workspace {

@@ -15,6 +15,7 @@ import { folderIdentity } from "./identity.ts";
 import { localExec } from "./process/jobs.ts";
 import { localSnapshots } from "./snapshots/snapshots.ts";
 import { localWorktrees } from "./git/worktrees.ts";
+import { localDiskCleanup } from "./storage/storage.ts";
 
 const ROOT_SOURCES = [".nyte/SYSTEM.md", ".nyte/APPEND_SYSTEM.md", ".nyte/mcp.json"];
 
@@ -88,7 +89,7 @@ export function localProvider(options?: {
     },
     git: (env) => localGit(env, { git: options?.git }),
     github,
-    language: (env) => localLanguage(env, { servers: options?.languageServers }),
+    language: (env, trusted) => localLanguage(env, { trusted, servers: options?.languageServers }),
     snapshots(env) {
       state ??= join(realpathOrSelf(home), ".nyte");
 
@@ -106,6 +107,7 @@ export function localProvider(options?: {
       return snapshots;
     },
     worktrees: localWorktrees({ home, git: options?.git }),
+    storage: localDiskCleanup({ home, git: options?.git }),
     realpath: (env, path) =>
       realpath(isAbsolute(path) ? path : join(env.cwd, path)).catch(() => null),
     async destroy() {
