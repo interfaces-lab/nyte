@@ -15,7 +15,6 @@ import type {
 } from "@nyte-ai/schema";
 import {
   comparePositions,
-  readCodeAction,
   readCodeActions,
   readCommand,
   readCompletionAnswer,
@@ -218,7 +217,7 @@ export async function resolveCodeAction(
     isJson(raw)
       ? ((await run.rpc
           .request("codeAction/resolve", raw)
-          .then(readCodeAction)
+          .then((answer) => readCodeActions([answer])[0] ?? null)
           .catch(() => null)) ?? plan)
       : plan;
 

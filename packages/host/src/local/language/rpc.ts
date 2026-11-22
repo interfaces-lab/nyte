@@ -3,7 +3,7 @@ import { compile } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 
-export interface LspHandlers {
+interface LspHandlers {
   readonly notification: (method: string, params: unknown) => void;
   readonly request: (method: string, params: unknown) => Promise<Json>;
   readonly stderr: (text: string) => void;

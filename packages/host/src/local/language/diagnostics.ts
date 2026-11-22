@@ -43,7 +43,7 @@ interface Pulling {
   readonly resultId: string | null;
 }
 
-export interface DiagnosticReports {
+interface DiagnosticReports {
   publish(slot: Slot, params: unknown): void;
   pull(target: Target, document: Document): void;
   drop(slot: Slot, run: Run, path: string): void;

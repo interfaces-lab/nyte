@@ -68,7 +68,7 @@ export interface Project {
   ): Promise<{ readonly path: string; readonly pinned: boolean } | null>;
 }
 
-export interface Prepared {
+interface Prepared {
   readonly initializationOptions?: Json;
   readonly settings?: Json;
   readonly runsOn?: string;

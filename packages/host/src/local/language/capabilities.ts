@@ -56,7 +56,7 @@ export interface Registration {
   readonly options: JsonSchema;
 }
 
-export interface Provides {
+interface Provides {
   readonly capabilities: ServerCapabilities;
   readonly registrations: ReadonlyMap<string, Registration>;
 }

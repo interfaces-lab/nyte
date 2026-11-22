@@ -23,11 +23,11 @@ import { expandSnippet } from "./snippet.ts";
 /** Turns a server's `file://` URI into the path the API answers with; null for any other scheme. */
 export type Place = (uri: string) => string | null;
 
-export const PositionType = Type.Object({ line: Type.Number(), character: Type.Number() });
+const PositionType = Type.Object({ line: Type.Number(), character: Type.Number() });
 
 const RangeType = Type.Object({ start: PositionType, end: PositionType });
 
-export const LocationType = Type.Object({ uri: Type.String(), range: RangeType });
+const LocationType = Type.Object({ uri: Type.String(), range: RangeType });
 
 const LocationLinkType = Type.Object({
   targetUri: Type.String(),
@@ -297,7 +297,7 @@ export function toLspRange(range: TextRange) {
   return { start: toLspPosition(range.start), end: toLspPosition(range.end) };
 }
 
-export function readPosition(position: Static<typeof PositionType>): TextPosition {
+function readPosition(position: Static<typeof PositionType>): TextPosition {
   return { line: position.line, utf16Column: position.character };
 }
 
@@ -362,7 +362,7 @@ export function readDiagnostics(
   );
 }
 
-export function readMarkdown(value: Static<typeof MarkupType> | undefined): string {
+function readMarkdown(value: Static<typeof MarkupType> | undefined): string {
   if (value === undefined) return "";
 
   if (typeof value === "string") return value;
@@ -703,10 +703,6 @@ export function readCodeActions(value: unknown): readonly ActionPlan[] {
       },
     ];
   });
-}
-
-export function readCodeAction(value: unknown): ActionPlan | null {
-  return readCodeActions([value])[0] ?? null;
 }
 
 export function readCommand(value: unknown): Static<typeof CommandLspType> | null {
