@@ -56,6 +56,23 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
   ["c", C_LIKE],
   ["cpp", C_LIKE],
   ["objective-cpp", C_LIKE],
+  [
+    "swift",
+    [
+      [
+        /^\s*(?:(?:public|private|fileprivate|internal|open|package|static|class|final|override|mutating|nonmutating|async)\s+)*func\s+(\w+)/u,
+        "function",
+      ],
+      [
+        /^\s*(?:(?:public|private|fileprivate|internal|open|package|final|indirect)\s+)*(?:class|actor)\s+(\w+)/u,
+        "class",
+      ],
+      [
+        /^\s*(?:(?:public|private|fileprivate|internal|open|package|indirect)\s+)*(?:struct|enum|protocol|extension|typealias)\s+(\w+)/u,
+        "type",
+      ],
+    ],
+  ],
 ]);
 
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {

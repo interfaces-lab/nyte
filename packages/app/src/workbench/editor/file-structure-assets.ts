@@ -14,6 +14,7 @@ import yamlWasm from "./grammars/yaml.wasm?url&no-inline";
 import bashWasm from "./grammars/bash.wasm?url&no-inline";
 import cWasm from "./grammars/c.wasm?url&no-inline";
 import cppWasm from "./grammars/cpp.wasm?url&no-inline";
+import swiftWasm from "./grammars/swift.wasm?url&no-inline";
 import javascriptQuery from "./grammars/javascript.scm?url&no-inline";
 import javascriptSymbolsQuery from "./grammars/javascript-symbols.scm?url&no-inline";
 import typescriptQuery from "./grammars/typescript.scm?url&no-inline";
@@ -37,6 +38,8 @@ import cQuery from "./grammars/c.scm?url&no-inline";
 import cSymbolsQuery from "./grammars/c-symbols.scm?url&no-inline";
 import cppQuery from "./grammars/cpp.scm?url&no-inline";
 import cppSymbolsQuery from "./grammars/cpp-symbols.scm?url&no-inline";
+import swiftQuery from "./grammars/swift.scm?url&no-inline";
+import swiftSymbolsQuery from "./grammars/swift-symbols.scm?url&no-inline";
 
 export { runtimeUrl };
 
@@ -55,6 +58,7 @@ export const fileStructureAssets = {
   bash: { wasm: bashWasm, folds: bashQuery, symbols: bashSymbolsQuery },
   c: { wasm: cWasm, folds: cQuery, symbols: cSymbolsQuery },
   cpp: { wasm: cppWasm, folds: cppQuery, symbols: cppSymbolsQuery },
+  swift: { wasm: swiftWasm, folds: swiftQuery, symbols: swiftSymbolsQuery },
 } satisfies Record<
   StructureLanguage,
   { readonly wasm: string; readonly folds: string; readonly symbols: string | undefined }
