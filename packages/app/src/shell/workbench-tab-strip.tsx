@@ -44,7 +44,7 @@ import {
   workbenchLaunchers,
   workbenchNarrow,
   workbenchShowsChat,
-} from "./model.ts";
+} from "../workbench/model.ts";
 import type {
   WorkbenchScope,
   WorkbenchStripTab,
@@ -52,10 +52,10 @@ import type {
   WorkbenchTabId,
   WorkbenchViewKey,
   WorkbenchViewState,
-} from "./model.ts";
-import { activeWorkbenchTab, tabPresentation, workbenchStripTabs } from "./selectors.ts";
-import { workbench } from "./store.ts";
-import { closeTab, endTerminal, launch } from "./commands.ts";
+} from "../workbench/model.ts";
+import { activeWorkbenchTab, tabPresentation, workbenchStripTabs } from "../workbench/selectors.ts";
+import { workbench } from "../workbench/store.ts";
+import { closeTab, endTerminal, launch } from "../workbench/commands.ts";
 import { readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
 import { useTerminalRuntime } from "../terminal/terminal-store.ts";

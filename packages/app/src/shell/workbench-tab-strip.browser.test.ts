@@ -7,7 +7,7 @@ test(
   async () => {
     expect(
       await testRenderer(
-        new URL("./tab-strip.browser-test.tsx", import.meta.url),
+        new URL("./workbench-tab-strip.browser-test.tsx", import.meta.url),
         "window.nyte = {};",
       ),
     ).toBe("passed");

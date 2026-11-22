@@ -45,7 +45,7 @@ import {
 } from "../contract/client-actions.ts";
 import { NeedsYou } from "./needs-you.tsx";
 
-import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
+import { WorkbenchTabStrip } from "./workbench-tab-strip.tsx";
 import type { WindowState } from "../tabs/model.ts";
 import { useWindowTabItems, useWindowTabsState } from "../tabs/use-window-tabs.tsx";
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
