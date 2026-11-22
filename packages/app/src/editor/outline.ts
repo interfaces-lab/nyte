@@ -111,6 +111,13 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
       [/^\s*(?:class|module)\s+([A-Z][\w:]*)/u, "class"],
     ],
   ],
+  [
+    "lua",
+    [
+      [/^\s*(?:local\s+)?function\s+([\w.:]+)/u, "function"],
+      [/^\s*(?:local\s+)?([\w.]+)\s*=\s*function\b/u, "function"],
+    ],
+  ],
 ]);
 
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {

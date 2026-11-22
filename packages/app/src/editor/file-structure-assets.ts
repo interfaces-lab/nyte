@@ -19,6 +19,7 @@ import sqlWasm from "./grammars/sql.wasm?url&no-inline";
 import tomlWasm from "./grammars/toml.wasm?url&no-inline";
 import javaWasm from "./grammars/java.wasm?url&no-inline";
 import rubyWasm from "./grammars/ruby.wasm?url&no-inline";
+import luaWasm from "./grammars/lua.wasm?url&no-inline";
 import javascriptQuery from "./grammars/javascript.scm?url&no-inline";
 import javascriptSymbolsQuery from "./grammars/javascript-symbols.scm?url&no-inline";
 import typescriptQuery from "./grammars/typescript.scm?url&no-inline";
@@ -52,6 +53,8 @@ import javaQuery from "./grammars/java.scm?url&no-inline";
 import javaSymbolsQuery from "./grammars/java-symbols.scm?url&no-inline";
 import rubyQuery from "./grammars/ruby.scm?url&no-inline";
 import rubySymbolsQuery from "./grammars/ruby-symbols.scm?url&no-inline";
+import luaQuery from "./grammars/lua.scm?url&no-inline";
+import luaSymbolsQuery from "./grammars/lua-symbols.scm?url&no-inline";
 
 export { runtimeUrl };
 
@@ -75,6 +78,7 @@ export const fileStructureAssets = {
   toml: { wasm: tomlWasm, folds: tomlQuery, symbols: tomlSymbolsQuery },
   java: { wasm: javaWasm, folds: javaQuery, symbols: javaSymbolsQuery },
   ruby: { wasm: rubyWasm, folds: rubyQuery, symbols: rubySymbolsQuery },
+  lua: { wasm: luaWasm, folds: luaQuery, symbols: luaSymbolsQuery },
 } satisfies Record<
   StructureLanguage,
   { readonly wasm: string; readonly folds: string; readonly symbols: string | undefined }

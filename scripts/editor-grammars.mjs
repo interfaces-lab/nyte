@@ -169,11 +169,9 @@ async function refreshAssets() {
       });
 
       assert.equal(digest(wasm), grammar.sha256, grammar.language);
-      const license = execFileSync("tar", ["-xOf", archive, "package/LICENSE"]);
-      assert.equal(
-        digest(license),
-        manifest.licenses.find((entry) => entry.file === grammar.licenseFile)?.sha256,
-      );
+      const pinned = manifest.licenses.find((entry) => entry.file === grammar.licenseFile);
+      const license = execFileSync("tar", ["-xOf", archive, pinned.source.split("#")[1]]);
+      assert.equal(digest(license), pinned.sha256);
       await writeFile(new URL(`${grammar.language}.wasm`, directory), wasm);
       await writeFile(new URL(`licenses/${grammar.licenseFile}`, directory), license);
     }

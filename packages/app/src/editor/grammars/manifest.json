@@ -303,6 +303,22 @@
       "licenseFile": "tree-sitter-ruby.txt",
       "foldQuery": "ruby.scm",
       "symbolQuery": "ruby-symbols.scm"
+    },
+    {
+      "language": "lua",
+      "aliases": ["lua"],
+      "package": "@tree-sitter-grammars/tree-sitter-lua",
+      "version": "0.4.1",
+      "archive": "https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-lua/-/tree-sitter-lua-0.4.1.tgz",
+      "integrity": "sha512-EwagFaU6ZveVk18/Y8qUhZkkiBKnQ7dSCHbm//TUroLVKy3i1rOYGy/cNHtSkAb1eDvS1HhCLybH2S541Cya/g==",
+      "entry": "package/tree-sitter-lua.wasm",
+      "sha256": "6d95607fc7d78964cfdf065ccb1ba76be5ed217c5ec0d0a3cace13c59fa1ae43",
+      "bytes": 49488,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "@tree-sitter-grammars--tree-sitter-lua.txt",
+      "foldQuery": "lua.scm",
+      "symbolQuery": "lua-symbols.scm"
     }
   ],
   "runtime": {
@@ -388,6 +404,11 @@
       "file": "tree-sitter-ruby.txt",
       "sha256": "ee006f02a3d856df282e409be2a86e24a65bb573a98b9c28343771141351bb6b",
       "source": "https://registry.npmjs.org/tree-sitter-ruby/-/tree-sitter-ruby-0.23.1.tgz#package/LICENSE"
+    },
+    {
+      "file": "@tree-sitter-grammars--tree-sitter-lua.txt",
+      "sha256": "9a32b02e4c917b1ce6b5e79d8ea81e25cefd7f27d89c7235f2afb262c06cf32e",
+      "source": "https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-lua/-/tree-sitter-lua-0.4.1.tgz#package/LICENSE.md"
     },
     {
       "file": "web-tree-sitter-LICENSE.txt",
