@@ -1,14 +1,14 @@
 import { useSyncExternalStore } from "react";
 import type { ThemePreference } from "../contract/bridge.ts";
-import { preferences } from "../preferences/index.ts";
+import { preferences } from "./index.ts";
 import {
   subscribeSystemTransparency,
   systemReducesTransparency,
   windowHasVibrancy,
-} from "./appearance.ts";
-import type { CodeFont, UiFont } from "./fonts.ts";
-import { findTheme } from "./vscode-theme.ts";
-import type { VscodeTheme } from "./vscode-theme.ts";
+} from "../theme/appearance.ts";
+import type { CodeFont, UiFont } from "../theme/fonts.ts";
+import { findTheme } from "../theme/vscode-theme.ts";
+import type { VscodeTheme } from "../theme/vscode-theme.ts";
 
 export interface Appearance {
   readonly theme: ThemePreference;

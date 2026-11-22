@@ -1,6 +1,6 @@
 import "./install.ts";
 import "../src/theme/faces.ts";
-import "../src/theme/boot.ts";
+import "../src/boot/theme.ts";
 import "../src/theme/focus-modality.ts";
 import "../src/theme/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

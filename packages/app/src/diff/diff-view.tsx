@@ -16,8 +16,8 @@ import {
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "@nyte-ai/ui/worker-pool";
-import { appearance as appearanceStore, useAppearance } from "../theme/appearance-store.ts";
-import type { Appearance } from "../theme/appearance-store.ts";
+import { appearance as appearanceStore, useAppearance } from "../preferences/appearance-store.ts";
+import type { Appearance } from "../preferences/appearance-store.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { patchDigest } from "./changes-viewed.ts";
 import { diffStyles } from "./diff.stylex.ts";

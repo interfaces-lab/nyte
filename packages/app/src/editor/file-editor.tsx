@@ -58,7 +58,7 @@ import { useDocument, useSaveDocument } from "../data/documents.ts";
 import { formatBytes } from "../lib/format.ts";
 import { gitFor } from "../data/vcs.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { useAppearance } from "../theme/appearance-store.ts";
+import { useAppearance } from "../preferences/appearance-store.ts";
 import { watchFamily } from "../data/watch-store.ts";
 import { EditorFind } from "./editor-find.tsx";
 import { formatDocument } from "./format-document.ts";

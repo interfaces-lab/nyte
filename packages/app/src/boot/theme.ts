@@ -1,10 +1,10 @@
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { nyte } from "../contract/nyte.ts";
-import { applyPointerCursors, applyTransparency, withoutTransitions } from "./appearance.ts";
-import { appearance } from "./appearance-store.ts";
-import type { Appearance } from "./appearance-store.ts";
-import { codeFontFamily, localFontFamily, uiFontFamily } from "./fonts.ts";
-import { applyVscodeTheme } from "./vscode-theme.ts";
+import { applyPointerCursors, applyTransparency, withoutTransitions } from "../theme/appearance.ts";
+import { appearance } from "../preferences/appearance-store.ts";
+import type { Appearance } from "../preferences/appearance-store.ts";
+import { codeFontFamily, localFontFamily, uiFontFamily } from "../theme/fonts.ts";
+import { applyVscodeTheme } from "../theme/vscode-theme.ts";
 
 function apply(shown: Appearance): void {
   const root = document.documentElement;

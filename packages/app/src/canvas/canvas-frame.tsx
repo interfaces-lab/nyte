@@ -31,7 +31,7 @@ import { workbenchViewKey } from "../workbench/paths.ts";
 import { useVisibleCanvasTab, workbench } from "../workbench/store.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
-import { useAppearance } from "../theme/appearance-store.ts";
+import { useAppearance } from "../preferences/appearance-store.ts";
 import { canvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
 import { openConversationLink } from "../markdown/external-link.ts";

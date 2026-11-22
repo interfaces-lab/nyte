@@ -38,7 +38,7 @@ import {
 } from "@nyte-ai/ui/worker-pool";
 import { diffView, workbench } from "../theme/schema.stylex.ts";
 import { nyte } from "../contract/nyte.ts";
-import { useAppearance } from "../theme/appearance-store.ts";
+import { useAppearance } from "../preferences/appearance-store.ts";
 import { keyOwner } from "../lib/focus-owner.ts";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";

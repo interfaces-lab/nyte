@@ -1,5 +1,5 @@
 import type { CanvasHostContext } from "@nyte-ai/plugin/canvas/protocol";
-import type { Appearance } from "../theme/appearance-store.ts";
+import type { Appearance } from "../preferences/appearance-store.ts";
 import { codeFontFamily, localFontFamily, uiFontFamily } from "../theme/fonts.ts";
 
 export type CanvasTheme = Pick<CanvasHostContext, "theme" | "styles">;

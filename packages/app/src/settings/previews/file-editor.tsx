@@ -5,7 +5,7 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { diffStyles } from "../../diff/diff.stylex.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
-import { useAppearance } from "../../theme/appearance-store.ts";
+import { useAppearance } from "../../preferences/appearance-store.ts";
 import { diffView } from "../../theme/schema.stylex.ts";
 import { createEditor } from "../../editor/file-code-view.tsx";
 import { editorViewOptions } from "../../editor/editor-view-options.ts";

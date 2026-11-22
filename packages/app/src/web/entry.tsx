@@ -1,6 +1,6 @@
 import "./install.ts";
 import "../theme/faces.ts";
-import "../theme/boot.ts";
+import "../boot/theme.ts";
 import "../theme/focus-modality.ts";
 import "../theme/global.css";
 import { createBrowserHistory } from "@tanstack/react-router";

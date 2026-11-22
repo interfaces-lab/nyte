@@ -1,6 +1,6 @@
 import "@nyte-ai/app/theme/faces.ts";
 import "./install-bridge.ts";
-import "@nyte-ai/app/theme/boot.ts";
+import "@nyte-ai/app/boot/theme.ts";
 import "@nyte-ai/app/theme/focus-modality.ts";
 import "@nyte-ai/app/theme/global.css";
 import { StrictMode, startTransition } from "react";
