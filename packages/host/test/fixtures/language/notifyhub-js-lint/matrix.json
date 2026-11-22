@@ -1,0 +1,376 @@
+{
+  "language": "typescript",
+  "servers": [
+    "typescript-language-server",
+    "vscode-eslint-language-server",
+    "oxlint"
+  ],
+  "vscode": {
+    "extension": "vscode.typescript-language-features with dbaeumer.vscode-eslint and oxc.oxc-vscode",
+    "source": "https://github.com/microsoft/vscode-eslint/blob/c999730b195bd8dc3eaf58435de71b185cb35138/client/src/client.ts"
+  },
+  "packages": {
+    "lock": "packages.lock.json",
+    "bins": {
+      "oxlint": "oxlint/bin/oxlint"
+    }
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "console.",
+          "says": "log"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "console.log(describeCou",
+          "says": "describeCounts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "log(describeCounts(",
+          "says": "describeCounts(delivered: number): string"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "console.log(describeCou",
+          "says": "src/counts.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": false,
+      "vscode": true,
+      "note": "The variable is a number, whose type has no source to go to."
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "console.log(describeCou",
+          "says": "src/counts.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "console.log(describeCou"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "after": "export function describeCou",
+          "says": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "says": "describeCounts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "query": "describeCounts",
+          "says": "describeCounts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv",
+          "says": "Fix this no-var problem"
+        },
+        {
+          "file": "src/report.js",
+          "after": "debug",
+          "says": "Remove the debugger"
+        }
+      ],
+      "servers": [
+        "oxlint",
+        "typescript-language-server",
+        "vscode-eslint-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "The ESLint server and oxlint each add their quick fixes to the TypeScript server's refactorings."
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "after": "export function describeCou",
+          "says": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "says": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "src/report.js"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "src/report.js"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": false,
+      "vscode": true,
+      "note": "The server links JSX tag names, as VS Code does, and this fixture has no JSX."
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "says": "function"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": false,
+      "vscode": true,
+      "note": "VS Code registers inlay hints with every kind off. Nyte turns on hints this file has no place for."
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "after": "export function describeCou"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "after": "export function describeCou"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "says": "Unexpected var"
+        },
+        {
+          "file": "src/report.js",
+          "says": "`debugger` statement is not allowed"
+        },
+        {
+          "file": "src/report.js",
+          "says": "is not assignable to type 'number'"
+        }
+      ],
+      "servers": [
+        "typescript-language-server",
+        "vscode-eslint-language-server",
+        "oxlint"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "One list holds the findings of all three servers: no-var from ESLint, no-debugger from oxlint and the type error from the TypeScript server."
+    }
+  }
+}
