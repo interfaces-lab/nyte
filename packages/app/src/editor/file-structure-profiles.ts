@@ -71,6 +71,10 @@ export const STRUCTURE_PROFILES = [
     language: "java",
     aliases: ["java"],
   },
+  {
+    language: "ruby",
+    aliases: ["ruby", "rb"],
+  },
 ] as const;
 
 export type StructureLanguage = (typeof STRUCTURE_PROFILES)[number]["language"];

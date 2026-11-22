@@ -287,6 +287,22 @@
       "licenseFile": "tree-sitter-java.txt",
       "foldQuery": "java.scm",
       "symbolQuery": "java-symbols.scm"
+    },
+    {
+      "language": "ruby",
+      "aliases": ["ruby", "rb"],
+      "package": "tree-sitter-ruby",
+      "version": "0.23.1",
+      "archive": "https://registry.npmjs.org/tree-sitter-ruby/-/tree-sitter-ruby-0.23.1.tgz",
+      "integrity": "sha512-d9/RXgWjR6HanN7wTYhS5bpBQLz1VkH048Vm3CodPGyJVnamXMGb8oEhDypVCBq4QnHui9sTXuJBBP3WtCw5RA==",
+      "entry": "package/tree-sitter-ruby.wasm",
+      "sha256": "09a96427d7c72f0613ed470cd9812223fc4a91d6a9c025c0235cc6bd59ff96f4",
+      "bytes": 2106352,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-ruby.txt",
+      "foldQuery": "ruby.scm",
+      "symbolQuery": "ruby-symbols.scm"
     }
   ],
   "runtime": {
@@ -367,6 +383,11 @@
       "file": "tree-sitter-java.txt",
       "sha256": "52ed137b039cd9c46409bc22e89938af911c95b157feae2d040b51e6084369a7",
       "source": "https://registry.npmjs.org/tree-sitter-java/-/tree-sitter-java-0.23.5.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-ruby.txt",
+      "sha256": "ee006f02a3d856df282e409be2a86e24a65bb573a98b9c28343771141351bb6b",
+      "source": "https://registry.npmjs.org/tree-sitter-ruby/-/tree-sitter-ruby-0.23.1.tgz#package/LICENSE"
     },
     {
       "file": "web-tree-sitter-LICENSE.txt",

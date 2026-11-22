@@ -104,6 +104,13 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
       ],
     ],
   ],
+  [
+    "ruby",
+    [
+      [/^\s*def\s+(?:self\.)?(\w+[?!=]?)/u, "function"],
+      [/^\s*(?:class|module)\s+([A-Z][\w:]*)/u, "class"],
+    ],
+  ],
 ]);
 
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {
