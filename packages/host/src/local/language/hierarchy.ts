@@ -5,7 +5,7 @@ import type { ReadHierarchyItem } from "./lsp-structure.ts";
 import { toLspPosition } from "./lsp.ts";
 import { LspError } from "./rpc.ts";
 import { ask, findProviders } from "./route.ts";
-import type { HierarchyAnswer, Servers, Target } from "./state.ts";
+import type { HeldItems, Servers, Target } from "./state.ts";
 
 type Kind = HierarchyToken["kind"];
 
@@ -22,7 +22,7 @@ export function languageHierarchies(
 > {
   const mint = (
     target: Target,
-    held: HierarchyAnswer,
+    held: HeldItems,
     kind: Kind,
     read: ReadHierarchyItem,
   ): HierarchyItem => ({
@@ -51,7 +51,7 @@ export function languageHierarchies(
       if (roots.length === 0) continue;
       const slot = asked.target.slot;
       slot.answers += 1;
-      const held: HierarchyAnswer = { run: asked.target.run.id, answer: slot.answers, items: [] };
+      const held: HeldItems = { run: asked.target.run.id, answer: slot.answers, items: [] };
       slot.hierarchies[kind] = held;
 
       return roots.map((root) => mint(asked.target, held, kind, root));
@@ -64,7 +64,7 @@ export function languageHierarchies(
     kind: Kind,
     token: HierarchyToken,
     method: string,
-    read: (answer: unknown, target: Target, held: HierarchyAnswer) => readonly T[],
+    read: (answer: unknown, target: Target, held: HeldItems) => readonly T[],
   ): Promise<readonly T[]> => {
     const target = servers.findRun(token.server);
     const held = target?.slot.hierarchies[kind] ?? null;

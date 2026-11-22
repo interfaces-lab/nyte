@@ -34,6 +34,12 @@
     "type-hierarchy",
     "supertypes",
     "subtypes",
+    "rename-files",
+    "document-links",
+    "resolve-document-link",
+    "document-colors",
+    "color-presentations",
+    "linked-editing-ranges",
     "refreshes"
   ]
 }

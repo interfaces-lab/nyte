@@ -4,12 +4,17 @@ import {
   CodeActionOutcomeType,
   CodeActionResolveTokenType,
   CodeActionType,
+  ColorPresentationType,
+  ColorType,
   CompletionItemType,
   CompletionListType,
   CompletionResolveTokenType,
   CompletionTriggerType,
   DiagnosticsFrameType,
+  DocumentColorType,
   DocumentHighlightType,
+  DocumentLinkTokenType,
+  DocumentLinkType,
   DocumentSymbolType,
   FoldingRangeType,
   FormatOptionsType,
@@ -20,6 +25,7 @@ import {
   InlayHintType,
   LanguageLocationType,
   LanguageFormatOutcomeType,
+  LinkedEditingRangesType,
   LanguageRefreshType,
   LanguageServerViewType,
   RenameOutcomeType,
@@ -48,6 +54,8 @@ const ON_POSITION = wireObject(AT);
 const SERVERS = wireSchema(Type.Array(LanguageServerViewType));
 
 const LOCATIONS = wireSchema(Type.Array(LanguageLocationType));
+
+const RENAME_OUTCOME = wireSchema(RenameOutcomeType);
 
 const ON_HIERARCHY_ITEM = wireObject({ ...WORKSPACE, token: HierarchyTokenType });
 
@@ -190,7 +198,7 @@ export const LANGUAGE_OPERATIONS = {
     summary: "Computes the edits that rename the symbol at a position, without applying them.",
     kind: "query",
     input: wireObject({ ...AT, name: Type.String() }),
-    output: wireSchema(RenameOutcomeType),
+    output: RENAME_OUTCOME,
   },
   "language.codeActions": {
     ...LANGUAGE,
@@ -213,9 +221,14 @@ export const LANGUAGE_OPERATIONS = {
   },
   "language.format": {
     ...LANGUAGE,
-    summary: "Computes the edits that format a document, or why no server formatted it.",
+    summary:
+      "Computes the edits that format a document, or a range of it, or why no server formatted it.",
     kind: "query",
-    input: wireObject({ ...DOCUMENT, options: FormatOptionsType }),
+    input: wireObject({
+      ...DOCUMENT,
+      options: FormatOptionsType,
+      range: Type.Optional(TextRangeType),
+    }),
     output: wireSchema(LanguageFormatOutcomeType),
   },
   "language.signatureHelp": {
@@ -296,6 +309,53 @@ export const LANGUAGE_OPERATIONS = {
     kind: "query",
     input: ON_HIERARCHY_ITEM,
     output: HIERARCHY_ITEMS,
+  },
+  "language.renameFiles": {
+    ...LANGUAGE,
+    summary:
+      "Computes the edits that keep code working when files or folders are renamed, such as changed import paths, without applying them or renaming anything.",
+    kind: "query",
+    input: wireObject({
+      ...WORKSPACE,
+      files: Type.Array(Type.Object({ from: Type.String(), to: Type.String() })),
+    }),
+    output: RENAME_OUTCOME,
+  },
+  "language.documentLinks": {
+    ...LANGUAGE,
+    summary: "Lists the links in a document, such as URLs and paths, with where each leads.",
+    kind: "query",
+    input: ON_DOCUMENT,
+    output: wireSchema(Type.Array(DocumentLinkType)),
+  },
+  "language.resolveDocumentLink": {
+    ...LANGUAGE,
+    summary: "Works out where a link leads, or answers null for a stale token.",
+    kind: "query",
+    input: wireObject({ ...WORKSPACE, token: DocumentLinkTokenType }),
+    output: wireSchema(nullable(DocumentLinkType)),
+  },
+  "language.documentColors": {
+    ...LANGUAGE,
+    summary: "Lists the colours written in a document, each with its range.",
+    kind: "query",
+    input: ON_DOCUMENT,
+    output: wireSchema(Type.Array(DocumentColorType)),
+  },
+  "language.colorPresentations": {
+    ...LANGUAGE,
+    summary: "Lists the ways to write a colour at a range, each with the edit that writes it.",
+    kind: "query",
+    input: wireObject({ ...DOCUMENT, range: TextRangeType, color: ColorType }),
+    output: wireSchema(Type.Array(ColorPresentationType)),
+  },
+  "language.linkedEditingRanges": {
+    ...LANGUAGE,
+    summary:
+      "Answers the ranges that change together with the one at a position, such as a tag's opening and closing name, or null.",
+    kind: "query",
+    input: ON_POSITION,
+    output: wireSchema(nullable(LinkedEditingRangesType)),
   },
   "language.refreshes": {
     ...LANGUAGE,

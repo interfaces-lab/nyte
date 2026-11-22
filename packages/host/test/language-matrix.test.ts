@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { compile, LanguageFeatureType, LanguageNameType } from "@nyte-ai/schema";
 import type { LanguageFeature, TextPosition } from "@nyte-ai/schema";
 import type { LanguageService } from "@nyte-ai/core";
@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { languageInstaller } from "../src/local/language/install.ts";
 import { localLanguage } from "../src/local/language/manager.ts";
 import { SERVERS } from "../src/local/language/servers.ts";
-import { findExecutable, projectBins } from "../src/local/process/command.ts";
+import { findExecutable, projectBins, run } from "../src/local/process/command.ts";
 import { localEnv, until } from "./language-harness.ts";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "language");
@@ -73,7 +73,13 @@ const fixtures = await Promise.all(
 
           if (spec === undefined) throw new Error(`${found.folder} names no known server: ${name}`);
 
-          return (await findExecutable(spec.program, projectBins(found.root))) !== null;
+          const program = await findExecutable(spec.program, projectBins(found.root));
+
+          return (
+            program !== null &&
+            (spec.probe === null ||
+              (await run(program, spec.probe, { cwd: found.root }).catch(() => null))?.code === 0)
+          );
         }),
       );
 
@@ -202,6 +208,45 @@ describe.each(fixtures.filter((fixture) => fixture.runnable))("matrix: $folder",
 
       return outcome.kind === "edits" ? [outcome.kind] : [];
     },
+    async formatRange(probe) {
+      const line = (await locate(probe)).line;
+
+      const outcome = await language.format({
+        path: probe.file,
+        options: { tabSize: 2, insertSpaces: true },
+        range: { start: { line, utf16Column: 0 }, end: { line: line + 1, utf16Column: 0 } },
+      });
+
+      return outcome.kind === "edits" ? [outcome.kind] : [];
+    },
+    async renameFiles(probe) {
+      const outcome = await language.renameFiles({
+        files: [
+          { from: probe.file, to: join(dirname(probe.file), `moved-${basename(probe.file)}`) },
+        ],
+      });
+
+      return outcome.kind === "edit"
+        ? outcome.edit.files.filter((file) => file.edits.length > 0).map((file) => file.path)
+        : [];
+    },
+    documentLinks: (probe) => language.documentLinks({ path: probe.file }),
+    async documentColors(probe) {
+      const colors = await language.documentColors({ path: probe.file });
+      const first = colors[0];
+
+      return first === undefined
+        ? []
+        : [...colors, ...(await language.colorPresentations({ path: probe.file, ...first }))];
+    },
+    async linkedEditingRanges(probe) {
+      const linked = await language.linkedEditingRanges({
+        path: probe.file,
+        position: await locate(probe),
+      });
+
+      return linked?.ranges ?? [];
+    },
     async rename(probe) {
       const outcome = await language.rename({
         path: probe.file,
@@ -271,15 +316,15 @@ describe.each(fixtures.filter((fixture) => fixture.runnable))("matrix: $folder",
   };
 
   const answered = async (feature: Row, probes: readonly Probe[]): Promise<boolean> => {
-    const found = await Promise.all(
-      probes.map(async (probe) => {
-        const evidence = await ask[feature](probe);
+    for (const probe of probes) {
+      const evidence = await ask[feature](probe);
 
-        return evidence.length > 0 && JSON.stringify(evidence).includes(probe.says ?? "");
-      }),
-    );
+      if (evidence.length === 0 || !JSON.stringify(evidence).includes(probe.says ?? "")) {
+        return false;
+      }
+    }
 
-    return found.length > 0 && found.every(Boolean);
+    return true;
   };
 
   it("starts every server the fixture names", { timeout: 600_000 }, async () => {

@@ -16,6 +16,7 @@ export const GOPLS: ServerSpec = {
   rootMarkers: ["go.work", "go.mod"],
   requiresRootMarker: false,
   program: "gopls",
+  probe: ["version"],
   arguments: [],
   install: {
     kind: "toolchain",

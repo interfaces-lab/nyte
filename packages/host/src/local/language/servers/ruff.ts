@@ -19,6 +19,7 @@ export const RUFF: ServerSpec = {
   rootMarkers: ["pyproject.toml", "ruff.toml", ".ruff.toml"],
   requiresRootMarker: false,
   program: "ruff",
+  probe: ["--version"],
   arguments: ["server"],
   install: {
     kind: "release",

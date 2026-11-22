@@ -183,6 +183,19 @@
       "answers": true,
       "vscode": true
     },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "const hub = new H"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
     "rename": {
       "probes": [
         {
@@ -196,6 +209,53 @@
       ],
       "answers": true,
       "vscode": true
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "src/stats.ts",
+          "says": "src/hub.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "src/index.ts"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "src/index.ts"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "const hub = new H"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": false,
+      "vscode": true,
+      "note": "The server links JSX tag names, as VS Code does, and this fixture has no JSX to ask about."
     },
     "foldingRanges": {
       "probes": [

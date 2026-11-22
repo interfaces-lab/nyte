@@ -86,12 +86,17 @@ import type {
   CodeActionKind,
   CodeActionOutcome,
   CodeActionResolveToken,
+  Color,
+  ColorPresentation,
   CompletionItem,
   CompletionList,
   CompletionResolveToken,
   CompletionTrigger,
   DiagnosticsFrame,
+  DocumentColor,
   DocumentHighlight,
+  DocumentLink,
+  DocumentLinkToken,
   DocumentSymbol,
   FoldingRange,
   FormatOptions,
@@ -102,6 +107,7 @@ import type {
   InlayHint,
   LanguageLocation,
   LanguageFormatOutcome,
+  LinkedEditingRanges,
   LanguageRefresh,
   LanguageServerView,
   RenameOutcome,
@@ -221,9 +227,11 @@ export interface LanguageApi {
     readonly only?: readonly CodeActionKind[];
   }): Promise<readonly CodeAction[]>;
   resolveCodeAction(input: { readonly token: CodeActionResolveToken }): Promise<CodeActionOutcome>;
+  /** With `range`, formats only that range, by a server that formats ranges. */
   format(input: {
     readonly path: string;
     readonly options: FormatOptions;
+    readonly range?: TextRange;
   }): Promise<LanguageFormatOutcome>;
   signatureHelp(input: LanguagePosition): Promise<SignatureHelp | null>;
   inlayHints(input: {
@@ -248,6 +256,19 @@ export interface LanguageApi {
   typeHierarchy(input: LanguagePosition): Promise<readonly HierarchyItem[]>;
   supertypes(input: { readonly token: HierarchyToken }): Promise<readonly HierarchyItem[]>;
   subtypes(input: { readonly token: HierarchyToken }): Promise<readonly HierarchyItem[]>;
+  /** The edits that keep code working once the files or folders are renamed; call it before renaming, while `from` still exists. It starts the servers of the files named and asks every running server that follows renames. */
+  renameFiles(input: {
+    readonly files: readonly { readonly from: string; readonly to: string }[];
+  }): Promise<RenameOutcome>;
+  documentLinks(input: { readonly path: string }): Promise<readonly DocumentLink[]>;
+  resolveDocumentLink(input: { readonly token: DocumentLinkToken }): Promise<DocumentLink | null>;
+  documentColors(input: { readonly path: string }): Promise<readonly DocumentColor[]>;
+  colorPresentations(input: {
+    readonly path: string;
+    readonly range: TextRange;
+    readonly color: Color;
+  }): Promise<readonly ColorPresentation[]>;
+  linkedEditingRanges(input: LanguagePosition): Promise<LinkedEditingRanges | null>;
   /** Each frame names what a server asked to be computed again since the last. */
   refreshes(): AsyncIterable<readonly LanguageRefresh[]>;
 }

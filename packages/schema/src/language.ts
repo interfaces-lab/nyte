@@ -172,7 +172,12 @@ export const LanguageFeatureType = Type.Enum([
   "workspaceSymbols",
   "codeActions",
   "format",
+  "formatRange",
   "rename",
+  "renameFiles",
+  "documentLinks",
+  "documentColors",
+  "linkedEditingRanges",
   "foldingRanges",
   "selectionRanges",
   "semanticTokens",
@@ -538,3 +543,66 @@ export type HierarchyCall = Decoded<typeof HierarchyCallType>;
 export const LanguageRefreshType = Type.Enum(["semanticTokens", "inlayHints"]);
 
 export type LanguageRefresh = Decoded<typeof LanguageRefreshType>;
+
+/** Names one link of one document-links answer of one server run; a later answer for any file from that server, or a restart, makes it stale. */
+export const DocumentLinkTokenType = Type.Object({
+  kind: Type.Literal("documentLink"),
+  server: idSchema<"language-server">(),
+  answer: Type.Number(),
+  item: Type.Number(),
+});
+
+export type DocumentLinkToken = Decoded<typeof DocumentLinkTokenType>;
+
+/** Where a link leads: a file, with the position in it when the link names one, or any other URL. */
+export const LinkTargetType = Type.Union([
+  Type.Object({
+    kind: Type.Literal("file"),
+    path: Type.String(),
+    position: nullable(TextPositionType),
+  }),
+  Type.Object({ kind: Type.Literal("url"), url: Type.String() }),
+]);
+
+export type LinkTarget = Decoded<typeof LinkTargetType>;
+
+/** `target` is null while the server has yet to work it out; `token` then resolves it, and is null when there is nothing more to ask. */
+export const DocumentLinkType = Type.Object({
+  range: TextRangeType,
+  target: nullable(LinkTargetType),
+  tooltip: Type.String(),
+  token: nullable(DocumentLinkTokenType),
+});
+
+export type DocumentLink = Decoded<typeof DocumentLinkType>;
+
+/** Each channel runs from 0 to 1. */
+export const ColorType = Type.Object({
+  red: Type.Number(),
+  green: Type.Number(),
+  blue: Type.Number(),
+  alpha: Type.Number(),
+});
+
+export type Color = Decoded<typeof ColorType>;
+
+export const DocumentColorType = Type.Object({ range: TextRangeType, color: ColorType });
+
+export type DocumentColor = Decoded<typeof DocumentColorType>;
+
+/** One way to write a colour, such as `#ff0000` or `rgb(255 0 0)`; `edit` null puts `label` in place of the colour's range. */
+export const ColorPresentationType = Type.Object({
+  label: Type.String(),
+  edit: nullable(TextEditType),
+  additionalEdits: Type.Array(TextEditType),
+});
+
+export type ColorPresentation = Decoded<typeof ColorPresentationType>;
+
+/** Ranges whose text changes together, such as an opening tag and its closing one; `wordPattern` is a regular expression the shared text must keep matching, null when any text goes. */
+export const LinkedEditingRangesType = Type.Object({
+  ranges: Type.Array(TextRangeType),
+  wordPattern: nullable(Type.String()),
+});
+
+export type LinkedEditingRanges = Decoded<typeof LinkedEditingRangesType>;

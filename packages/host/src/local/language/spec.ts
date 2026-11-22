@@ -57,6 +57,7 @@ export interface ServerSpec {
   readonly rootMarkers: readonly string[];
   readonly requiresRootMarker: boolean;
   readonly program: string;
+  readonly probe: readonly string[] | null;
   readonly arguments: readonly string[];
   readonly install: Install | null;
   readonly runtime: {

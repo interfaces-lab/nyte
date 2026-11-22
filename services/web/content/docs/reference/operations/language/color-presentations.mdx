@@ -1,0 +1,269 @@
+---
+title: language.colorPresentations
+description: Lists the ways to write a colour at a range, each with the edit that writes it.
+---
+
+Lists the ways to write a colour at a range, such as hex, `rgb()` and `hsl()`, each with the edit that writes it. `edit` null means the label itself replaces the range. A file no server handles, or whose servers are `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+
+## When to call it
+
+When someone picks a new colour in a colour picker, to offer the notations the language allows.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "site.css",
+  "range": {
+    "start": {
+      "line": 2,
+      "utf16Column": 9
+    },
+    "end": {
+      "line": 2,
+      "utf16Column": 16
+    }
+  },
+  "color": {
+    "red": 1,
+    "green": 0,
+    "blue": 0,
+    "alpha": 1
+  }
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "label": "#ff0000",
+    "edit": {
+      "range": {
+        "start": {
+          "line": 2,
+          "utf16Column": 9
+        },
+        "end": {
+          "line": 2,
+          "utf16Column": 16
+        }
+      },
+      "text": "#ff0000"
+    },
+    "additionalEdits": []
+  },
+  {
+    "label": "rgb(255 0 0)",
+    "edit": {
+      "range": {
+        "start": {
+          "line": 2,
+          "utf16Column": 9
+        },
+        "end": {
+          "line": 2,
+          "utf16Column": 16
+        }
+      },
+      "text": "rgb(255 0 0)"
+    },
+    "additionalEdits": []
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "range", "color"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "range": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "type": "object",
+          "required": ["line", "utf16Column"],
+          "properties": {
+            "line": {
+              "type": "number"
+            },
+            "utf16Column": {
+              "type": "number"
+            }
+          }
+        },
+        "end": {
+          "type": "object",
+          "required": ["line", "utf16Column"],
+          "properties": {
+            "line": {
+              "type": "number"
+            },
+            "utf16Column": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "color": {
+      "type": "object",
+      "required": ["red", "green", "blue", "alpha"],
+      "properties": {
+        "red": {
+          "type": "number"
+        },
+        "green": {
+          "type": "number"
+        },
+        "blue": {
+          "type": "number"
+        },
+        "alpha": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["label", "edit", "additionalEdits"],
+    "properties": {
+      "label": {
+        "type": "string"
+      },
+      "edit": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["range", "text"],
+            "properties": {
+              "range": {
+                "type": "object",
+                "required": ["start", "end"],
+                "properties": {
+                  "start": {
+                    "type": "object",
+                    "required": ["line", "utf16Column"],
+                    "properties": {
+                      "line": {
+                        "type": "number"
+                      },
+                      "utf16Column": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "end": {
+                    "type": "object",
+                    "required": ["line", "utf16Column"],
+                    "properties": {
+                      "line": {
+                        "type": "number"
+                      },
+                      "utf16Column": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "additionalEdits": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["range", "text"],
+          "properties": {
+            "range": {
+              "type": "object",
+              "required": ["start", "end"],
+              "properties": {
+                "start": {
+                  "type": "object",
+                  "required": ["line", "utf16Column"],
+                  "properties": {
+                    "line": {
+                      "type": "number"
+                    },
+                    "utf16Column": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "end": {
+                  "type": "object",
+                  "required": ["line", "utf16Column"],
+                  "properties": {
+                    "line": {
+                      "type": "number"
+                    },
+                    "utf16Column": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

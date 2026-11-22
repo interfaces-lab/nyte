@@ -596,8 +596,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await language(id)).codeActions({ path, range, only }),
     "language.resolveCodeAction": async ({ workspace: id, token }) =>
       (await language(id)).resolveCodeAction({ token }),
-    "language.format": async ({ workspace: id, path, options }) =>
-      (await language(id)).format({ path, options }),
+    "language.format": async ({ workspace: id, path, options, range }) =>
+      (await language(id)).format({ path, options, range }),
     "language.signatureHelp": async ({ workspace: id, path, position }) =>
       (await language(id)).signatureHelp({ path, position }),
     "language.inlayHints": async ({ workspace: id, path, range }) =>
@@ -628,6 +628,18 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await language(id)).supertypes({ token }),
     "language.subtypes": async ({ workspace: id, token }) =>
       (await language(id)).subtypes({ token }),
+    "language.renameFiles": async ({ workspace: id, files }) =>
+      (await language(id)).renameFiles({ files }),
+    "language.documentLinks": async ({ workspace: id, path }) =>
+      (await language(id)).documentLinks({ path }),
+    "language.resolveDocumentLink": async ({ workspace: id, token }) =>
+      (await language(id)).resolveDocumentLink({ token }),
+    "language.documentColors": async ({ workspace: id, path }) =>
+      (await language(id)).documentColors({ path }),
+    "language.colorPresentations": async ({ workspace: id, path, range, color }) =>
+      (await language(id)).colorPresentations({ path, range, color }),
+    "language.linkedEditingRanges": async ({ workspace: id, path, position }) =>
+      (await language(id)).linkedEditingRanges({ path, position }),
     "language.refreshes": async ({ workspace: id }) => (await language(id)).refreshes(),
 
     "github.account": () => connection.github.account(),

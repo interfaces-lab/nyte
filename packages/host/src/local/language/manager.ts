@@ -15,8 +15,24 @@ import { Type } from "typebox";
 import { feed } from "../feed.ts";
 import type { FeedSink } from "../feed.ts";
 import { findExecutable, hostNode, projectBins, run as runCommand } from "../process/command.ts";
-import { codeActions, completion, resolveCodeAction, resolveCompletion } from "./assist.ts";
-import { listFeatures, NO_CAPABILITIES, register, unregister, watches } from "./capabilities.ts";
+import {
+  codeActions,
+  completion,
+  documentLinks,
+  resolveCodeAction,
+  resolveCompletion,
+  resolveDocumentLink,
+} from "./assist.ts";
+import {
+  findProvider,
+  listFeatures,
+  NO_CAPABILITIES,
+  operatesOn,
+  PROVIDERS,
+  register,
+  unregister,
+  watches,
+} from "./capabilities.ts";
 import { diagnosticReports } from "./diagnostics.ts";
 import { languageFeatures } from "./features.ts";
 import { languageHierarchies } from "./hierarchy.ts";
@@ -37,11 +53,16 @@ export const IDLE_MS = 10 * 60_000;
 
 const START_DEADLINE_MS = 30_000;
 
-const RUNTIME_DEADLINE_MS = 10_000;
+const PROBE_DEADLINE_MS = 10_000;
 
 const STOP_GRACE_MS = 2000;
 
 const LOG_LINES = 200;
+
+const FILE_NOTICES = [
+  { kind: "created", provider: "filesCreated" },
+  { kind: "removed", provider: "filesDeleted" },
+] as const;
 
 const ApplyEditRequest = compile(Type.Object({ edit: Type.Unknown() }));
 
@@ -74,7 +95,7 @@ export function localLanguage(
       : inside.split(sep).join("/");
   };
 
-  const uri = (path: string): string => pathToFileURL(path).href;
+  const uri = (path: string): string => pathToFileURL(absolute(path)).href;
 
   const place: Place = (address) =>
     address.startsWith("file:") ? within(fileURLToPath(address)) : null;
@@ -141,6 +162,7 @@ export function localLanguage(
       completion: null,
       actions: null,
       hierarchies: { callHierarchy: null, typeHierarchy: null },
+      links: null,
       log: [],
     };
 
@@ -321,16 +343,14 @@ export function localLanguage(
     const pinned = options.servers?.[spec.name];
     const found = await findExecutable(pinned ?? spec.program, projectBins(slot.root));
 
-    const plan =
-      found !== null
-        ? ({ kind: "found", path: found } as const)
-        : pinned === undefined && options.installer !== undefined && spec.install !== null
-          ? ({ kind: "download", installer: options.installer, source: spec.install } as const)
-          : null;
+    const download =
+      pinned === undefined && options.installer !== undefined && spec.install !== null
+        ? { installer: options.installer, source: spec.install }
+        : null;
 
     slot.executable = found;
 
-    if (plan === null) {
+    if (found === null && download === null) {
       setState(slot, { kind: "missing", hint: spec.installHint });
 
       return null;
@@ -342,17 +362,32 @@ export function localLanguage(
       return null;
     }
 
-    if (spec.runtime !== null && !(await runs(spec.runtime, slot.root))) {
+    if (
+      spec.runtime !== null &&
+      !(await runs(spec.runtime.program, spec.runtime.probe, slot.root))
+    ) {
       setState(slot, { kind: "missing", hint: spec.runtime.installHint });
 
       return null;
     }
 
-    if (plan.kind === "found") return { command: [plan.path], env: {} };
+    if (found !== null && (spec.probe === null || (await runs(found, spec.probe, slot.root)))) {
+      return { command: [found], env: {} };
+    }
+
+    if (download === null) {
+      setState(slot, {
+        kind: "missing",
+        hint: `${found ?? spec.program} is there but does not run. ${spec.installHint}`,
+      });
+
+      return null;
+    }
+
     setState(slot, { kind: "installing", percent: null });
 
-    const installed = await plan.installer
-      .install(spec.name, plan.source, (percent) => {
+    const installed = await download.installer
+      .install(spec.name, download.source, (percent) => {
         if (slot.state.kind === "installing") setState(slot, { kind: "installing", percent });
       })
       .catch((error: unknown) => {
@@ -725,6 +760,23 @@ export function localLanguage(
           if (changes.length > 0) {
             target.run.rpc.notify("workspace/didChangeWatchedFiles", { changes });
           }
+
+          for (const notice of FILE_NOTICES) {
+            const provider = findProvider(target.run, notice.provider, null);
+
+            const files =
+              provider === null
+                ? []
+                : events.flatMap((event) =>
+                    event.kind === notice.kind && operatesOn(provider, event.full)
+                      ? [{ uri: uri(event.full) }]
+                      : [],
+                  );
+
+            if (files.length > 0) {
+              target.run.rpc.notify(PROVIDERS[notice.provider].method, { files });
+            }
+          }
         }
 
         for (const event of events) await written(event.full);
@@ -845,6 +897,8 @@ export function localLanguage(
     resolveCompletion: (input) => resolveCompletion(servers, input),
     codeActions: (input) => codeActions(servers, input),
     resolveCodeAction: (input) => resolveCodeAction(servers, input),
+    documentLinks: (input) => documentLinks(servers, input),
+    resolveDocumentLink: (input) => resolveDocumentLink(servers, input),
     ...languageFeatures(servers),
     ...languageHierarchies(servers),
     async trustChanged(trusted) {
@@ -889,15 +943,14 @@ export function localLanguage(
   };
 }
 
-async function runs(runtime: NonNullable<ServerSpec["runtime"]>, folder: string): Promise<boolean> {
-  const program = await findExecutable(runtime.program);
+async function runs(program: string, probe: readonly string[], folder: string): Promise<boolean> {
+  const found = await findExecutable(program);
 
-  if (program === null) return false;
+  if (found === null) return false;
 
-  const ran = await runCommand(program, runtime.probe, {
-    cwd: folder,
-    timeoutMs: RUNTIME_DEADLINE_MS,
-  }).catch(() => null);
+  const ran = await runCommand(found, probe, { cwd: folder, timeoutMs: PROBE_DEADLINE_MS }).catch(
+    () => null,
+  );
 
   return ran?.code === 0;
 }

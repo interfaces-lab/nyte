@@ -1,11 +1,15 @@
 import { basename } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { LanguageApi, LanguagePosition } from "@nyte-ai/core";
-import type { Json, LanguageFeature, LanguageLocation, TextRange } from "@nyte-ai/schema";
-import { findProvider } from "./capabilities.ts";
+import type { Json, LanguageFeature, LanguageLocation, TextEdit, TextRange } from "@nyte-ai/schema";
+import { findProvider, operatesOn } from "./capabilities.ts";
 import {
   nestRanges,
+  readColorPresentations,
+  readColors,
   readFoldingRanges,
   readHighlights,
+  readLinkedEditingRanges,
   readSelectionRanges,
   readSemanticTokens,
   readWorkspaceSymbols,
@@ -52,6 +56,10 @@ export function languageFeatures(
   | "foldingRanges"
   | "selectionRanges"
   | "semanticTokens"
+  | "renameFiles"
+  | "documentColors"
+  | "colorPresentations"
+  | "linkedEditingRanges"
 > {
   const inDocument = (asked: Asked) => ({ textDocument: { uri: asked.uri } });
 
@@ -188,14 +196,28 @@ export function languageFeatures(
       };
     },
     async format(input) {
-      const formatters = await findProviders(servers, input.path, "format");
+      const range = input.range;
+
+      const formatters = await findProviders(
+        servers,
+        input.path,
+        range === undefined ? "format" : "formatRange",
+      );
+
       const failures: string[] = [];
 
       for (const asked of formatters) {
-        const asking = await ask(servers, asked.target, "textDocument/formatting", {
-          ...inDocument(asked),
-          options: input.options,
-        });
+        const asking =
+          range === undefined
+            ? await ask(servers, asked.target, "textDocument/formatting", {
+                ...inDocument(asked),
+                options: input.options,
+              })
+            : await ask(servers, asked.target, "textDocument/rangeFormatting", {
+                ...inDocument(asked),
+                range: toLspRange(range),
+                options: input.options,
+              });
 
         if (asking instanceof LspError) {
           failures.push(asking.message);
@@ -210,7 +232,10 @@ export function languageFeatures(
       if (formatters.length === 0) {
         return {
           kind: "unavailable",
-          reason: `No language server formats ${basename(input.path)}.`,
+          reason:
+            range === undefined
+              ? `No language server formats ${basename(input.path)}.`
+              : `No language server formats a selection in ${basename(input.path)}.`,
         };
       }
 
@@ -218,6 +243,77 @@ export function languageFeatures(
         ? { kind: "failed", reason: failures[0] ?? "" }
         : { kind: "edits", edits: [] };
     },
+    async renameFiles(input) {
+      await Promise.all(input.files.map((file) => servers.sync(file.from)));
+
+      const answers = await Promise.all(
+        servers.running().map(async (target) => {
+          const provider = findProvider(target.run, "renameFiles", null);
+
+          const files =
+            provider === null
+              ? []
+              : input.files
+                  .map((file) => ({ oldUri: servers.uri(file.from), newUri: servers.uri(file.to) }))
+                  .filter((file) => operatesOn(provider, fileURLToPath(file.oldUri)));
+          if (files.length === 0) return null;
+          const asking = await ask(servers, target, "workspace/willRenameFiles", { files });
+
+          return asking instanceof LspError
+            ? null
+            : readWorkspaceEdit(asking.answer, servers.place);
+        }),
+      );
+
+      const refused = answers.find((answer) => answer?.kind === "refused");
+
+      if (refused?.kind === "refused") return refused;
+      const edits = new Map<string, TextEdit[]>();
+
+      for (const answer of answers) {
+        for (const file of answer?.kind === "edit" ? answer.edit.files : []) {
+          edits.set(file.path, [...(edits.get(file.path) ?? []), ...file.edits]);
+        }
+      }
+
+      return {
+        kind: "edit",
+        edit: { files: [...edits].map((entry) => ({ path: entry[0], edits: entry[1] })) },
+      };
+    },
+    async documentColors(input) {
+      const colors = await askEvery(
+        servers,
+        { path: input.path, feature: "documentColors", method: "textDocument/documentColor" },
+        inDocument,
+        readColors,
+      );
+
+      return colors
+        .flat()
+        .toSorted((left, right) => comparePositions(left.range.start, right.range.start));
+    },
+    async colorPresentations(input) {
+      const presentations = await askEvery(
+        servers,
+        { path: input.path, feature: "documentColors", method: "textDocument/colorPresentation" },
+        (asked) => ({ ...inDocument(asked), range: toLspRange(input.range), color: input.color }),
+        readColorPresentations,
+      );
+
+      return presentations.flat();
+    },
+    linkedEditingRanges: (input) =>
+      askFirst(
+        servers,
+        {
+          path: input.path,
+          feature: "linkedEditingRanges",
+          method: "textDocument/linkedEditingRange",
+        },
+        at(input),
+        readLinkedEditingRanges,
+      ),
     signatureHelp: (input) =>
       askFirst(
         servers,

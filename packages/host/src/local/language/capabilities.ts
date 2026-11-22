@@ -1,4 +1,4 @@
-import { isAbsolute, matchesGlob, relative } from "node:path";
+import { isAbsolute, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compile, isJson, isJsonObject, LanguageFeatureType } from "@nyte-ai/schema";
 import type { Json, JsonSchema, LanguageFeature } from "@nyte-ai/schema";
@@ -22,7 +22,21 @@ export const PROVIDERS = {
   workspaceSymbols: { capability: "workspaceSymbolProvider", method: "workspace/symbol" },
   codeActions: { capability: "codeActionProvider", method: "textDocument/codeAction" },
   format: { capability: "documentFormattingProvider", method: "textDocument/formatting" },
+  formatRange: {
+    capability: "documentRangeFormattingProvider",
+    method: "textDocument/rangeFormatting",
+  },
   rename: { capability: "renameProvider", method: "textDocument/rename" },
+  renameFiles: {
+    capability: "workspace.fileOperations.willRename",
+    method: "workspace/willRenameFiles",
+  },
+  documentLinks: { capability: "documentLinkProvider", method: "textDocument/documentLink" },
+  documentColors: { capability: "colorProvider", method: "textDocument/documentColor" },
+  linkedEditingRanges: {
+    capability: "linkedEditingRangeProvider",
+    method: "textDocument/linkedEditingRange",
+  },
   foldingRanges: { capability: "foldingRangeProvider", method: "textDocument/foldingRange" },
   selectionRanges: { capability: "selectionRangeProvider", method: "textDocument/selectionRange" },
   semanticTokens: { capability: "semanticTokensProvider", method: "textDocument/semanticTokens" },
@@ -36,12 +50,24 @@ export const PROVIDERS = {
     method: "textDocument/prepareTypeHierarchy",
   },
   diagnostics: { capability: "diagnosticProvider", method: "textDocument/diagnostic" },
+  filesCreated: {
+    capability: "workspace.fileOperations.didCreate",
+    method: "workspace/didCreateFiles",
+  },
+  filesDeleted: {
+    capability: "workspace.fileOperations.didDelete",
+    method: "workspace/didDeleteFiles",
+  },
 } as const satisfies Record<
-  LanguageFeature | "diagnostics",
+  LanguageFeature | "diagnostics" | "filesCreated" | "filesDeleted",
   { readonly capability: string; readonly method: string }
 >;
 
 const WATCHED_FILES = "workspace/didChangeWatchedFiles";
+
+const GLOB_TOKEN = /\*\*\/|\*\*|\*|\?|\{|\}|,|\[!?[^\]]+\]|[^*?{},[]+|\[/gu;
+
+const NO_MATCH = /^(?!)/u;
 
 export interface ServerCapabilities {
   readonly incremental: boolean;
@@ -116,7 +142,13 @@ export function findProvider(
   document: { readonly path: string; readonly languageId: string } | null,
 ): JsonSchema | null {
   const provider = PROVIDERS[feature];
-  const declared = run.capabilities.declared[provider.capability];
+
+  const declared = provider.capability
+    .split(".")
+    .reduce<Json | undefined>(
+      (found, key) => (isJsonObject(found) ? found[key] : undefined),
+      run.capabilities.declared,
+    );
 
   const offered: readonly Json[] = [
     declared === true ? {} : (declared ?? null),
@@ -167,8 +199,34 @@ export function watches(run: Provides, path: string, root: string): boolean {
         const base = typeof glob.baseUri === "string" ? glob.baseUri : glob.baseUri.uri;
         const inside = base.startsWith("file:") ? relative(fileURLToPath(base), path) : "..";
 
-        return !inside.startsWith("..") && !isAbsolute(inside) && matchesGlob(inside, glob.pattern);
+        return (
+          !inside.startsWith("..") &&
+          !isAbsolute(inside) &&
+          compileGlob(glob.pattern).test(slashed(inside))
+        );
       }),
+  );
+}
+
+const FileFilters = compile(
+  Type.Object({
+    filters: Type.Array(
+      Type.Object({
+        scheme: Type.Optional(Type.String()),
+        pattern: Type.Object({ glob: Type.String() }),
+      }),
+    ),
+  }),
+);
+
+export function operatesOn(provider: JsonSchema, path: string): boolean {
+  return (
+    !FileFilters.Check(provider) ||
+    provider.filters.some(
+      (filter) =>
+        (filter.scheme === undefined || filter.scheme === "file") &&
+        matches(path, "/", filter.pattern.glob),
+    )
   );
 }
 
@@ -188,5 +246,51 @@ function selects(
 }
 
 function matches(path: string, base: string, glob: string): boolean {
-  return matchesGlob(path, glob) || matchesGlob(relative(base, path), glob);
+  const pattern = compileGlob(glob);
+
+  return pattern.test(slashed(path)) || pattern.test(slashed(relative(base, path)));
+}
+
+function slashed(path: string): string {
+  return path.split(sep).join("/");
+}
+
+function compileGlob(glob: string): RegExp {
+  let depth = 0;
+
+  const source = glob.replaceAll(GLOB_TOKEN, (token) => {
+    if (token === "**/") return "(?:.*/)?";
+
+    if (token === "**") return ".*";
+
+    if (token === "*") return "[^/]*";
+
+    if (token === "?") return "[^/]";
+
+    if (token === "{") {
+      depth += 1;
+
+      return "(?:";
+    }
+
+    if (token === "}" && depth > 0) {
+      depth -= 1;
+
+      return ")";
+    }
+
+    if (token === "," && depth > 0) return "|";
+
+    if (token.length > 1 && token.startsWith("[")) {
+      return token.startsWith("[!") ? `[^${token.slice(2)}` : token;
+    }
+
+    return RegExp.escape(token);
+  });
+
+  try {
+    return new RegExp(`^${source}${")".repeat(depth)}$`, "u");
+  } catch {
+    return NO_MATCH;
+  }
 }

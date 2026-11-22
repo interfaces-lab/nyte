@@ -18,6 +18,10 @@ const server = {
   features: ["hover", "semanticTokens"],
 };
 
+const linkToken = { kind: "documentLink", server: "s1", answer: 9, item: 1 };
+
+const color = { red: 1, green: 0, blue: 0, alpha: 1 };
+
 const hierarchyToken = { kind: "callHierarchy", server: "s1", answer: 4, item: 0 };
 
 const hierarchyItem = {
@@ -248,7 +252,7 @@ export const languageOperations = {
   ),
   "language.format input": operation(
     OPERATIONS["language.format"].input,
-    { workspace, path: "main.go", options: { tabSize: 4, insertSpaces: false } },
+    { workspace, path: "main.go", options: { tabSize: 4, insertSpaces: false }, range },
     { workspace, path: "main.go", options: { tabSize: 4 } },
   ),
   "language.format output": operation(
@@ -343,6 +347,54 @@ export const languageOperations = {
     OPERATIONS["language.incomingCalls"].output,
     [{ item: hierarchyItem, ranges: [range] }],
     [{ item: hierarchyItem }],
+  ),
+  "language.renameFiles input": operation(
+    OPERATIONS["language.renameFiles"].input,
+    { workspace, files: [{ from: "src/stats.ts", to: "src/counts.ts" }] },
+    { workspace, files: [{ from: "src/stats.ts" }] },
+  ),
+  "language.documentLinks output": operation(
+    OPERATIONS["language.documentLinks"].output,
+    [
+      {
+        range,
+        target: { kind: "file", path: "docs/sync.md", position: null },
+        tooltip: "",
+        token: null,
+      },
+      { range, target: null, tooltip: "Follow link", token: linkToken },
+    ],
+    [{ range, target: { kind: "mail", address: "ops@example.com" }, tooltip: "", token: null }],
+  ),
+  "language.resolveDocumentLink input": operation(
+    OPERATIONS["language.resolveDocumentLink"].input,
+    { workspace, token: linkToken },
+    { workspace, token: completionToken },
+  ),
+  "language.resolveDocumentLink output": operation(
+    OPERATIONS["language.resolveDocumentLink"].output,
+    { range, target: { kind: "url", url: "https://pkg.go.dev/fmt" }, tooltip: "", token: null },
+    { range, target: "https://pkg.go.dev/fmt", tooltip: "", token: null },
+  ),
+  "language.documentColors output": operation(
+    OPERATIONS["language.documentColors"].output,
+    [{ range, color }],
+    [{ range, color: "#ff0000" }],
+  ),
+  "language.colorPresentations input": operation(
+    OPERATIONS["language.colorPresentations"].input,
+    { workspace, path: "site.css", range, color },
+    { workspace, path: "site.css", range },
+  ),
+  "language.colorPresentations output": operation(
+    OPERATIONS["language.colorPresentations"].output,
+    [{ label: "#ff0000", edit: { range, text: "#ff0000" }, additionalEdits: [] }],
+    [{ label: "#ff0000", edit: null }],
+  ),
+  "language.linkedEditingRanges output": operation(
+    OPERATIONS["language.linkedEditingRanges"].output,
+    { ranges: [range], wordPattern: null },
+    { ranges: [range] },
   ),
   "language.refreshes output": operation(
     OPERATIONS["language.refreshes"].output,

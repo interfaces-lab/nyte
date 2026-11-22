@@ -38,6 +38,15 @@ export function languageApi(rows: Rows, workspace: WorkspaceId): LanguageApi {
     typeHierarchy: (input) => rows.call("language.typeHierarchy", { workspace, ...input }),
     supertypes: (input) => rows.call("language.supertypes", { workspace, ...input }),
     subtypes: (input) => rows.call("language.subtypes", { workspace, ...input }),
+    renameFiles: (input) => rows.call("language.renameFiles", { workspace, ...input }),
+    documentLinks: (input) => rows.call("language.documentLinks", { workspace, ...input }),
+    resolveDocumentLink: (input) =>
+      rows.call("language.resolveDocumentLink", { workspace, ...input }),
+    documentColors: (input) => rows.call("language.documentColors", { workspace, ...input }),
+    colorPresentations: (input) =>
+      rows.call("language.colorPresentations", { workspace, ...input }),
+    linkedEditingRanges: (input) =>
+      rows.call("language.linkedEditingRanges", { workspace, ...input }),
     refreshes: () => rows.watch("language.refreshes", { workspace }),
   };
 }

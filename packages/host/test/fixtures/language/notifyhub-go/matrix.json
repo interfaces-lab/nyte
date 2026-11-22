@@ -183,6 +183,17 @@
       "answers": true,
       "vscode": true
     },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "h := hub.N"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
     "rename": {
       "probes": [
         {
@@ -196,6 +207,50 @@
       ],
       "answers": true,
       "vscode": true
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "hub/stats.go"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "main.go",
+          "says": "pkg.go.dev"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "main.go"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "h := hub.N"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
     },
     "foldingRanges": {
       "probes": [

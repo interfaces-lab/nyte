@@ -19,7 +19,7 @@ export interface Run {
   collecting: WorkspaceEdit[] | null;
 }
 
-export interface HierarchyAnswer {
+export interface HeldItems {
   readonly run: LanguageServerId;
   readonly answer: number;
   readonly items: Json[];
@@ -48,9 +48,10 @@ export interface Slot {
     readonly plans: readonly ActionPlan[];
   } | null;
   readonly hierarchies: {
-    callHierarchy: HierarchyAnswer | null;
-    typeHierarchy: HierarchyAnswer | null;
+    callHierarchy: HeldItems | null;
+    typeHierarchy: HeldItems | null;
   };
+  links: HeldItems | null;
   readonly log: string[];
 }
 

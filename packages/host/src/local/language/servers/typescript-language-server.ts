@@ -36,6 +36,7 @@ export const TYPESCRIPT_LANGUAGE_SERVER: ServerSpec = {
   rootMarkers: ["tsconfig.json", "jsconfig.json", "package.json"],
   requiresRootMarker: false,
   program: "typescript-language-server",
+  probe: ["--version"],
   arguments: ["--stdio"],
   install: {
     kind: "npm",
