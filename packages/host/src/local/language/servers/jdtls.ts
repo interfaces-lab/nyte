@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Asset, ServerSpec } from "../spec.ts";
 
@@ -146,6 +149,8 @@ const JAVA_SETTINGS = {
 
 const SETTINGS = { java: JAVA_SETTINGS } as const;
 
+const OPTIONS = { bundles: [], settings: SETTINGS, extendedClientCapabilities: {} } as const;
+
 export const JDTLS: ServerSpec = {
   name: "jdtls",
   languages: ["java"],
@@ -181,20 +186,19 @@ export const JDTLS: ServerSpec = {
     installHint: "Install JDK 17 or newer (for example Eclipse Temurin) and put java on PATH.",
   },
   installHint: "Install Eclipse JDT Language Server: brew install jdtls",
-  initializationOptions: {
-    bundles: [],
-    settings: SETTINGS,
-    extendedClientCapabilities: {},
-  },
+  initializationOptions: OPTIONS,
   settings: SETTINGS,
   async prepare(project) {
     return {
-      initializationOptions: {
-        bundles: [],
-        workspaceFolders: [pathToFileURL(project.root).href],
-        settings: SETTINGS,
-        extendedClientCapabilities: {},
-      },
+      initializationOptions: { ...OPTIONS, workspaceFolders: [pathToFileURL(project.root).href] },
+      arguments: [
+        "-data",
+        join(
+          tmpdir(),
+          "nyte-jdtls",
+          createHash("sha256").update(project.root).digest("hex").slice(0, 16),
+        ),
+      ],
     };
   },
 };
