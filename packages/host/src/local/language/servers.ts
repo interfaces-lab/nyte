@@ -13,6 +13,7 @@ import { VSCODE_CSS_LANGUAGE_SERVER } from "./servers/vscode-css-language-server
 import { VSCODE_ESLINT_LANGUAGE_SERVER } from "./servers/vscode-eslint-language-server.ts";
 import { VSCODE_HTML_LANGUAGE_SERVER } from "./servers/vscode-html-language-server.ts";
 import { VSCODE_JSON_LANGUAGE_SERVER } from "./servers/vscode-json-language-server.ts";
+import { YAML_LANGUAGE_SERVER } from "./servers/yaml-language-server.ts";
 import type { ServerSpec } from "./spec.ts";
 
 export const SERVERS: readonly ServerSpec[] = [
@@ -23,6 +24,7 @@ export const SERVERS: readonly ServerSpec[] = [
   TYPESCRIPT_LANGUAGE_SERVER,
   VSCODE_ESLINT_LANGUAGE_SERVER,
   OXLINT,
+  YAML_LANGUAGE_SERVER,
   BASH_LANGUAGE_SERVER,
   VSCODE_JSON_LANGUAGE_SERVER,
   VSCODE_CSS_LANGUAGE_SERVER,

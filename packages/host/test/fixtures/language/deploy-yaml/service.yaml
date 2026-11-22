@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=./schemas/service.schema.json
+name: payments-api
+environment: staging
+replicas: "three"
+enabled: "true"
+healthCheck:
+  path: /healthz
+  intervalSeconds: 15
+labels:  {tier:  core,team:  billing}

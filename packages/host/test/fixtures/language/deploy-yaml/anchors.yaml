@@ -1,0 +1,14 @@
+defaults: &service_defaults
+  timeout: 30
+  retries: 3
+  logging:
+    level: info
+    format: json
+
+services:
+  gateway:
+    <<: *service_defaults
+    host: gateway.internal
+  worker:
+    <<: *service_defaults
+    host: worker.internal

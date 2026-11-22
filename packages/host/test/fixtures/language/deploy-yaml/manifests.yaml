@@ -1,0 +1,17 @@
+---
+release:
+  name: gateway
+  region: us-east-1
+  notes: |
+    Handles ingress TLS termination
+    and forwards verified requests.
+  endpoints:
+    - /v1/health
+    - /v1/orders
+---
+release:
+  name: worker
+  region: us-west-2
+  queues:
+    - invoices
+    - webhooks
