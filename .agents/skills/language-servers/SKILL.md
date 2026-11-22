@@ -55,6 +55,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 18. **Pin every platform upstream ships**, of the six in `PLATFORMS`. Leave out one upstream does not ship. Only this machine's platform gets run, so say which ones are untested.
 19. **`bin` is the server's path inside the unpacked archive.** For a single file it is the name the file gets. Archives are `file`, `gz`, `tar.gz` or `zip`.
 20. **Check the license before pinning.** Record it in the report. Do not pin a server whose license forbids this use. Report it instead.
+41. **Data a server needs is pinned the same way.** The JSON server learns which schema a file takes from a list Nyte sends. `pin-language-server.ts schemas <schemas.json> <commit>` writes it from SchemaStore's catalog at that commit and keeps only the schemas SchemaStore serves itself, because opening a file fetches its schema. Never edit the list by hand.
 
 ## The fixture
 
