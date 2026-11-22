@@ -345,6 +345,7 @@ export function localLanguage(
   ): Promise<{
     readonly command: readonly string[];
     readonly env: Readonly<Record<string, string>>;
+    readonly version: string | null;
   } | null> => {
     const spec = slot.spec;
     const pinned = options.servers?.[spec.name];
@@ -379,7 +380,7 @@ export function localLanguage(
     }
 
     if (found !== null && (spec.probe === null || (await runs(found, spec.probe, slot.root)))) {
-      return { command: [found], env: {} };
+      return { command: [found], env: {}, version: null };
     }
 
     if (download === null) {
@@ -413,10 +414,12 @@ export function localLanguage(
 
     slot.executable = installed.path;
 
-    if (installed.kind === "binary") return { command: [installed.path], env: {} };
+    const version = download.source.version;
+
+    if (installed.kind === "binary") return { command: [installed.path], env: {}, version };
     const node = hostNode();
 
-    return { command: [...node.command, installed.path], env: node.env };
+    return { command: [...node.command, installed.path], env: node.env, version };
   };
 
   const launch = async (slot: Slot): Promise<Run | null> => {
@@ -514,8 +517,9 @@ export function localLanguage(
 
     run.capabilities = initialized.capabilities;
     slot.version =
-      [initialized.version, prepared.runsOn ?? null].filter((part) => part !== null).join(", ") ||
-      null;
+      [initialized.version ?? located.version, prepared.runsOn ?? null]
+        .filter((part) => part !== null)
+        .join(", ") || null;
     rpc.notify("initialized", {});
     rpc.notify("workspace/didChangeConfiguration", { settings: run.settings });
     run.initialized = true;
