@@ -174,10 +174,11 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const strip = windowTabs.strip;
   useWindowTabsSync();
 
+  const settingsShown = (): boolean =>
+    shellRouter.state.matches.some((match) => match.routeId === settingsRoute.id);
+
   const onKeyDown = useEffectEvent((event: KeyboardEvent): void => {
-    const settingsOpen = shellRouter.state.matches.some(
-      (match) => match.routeId === settingsRoute.id,
-    );
+    const settingsOpen = settingsShown();
 
     if (settingsOpen && event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
       event.preventDefault();
@@ -215,7 +216,12 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   });
 
   const onEarlyKey = useEffectEvent((event: KeyboardEvent): void => {
-    const action = resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host));
+    const action = resolveClientAction(
+      event,
+      mac,
+      settingsShown() ? "settings" : (page?.kind ?? "workspace"),
+      clientCapabilities(nyte.host),
+    );
 
     if (
       action?.early !== true ||
