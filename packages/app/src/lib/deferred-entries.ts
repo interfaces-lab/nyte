@@ -6,7 +6,7 @@ import type { previewsRuntime } from "../settings/previews/previews.deferred.tsx
 import type { needsYouRuntime } from "../shell/needs-you-list.deferred.tsx";
 import type { ghosttyRuntime } from "../terminal/ghostty.deferred.ts";
 import type { pdfRuntime } from "../editor/pdf/pdf.deferred.ts";
-import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
+import type { workbenchRuntime } from "../shell/panels.deferred.tsx";
 
 export const deferredEntries = {
   images: {
@@ -26,7 +26,7 @@ export const deferredEntries = {
     packages: ["beautiful-mermaid/", "elkjs/"],
   },
   workbench: {
-    module: new URL("../workbench/panels.deferred.tsx", import.meta.url).href,
+    module: new URL("../shell/panels.deferred.tsx", import.meta.url).href,
     packages: ["@pierre/diffs/", "preact/"],
   },
   ghostty: {

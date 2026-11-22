@@ -1,7 +1,7 @@
 import { selectSession, tabPanes } from "../../test/panes.ts";
 import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
-import "./panels.deferred.tsx";
+import "../shell/panels.deferred.tsx";
 import { CodeView } from "@nyte-ai/ui/diffs/react";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
