@@ -1,0 +1,26 @@
+#:schema ./service.schema.json
+# NotifyHub service configuration
+# Validated offline against the local JSON schema.
+
+[service]
+name = "notifyhub"
+port = 8080
+mode = "staging"
+tags = [
+  "api",
+  "v2",
+]
+endpoint = { host = "127.0.0.1", tls = true }
+
+[database]
+url = "postgres://localhost:5432/notifyhub"
+pool_size=16
+
+
+[[workers]]
+name = "email"
+concurrency = 4
+
+[[workers]]
+name = "webhook"
+concurrency = 8

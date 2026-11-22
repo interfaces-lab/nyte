@@ -1,0 +1,8 @@
+[package]
+name = "notify"
+version = 1
+edition.workspace = true
+license = "MIT"
+
+[dependencies]
+serde = { workspace = true }

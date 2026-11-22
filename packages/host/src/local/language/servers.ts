@@ -10,6 +10,7 @@ import { POSTGRES_LANGUAGE_SERVER } from "./servers/postgres-language-server.ts"
 import { RUFF } from "./servers/ruff.ts";
 import { RUST_ANALYZER } from "./servers/rust-analyzer.ts";
 import { SOURCEKIT_LSP } from "./servers/sourcekit-lsp.ts";
+import { TOMBI } from "./servers/tombi.ts";
 import { TY } from "./servers/ty.ts";
 import { TYPESCRIPT_LANGUAGE_SERVER } from "./servers/typescript-language-server.ts";
 import { VSCODE_CSS_LANGUAGE_SERVER } from "./servers/vscode-css-language-server.ts";
@@ -24,6 +25,7 @@ export const SERVERS: readonly CompleteSpec[] = [
   GOPLS,
   TY,
   RUFF,
+  TOMBI,
   SOURCEKIT_LSP,
   RUST_ANALYZER,
   TYPESCRIPT_LANGUAGE_SERVER,

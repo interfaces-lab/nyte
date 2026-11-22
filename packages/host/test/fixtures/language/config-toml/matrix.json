@@ -1,0 +1,169 @@
+{
+  "language": "toml",
+  "servers": [
+    "tombi"
+  ],
+  "vscode": {
+    "extension": "tamasfe.even-better-toml",
+    "source": "https://github.com/tamasfe/taplo/blob/master/editors/vscode/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "service.toml",
+          "after": "pool_size=16\n",
+          "says": "timeout_ms"
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "From the schema the #:schema directive names, so it works offline."
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "service.toml",
+          "after": "po",
+          "says": "TCP port the HTTP listener binds to."
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "From the schema the #:schema directive names, so it works offline."
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "Cargo.toml",
+          "after": "members = [\"crates/no",
+          "says": "crates/notify/Cargo.toml"
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": false,
+      "note": "Tombi's Cargo extension jumps from a workspace member to its Cargo.toml. even-better-toml offers no definition."
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "service.toml",
+          "after": "po",
+          "says": "service.schema.json"
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": false,
+      "note": "Tombi jumps to the key's definition in the JSON Schema. even-better-toml offers no type definition."
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "Cargo.toml",
+          "after": "[workspace.dependencies]\nser",
+          "says": "crates/notify/Cargo.toml"
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": false,
+      "note": "Tombi's Cargo extension finds the members that inherit a workspace dependency. even-better-toml offers no references."
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "service.toml",
+          "says": "database"
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "crates/notify/Cargo.toml",
+          "after": "lice",
+          "says": "Inherit from Workspace"
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": false,
+      "note": "Tombi's Cargo extension offers refactors such as inheriting a package field from the workspace. even-better-toml offers no code actions."
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "Cargo.toml"
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "Tombi replaces its own copy of a document with the formatted text when it answers, so a second request on a file that needed formatting returns nothing. The probe uses a file already formatted."
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "service.toml",
+          "after": "pool_size=16"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "service.toml",
+          "after": "pool_"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": true,
+      "note": "Gap: even-better-toml renames keys through Taplo's renameProvider. Tombi 1.11.3 declares no renameProvider."
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "invalid.toml",
+          "says": "Integer, but found String"
+        },
+        {
+          "file": "crates/notify/Cargo.toml",
+          "says": "expected a value of type String, but found Integer"
+        }
+      ],
+      "servers": [
+        "tombi"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "The Cargo.toml probe proves the catalog schema applies. Tombi ships the Cargo.toml and pyproject.toml schemas and their catalog inside its binary as tombi:// URLs, so this probe needs no network."
+    }
+  }
+}
