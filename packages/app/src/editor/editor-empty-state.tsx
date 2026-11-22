@@ -9,7 +9,7 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { createFileRanking } from "../lib/file-ranking.ts";
+import { createFileRanking } from "../data/file-ranking.ts";
 import { treeStatus } from "./tree-theme.ts";
 import { nyte } from "../contract/nyte.ts";
 
