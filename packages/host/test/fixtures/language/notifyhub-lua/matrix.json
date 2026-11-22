@@ -1,0 +1,163 @@
+{
+  "language": "lua",
+  "servers": [
+    "lua-language-server"
+  ],
+  "vscode": {
+    "extension": "sumneko.lua",
+    "source": "https://github.com/LuaLS/vscode-lua/blob/master/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "main.lua",
+          "after": "local   report=hub:",
+          "says": "stats"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "main.lua",
+          "after": "hub:sub",
+          "says": "(method) Hub:submit(message: Message, strict: boolean)"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "main.lua",
+          "after": "local hub = hubMod.Hub.n",
+          "says": "hub/hub.lua"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "main.lua",
+          "after": "hub:submit(mess",
+          "says": "hub/hub.lua"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "hub/stats.lua",
+          "after": "local function bu",
+          "says": "hub/stats.lua"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "hub/stats.lua",
+          "says": "newStats"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "hub/webhook.lua",
+          "after": "local audit = missing",
+          "says": "Disable diagnostics on this line"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "main.lua",
+          "says": "local report = hub:stats()"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "main.lua",
+          "after": "local   report=hub:",
+          "says": "local report = hub:stats()"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "hub/stats.lua",
+          "after": "local function bu",
+          "says": "hub/stats.lua"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "hub/webhook.lua",
+          "says": "Undefined global"
+        }
+      ],
+      "servers": [
+        "lua-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}
