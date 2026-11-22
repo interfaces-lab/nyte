@@ -36,20 +36,6 @@
       "answers": true,
       "vscode": true
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "main.go",
-          "after": "h.Submit(ctx, ",
-          "says": "Submit(ctx context.Context"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "definition": {
       "probes": [
         {
@@ -78,50 +64,12 @@
       "answers": true,
       "vscode": true
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "hub/hub.go",
-          "after": "type Chan",
-          "says": "hub/email.go"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "main.go",
-          "after": "h := hub.N"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "references": {
       "probes": [
         {
           "file": "hub/stats.go",
           "after": "func bu",
           "says": "hub/stats.go"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "documentHighlights": {
-      "probes": [
-        {
-          "file": "hub/stats.go",
-          "after": "func bu"
         }
       ],
       "servers": [
@@ -139,20 +87,6 @@
         {
           "file": "summary.gotmpl",
           "says": "summary"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "hub/stats.go",
-          "query": "newStats",
-          "says": "newStats"
         }
       ],
       "servers": [
@@ -207,134 +141,6 @@
           "file": "hub/stats.go",
           "after": "type Cou",
           "says": "hub/stats.go"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "hub/stats.go"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "main.go",
-          "says": "pkg.go.dev"
-        },
-        {
-          "file": "go.mod",
-          "says": "go.dev/doc/modules/gomod-ref"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "main.go"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "main.go",
-          "after": "h := hub.N"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "hub/hub.go"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "hub/hub.go",
-          "after": "func Ne"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "main.go",
-          "says": "function"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": false,
-      "note": "gopls.ui.semanticTokens defaults to false in golang.go (extension/package.json), so VS Code uses its built-in TextMate grammar by default; Nyte enables semanticTokens."
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "main.go"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": false,
-      "note": "All go.inlayHints.* settings default to false in golang.go (extension/package.json) and are forwarded as ui.inlayhint.hints in goLanguageServer.ts; Nyte enables parameterNames and constantValues."
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "hub/stats.go",
-          "after": "func bu",
-          "says": "add"
-        }
-      ],
-      "servers": [
-        "gopls"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "typeHierarchy": {
-      "probes": [
-        {
-          "file": "hub/hub.go",
-          "after": "type Chan",
-          "says": "Email"
         }
       ],
       "servers": [

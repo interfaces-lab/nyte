@@ -1,8 +1,6 @@
 import type { LanguagePosition } from "@nyte-ai/core";
 import { isJson } from "@nyte-ai/schema";
 import type {
-  DocumentLink,
-  DocumentLinkToken,
   Json,
   CodeAction,
   CodeActionKind,
@@ -28,7 +26,6 @@ import {
   toLspRange,
 } from "./lsp.ts";
 import { findProvider } from "./capabilities.ts";
-import { readDocumentLink, readDocumentLinks } from "./lsp-structure.ts";
 import { LspError } from "./rpc.ts";
 import { ask, findProviders } from "./route.ts";
 import type { Run, Servers } from "./state.ts";
@@ -250,60 +247,6 @@ export async function resolveCodeAction(
   if (failure !== null) return { kind: "refused", reason: failure };
 
   return { kind: "edit", edit: { files: collected.flatMap((edit) => edit.files) } };
-}
-
-export async function documentLinks(
-  servers: Servers,
-  input: { readonly path: string },
-): Promise<readonly DocumentLink[]> {
-  const found = await Promise.all(
-    (await findProviders(servers, input.path, "documentLinks")).map(async (asked) => {
-      const target = asked.target;
-
-      const asking = await ask(servers, target, "textDocument/documentLink", {
-        textDocument: { uri: asked.uri },
-      });
-
-      const links =
-        asking instanceof LspError ? [] : readDocumentLinks(asking.answer, servers.place);
-      const resolves = asked.provider.resolveProvider === true;
-      target.slot.answers += 1;
-      const number = target.slot.answers;
-      target.slot.links.set(asked.uri, { answer: number, items: links.map((read) => read.raw) });
-
-      return links.map((read, index): DocumentLink => ({
-        ...read.link,
-        token:
-          read.link.target === null && resolves
-            ? { kind: "documentLink", server: target.run.id, answer: number, item: index }
-            : null,
-      }));
-    }),
-  );
-
-  return found
-    .flat()
-    .toSorted((left, right) => comparePositions(left.range.start, right.range.start));
-}
-
-export async function resolveDocumentLink(
-  servers: Servers,
-  input: { readonly token: DocumentLinkToken },
-): Promise<DocumentLink | null> {
-  const token = input.token;
-  const found = servers.findRun(token.server);
-  const held = [...(found?.slot.links.values() ?? [])].find(
-    (links) => links.answer === token.answer,
-  );
-  const raw = held?.items[token.item];
-
-  if (found === null || raw === undefined) return null;
-
-  servers.touch(found.slot);
-  const asking = await ask(servers, found, "documentLink/resolve", raw);
-  const read = asking instanceof LspError ? null : readDocumentLink(asking.answer, servers.place);
-
-  return read === null ? null : { ...read.link, token: null };
 }
 
 async function resolveDetails(

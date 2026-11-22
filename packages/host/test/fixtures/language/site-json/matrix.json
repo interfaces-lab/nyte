@@ -31,17 +31,6 @@
       "answers": true,
       "vscode": true
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "after": "\"acc"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "definition": {
       "probes": [
         {
@@ -64,40 +53,7 @@
       "answers": false,
       "vscode": false
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "after": "\"acc"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "after": "\"acc"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "references": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "after": "\"acc"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentHighlights": {
       "probes": [
         {
           "file": "theme.json",
@@ -118,17 +74,6 @@
       "servers": ["vscode-json-language-server"],
       "answers": true,
       "vscode": true
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "query": "accent"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
     },
     "codeActions": {
       "probes": [
@@ -165,113 +110,6 @@
       "vscode": true
     },
     "rename": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "after": "\"acc"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "theme.json"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "theme.schema.json",
-          "says": "theme.schema.json"
-        }
-      ],
-      "servers": ["vscode-json-language-server"],
-      "answers": true,
-      "vscode": true,
-      "note": "Resolves internal JSON Schema $ref pointers."
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "says": "#1d4ed8"
-        }
-      ],
-      "servers": ["vscode-json-language-server"],
-      "answers": true,
-      "vscode": true
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "after": "\"acc"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "theme.json"
-        }
-      ],
-      "servers": ["vscode-json-language-server"],
-      "answers": true,
-      "vscode": true
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "after": "\"acc"
-        }
-      ],
-      "servers": ["vscode-json-language-server"],
-      "answers": true,
-      "vscode": true
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "theme.json"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "theme.json"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "theme.json",
-          "after": "\"acc"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "typeHierarchy": {
       "probes": [
         {
           "file": "theme.json",

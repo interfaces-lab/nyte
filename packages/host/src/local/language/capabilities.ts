@@ -8,18 +8,10 @@ import { Type } from "typebox";
 export const PROVIDERS = {
   completion: { capability: "completionProvider", method: "textDocument/completion" },
   hover: { capability: "hoverProvider", method: "textDocument/hover" },
-  signatureHelp: { capability: "signatureHelpProvider", method: "textDocument/signatureHelp" },
   definition: { capability: "definitionProvider", method: "textDocument/definition" },
   typeDefinition: { capability: "typeDefinitionProvider", method: "textDocument/typeDefinition" },
-  implementation: { capability: "implementationProvider", method: "textDocument/implementation" },
-  declaration: { capability: "declarationProvider", method: "textDocument/declaration" },
   references: { capability: "referencesProvider", method: "textDocument/references" },
-  documentHighlights: {
-    capability: "documentHighlightProvider",
-    method: "textDocument/documentHighlight",
-  },
   symbols: { capability: "documentSymbolProvider", method: "textDocument/documentSymbol" },
-  workspaceSymbols: { capability: "workspaceSymbolProvider", method: "workspace/symbol" },
   codeActions: { capability: "codeActionProvider", method: "textDocument/codeAction" },
   format: { capability: "documentFormattingProvider", method: "textDocument/formatting" },
   formatRange: {
@@ -27,28 +19,6 @@ export const PROVIDERS = {
     method: "textDocument/rangeFormatting",
   },
   rename: { capability: "renameProvider", method: "textDocument/rename" },
-  renameFiles: {
-    capability: "workspace.fileOperations.willRename",
-    method: "workspace/willRenameFiles",
-  },
-  documentLinks: { capability: "documentLinkProvider", method: "textDocument/documentLink" },
-  documentColors: { capability: "colorProvider", method: "textDocument/documentColor" },
-  linkedEditingRanges: {
-    capability: "linkedEditingRangeProvider",
-    method: "textDocument/linkedEditingRange",
-  },
-  foldingRanges: { capability: "foldingRangeProvider", method: "textDocument/foldingRange" },
-  selectionRanges: { capability: "selectionRangeProvider", method: "textDocument/selectionRange" },
-  semanticTokens: { capability: "semanticTokensProvider", method: "textDocument/semanticTokens" },
-  inlayHints: { capability: "inlayHintProvider", method: "textDocument/inlayHint" },
-  callHierarchy: {
-    capability: "callHierarchyProvider",
-    method: "textDocument/prepareCallHierarchy",
-  },
-  typeHierarchy: {
-    capability: "typeHierarchyProvider",
-    method: "textDocument/prepareTypeHierarchy",
-  },
   diagnostics: { capability: "diagnosticProvider", method: "textDocument/diagnostic" },
   filesCreated: {
     capability: "workspace.fileOperations.didCreate",
@@ -213,26 +183,18 @@ const FileFilters = compile(
     filters: Type.Array(
       Type.Object({
         scheme: Type.Optional(Type.String()),
-        pattern: Type.Object({ glob: Type.String(), matches: Type.Optional(Type.String()) }),
+        pattern: Type.Object({ glob: Type.String() }),
       }),
     ),
   }),
 );
 
-/** Whether a server's file operation filters take this path; a null `kind` stands for a path that is gone, which any `matches` takes. */
-export function operatesOn(
-  provider: JsonSchema,
-  path: string,
-  kind: "file" | "folder" | null,
-): boolean {
+export function operatesOn(provider: JsonSchema, path: string): boolean {
   return (
     !FileFilters.Check(provider) ||
     provider.filters.some(
       (filter) =>
         (filter.scheme === undefined || filter.scheme === "file") &&
-        (filter.pattern.matches === undefined ||
-          kind === null ||
-          filter.pattern.matches === kind) &&
         matches(path, "/", filter.pattern.glob),
     )
   );

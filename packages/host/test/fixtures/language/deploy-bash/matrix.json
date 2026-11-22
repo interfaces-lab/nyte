@@ -41,17 +41,6 @@
       "answers": true,
       "vscode": true
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "after": "build_release_path "
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "definition": {
       "probes": [
         {
@@ -77,28 +66,6 @@
       "answers": false,
       "vscode": false
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "after": "build_release_pa"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "after": "build_release_pa"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "references": {
       "probes": [
         {
@@ -113,38 +80,11 @@
       "answers": true,
       "vscode": true
     },
-    "documentHighlights": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "after": "echo $release_pa"
-        }
-      ],
-      "servers": [
-        "bash-language-server"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "symbols": {
       "probes": [
         {
           "file": "release.sh",
           "says": "build_release_path"
-        }
-      ],
-      "servers": [
-        "bash-language-server"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "query": "check_service_health",
-          "says": "check_service_health"
         }
       ],
       "servers": [
@@ -206,112 +146,6 @@
       ],
       "answers": true,
       "vscode": true
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "release.sh"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "deploy.sh"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "deploy.sh"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "after": "echo $release_pa"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "deploy.sh"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": true,
-      "note": "Provided by VS Code's built-in shellscript language configuration (indentation and #region/#endregion markers); bash-language-server does not implement textDocument/foldingRange."
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "after": "build_release_pa"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false,
-      "note": "bash-language-server does not implement textDocument/selectionRange; VS Code only falls back to generic word, bracket, and line selection."
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "deploy.sh"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "deploy.sh"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "after": "deploy_relea"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "typeHierarchy": {
-      "probes": [
-        {
-          "file": "deploy.sh",
-          "after": "deploy_relea"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
     },
     "diagnostics": {
       "probes": [

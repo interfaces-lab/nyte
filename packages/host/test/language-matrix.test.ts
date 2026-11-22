@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { compile, LanguageFeatureType, LanguageNameType } from "@nyte-ai/schema";
 import type { LanguageFeature, TextPosition } from "@nyte-ai/schema";
 import type { LanguageService } from "@nyte-ai/core";
@@ -34,7 +34,6 @@ type Row = LanguageFeature | "diagnostics";
 const ProbeType = Type.Object({
   file: Type.String(),
   after: Type.Optional(Type.String()),
-  query: Type.Optional(Type.String()),
   says: Type.Optional(Type.String()),
 });
 
@@ -211,15 +210,6 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
     return { line: before.length - 1, utf16Column: before.at(-1)?.length ?? 0 };
   };
 
-  const whole = async (probe: Probe) => {
-    const lines = (await readFile(join(root, probe.file), "utf8")).split("\n");
-
-    return {
-      start: { line: 0, utf16Column: 0 },
-      end: { line: lines.length - 1, utf16Column: lines.at(-1)?.length ?? 0 },
-    };
-  };
-
   const ask: Record<Row, (probe: Probe) => Promise<readonly unknown[]>> = {
     async diagnostics(probe) {
       await language.symbols({ path: probe.file });
@@ -248,37 +238,18 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
 
       return hover === null ? [] : [hover.markdown];
     },
-    async signatureHelp(probe) {
-      const help = await language.signatureHelp({
-        path: probe.file,
-        position: await locate(probe),
-      });
-
-      return help?.signatures.map((signature) => signature.label) ?? [];
-    },
     definition: async (probe) =>
       language.definition({ path: probe.file, position: await locate(probe) }),
     typeDefinition: async (probe) =>
       language.typeDefinition({ path: probe.file, position: await locate(probe) }),
-    implementation: async (probe) =>
-      language.implementation({ path: probe.file, position: await locate(probe) }),
-    declaration: async (probe) =>
-      language.declaration({ path: probe.file, position: await locate(probe) }),
     references: async (probe) =>
       language.references({
         path: probe.file,
         position: await locate(probe),
         includeDeclaration: true,
       }),
-    documentHighlights: async (probe) =>
-      language.documentHighlights({ path: probe.file, position: await locate(probe) }),
     async symbols(probe) {
       return (await language.symbols({ path: probe.file })).map((symbol) => symbol.name);
-    },
-    async workspaceSymbols(probe) {
-      const found = await language.workspaceSymbols({ query: probe.query ?? "" });
-
-      return found.map((symbol) => symbol.name);
     },
     async codeActions(probe) {
       const position = await locate(probe);
@@ -309,34 +280,6 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
 
       return outcome.kind === "edits" ? [outcome.kind, ...outcome.edits] : [];
     },
-    async renameFiles(probe) {
-      const outcome = await language.renameFiles({
-        files: [
-          { from: probe.file, to: join(dirname(probe.file), `moved_${basename(probe.file)}`) },
-        ],
-      });
-
-      return outcome.kind === "edit"
-        ? outcome.edit.files.filter((file) => file.edits.length > 0).map((file) => file.path)
-        : [];
-    },
-    documentLinks: (probe) => language.documentLinks({ path: probe.file }),
-    async documentColors(probe) {
-      const colors = await language.documentColors({ path: probe.file });
-      const first = colors[0];
-
-      return first === undefined
-        ? []
-        : [...colors, ...(await language.colorPresentations({ path: probe.file, ...first }))];
-    },
-    async linkedEditingRanges(probe) {
-      const linked = await language.linkedEditingRanges({
-        path: probe.file,
-        position: await locate(probe),
-      });
-
-      return linked?.ranges ?? [];
-    },
     async rename(probe) {
       const outcome = await language.rename({
         path: probe.file,
@@ -347,61 +290,6 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
       return outcome.kind === "edit"
         ? outcome.edit.files.filter((file) => file.edits.length > 0).map((file) => file.path)
         : [];
-    },
-    foldingRanges: (probe) => language.foldingRanges({ path: probe.file }),
-    async selectionRanges(probe) {
-      const lists = await language.selectionRanges({
-        path: probe.file,
-        positions: [await locate(probe)],
-      });
-
-      return lists[0] ?? [];
-    },
-    async semanticTokens(probe) {
-      const tokens = await language.semanticTokens({ path: probe.file });
-
-      return tokens === null || tokens.data.length === 0 ? [] : tokens.types;
-    },
-    async inlayHints(probe) {
-      const hints = await language.inlayHints({ path: probe.file, range: await whole(probe) });
-
-      return hints.map((hint) => hint.label);
-    },
-    async callHierarchy(probe) {
-      const roots = await language.callHierarchy({
-        path: probe.file,
-        position: await locate(probe),
-      });
-
-      const calls = await Promise.all(
-        roots.flatMap((item) => [
-          language.incomingCalls({ token: item.token }),
-          language.outgoingCalls({ token: item.token }),
-        ]),
-      );
-
-      return calls.flat().length === 0
-        ? []
-        : [...roots, ...calls.flat()].map((entry) =>
-            "item" in entry ? entry.item.name : entry.name,
-          );
-    },
-    async typeHierarchy(probe) {
-      const roots = await language.typeHierarchy({
-        path: probe.file,
-        position: await locate(probe),
-      });
-
-      const related = await Promise.all(
-        roots.flatMap((item) => [
-          language.supertypes({ token: item.token }),
-          language.subtypes({ token: item.token }),
-        ]),
-      );
-
-      return related.flat().length === 0
-        ? []
-        : [...roots, ...related.flat()].map((item) => item.name);
     },
   };
 

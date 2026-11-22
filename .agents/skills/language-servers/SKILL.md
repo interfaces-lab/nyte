@@ -23,7 +23,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 ## The spec
 
 4. **One file per server** in the `servers` folder beside `spec.ts`, exporting one `ServerSpec`. Add it to `SERVERS` in `servers.ts`.
-5. **Order in `SERVERS` is priority.** Where only one answer applies (rename, signature help, formatting, semantic tokens, highlights, hierarchies), the first server that answers wins. Put the server that understands the language before its linters.
+5. **Order in `SERVERS` is priority.** Where only one answer applies (rename, formatting), the first server that answers wins. Put the server that understands the language before its linters.
 6. **`languages` names rows of `LANGUAGES` in the schema.** That table maps a file to the identifier LSP knows it by: `ids` by extension, `fileNames` by whole file name, where `*` stands for any text, as in `tsconfig.*.json`. A name wins over an extension. Add an entry there when one is missing, and use `fileNames` for a file whose extension belongs to others, such as `go.mod`. Never add a language name in a language branch: it changes a wire type.
 7. **`rootMarkers` find the project root.** The nearest folder at or above the file that holds one becomes the server's root, and the workspace folder when none does.
 8. **`requiresRootMarker: true` is for a server that runs only when configured.** oxlint takes a file only when its configuration sits at or above it. Its markers are its configuration files.
@@ -60,7 +60,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 ## The fixture
 
 21. **One small real project per language** in its own folder under the language fixtures. Five files are enough.
-22. **Give every feature something to find**: a diagnostic on purpose, an interface with two implementations, a function with a caller, a call with arguments, a type with a subtype, a line a formatter would change.
+22. **Give every feature something to find**: a diagnostic on purpose, a function with a caller, a type defined in another file, a line a formatter would change.
 23. **The server must load it offline.** No dependency it would fetch, no build output, no vendored tree.
 24. **Never change another language's fixture.**
 
@@ -69,7 +69,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 ## The matrix
 
 25. **`matrix.json` in the fixture folder holds one row per feature**, every feature of `LanguageFeature` plus `diagnostics`.
-26. **A probe says where to ask.** `file` is the path. `after` is text in that file, and the position is right after its first occurrence, so end it inside the symbol. `query` is for workspace symbols. `says` is text the answer must contain. A formatter that changes nothing still answers, so give a format probe a `says` from the text it writes whenever the server formats through a second program.
+26. **A probe says where to ask.** `file` is the path. `after` is text in that file, and the position is right after its first occurrence, so end it inside the symbol. `says` is text the answer must contain. A formatter that changes nothing still answers, so give a format probe a `says` from the text it writes whenever the server formats through a second program.
 27. **`servers` lists who offers the feature**, as their status rows say once ready. **`answers` says whether the probes got an answer** through the merged API.
 28. **`vscode` says whether VS Code with the extension offers the feature by default.** Put the reason in `note` wherever it differs from `answers`.
 35. **The matrix runs the pinned version of every server**, never one from `PATH`. A row describes what Nyte ships. Without `NYTE_LANGUAGE_DOWNLOADS=1` the matrix is skipped.

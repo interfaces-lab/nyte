@@ -57,7 +57,6 @@ interface Fixture {
     readonly placeholder: string;
     readonly files: readonly string[];
   };
-  readonly signature: { readonly at: string; readonly says: string; readonly parameter: string };
   readonly breaking: { readonly file: string; readonly after: number; readonly text: string };
   readonly misindent: {
     readonly file: string;
@@ -65,7 +64,6 @@ interface Fixture {
     readonly indent: string;
     readonly bad: string;
   };
-  readonly annotated: string;
   readonly action: { readonly at: string; readonly title: string };
 }
 
@@ -120,14 +118,8 @@ const GO: Fixture = {
     placeholder: "Counts",
     files: ["hub/hub_test.go", "hub/stats.go"],
   },
-  signature: {
-    at: "main.go:27:27",
-    says: "Submit(ctx context.Context, message hub.Message) error",
-    parameter: "message hub.Message",
-  },
   breaking: { file: "hub/hub.go", after: 36, text: '\tvar broken int = "text"' },
   misindent: { file: "hub/hub.go", line: 42, indent: "\t", bad: "      " },
-  annotated: "main.go",
   action: { at: "hub/hub.go:77:35", title: "Remove unused parameter" },
 };
 
@@ -186,14 +178,8 @@ const TYPESCRIPT: Fixture = {
     ],
   },
   rename: { at: "src/stats.ts:2:18", placeholder: "Counts", files: ["src/stats.ts"] },
-  signature: {
-    at: "src/index.ts:19:31",
-    says: "submit(message: Message, signal: AbortSignal): Promise<void>",
-    parameter: "signal: AbortSignal",
-  },
   breaking: { file: "src/hub.ts", after: 54, text: '    const broken: number = "text";' },
   misindent: { file: "src/channels/webhook.ts", line: 14, indent: "    ", bad: "          " },
-  annotated: "src/index.ts",
   action: { at: "src/channels/webhook.ts:19:11", title: "Remove unused declaration" },
 };
 
@@ -511,38 +497,6 @@ describe.each([GO, TYPESCRIPT].filter((fixture) => installed.has(fixture.server)
               .toSorted()
           : outcome,
       ).toEqual([...fixture.rename.files].toSorted());
-    });
-
-    it("shows the signature with its active parameter", async () => {
-      const help = await language.signatureHelp(place(fixture.signature.at));
-      const signature = help?.signatures[help.activeSignature];
-      const parameter = signature?.parameters[help?.activeParameter ?? -1];
-
-      expect(signature?.label).toContain(fixture.signature.says);
-      expect(signature?.label.slice(parameter?.utf16Start, parameter?.utf16End)).toBe(
-        fixture.signature.parameter,
-      );
-    });
-
-    it("lists inlay hints in order and in range", async () => {
-      const text = await readFile(join(root, fixture.annotated), "utf8");
-      const lines = text.split("\n");
-
-      const hints = await language.inlayHints({
-        path: fixture.annotated,
-        range: { start: { line: 0, utf16Column: 0 }, end: { line: lines.length, utf16Column: 0 } },
-      });
-
-      expect(hints.length).toBeGreaterThan(0);
-      expect(
-        hints.every(
-          (hint, index) =>
-            hint.label !== "" &&
-            hint.position.utf16Column <= (lines[hint.position.line]?.length ?? -1) &&
-            (index === 0 ||
-              compare(hints[index - 1]?.position ?? hint.position, hint.position) <= 0),
-        ),
-      ).toBe(true);
     });
 
     it("formats a misindented line", async () => {

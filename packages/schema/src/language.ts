@@ -319,29 +319,14 @@ export function findLanguage(path: string): FoundLanguage | null {
 export const LanguageFeatureType = Type.Enum([
   "completion",
   "hover",
-  "signatureHelp",
   "definition",
   "typeDefinition",
-  "implementation",
-  "declaration",
   "references",
-  "documentHighlights",
   "symbols",
-  "workspaceSymbols",
   "codeActions",
   "format",
   "formatRange",
   "rename",
-  "renameFiles",
-  "documentLinks",
-  "documentColors",
-  "linkedEditingRanges",
-  "foldingRanges",
-  "selectionRanges",
-  "semanticTokens",
-  "inlayHints",
-  "callHierarchy",
-  "typeHierarchy",
 ]);
 
 export type LanguageFeature = Decoded<typeof LanguageFeatureType>;
@@ -492,21 +477,6 @@ export const HoverType = Type.Object({ markdown: Type.String(), range: nullable(
 
 export type Hover = Decoded<typeof HoverType>;
 
-/** Each parameter is a span of `label` in UTF-16 code units. */
-export const SignatureHelpType = Type.Object({
-  signatures: Type.Array(
-    Type.Object({
-      label: Type.String(),
-      documentation: Type.String(),
-      parameters: Type.Array(Type.Object({ utf16Start: Type.Number(), utf16End: Type.Number() })),
-    }),
-  ),
-  activeSignature: Type.Number(),
-  activeParameter: nullable(Type.Number()),
-});
-
-export type SignatureHelp = Decoded<typeof SignatureHelpType>;
-
 export const SymbolKindType = Type.Enum([
   "file",
   "module",
@@ -606,16 +576,6 @@ export const CodeActionOutcomeType = Type.Union([
 
 export type CodeActionOutcome = Decoded<typeof CodeActionOutcomeType>;
 
-export const InlayHintType = Type.Object({
-  position: TextPositionType,
-  label: Type.String(),
-  kind: Type.Enum(["type", "parameter", "other"]),
-  padLeft: Type.Boolean(),
-  padRight: Type.Boolean(),
-});
-
-export type InlayHint = Decoded<typeof InlayHintType>;
-
 export const FormatOptionsType = Type.Object({
   tabSize: Type.Number(),
   insertSpaces: Type.Boolean(),
@@ -630,135 +590,3 @@ export const LanguageFormatOutcomeType = Type.Union([
 ]);
 
 export type LanguageFormatOutcome = Decoded<typeof LanguageFormatOutcomeType>;
-
-export const DocumentHighlightType = Type.Object({
-  range: TextRangeType,
-  kind: Type.Enum(["text", "read", "write"]),
-});
-
-export type DocumentHighlight = Decoded<typeof DocumentHighlightType>;
-
-/** A symbol found by name across the workspace; `container` is the symbol it sits in, empty at top level. */
-export const WorkspaceSymbolType = Type.Object({
-  name: Type.String(),
-  kind: SymbolKindType,
-  container: Type.String(),
-  location: LanguageLocationType,
-  deprecated: Type.Boolean(),
-});
-
-export type WorkspaceSymbol = Decoded<typeof WorkspaceSymbolType>;
-
-/** Lines `startLine` through `endLine` fold, the first staying visible. */
-export const FoldingRangeType = Type.Object({
-  startLine: Type.Number(),
-  endLine: Type.Number(),
-  kind: nullable(Type.Enum(["comment", "imports", "region"])),
-});
-
-export type FoldingRange = Decoded<typeof FoldingRangeType>;
-
-/** A document's tokens as LSP encodes them: five numbers per token in `data` (lines since the last token, UTF-16 columns since the last token on that line or the line's start, UTF-16 length, index into `types`, bit set over `modifiers`). */
-export const SemanticTokensType = Type.Object({
-  types: Type.Array(Type.String()),
-  modifiers: Type.Array(Type.String()),
-  data: Type.Array(Type.Number()),
-});
-
-export type SemanticTokens = Decoded<typeof SemanticTokensType>;
-
-/** Names one item of one call or type hierarchy of one server run; preparing that hierarchy again or a restart makes it stale. */
-export const HierarchyTokenType = Type.Object({
-  kind: Type.Enum(["callHierarchy", "typeHierarchy"]),
-  server: idSchema<"language-server">(),
-  answer: Type.Number(),
-  item: Type.Number(),
-});
-
-export type HierarchyToken = Decoded<typeof HierarchyTokenType>;
-
-export const HierarchyItemType = Type.Object({
-  name: Type.String(),
-  detail: Type.String(),
-  kind: SymbolKindType,
-  location: LanguageLocationType,
-  selection: TextRangeType,
-  deprecated: Type.Boolean(),
-  token: HierarchyTokenType,
-});
-
-export type HierarchyItem = Decoded<typeof HierarchyItemType>;
-
-/** A caller or callee of the item asked about; `ranges` are the call sites, in the caller's file. */
-export const HierarchyCallType = Type.Object({
-  item: HierarchyItemType,
-  ranges: Type.Array(TextRangeType),
-});
-
-export type HierarchyCall = Decoded<typeof HierarchyCallType>;
-
-export const LanguageRefreshType = Type.Enum(["semanticTokens", "inlayHints"]);
-
-export type LanguageRefresh = Decoded<typeof LanguageRefreshType>;
-
-/** Names one link of one document-links answer of one server run; a later answer for any file from that server, or a restart, makes it stale. */
-export const DocumentLinkTokenType = Type.Object({
-  kind: Type.Literal("documentLink"),
-  server: idSchema<"language-server">(),
-  answer: Type.Number(),
-  item: Type.Number(),
-});
-
-export type DocumentLinkToken = Decoded<typeof DocumentLinkTokenType>;
-
-export const LinkTargetType = Type.Union([
-  Type.Object({
-    kind: Type.Literal("file"),
-    path: Type.String(),
-    position: nullable(TextPositionType),
-  }),
-  Type.Object({ kind: Type.Literal("url"), url: Type.String() }),
-]);
-
-export type LinkTarget = Decoded<typeof LinkTargetType>;
-
-/** `target` is null while the server has yet to work it out; `token` then resolves it, and is null when there is nothing more to ask. */
-export const DocumentLinkType = Type.Object({
-  range: TextRangeType,
-  target: nullable(LinkTargetType),
-  tooltip: Type.String(),
-  token: nullable(DocumentLinkTokenType),
-});
-
-export type DocumentLink = Decoded<typeof DocumentLinkType>;
-
-/** Each channel runs from 0 to 1. */
-export const ColorType = Type.Object({
-  red: Type.Number(),
-  green: Type.Number(),
-  blue: Type.Number(),
-  alpha: Type.Number(),
-});
-
-export type Color = Decoded<typeof ColorType>;
-
-export const DocumentColorType = Type.Object({ range: TextRangeType, color: ColorType });
-
-export type DocumentColor = Decoded<typeof DocumentColorType>;
-
-/** One way to write a colour, such as `#ff0000` or `rgb(255 0 0)`; `edit` null puts `label` in place of the colour's range. */
-export const ColorPresentationType = Type.Object({
-  label: Type.String(),
-  edit: nullable(TextEditType),
-  additionalEdits: Type.Array(TextEditType),
-});
-
-export type ColorPresentation = Decoded<typeof ColorPresentationType>;
-
-/** Ranges whose text changes together, such as an opening tag and its closing one; `wordPattern` is a regular expression the shared text must keep matching, null when any text goes. */
-export const LinkedEditingRangesType = Type.Object({
-  ranges: Type.Array(TextRangeType),
-  wordPattern: nullable(Type.String()),
-});
-
-export type LinkedEditingRanges = Decoded<typeof LinkedEditingRangesType>;

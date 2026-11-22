@@ -36,20 +36,6 @@
       "answers": true,
       "vscode": true
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "src/main.cpp",
-          "after": "hub.submit(alert, ",
-          "says": "urgent"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "definition": {
       "probes": [
         {
@@ -78,58 +64,12 @@
       "answers": true,
       "vscode": true
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "include/notifyhub/hub.hpp",
-          "after": "virtual bool se",
-          "says": "include/notifyhub/hub.hpp"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "src/hub.cpp",
-          "after": "totals_ = bump_",
-          "says": "include/notifyhub/hub.hpp"
-        },
-        {
-          "file": "src/checksum.c",
-          "after": "unsigned int notifyhub_ch",
-          "says": "include/notifyhub/checksum.h"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "references": {
       "probes": [
         {
           "file": "src/hub.cpp",
           "after": "Counts bump_c",
           "says": "src/hub.cpp"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "documentHighlights": {
-      "probes": [
-        {
-          "file": "src/hub.cpp",
-          "after": "Counts bump_c"
         }
       ],
       "servers": [
@@ -147,20 +87,6 @@
         {
           "file": "src/checksum.c",
           "says": "notifyhub_checksum"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "src/hub.cpp",
-          "query": "bump_counts",
-          "says": "bump_counts"
         }
       ],
       "servers": [
@@ -214,128 +140,6 @@
           "file": "include/notifyhub/hub.hpp",
           "after": "struct Cou",
           "says": "src/hub.cpp"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "src/hub.cpp"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "src/main.cpp",
-          "says": "hub.hpp"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "src/main.cpp"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "src/main.cpp",
-          "after": "hub.sub"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "src/hub.cpp"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "src/hub.cpp",
-          "after": "Counts bump_c"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "src/main.cpp",
-          "says": "function"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "src/main.cpp"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "src/hub.cpp",
-          "after": "Counts bump_c",
-          "says": "record"
-        }
-      ],
-      "servers": [
-        "clangd"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "typeHierarchy": {
-      "probes": [
-        {
-          "file": "include/notifyhub/hub.hpp",
-          "after": "class Chan",
-          "says": "EmailChannel"
         }
       ],
       "servers": [

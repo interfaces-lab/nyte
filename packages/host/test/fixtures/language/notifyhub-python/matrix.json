@@ -44,20 +44,6 @@
       "vscode": true,
       "note": "ty contributes symbol types and docstrings; ruff contributes lint rule documentation on noqa comments."
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "notifyhub/__main__.py",
-          "after": "hub.submit(message, ",
-          "says": "dry_run: bool"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "definition": {
       "probes": [
         {
@@ -86,34 +72,6 @@
       "answers": true,
       "vscode": true
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "notifyhub/hub.py",
-          "after": "class Chan",
-          "says": "notifyhub/email.py"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "notifyhub/__main__.py",
-          "after": "hub=H",
-          "says": "notifyhub/hub.py"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "references": {
       "probes": [
         {
@@ -128,38 +86,11 @@
       "answers": true,
       "vscode": true
     },
-    "documentHighlights": {
-      "probes": [
-        {
-          "file": "notifyhub/stats.py",
-          "after": "def bu"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "symbols": {
       "probes": [
         {
           "file": "notifyhub/stats.py",
           "says": "Counts"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "notifyhub/stats.py",
-          "query": "new_stats",
-          "says": "new_stats"
         }
       ],
       "servers": [
@@ -220,130 +151,6 @@
           "file": "notifyhub/stats.py",
           "after": "class Cou",
           "says": "notifyhub/stats.py"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "notifyhub/stats.py",
-          "says": "notifyhub/hub.py"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "notifyhub/hub.py"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "notifyhub/hub.py"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "notifyhub/hub.py",
-          "after": "class Hub"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "notifyhub/hub.py"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "notifyhub/hub.py",
-          "after": "def reg"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "notifyhub/__main__.py",
-          "says": "function"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "notifyhub/__main__.py",
-          "says": "dry_run="
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true,
-      "note": "ty enables variable-type and call-argument-name inlay hints by default; Pylance offers inlay hints but defaults each category to off."
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "notifyhub/stats.py",
-          "after": "def bu",
-          "says": "add"
-        }
-      ],
-      "servers": [
-        "ty"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "typeHierarchy": {
-      "probes": [
-        {
-          "file": "notifyhub/hub.py",
-          "after": "class Chan",
-          "says": "Email"
         }
       ],
       "servers": [

@@ -36,20 +36,6 @@
       "answers": true,
       "vscode": true
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "src/main.rs",
-          "after": "hub.submit(message, ",
-          "says": "fn submit"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "definition": {
       "probes": [
         {
@@ -78,34 +64,6 @@
       "answers": true,
       "vscode": true
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "src/hub.rs",
-          "after": "pub trait Chan",
-          "says": "src/email.rs"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "src/email.rs",
-          "after": "fn se",
-          "says": "src/hub.rs"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "references": {
       "probes": [
         {
@@ -120,37 +78,10 @@
       "answers": true,
       "vscode": true
     },
-    "documentHighlights": {
-      "probes": [
-        {
-          "file": "src/stats.rs",
-          "after": "fn bu"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
     "symbols": {
       "probes": [
         {
           "file": "src/stats.rs",
-          "says": "Counts"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "src/stats.rs",
-          "query": "Counts",
           "says": "Counts"
         }
       ],
@@ -211,125 +142,6 @@
       ],
       "answers": true,
       "vscode": true
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "src/stats.rs",
-          "says": "src/main.rs"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "src/main.rs"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "src/main.rs"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "src/main.rs",
-          "after": "fn main"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "src/hub.rs"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "src/hub.rs",
-          "after": "pub fn ne"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "src/main.rs",
-          "says": "function"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "src/main.rs"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "src/stats.rs",
-          "after": "fn bu",
-          "says": "add"
-        }
-      ],
-      "servers": [
-        "rust-analyzer"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "typeHierarchy": {
-      "probes": [
-        {
-          "file": "src/hub.rs",
-          "after": "pub trait Chan"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
     },
     "diagnostics": {
       "probes": [

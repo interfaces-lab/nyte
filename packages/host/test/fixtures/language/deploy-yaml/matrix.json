@@ -42,17 +42,6 @@
       "vscode": true,
       "note": "The service.yaml probe resolves its schema offline via a modeline; the .github/workflows/ci.yml probe resolves the GitHub Actions workflow schema from SchemaStore by filename and needs the network."
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "service.yaml",
-          "after": "name: "
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "definition": {
       "probes": [
         {
@@ -78,40 +67,7 @@
       "answers": false,
       "vscode": false
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "anchors.yaml",
-          "after": "&service_def"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "anchors.yaml",
-          "after": "*service_def"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "references": {
-      "probes": [
-        {
-          "file": "anchors.yaml",
-          "after": "&service_def"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentHighlights": {
       "probes": [
         {
           "file": "anchors.yaml",
@@ -134,17 +90,6 @@
       ],
       "answers": true,
       "vscode": true
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "manifests.yaml",
-          "query": "release"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
     },
     "codeActions": {
       "probes": [
@@ -196,117 +141,6 @@
       ],
       "answers": true,
       "vscode": true
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "anchors.yaml"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "openapi.yaml",
-          "says": "openapi.yaml"
-        }
-      ],
-      "servers": [
-        "yaml-language-server"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "service.yaml"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "anchors.yaml",
-          "after": "&service_def"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "manifests.yaml"
-        }
-      ],
-      "servers": [
-        "yaml-language-server"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "anchors.yaml",
-          "after": "host: gate"
-        }
-      ],
-      "servers": [
-        "yaml-language-server"
-      ],
-      "answers": true,
-      "vscode": true
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "service.yaml"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "service.yaml"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "anchors.yaml",
-          "after": "&service_def"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "typeHierarchy": {
-      "probes": [
-        {
-          "file": "anchors.yaml",
-          "after": "&service_def"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
     },
     "diagnostics": {
       "probes": [

@@ -6,11 +6,9 @@ import type {
   DiagnosticSeverity,
   DocumentSymbol,
   Hover,
-  InlayHint,
   LanguageDiagnostic,
   LanguageLocation,
   RenameTarget,
-  SignatureHelp,
   SnippetStop,
   SymbolKind,
   TextEdit,
@@ -27,7 +25,7 @@ export type Place = (uri: string) => string | null;
 
 export const PositionType = Type.Object({ line: Type.Number(), character: Type.Number() });
 
-export const RangeType = Type.Object({ start: PositionType, end: PositionType });
+const RangeType = Type.Object({ start: PositionType, end: PositionType });
 
 export const LocationType = Type.Object({ uri: Type.String(), range: RangeType });
 
@@ -131,30 +129,6 @@ const HoverLsp = compile(
   Type.Union([Type.Null(), Type.Object({ contents: MarkupType, range: Type.Optional(RangeType) })]),
 );
 
-const SignatureHelpLsp = compile(
-  Type.Union([
-    Type.Null(),
-    Type.Object({
-      signatures: Type.Array(
-        Type.Object({
-          label: Type.String(),
-          documentation: Type.Optional(MarkupType),
-          parameters: Type.Optional(
-            Type.Array(
-              Type.Object({
-                label: Type.Union([Type.String(), Type.Tuple([Type.Number(), Type.Number()])]),
-              }),
-            ),
-          ),
-          activeParameter: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
-        }),
-      ),
-      activeSignature: Type.Optional(Type.Number()),
-      activeParameter: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
-    }),
-  ]),
-);
-
 const DocumentSymbolLsp = compile(
   Type.Object({
     name: Type.String(),
@@ -232,21 +206,6 @@ const CommandLspType = Type.Object({
 
 const CommandLsp = compile(CommandLspType);
 
-const InlayHintsLsp = compile(
-  Type.Union([
-    Type.Null(),
-    Type.Array(
-      Type.Object({
-        position: PositionType,
-        label: Type.Union([Type.String(), Type.Array(Type.Object({ value: Type.String() }))]),
-        kind: Type.Optional(Type.Number()),
-        paddingLeft: Type.Optional(Type.Boolean()),
-        paddingRight: Type.Optional(Type.Boolean()),
-      }),
-    ),
-  ]),
-);
-
 const ProgressLsp = compile(
   Type.Object({
     token: Type.Union([Type.String(), Type.Number()]),
@@ -286,7 +245,7 @@ const COMPLETION_KINDS: readonly CompletionKind[] = [
   "typeParameter",
 ];
 
-export const SYMBOL_KINDS: readonly SymbolKind[] = [
+const SYMBOL_KINDS: readonly SymbolKind[] = [
   "file",
   "module",
   "namespace",
@@ -342,7 +301,7 @@ export function readPosition(position: Static<typeof PositionType>): TextPositio
   return { line: position.line, utf16Column: position.character };
 }
 
-export function readRange(range: Static<typeof RangeType>): TextRange {
+function readRange(range: Static<typeof RangeType>): TextRange {
   return { start: readPosition(range.start), end: readPosition(range.end) };
 }
 
@@ -561,30 +520,6 @@ export function readHover(value: unknown): Hover | null {
     : { markdown, range: value.range === undefined ? null : readRange(value.range) };
 }
 
-export function readSignatureHelp(value: unknown): SignatureHelp | null {
-  if (!SignatureHelpLsp.Check(value) || value === null || value.signatures.length === 0) {
-    return null;
-  }
-  const active = value.activeSignature ?? 0;
-
-  return {
-    signatures: value.signatures.map((signature) => ({
-      label: signature.label,
-      documentation: readMarkdown(signature.documentation),
-      parameters: (signature.parameters ?? []).flatMap((parameter) => {
-        if (Array.isArray(parameter.label)) {
-          return [{ utf16Start: parameter.label[0], utf16End: parameter.label[1] }];
-        }
-        const start = signature.label.indexOf(parameter.label);
-
-        return start < 0 ? [] : [{ utf16Start: start, utf16End: start + parameter.label.length }];
-      }),
-    })),
-    activeSignature: active,
-    activeParameter: value.signatures[active]?.activeParameter ?? value.activeParameter ?? null,
-  };
-}
-
 export function readSymbols(value: unknown): readonly DocumentSymbol[] {
   if (!SymbolAnswer.Check(value) || value === null) return [];
 
@@ -776,26 +711,6 @@ export function readCodeAction(value: unknown): ActionPlan | null {
 
 export function readCommand(value: unknown): Static<typeof CommandLspType> | null {
   return CommandLsp.Check(value) ? value : null;
-}
-
-export function readInlayHints(value: unknown): readonly InlayHint[] {
-  if (!InlayHintsLsp.Check(value) || value === null) return [];
-
-  return value
-    .map((hint) => ({
-      position: readPosition(hint.position),
-      label:
-        typeof hint.label === "string" ? hint.label : hint.label.map((part) => part.value).join(""),
-      kind:
-        hint.kind === 1
-          ? ("type" as const)
-          : hint.kind === 2
-            ? ("parameter" as const)
-            : ("other" as const),
-      padLeft: hint.paddingLeft ?? false,
-      padRight: hint.paddingRight ?? false,
-    }))
-    .toSorted((left, right) => comparePositions(left.position, right.position));
 }
 
 export function readProgress(value: unknown): {

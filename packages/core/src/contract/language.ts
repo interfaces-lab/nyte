@@ -3,38 +3,22 @@ import type {
   CodeActionKind,
   CodeActionOutcome,
   CodeActionResolveToken,
-  Color,
-  ColorPresentation,
   CompletionItem,
   CompletionList,
   CompletionResolveToken,
   CompletionTrigger,
   DiagnosticsFrame,
-  DocumentColor,
-  DocumentHighlight,
-  DocumentLink,
-  DocumentLinkToken,
   DocumentSymbol,
-  FoldingRange,
   FormatOptions,
-  HierarchyCall,
-  HierarchyItem,
-  HierarchyToken,
   Hover,
-  InlayHint,
   LanguageLocation,
   LanguageFormatOutcome,
-  LinkedEditingRanges,
-  LanguageRefresh,
   LanguageServerView,
   RenameOutcome,
   RenameTarget,
-  SemanticTokens,
-  SignatureHelp,
   TextChange,
   TextPosition,
   TextRange,
-  WorkspaceSymbol,
 } from "@nyte-ai/schema";
 
 /**
@@ -74,15 +58,10 @@ export interface LanguageApi {
   hover(input: LanguagePosition): Promise<Hover | null>;
   definition(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
   typeDefinition(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
-  implementation(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
-  declaration(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
   references(
     input: LanguagePosition & { readonly includeDeclaration: boolean },
   ): Promise<readonly LanguageLocation[]>;
-  documentHighlights(input: LanguagePosition): Promise<readonly DocumentHighlight[]>;
   symbols(input: { readonly path: string }): Promise<readonly DocumentSymbol[]>;
-  /** Asks the servers now running; it starts none. */
-  workspaceSymbols(input: { readonly query: string }): Promise<readonly WorkspaceSymbol[]>;
   prepareRename(input: LanguagePosition): Promise<RenameTarget | null>;
   rename(input: LanguagePosition & { readonly name: string }): Promise<RenameOutcome>;
   /** With `only`, just the actions of those kinds and the kinds under them, as a server offers some only when asked. */
@@ -98,44 +77,6 @@ export interface LanguageApi {
     readonly options: FormatOptions;
     readonly range?: TextRange;
   }): Promise<LanguageFormatOutcome>;
-  signatureHelp(input: LanguagePosition): Promise<SignatureHelp | null>;
-  inlayHints(input: {
-    readonly path: string;
-    readonly range: TextRange;
-  }): Promise<readonly InlayHint[]>;
-  foldingRanges(input: { readonly path: string }): Promise<readonly FoldingRange[]>;
-  /** One list per position, innermost range first. */
-  selectionRanges(input: {
-    readonly path: string;
-    readonly positions: readonly TextPosition[];
-  }): Promise<readonly (readonly TextRange[])[]>;
-  /** The whole document's tokens, or with `range` the tokens in it where the server can tell; null when no server has tokens. */
-  semanticTokens(input: {
-    readonly path: string;
-    readonly range?: TextRange;
-  }): Promise<SemanticTokens | null>;
-  callHierarchy(input: LanguagePosition): Promise<readonly HierarchyItem[]>;
-  /** Empty for a stale token, as for an item nothing calls. */
-  incomingCalls(input: { readonly token: HierarchyToken }): Promise<readonly HierarchyCall[]>;
-  outgoingCalls(input: { readonly token: HierarchyToken }): Promise<readonly HierarchyCall[]>;
-  typeHierarchy(input: LanguagePosition): Promise<readonly HierarchyItem[]>;
-  supertypes(input: { readonly token: HierarchyToken }): Promise<readonly HierarchyItem[]>;
-  subtypes(input: { readonly token: HierarchyToken }): Promise<readonly HierarchyItem[]>;
-  /** The edits that keep code working once the files or folders are renamed; call it before renaming, while `from` still exists. It starts the servers of the files named and asks every running server that follows renames. */
-  renameFiles(input: {
-    readonly files: readonly { readonly from: string; readonly to: string }[];
-  }): Promise<RenameOutcome>;
-  documentLinks(input: { readonly path: string }): Promise<readonly DocumentLink[]>;
-  resolveDocumentLink(input: { readonly token: DocumentLinkToken }): Promise<DocumentLink | null>;
-  documentColors(input: { readonly path: string }): Promise<readonly DocumentColor[]>;
-  colorPresentations(input: {
-    readonly path: string;
-    readonly range: TextRange;
-    readonly color: Color;
-  }): Promise<readonly ColorPresentation[]>;
-  linkedEditingRanges(input: LanguagePosition): Promise<LinkedEditingRanges | null>;
-  /** Each frame names what a server asked to be computed again since the last. */
-  refreshes(): AsyncIterable<readonly LanguageRefresh[]>;
 }
 
 export interface LanguagePosition {

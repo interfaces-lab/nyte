@@ -19,11 +19,6 @@ export interface Run {
   collecting: WorkspaceEdit[] | null;
 }
 
-export interface HeldItems {
-  readonly answer: number;
-  readonly items: Json[];
-}
-
 export interface Slot {
   readonly spec: ServerSpec;
   readonly root: string;
@@ -44,11 +39,6 @@ export interface Slot {
     readonly answer: number;
     readonly plans: readonly ActionPlan[];
   } | null;
-  readonly hierarchies: {
-    callHierarchy: HeldItems | null;
-    typeHierarchy: HeldItems | null;
-  };
-  readonly links: Map<string, HeldItems>;
   readonly log: string[];
 }
 
@@ -76,7 +66,6 @@ export interface Servers {
   uri(path: string): string;
   sync(path: string): Promise<Synced | null>;
   findRun(server: LanguageServerId): Target | null;
-  running(): readonly Target[];
   touch(slot: Slot): void;
   record(slot: Slot, text: string): void;
   /** Cancels the completion in flight, if any, and answers the signal that cancels this one. */

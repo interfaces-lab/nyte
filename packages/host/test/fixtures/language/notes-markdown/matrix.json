@@ -38,17 +38,6 @@
       "vscode": true,
       "note": "VS Code's built-in markdown-language-features only shows hover previews for image and video links, not Markdown note or heading previews."
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "index.md",
-          "after": "[Sync Protocol]("
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "definition": {
       "probes": [
         {
@@ -85,28 +74,6 @@
       "answers": false,
       "vscode": false
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "architecture.md",
-          "after": "## Sto"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "index.md",
-          "after": "[[architecture#sto"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "references": {
       "probes": [
         {
@@ -122,18 +89,6 @@
       "vscode": true,
       "note": "VS Code's built-in markdown-language-features also finds references to headings, path links, and reference definitions, but does not track wiki links."
     },
-    "documentHighlights": {
-      "probes": [
-        {
-          "file": "index.md",
-          "after": "[sync guide][sync-"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false,
-      "note": "VS Code's built-in markdown-language-features implements documentHighlightProvider behind markdown.occurrencesHighlight.enabled (default false); marksman does not implement it."
-    },
     "symbols": {
       "probes": [
         {
@@ -147,21 +102,6 @@
       "answers": true,
       "vscode": true,
       "note": "In VS Code, marksman disables documentSymbolProvider when clientInfo.name is Visual Studio Code so built-in markdown-language-features supplies heading and link-definition symbols instead."
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "index.md",
-          "query": "Conflict",
-          "says": "Conflict Resolution"
-        }
-      ],
-      "servers": [
-        "marksman"
-      ],
-      "answers": true,
-      "vscode": true,
-      "note": "In VS Code, marksman disables workspaceSymbolProvider when clientInfo.name is Visual Studio Code so built-in markdown-language-features supplies workspace heading symbols instead."
     },
     "codeActions": {
       "probes": [
@@ -212,117 +152,6 @@
       "answers": true,
       "vscode": true,
       "note": "VS Code's built-in markdown-language-features also renames headings, link definitions, and path links across the workspace, but not wiki links."
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "architecture.md"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false,
-      "note": "Marksman does not follow file renames. VS Code built-in markdown-language-features can update links on a move, behind markdown.updateLinksOnFileMove.enabled (default never)."
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "index.md"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": true,
-      "note": "Marksman does not implement textDocument/documentLink; in VS Code clickable links come from built-in markdown-language-features."
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "index.md"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "index.md"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "architecture.md"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": true,
-      "note": "Marksman does not implement textDocument/foldingRange; in VS Code this comes from built-in markdown-language-features."
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "architecture.md",
-          "after": "## Sto"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": true,
-      "note": "Marksman does not implement textDocument/selectionRange; in VS Code this comes from built-in markdown-language-features."
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "index.md",
-          "says": "class"
-        }
-      ],
-      "servers": [
-        "marksman"
-      ],
-      "answers": true,
-      "vscode": true,
-      "note": "Provided by marksman for wiki links, reference link labels, and tags; VS Code's built-in markdown-language-features does not offer semantic tokens."
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "index.md"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "architecture.md",
-          "after": "## Sto"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "typeHierarchy": {
-      "probes": [
-        {
-          "file": "architecture.md",
-          "after": "## Sto"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
     },
     "diagnostics": {
       "probes": [

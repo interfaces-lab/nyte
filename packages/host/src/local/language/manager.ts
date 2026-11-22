@@ -4,7 +4,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyTextChange, asId, compile, findLanguage, SdkError } from "@nyte-ai/schema";
 import type {
   Json,
-  LanguageRefresh,
   LanguageServerId,
   LanguageServerState,
   LanguageServerView,
@@ -15,14 +14,7 @@ import { Type } from "typebox";
 import { feed } from "../feed.ts";
 import type { FeedSink } from "../feed.ts";
 import { findExecutable, hostNode, projectBins } from "../process/command.ts";
-import {
-  codeActions,
-  completion,
-  documentLinks,
-  resolveCodeAction,
-  resolveCompletion,
-  resolveDocumentLink,
-} from "./assist.ts";
+import { codeActions, completion, resolveCodeAction, resolveCompletion } from "./assist.ts";
 import {
   findProvider,
   listFeatures,
@@ -35,7 +27,6 @@ import {
 } from "./capabilities.ts";
 import { diagnosticReports } from "./diagnostics.ts";
 import { languageFeatures } from "./features.ts";
-import { languageHierarchies } from "./hierarchy.ts";
 import { answerConfiguration, initializeParams, readInitialize } from "./initialize.ts";
 import type { Installer } from "./install.ts";
 import { readProgress, readWorkspaceEdit, toLspRange } from "./lsp.ts";
@@ -77,7 +68,6 @@ export function localLanguage(
   const slots = new Map<string, Slot>();
   const documents = new Map<string, Document>();
   const statusSinks = new Set<FeedSink<readonly LanguageServerView[]>>();
-  const refreshSinks = new Set<FeedSink<readonly LanguageRefresh[]>>();
   let watching: AsyncIterator<unknown> | null = null;
   let completing = new AbortController();
   let closed = false;
@@ -165,8 +155,6 @@ export function localLanguage(
       answers: 0,
       completion: null,
       actions: null,
-      hierarchies: { callHierarchy: null, typeHierarchy: null },
-      links: new Map(),
       log: [],
     };
 
@@ -206,8 +194,6 @@ export function localLanguage(
   const closeIn = (slot: Slot, path: string): void => {
     const run = slot.run;
 
-    slot.links.delete(uri(path));
-
     if (run === null || !run.opened.delete(path)) return;
     run.rpc.notify("textDocument/didClose", { textDocument: { uri: uri(path) } });
     reports.drop(slot, run, path);
@@ -219,10 +205,6 @@ export function localLanguage(
 
       if (document !== undefined) reports.pull(target, document);
     }
-  };
-
-  const refresh = (asked: LanguageRefresh): void => {
-    for (const sink of refreshSinks) sink.push([asked]);
   };
 
   const handlers = (slot: Slot, current: () => Run | null) => ({
@@ -254,14 +236,6 @@ export function localLanguage(
           else unregister(run.registrations, params);
           announce();
           pullOpened({ slot, run });
-
-          return null;
-        case "workspace/semanticTokens/refresh":
-          refresh("semanticTokens");
-
-          return null;
-        case "workspace/inlayHint/refresh":
-          refresh("inlayHints");
 
           return null;
         case "workspace/diagnostic/refresh":
@@ -809,7 +783,7 @@ export function localLanguage(
                 : events.flatMap((event) =>
                     event.kind === notice.kind &&
                     event.full.startsWith(`${root}${sep}`) &&
-                    operatesOn(provider, event.full, null)
+                    operatesOn(provider, event.full)
                       ? [{ uri: uri(event.full) }]
                       : [],
                   );
@@ -832,7 +806,6 @@ export function localLanguage(
     uri,
     sync,
     findRun,
-    running,
     touch,
     record,
     claimCompletion() {
@@ -925,23 +898,11 @@ export function localLanguage(
       return null;
     },
     diagnostics: () => reports.watch(),
-    refreshes: () =>
-      feed<readonly LanguageRefresh[]>(
-        (sink) => {
-          refreshSinks.add(sink);
-
-          return () => refreshSinks.delete(sink);
-        },
-        (waiting, next) => [...new Set([...waiting, ...next])],
-      ),
     completion: (input) => completion(servers, input),
     resolveCompletion: (input) => resolveCompletion(servers, input),
     codeActions: (input) => codeActions(servers, input),
     resolveCodeAction: (input) => resolveCodeAction(servers, input),
-    documentLinks: (input) => documentLinks(servers, input),
-    resolveDocumentLink: (input) => resolveDocumentLink(servers, input),
     ...languageFeatures(servers),
-    ...languageHierarchies(servers),
     async trustChanged(trusted) {
       if (trusted) {
         for (const slot of slots.values()) {
@@ -971,7 +932,7 @@ export function localLanguage(
       watching = null;
       reports.end();
 
-      for (const sink of [...statusSinks, ...refreshSinks]) sink.end();
+      for (const sink of statusSinks) sink.end();
 
       await Promise.all(
         [...slots.values()].map(async (slot) => {

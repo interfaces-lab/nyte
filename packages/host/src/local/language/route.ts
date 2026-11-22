@@ -60,19 +60,3 @@ export async function askEvery<T>(
 
   return answers.flat();
 }
-
-export async function askFirst<T>(
-  servers: Servers,
-  input: { readonly path: string; readonly feature: LanguageFeature; readonly method: string },
-  params: (asked: Asked) => Json,
-  read: (answer: unknown, asked: Asked) => T | null,
-): Promise<T | null> {
-  for (const asked of await findProviders(servers, input.path, input.feature)) {
-    const asking = await ask(servers, asked.target, input.method, params(asked));
-    const found = asking instanceof LspError ? null : read(asking.answer, asked);
-
-    if (found !== null) return found;
-  }
-
-  return null;
-}

@@ -52,19 +52,6 @@
       "vscode": true,
       "note": "Answers in HTML markup as well as embedded <style> and <script> blocks."
     },
-    "signatureHelp": {
-      "probes": [
-        {
-          "file": "index.html",
-          "after": "formatGreeting(\"Nyte\", ",
-          "says": "formatGreeting"
-        }
-      ],
-      "servers": ["vscode-html-language-server"],
-      "answers": true,
-      "vscode": true,
-      "note": "Answered inside embedded <script> blocks."
-    },
     "definition": {
       "probes": [
         {
@@ -94,28 +81,6 @@
       "answers": false,
       "vscode": false
     },
-    "implementation": {
-      "probes": [
-        {
-          "file": "index.html",
-          "after": "label = formatGree"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "declaration": {
-      "probes": [
-        {
-          "file": "index.html",
-          "after": "label = formatGree"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
     "references": {
       "probes": [
         {
@@ -134,17 +99,6 @@
       "vscode": true,
       "note": "Answered inside embedded <style> and <script> blocks."
     },
-    "documentHighlights": {
-      "probes": [
-        {
-          "file": "index.html",
-          "after": "<sec"
-        }
-      ],
-      "servers": ["vscode-html-language-server"],
-      "answers": true,
-      "vscode": true
-    },
     "symbols": {
       "probes": [
         {
@@ -155,17 +109,6 @@
       "servers": ["vscode-html-language-server"],
       "answers": true,
       "vscode": true
-    },
-    "workspaceSymbols": {
-      "probes": [
-        {
-          "file": "index.html",
-          "query": "formatGreeting"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
     },
     "codeActions": {
       "probes": [
@@ -210,114 +153,6 @@
       "servers": ["vscode-html-language-server"],
       "answers": true,
       "vscode": true
-    },
-    "renameFiles": {
-      "probes": [
-        {
-          "file": "about.html"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "documentLinks": {
-      "probes": [
-        {
-          "file": "index.html",
-          "says": "styles.css"
-        }
-      ],
-      "servers": ["vscode-html-language-server"],
-      "answers": true,
-      "vscode": true
-    },
-    "documentColors": {
-      "probes": [
-        {
-          "file": "index.html",
-          "says": "#2563eb"
-        }
-      ],
-      "servers": ["vscode-html-language-server"],
-      "answers": true,
-      "vscode": true,
-      "note": "Answered inside embedded <style> blocks and style attributes."
-    },
-    "linkedEditingRanges": {
-      "probes": [
-        {
-          "file": "index.html",
-          "after": "<sec"
-        }
-      ],
-      "servers": ["vscode-html-language-server"],
-      "answers": true,
-      "vscode": true
-    },
-    "foldingRanges": {
-      "probes": [
-        {
-          "file": "index.html"
-        }
-      ],
-      "servers": ["vscode-html-language-server"],
-      "answers": true,
-      "vscode": true
-    },
-    "selectionRanges": {
-      "probes": [
-        {
-          "file": "index.html",
-          "after": "<sec"
-        }
-      ],
-      "servers": ["vscode-html-language-server"],
-      "answers": true,
-      "vscode": true
-    },
-    "semanticTokens": {
-      "probes": [
-        {
-          "file": "index.html"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": true,
-      "note": "VS Code html-language-features provides semantic tokens for embedded <script> via non-standard custom requests html/semanticTokenLegend and html/semanticTokens rather than LSP semanticTokensProvider."
-    },
-    "inlayHints": {
-      "probes": [
-        {
-          "file": "index.html"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "callHierarchy": {
-      "probes": [
-        {
-          "file": "index.html",
-          "after": "function formatGree"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
-    },
-    "typeHierarchy": {
-      "probes": [
-        {
-          "file": "index.html",
-          "after": "function formatGree"
-        }
-      ],
-      "servers": [],
-      "answers": false,
-      "vscode": false
     },
     "diagnostics": {
       "probes": [

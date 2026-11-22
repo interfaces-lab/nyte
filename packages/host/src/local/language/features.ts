@@ -1,28 +1,11 @@
-import { stat } from "node:fs/promises";
 import { basename } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { LanguageApi, LanguagePosition } from "@nyte-ai/core";
-import type { Json, LanguageFeature, LanguageLocation, TextEdit, TextRange } from "@nyte-ai/schema";
-import { findProvider, operatesOn } from "./capabilities.ts";
+import type { Json, LanguageFeature, LanguageLocation } from "@nyte-ai/schema";
 import {
-  nestRanges,
-  readColorPresentations,
-  readColors,
-  readFoldingRanges,
-  readHighlights,
-  readLinkedEditingRanges,
-  readSelectionRanges,
-  readSemanticTokens,
-  readWorkspaceSymbols,
-} from "./lsp-structure.ts";
-import {
-  comparePositions,
   findWord,
   readHover,
-  readInlayHints,
   readLocations,
   readPrepareRename,
-  readSignatureHelp,
   readSymbols,
   readTextEdits,
   readWorkspaceEdit,
@@ -30,7 +13,7 @@ import {
   toLspRange,
 } from "./lsp.ts";
 import { LspError } from "./rpc.ts";
-import { ask, askEvery, askFirst, findProviders } from "./route.ts";
+import { ask, askEvery, findProviders } from "./route.ts";
 import type { Asked } from "./route.ts";
 import type { Servers } from "./state.ts";
 
@@ -43,24 +26,11 @@ export function languageFeatures(
   | "hover"
   | "definition"
   | "typeDefinition"
-  | "implementation"
-  | "declaration"
   | "references"
-  | "documentHighlights"
   | "symbols"
-  | "workspaceSymbols"
   | "prepareRename"
   | "rename"
   | "format"
-  | "signatureHelp"
-  | "inlayHints"
-  | "foldingRanges"
-  | "selectionRanges"
-  | "semanticTokens"
-  | "renameFiles"
-  | "documentColors"
-  | "colorPresentations"
-  | "linkedEditingRanges"
 > {
   const inDocument = (asked: Asked) => ({ textDocument: { uri: asked.uri } });
 
@@ -106,27 +76,11 @@ export function languageFeatures(
     },
     definition: (input) => locate("definition", "textDocument/definition", input),
     typeDefinition: (input) => locate("typeDefinition", "textDocument/typeDefinition", input),
-    implementation: (input) => locate("implementation", "textDocument/implementation", input),
-    declaration: (input) => locate("declaration", "textDocument/declaration", input),
     references: (input) =>
       locate("references", "textDocument/references", input, (asked) => ({
         ...at(input)(asked),
         context: { includeDeclaration: input.includeDeclaration },
       })),
-    async documentHighlights(input) {
-      return (
-        (await askFirst(
-          servers,
-          {
-            path: input.path,
-            feature: "documentHighlights",
-            method: "textDocument/documentHighlight",
-          },
-          at(input),
-          readHighlights,
-        )) ?? []
-      );
-    },
     async symbols(input) {
       const blocks = await askEvery(
         servers,
@@ -136,20 +90,6 @@ export function languageFeatures(
       );
 
       return blocks.flat();
-    },
-    async workspaceSymbols(input) {
-      const found = await Promise.all(
-        servers.running().map(async (target) => {
-          if (findProvider(target.run, "workspaceSymbols", null) === null) return [];
-          const asking = await ask(servers, target, "workspace/symbol", { query: input.query });
-
-          return asking instanceof LspError
-            ? []
-            : readWorkspaceSymbols(asking.answer, servers.place);
-        }),
-      );
-
-      return found.flat();
     },
     async prepareRename(input) {
       for (const asked of await findProviders(servers, input.path, "rename")) {
@@ -244,175 +184,5 @@ export function languageFeatures(
         ? { kind: "failed", reason: failures[0] ?? "" }
         : { kind: "edits", edits: [] };
     },
-    async renameFiles(input) {
-      await Promise.all(input.files.map((file) => servers.sync(file.from)));
-
-      const renames = await Promise.all(
-        input.files.map(async (file) => {
-          const oldUri = servers.uri(file.from);
-          const from = fileURLToPath(oldUri);
-          const found = await stat(from).catch(() => null);
-          const kind = found === null ? null : found.isDirectory() ? "folder" : "file";
-
-          return { from, kind, rename: { oldUri, newUri: servers.uri(file.to) } } as const;
-        }),
-      );
-
-      const answers = await Promise.all(
-        servers.running().map(async (target) => {
-          const provider = findProvider(target.run, "renameFiles", null);
-
-          const files =
-            provider === null
-              ? []
-              : renames
-                  .filter((entry) => operatesOn(provider, entry.from, entry.kind))
-                  .map((entry) => entry.rename);
-          if (files.length === 0) return null;
-          const asking = await ask(servers, target, "workspace/willRenameFiles", { files });
-
-          return asking instanceof LspError
-            ? null
-            : readWorkspaceEdit(asking.answer, servers.place);
-        }),
-      );
-
-      const refused = answers.find((answer) => answer?.kind === "refused");
-
-      if (refused?.kind === "refused") return refused;
-      const edits = new Map<string, TextEdit[]>();
-
-      for (const answer of answers) {
-        for (const file of answer?.kind === "edit" ? answer.edit.files : []) {
-          const held = edits.get(file.path) ?? [];
-          const known = new Set(held.map((edit) => JSON.stringify(edit)));
-
-          edits.set(file.path, [
-            ...held,
-            ...file.edits.filter((edit) => !known.has(JSON.stringify(edit))),
-          ]);
-        }
-      }
-
-      return {
-        kind: "edit",
-        edit: { files: [...edits].map((entry) => ({ path: entry[0], edits: entry[1] })) },
-      };
-    },
-    async documentColors(input) {
-      const colors = await askEvery(
-        servers,
-        { path: input.path, feature: "documentColors", method: "textDocument/documentColor" },
-        inDocument,
-        readColors,
-      );
-
-      return colors
-        .flat()
-        .toSorted((left, right) => comparePositions(left.range.start, right.range.start));
-    },
-    async colorPresentations(input) {
-      const presentations = await askEvery(
-        servers,
-        { path: input.path, feature: "documentColors", method: "textDocument/colorPresentation" },
-        (asked) => ({ ...inDocument(asked), range: toLspRange(input.range), color: input.color }),
-        readColorPresentations,
-      );
-
-      return presentations.flat();
-    },
-    linkedEditingRanges: (input) =>
-      askFirst(
-        servers,
-        {
-          path: input.path,
-          feature: "linkedEditingRanges",
-          method: "textDocument/linkedEditingRange",
-        },
-        at(input),
-        readLinkedEditingRanges,
-      ),
-    signatureHelp: (input) =>
-      askFirst(
-        servers,
-        { path: input.path, feature: "signatureHelp", method: "textDocument/signatureHelp" },
-        at(input),
-        readSignatureHelp,
-      ),
-    async inlayHints(input) {
-      const hints = await askEvery(
-        servers,
-        { path: input.path, feature: "inlayHints", method: "textDocument/inlayHint" },
-        (asked) => ({ ...inDocument(asked), range: toLspRange(input.range) }),
-        readInlayHints,
-      );
-
-      return hints
-        .flat()
-        .toSorted((left, right) => comparePositions(left.position, right.position));
-    },
-    async foldingRanges(input) {
-      const ranges = await askEvery(
-        servers,
-        { path: input.path, feature: "foldingRanges", method: "textDocument/foldingRange" },
-        inDocument,
-        readFoldingRanges,
-      );
-
-      return ranges
-        .flat()
-        .toSorted((left, right) => left.startLine - right.startLine || right.endLine - left.endLine)
-        .filter((range, index, sorted) => sorted[index - 1]?.startLine !== range.startLine);
-    },
-    async selectionRanges(input) {
-      const answers = await askEvery(
-        servers,
-        { path: input.path, feature: "selectionRanges", method: "textDocument/selectionRange" },
-        (asked) => ({ ...inDocument(asked), positions: input.positions.map(toLspPosition) }),
-        readSelectionRanges,
-      );
-
-      return input.positions.map((_, index) =>
-        nestRanges(answers.flatMap((answer): readonly TextRange[] => answer[index] ?? [])),
-      );
-    },
-    async semanticTokens(input) {
-      for (const asked of await findProviders(servers, input.path, "semanticTokens")) {
-        const ranged = (asked.provider.range ?? false) !== false;
-        const whole = (asked.provider.full ?? false) !== false;
-        const range = input.range ?? (whole ? undefined : wholeDocument(asked.document.text));
-
-        if (range !== undefined && !ranged && !whole) continue;
-
-        const asking =
-          range !== undefined && ranged
-            ? await ask(servers, asked.target, "textDocument/semanticTokens/range", {
-                ...inDocument(asked),
-                range: toLspRange(range),
-              })
-            : await ask(
-                servers,
-                asked.target,
-                "textDocument/semanticTokens/full",
-                inDocument(asked),
-              );
-
-        const tokens =
-          asking instanceof LspError ? null : readSemanticTokens(asking.answer, asked.provider);
-
-        if (tokens !== null) return tokens;
-      }
-
-      return null;
-    },
-  };
-}
-
-function wholeDocument(text: string): TextRange {
-  const lines = text.split("\n");
-
-  return {
-    start: { line: 0, utf16Column: 0 },
-    end: { line: lines.length - 1, utf16Column: lines.at(-1)?.length ?? 0 },
   };
 }

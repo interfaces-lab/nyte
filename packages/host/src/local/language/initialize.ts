@@ -5,8 +5,6 @@ import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { ServerCapabilities } from "./capabilities.ts";
 
-const SYMBOL_KINDS = { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) };
-
 const DYNAMIC = { dynamicRegistration: true } as const;
 
 const CAPABILITIES = {
@@ -20,10 +18,7 @@ const CAPABILITIES = {
     didChangeConfiguration: DYNAMIC,
     didChangeWatchedFiles: { ...DYNAMIC, relativePatternSupport: true },
     executeCommand: DYNAMIC,
-    symbol: { ...DYNAMIC, symbolKind: SYMBOL_KINDS },
-    fileOperations: { ...DYNAMIC, willRename: true, didCreate: true, didDelete: true },
-    semanticTokens: { refreshSupport: true },
-    inlayHint: { refreshSupport: true },
+    fileOperations: { ...DYNAMIC, didCreate: true, didDelete: true },
     diagnostics: { refreshSupport: true },
   },
   textDocument: {
@@ -44,24 +39,13 @@ const CAPABILITIES = {
       contextSupport: true,
     },
     hover: { ...DYNAMIC, contentFormat: ["markdown", "plaintext"] },
-    signatureHelp: {
-      ...DYNAMIC,
-      signatureInformation: {
-        documentationFormat: ["markdown", "plaintext"],
-        parameterInformation: { labelOffsetSupport: true },
-        activeParameterSupport: true,
-      },
-    },
     definition: { ...DYNAMIC, linkSupport: true },
     typeDefinition: { ...DYNAMIC, linkSupport: true },
-    implementation: { ...DYNAMIC, linkSupport: true },
-    declaration: { ...DYNAMIC, linkSupport: true },
     references: DYNAMIC,
-    documentHighlight: DYNAMIC,
     documentSymbol: {
       ...DYNAMIC,
       hierarchicalDocumentSymbolSupport: true,
-      symbolKind: SYMBOL_KINDS,
+      symbolKind: { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) },
     },
     codeAction: {
       ...DYNAMIC,
@@ -86,62 +70,9 @@ const CAPABILITIES = {
     },
     formatting: DYNAMIC,
     rangeFormatting: DYNAMIC,
-    documentLink: { ...DYNAMIC, tooltipSupport: true },
-    colorProvider: DYNAMIC,
-    linkedEditingRange: DYNAMIC,
     rename: { ...DYNAMIC, prepareSupport: true },
     publishDiagnostics: { relatedInformation: true, tagSupport: { valueSet: [1, 2] } },
     diagnostic: { ...DYNAMIC, relatedDocumentSupport: true },
-    inlayHint: DYNAMIC,
-    foldingRange: { ...DYNAMIC, lineFoldingOnly: true },
-    selectionRange: DYNAMIC,
-    callHierarchy: DYNAMIC,
-    typeHierarchy: DYNAMIC,
-    semanticTokens: {
-      ...DYNAMIC,
-      requests: { full: true, range: true },
-      tokenTypes: [
-        "namespace",
-        "type",
-        "class",
-        "enum",
-        "interface",
-        "struct",
-        "typeParameter",
-        "parameter",
-        "variable",
-        "property",
-        "enumMember",
-        "event",
-        "function",
-        "method",
-        "macro",
-        "keyword",
-        "modifier",
-        "comment",
-        "string",
-        "number",
-        "regexp",
-        "operator",
-        "decorator",
-      ],
-      tokenModifiers: [
-        "declaration",
-        "definition",
-        "readonly",
-        "static",
-        "deprecated",
-        "abstract",
-        "async",
-        "modification",
-        "documentation",
-        "defaultLibrary",
-      ],
-      formats: ["relative"],
-      overlappingTokenSupport: false,
-      multilineTokenSupport: false,
-      augmentsSyntaxTokens: true,
-    },
   },
 } as const;
 
