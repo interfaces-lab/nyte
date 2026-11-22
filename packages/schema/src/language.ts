@@ -62,7 +62,7 @@ export const LanguageLocationType = Type.Object({ path: Type.String(), range: Te
 
 export type LanguageLocation = Decoded<typeof LanguageLocationType>;
 
-export const LanguageNameType = Type.Enum(["go", "typescript"]);
+export const LanguageNameType = Type.Enum(["go", "python", "typescript"]);
 
 export type LanguageName = Decoded<typeof LanguageNameType>;
 

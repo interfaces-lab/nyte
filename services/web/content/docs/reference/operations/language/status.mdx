@@ -3,7 +3,7 @@ title: language.status
 description: Lists the workspace's language servers and their state.
 ---
 
-Lists one row per language server the workspace has started: its language, program, project root, state, version and executable. A server is `starting`, `ready`, `busy` with a progress title, `missing` with the command that installs it, `untrusted` while the folder isn't trusted, since a server runs code from it, and stopped again when trust is withdrawn, `failed` with a reason, or `idle` after it shut down for want of use. There is one server per language and project root, the nearest folder holding a `go.mod` or `go.work` for Go and a `tsconfig.json`, `jsconfig.json` or `package.json` for TypeScript and JavaScript.
+Lists one row per language server the workspace has started: its language, program, project root, state, version and executable. A server is `starting`, `ready`, `busy` with a progress title, `missing` with the command that installs it, `untrusted` while the folder isn't trusted, since a server runs code from it, and stopped again when trust is withdrawn, `failed` with a reason, or `idle` after it shut down for want of use. There is one server per language and project root, the nearest folder holding a `go.mod` or `go.work` for Go (`gopls`), a `pyproject.toml`, `ruff.toml` or `.ruff.toml` for Python (`ruff`), and a `tsconfig.json`, `jsconfig.json` or `package.json` for TypeScript and JavaScript (`typescript-language-server`). A TypeScript or JavaScript file also gets an `oxlint` row when an oxlint configuration sits in its folder or above it; that server only reports diagnostics. A server installed in the project's `node_modules/.bin` or `.venv` runs before one on `PATH`.
 
 ## When to call it
 
@@ -75,7 +75,7 @@ Response:
     "required": ["language", "server", "root", "state", "version", "executable"],
     "properties": {
       "language": {
-        "enum": ["go", "typescript"]
+        "enum": ["go", "python", "typescript"]
       },
       "server": {
         "type": "string"

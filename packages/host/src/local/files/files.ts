@@ -14,16 +14,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import {
-  basename,
-  dirname,
-  extname,
-  isAbsolute,
-  join,
-  matchesGlob,
-  relative,
-  sep,
-} from "node:path";
+import { basename, dirname, isAbsolute, join, matchesGlob, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 import { asId, decodeTextFile, SdkError } from "@nyte-ai/schema";
@@ -34,7 +25,6 @@ import type {
   FileEntryView,
   FileEvent,
   FileVersion,
-  FormatOutcome,
   SearchFrame,
   SearchInput,
   WriteOutcome,
@@ -44,8 +34,8 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sha256 } from "../../hash.ts";
 import { findExecutable, run } from "../process/command.ts";
+import { format } from "./format.ts";
 import { localTransfers } from "./transfers.ts";
-import type { Ran } from "../process/command.ts";
 import { feed } from "../feed.ts";
 import { classifyFile } from "./file-kind.ts";
 import { decodeText } from "../text.ts";
@@ -77,8 +67,6 @@ const SEARCH_LINE = 500;
 const WATCH_DELAY_MS = 100;
 
 const WATCH_POLL_MS = 1000;
-
-const FORMATTERS = ["oxfmt", "prettier", "biome"] as const;
 
 const TEMPORARY_SUFFIX = ".nyte-tmp";
 
@@ -519,61 +507,6 @@ function subsequence(text: string, needle: string): boolean {
   }
 
   return false;
-}
-
-async function format(
-  root: string,
-  path: string,
-  contents: string,
-  formatter: string | undefined,
-): Promise<FormatOutcome> {
-  const binary = formatter ?? (await detectFormatter(root, path));
-
-  if (binary === null) {
-    return { kind: "unavailable", reason: "No formatter is installed for this workspace." };
-  }
-  const name = basename(binary).replace(/\.(cmd|exe)$/i, "");
-
-  const args =
-    name === "gofmt"
-      ? []
-      : name === "biome"
-        ? ["format", `--stdin-file-path=${path}`]
-        : name === "oxfmt"
-          ? [`--stdin-filepath=${path}`]
-          : ["--stdin-filepath", path];
-
-  let ran: Ran;
-
-  try {
-    ran = await run(binary, args, { cwd: root, input: contents });
-  } catch (error) {
-    return { kind: "failed", reason: error instanceof Error ? error.message : String(error) };
-  }
-
-  if (ran.code !== 0) {
-    return {
-      kind: "failed",
-      reason: `${name} could not format ${basename(path)}: ${ran.stderr.trim()}`,
-    };
-  }
-  const formatted = ran.stdout.toString("utf8");
-
-  return formatted === contents
-    ? { kind: "unchanged" }
-    : { kind: "formatted", contents: formatted };
-}
-
-async function detectFormatter(root: string, path: string): Promise<string | null> {
-  if (extname(path) === ".go") return findExecutable("gofmt");
-
-  for (const name of FORMATTERS) {
-    const found = await findExecutable(name, [join(root, "node_modules", ".bin")]);
-
-    if (found !== null) return found;
-  }
-
-  return null;
 }
 
 async function* search(

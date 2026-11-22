@@ -142,7 +142,7 @@ export async function codeActions(
 
   if (synced === null) return [];
 
-  const overlapping = servers.published(synced.document.path).filter((raw) => {
+  const overlapping = servers.published(synced.slot, synced.document.path).filter((raw) => {
     const range = readDiagnostics([raw], servers.place)[0]?.range;
 
     return (

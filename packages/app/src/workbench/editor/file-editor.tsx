@@ -452,17 +452,17 @@ export function TextFileEditor({
     enabled: gitBlame && active && !dirty,
   });
 
-  const format = async (organize: boolean): Promise<string | null> =>
+  const format = async (): Promise<string | null> =>
     workspace === undefined || project === undefined
       ? null
-      : formatDocument({ view: viewKey, workspace: project, path: file.path, buffer, organize });
+      : formatDocument({ view: viewKey, workspace: project, path: file.path, buffer });
 
   const save = async (): Promise<void> => {
     await buffer.save({
       write: (input) => saveFile.mutateAsync({ ...input, expect: input.version }),
       format: formatOnSave
         ? async () => {
-            await format(true);
+            await format();
 
             return null;
           }
@@ -624,7 +624,7 @@ export function TextFileEditor({
     buffer.discard(result.data);
   };
 
-  const formatNow = (): Promise<void> => buffer.format(() => format(false));
+  const formatNow = (): Promise<void> => buffer.format(format);
 
   useImperativeHandle(ref, () => ({ save, discard, format: formatNow }));
 

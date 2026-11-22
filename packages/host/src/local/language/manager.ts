@@ -15,7 +15,7 @@ import type { ExecutionEnv, LanguageService } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { feed } from "../feed.ts";
 import type { FeedSink } from "../feed.ts";
-import { findExecutable } from "../process/command.ts";
+import { findExecutable, projectBins } from "../process/command.ts";
 import {
   readDiagnostics,
   readHover,
@@ -41,7 +41,7 @@ import {
 import { codeActions, completion, resolveCodeAction, resolveCompletion } from "./assist.ts";
 import { connectLsp, LspError, REQUEST_CANCELLED } from "./rpc.ts";
 import type { Document, Run, Servers, Slot, Synced } from "./state.ts";
-import { findProjectRoot, findServer } from "./servers.ts";
+import { findLinters, findProjectRoot, findServer } from "./servers.ts";
 import type { ServerSpec } from "./servers.ts";
 
 /** A server that dies more than `RESTARTS` times within `RESTART_WINDOW_MS` stays failed until a client opens a file again. */
@@ -60,9 +60,14 @@ const ApplyEditRequest = compile(Type.Object({ edit: Type.Unknown() }));
 
 const LogMessage = compile(Type.Object({ message: Type.String() }));
 
+interface Report {
+  readonly diagnostics: DiagnosticsFrame["diagnostics"];
+  readonly raw: readonly Json[];
+}
+
 interface Published {
   readonly frame: DiagnosticsFrame;
-  readonly raw: readonly Json[];
+  readonly reports: ReadonlyMap<Slot, Report>;
 }
 
 export function localLanguage(
@@ -128,7 +133,7 @@ export function localLanguage(
 
   const findSlot = async (spec: ServerSpec, path: string): Promise<Slot> => {
     const root = await findProjectRoot(spec, path, workspace);
-    const key = `${spec.language}\u0000${root}`;
+    const key = `${spec.program}\u0000${root}`;
     const found = slots.get(key);
 
     if (found !== undefined) return found;
@@ -154,6 +159,23 @@ export function localLanguage(
     return slot;
   };
 
+  const holders = (document: Document): readonly Slot[] => [document.slot, ...document.linters];
+
+  const findLinterSlots = async (path: string): Promise<readonly Slot[]> =>
+    Promise.all((await findLinters(path, workspace)).map((spec) => findSlot(spec, path)));
+
+  const forget = (document: Document): void => {
+    documents.delete(document.path);
+
+    for (const holder of holders(document)) closeIn(holder.run, document.path);
+  };
+
+  const attach = async (slot: Slot, document: Document): Promise<void> => {
+    const run = await ready(slot);
+
+    if (run !== null && documents.get(document.path) === document) openIn(run, document);
+  };
+
   const openIn = (run: Run, document: Document): void => {
     if (!run.initialized || run.opened.has(document.path)) return;
     run.opened.add(document.path);
@@ -174,7 +196,7 @@ export function localLanguage(
 
   const handlers = (slot: Slot, run: () => Run | null) => ({
     notification(method: string, params: unknown): void {
-      if (method === "textDocument/publishDiagnostics") publish(params);
+      if (method === "textDocument/publishDiagnostics") publish(slot, params);
       else if (method === "$/progress") progress(slot, run(), params);
       else if (
         (method === "window/logMessage" || method === "window/showMessage") &&
@@ -240,7 +262,7 @@ export function localLanguage(
       : { kind: "busy", title: last.title, percent: last.percent };
   };
 
-  const publish = (params: unknown): void => {
+  const publish = (slot: Slot, params: unknown): void => {
     const found = readPublishedDiagnostics(params);
 
     if (found === null || !found.uri.startsWith("file:")) return;
@@ -251,13 +273,18 @@ export function localLanguage(
       return;
     }
 
+    const reports = new Map<Slot, Report>(published.get(path)?.reports).set(slot, {
+      diagnostics: [...readDiagnostics(found.diagnostics, place)],
+      raw: found.diagnostics.filter(isJson),
+    });
+
     const frame: DiagnosticsFrame = {
       path: within(path),
       version: document?.owner === "client" ? document.version : null,
-      diagnostics: [...readDiagnostics(found.diagnostics, place)],
+      diagnostics: [...reports.values()].flatMap((report) => report.diagnostics),
     };
 
-    published.set(path, { frame, raw: found.diagnostics.filter(isJson) });
+    published.set(path, { frame, reports });
 
     for (const sink of diagnosticSinks) sink.push([frame]);
   };
@@ -284,7 +311,9 @@ export function localLanguage(
 
   const launch = async (slot: Slot): Promise<Run | null> => {
     const pinned = options.servers?.[slot.spec.program];
-    const executable = await findExecutable(pinned ?? slot.spec.program);
+
+    const executable = await findExecutable(pinned ?? slot.spec.program, projectBins(slot.root));
+
     slot.executable = executable;
 
     if (executable === null) {
@@ -373,7 +402,9 @@ export function localLanguage(
     rpc.notify("workspace/didChangeConfiguration", { settings: slot.spec.settings });
     run.initialized = true;
 
-    for (const document of documents.values()) if (document.slot === slot) openIn(run, document);
+    for (const document of documents.values()) {
+      if (holders(document).includes(slot)) openIn(run, document);
+    }
 
     setState(slot, workingState(run));
     touch(slot);
@@ -425,7 +456,7 @@ export function localLanguage(
     if (slot.run === null) return;
 
     for (const document of documents.values()) {
-      if (document.slot === slot && document.owner === "disk") documents.delete(document.path);
+      if (document.slot === slot && document.owner === "disk") forget(document);
     }
 
     setState(slot, { kind: "idle" });
@@ -458,8 +489,7 @@ export function localLanguage(
                 const text = await readText(document.path);
 
                 if (text === null) {
-                  documents.delete(document.path);
-                  closeIn(slot.run, document.path);
+                  forget(document);
 
                   return;
                 }
@@ -477,24 +507,24 @@ export function localLanguage(
 
   const written = async (path: string): Promise<void> => {
     const document = documents.get(path);
-    const run = document?.slot.run ?? null;
 
-    if (
-      document?.owner !== "client" ||
-      run === null ||
-      !run.opened.has(path) ||
-      run.capabilities.save === "none" ||
-      (await readText(path)) !== document.text
-    ) {
-      return;
-    }
+    if (document?.owner !== "client") return;
 
+    const runs = holders(document).flatMap((slot) =>
+      slot.run !== null && slot.run.opened.has(path) && slot.run.capabilities.save !== "none"
+        ? [slot.run]
+        : [],
+    );
+
+    if (runs.length === 0 || (await readText(path)) !== document.text) return;
     const textDocument = { uri: uri(path) };
 
-    run.rpc.notify(
-      "textDocument/didSave",
-      run.capabilities.save === "text" ? { textDocument, text: document.text } : { textDocument },
-    );
+    for (const run of runs) {
+      run.rpc.notify(
+        "textDocument/didSave",
+        run.capabilities.save === "text" ? { textDocument, text: document.text } : { textDocument },
+      );
+    }
   };
 
   const sync = async (path: string): Promise<Synced | null> => {
@@ -507,18 +537,24 @@ export function localLanguage(
 
     if (!documents.has(full)) {
       const text = await readText(full);
+      const linters = await findLinterSlots(full);
 
       if (text === null) return null;
 
       if (!documents.has(full)) {
-        documents.set(full, {
+        const document: Document = {
           path: full,
           languageId: found.languageId,
           slot,
+          linters,
           owner: "disk",
           text,
           version: 0,
-        });
+        };
+
+        documents.set(full, document);
+
+        for (const linter of linters) void attach(linter, document);
       }
     }
 
@@ -532,21 +568,23 @@ export function localLanguage(
   };
 
   const sendChange = (document: Document, changes: readonly TextChange[]): void => {
-    const run = document.slot.run;
+    for (const slot of holders(document)) {
+      const run = slot.run;
 
-    if (run === null || !run.initialized || !run.opened.has(document.path)) return;
+      if (run === null || !run.initialized || !run.opened.has(document.path)) continue;
 
-    const incremental =
-      run.capabilities.incremental && changes.every((change) => change.range !== null);
+      const incremental =
+        run.capabilities.incremental && changes.every((change) => change.range !== null);
 
-    run.rpc.notify("textDocument/didChange", {
-      textDocument: { uri: uri(document.path), version: document.version },
-      contentChanges: incremental
-        ? changes.flatMap((change) =>
-            change.range === null ? [] : [{ range: toLspRange(change.range), text: change.text }],
-          )
-        : [{ text: document.text }],
-    });
+      run.rpc.notify("textDocument/didChange", {
+        textDocument: { uri: uri(document.path), version: document.version },
+        contentChanges: incremental
+          ? changes.flatMap((change) =>
+              change.range === null ? [] : [{ range: toLspRange(change.range), text: change.text }],
+            )
+          : [{ text: document.text }],
+      });
+    }
   };
 
   const ask = async <T>(
@@ -609,10 +647,9 @@ export function localLanguage(
 
             if (!wanted || !full.startsWith(`${slot.root}${sep}`)) return [];
 
-            if (documents.get(full)?.owner === "disk") {
-              documents.delete(full);
-              closeIn(run, full);
-            }
+            const held = documents.get(full);
+
+            if (held?.owner === "disk") forget(held);
 
             return [
               {
@@ -644,7 +681,7 @@ export function localLanguage(
 
       return completing.signal;
     },
-    published: (path) => published.get(path)?.raw ?? [],
+    published: (slot, path) => published.get(path)?.reports.get(slot)?.raw ?? [],
   };
 
   return {
@@ -662,14 +699,18 @@ export function localLanguage(
 
       if (found === null || closed) return null;
       const slot = await findSlot(found.spec, full);
+
+      const linters = await findLinterSlots(full);
+
       const held = documents.get(full);
 
-      closeIn(held?.slot.run ?? null, full);
+      for (const holder of held === undefined ? [] : holders(held)) closeIn(holder.run, full);
 
       const document: Document = {
         path: full,
         languageId: found.languageId,
         slot,
+        linters,
         owner: "client",
         text: input.text,
         version: input.version,
@@ -677,18 +718,19 @@ export function localLanguage(
 
       documents.set(full, document);
 
-      if (
-        slot.state.kind === "missing" ||
-        slot.state.kind === "failed" ||
-        slot.state.kind === "untrusted"
-      ) {
-        slot.restarts = [];
-        setState(slot, { kind: "idle" });
+      for (const holder of holders(document)) {
+        if (
+          holder.state.kind === "missing" ||
+          holder.state.kind === "failed" ||
+          holder.state.kind === "untrusted"
+        ) {
+          holder.restarts = [];
+          setState(holder, { kind: "idle" });
+        }
       }
 
-      const run = await ready(slot);
-
-      if (run !== null && documents.get(full) === document) openIn(run, document);
+      for (const linter of linters) void attach(linter, document);
+      await attach(slot, document);
 
       return view(slot);
     },
@@ -709,9 +751,12 @@ export function localLanguage(
       document.text = input.changes.reduce(applyTextChange, document.text);
       document.version = input.version;
       sendChange(document, input.changes);
-      touch(document.slot);
 
-      if (document.slot.run === null) void ready(document.slot);
+      for (const holder of holders(document)) {
+        touch(holder);
+
+        if (holder.run === null) void ready(holder);
+      }
 
       return null;
     },
@@ -720,9 +765,9 @@ export function localLanguage(
       const document = documents.get(full);
 
       if (document?.owner !== "client") return null;
-      documents.delete(full);
-      closeIn(document.slot.run, full);
-      touch(document.slot);
+      forget(document);
+
+      for (const holder of holders(document)) touch(holder);
 
       return null;
     },
@@ -870,7 +915,7 @@ export function localLanguage(
           if (slot.state.kind === "untrusted") {
             setState(slot, { kind: "idle" });
 
-            if ([...documents.values()].some((document) => document.slot === slot)) {
+            if ([...documents.values()].some((document) => holders(document).includes(slot))) {
               void ready(slot);
             }
           }

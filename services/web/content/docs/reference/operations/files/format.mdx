@@ -4,11 +4,14 @@ description: Returns the given contents formatted for the file at that path, wit
 ---
 
 Formats contents as the file at that path would be formatted, without writing anything. A local
-workspace runs the project's formatter: `oxfmt`, `prettier` or `biome` from `node_modules/.bin`,
-then from the `PATH`, with the path for its config. A `.go` file runs `gofmt` from the `PATH` alone,
-so it runs no project code. It answers `formatted` with the new contents, `unchanged`,
-`unavailable` with the reason when no formatter applies to the file, or `failed` with the reason
-when one ran and errored, such as a non-zero exit or a binary that can't start.
+workspace runs the first formatter that handles the file's type: `oxfmt`, `prettier` or `biome`
+for JavaScript, TypeScript, JSON, CSS, HTML, Markdown and YAML (`oxfmt` also takes TOML), and
+`ruff` for Python. It looks in the project's `node_modules/.bin` and `.venv` first, then on the
+`PATH`, and passes the path so the formatter finds its config. A `.go` file runs `gofmt` from the
+`PATH` alone, so it runs no project code. It answers `formatted` with the new contents,
+`unchanged`, `unavailable` with the reason when no installed formatter handles the file's type, or
+`failed` with the reason when one ran and errored, such as a non-zero exit or a binary that can't
+start.
 
 ## When to call it
 

@@ -14,7 +14,7 @@ import { trustWorkspace, useHomeWorkspace } from "../../data/workspaces.ts";
 import { workspaceFile } from "../paths.ts";
 import { languageFamily } from "./language-documents.ts";
 
-const LANGUAGES = { go: "Go", typescript: "TypeScript and JavaScript" } as const;
+const LANGUAGES = { go: "Go", python: "Python", typescript: "TypeScript and JavaScript" } as const;
 
 const styles = create({
   bar: {

@@ -44,11 +44,11 @@ export interface Slot {
   readonly log: string[];
 }
 
-/** A document the server has: the client's text, or the disk's for a file no client opened. */
 export interface Document {
   readonly path: string;
   readonly languageId: string;
   readonly slot: Slot;
+  readonly linters: readonly Slot[];
   readonly owner: "client" | "disk";
   text: string;
   version: number;
@@ -69,6 +69,5 @@ export interface Servers {
   touch(slot: Slot): void;
   /** Cancels the completion in flight, if any, and answers the signal that cancels this one. */
   claimCompletion(): AbortSignal;
-  /** The LSP diagnostics last published for an absolute path. */
-  published(path: string): readonly Json[];
+  published(slot: Slot, path: string): readonly Json[];
 }

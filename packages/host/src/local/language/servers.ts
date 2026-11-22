@@ -51,6 +51,17 @@ const TYPESCRIPT_LANGUAGE = {
   suggest: { completeFunctionCalls: false },
 } as const;
 
+const SCRIPT_IDS = {
+  ".ts": "typescript",
+  ".mts": "typescript",
+  ".cts": "typescript",
+  ".tsx": "typescriptreact",
+  ".js": "javascript",
+  ".mjs": "javascript",
+  ".cjs": "javascript",
+  ".jsx": "javascriptreact",
+} as const;
+
 export const SERVERS: readonly ServerSpec[] = [
   {
     language: "go",
@@ -63,19 +74,20 @@ export const SERVERS: readonly ServerSpec[] = [
     prepare: async () => ({ options: GO_OPTIONS, runsOn: null }),
   },
   {
+    language: "python",
+    program: "ruff",
+    arguments: ["server"],
+    languageIds: { ".py": "python", ".pyi": "python" },
+    markers: ["pyproject.toml", "ruff.toml", ".ruff.toml"],
+    hint: "Install Ruff: uv tool install ruff, or pip install ruff",
+    settings: {},
+    prepare: async () => ({ options: null, runsOn: null }),
+  },
+  {
     language: "typescript",
     program: "typescript-language-server",
     arguments: ["--stdio"],
-    languageIds: {
-      ".ts": "typescript",
-      ".mts": "typescript",
-      ".cts": "typescript",
-      ".tsx": "typescriptreact",
-      ".js": "javascript",
-      ".mjs": "javascript",
-      ".cjs": "javascript",
-      ".jsx": "javascriptreact",
-    },
+    languageIds: SCRIPT_IDS,
     markers: ["tsconfig.json", "jsconfig.json", "package.json"],
     hint: "Install the TypeScript language server: npm install -g typescript-language-server typescript",
     settings: { typescript: TYPESCRIPT_LANGUAGE, javascript: TYPESCRIPT_LANGUAGE },
@@ -102,6 +114,19 @@ export const SERVERS: readonly ServerSpec[] = [
   },
 ];
 
+const LINTERS: readonly ServerSpec[] = [
+  {
+    language: "typescript",
+    program: "oxlint",
+    arguments: ["--lsp"],
+    languageIds: SCRIPT_IDS,
+    markers: [".oxlintrc.json", ".oxlintrc.jsonc", "oxlint.config.ts", "oxlint.config.mts"],
+    hint: "Install oxlint in the project: npm install --save-dev oxlint",
+    settings: {},
+    prepare: async () => ({ options: null, runsOn: null }),
+  },
+];
+
 /** The server for `path` by its extension, with the language id LSP knows the file by. */
 export function findServer(
   path: string,
@@ -117,23 +142,48 @@ export function findServer(
   return null;
 }
 
+export async function findLinters(path: string, workspace: string): Promise<readonly ServerSpec[]> {
+  const extension = extname(path).toLowerCase();
+
+  const configured = await Promise.all(
+    LINTERS.map(async (spec) =>
+      spec.languageIds[extension] !== undefined &&
+      (await findMarkedFolder(spec, path, workspace)) !== null
+        ? [spec]
+        : [],
+    ),
+  );
+
+  return configured.flat();
+}
+
 /** The nearest folder from the file's up to `workspace` holding one of the spec's markers; `workspace` when none does. */
 export async function findProjectRoot(
   spec: ServerSpec,
   path: string,
   workspace: string,
 ): Promise<string> {
+  return (await findMarkedFolder(spec, path, workspace)) ?? workspace;
+}
+
+async function findMarkedFolder(
+  spec: ServerSpec,
+  path: string,
+  workspace: string,
+): Promise<string | null> {
   for (
     let folder = dirname(path);
-    folder.startsWith(`${workspace}${sep}`);
+    folder === workspace || folder.startsWith(`${workspace}${sep}`);
     folder = dirname(folder)
   ) {
     for (const marker of spec.markers) {
       if ((await stat(join(folder, marker)).catch(() => null)) !== null) return folder;
     }
+
+    if (folder === workspace) return null;
   }
 
-  return workspace;
+  return null;
 }
 
 async function findUpward(from: string, name: string): Promise<string | null> {

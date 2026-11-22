@@ -1,10 +1,12 @@
 import { languageDocument } from "@nyte-ai/sdk";
 import type { LanguageApi, LanguageDocument, TextChange } from "@nyte-ai/sdk";
 
-type Family = "go" | "typescript";
+type Family = "go" | "python" | "typescript";
 
 const FAMILIES = new Map<string, Family>([
   ["go", "go"],
+  ["py", "python"],
+  ["pyi", "python"],
   ...["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"].map(
     (extension) => [extension, "typescript"] satisfies [string, Family],
   ),

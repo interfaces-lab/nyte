@@ -174,6 +174,13 @@ export async function findExecutable(
   return null;
 }
 
+export function projectBins(root: string): readonly string[] {
+  return [
+    join(root, "node_modules", ".bin"),
+    join(root, ".venv", process.platform === "win32" ? "Scripts" : "bin"),
+  ];
+}
+
 async function executable(path: string): Promise<boolean> {
   const found = await stat(path).catch(() => null);
 
