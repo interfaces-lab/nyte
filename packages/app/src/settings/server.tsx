@@ -16,7 +16,7 @@ export function ServerSettings(): ReactElement {
         <SwitchRow
           setting={preferences.remoteControl}
           title="Remote control"
-          description="Let your other paired devices run this app's actions and change its settings"
+          description="Let your other devices run this app's actions and change its settings"
         />
       </SettingsSection>
       <RemoteHost />

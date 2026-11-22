@@ -1,36 +1,11 @@
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
-import { create, props } from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useState } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/toast";
 import { Button } from "@nyte-ai/ui/button";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 
 const COPIED_MS = 1500;
-
-export const shareStyles = create({
-  pair: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: space.s3,
-  },
-  value: {
-    minWidth: 0,
-    color: role.contentSecondary,
-    fontFamily: type.fontMono,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    fontVariantNumeric: "tabular-nums",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    userSelect: "all",
-  },
-  actions: { display: "inline-flex", alignItems: "center", gap: space.s1 },
-});
 
 export function CopyButton({ label, value }: { label: string; value: string }): ReactElement {
   const [copied, setCopied] = useState(false);
@@ -62,27 +37,5 @@ export function CopyButton({ label, value }: { label: string; value: string }): 
         {copied ? `${label} copied` : ""}
       </span>
     </>
-  );
-}
-
-export function ValueRow({
-  title,
-  value,
-  children,
-}: {
-  readonly title: string;
-  readonly value: string;
-  readonly children: ReactNode;
-}): ReactElement {
-  return (
-    <div data-settings-row="" {...props(settingsPatterns.rowRule, settingsPatterns.row)}>
-      <span {...props(settingsPatterns.rowCopy)}>
-        <span {...props(settingsPatterns.rowTitle)}>{title}</span>
-        <code aria-label={title} {...props(shareStyles.value)}>
-          {value}
-        </code>
-      </span>
-      <span {...props(shareStyles.actions)}>{children}</span>
-    </div>
   );
 }
