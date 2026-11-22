@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { testRenderer } from "../../../test/renderer.ts";
+import { testRenderer } from "../../test/renderer.ts";
 
 test(
   "the commit bar offers pull requests only where GitHub is served, says why one is blocked, and shows the branch's pull request and checks",

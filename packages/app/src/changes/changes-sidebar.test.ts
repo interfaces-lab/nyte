@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { testRenderer } from "../../../test/renderer.ts";
+import { testRenderer } from "../../test/renderer.ts";
 
 test(
   "the native changes tree filters, reveals files, and retains state across updates",

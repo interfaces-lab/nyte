@@ -15,22 +15,22 @@ import {
 } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
-import { workbench } from "../../theme/schema.stylex.ts";
+import { workbench } from "../theme/schema.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   changeSelectionSummary,
   filesChangedLabel,
   filterChangePaths,
-} from "../../diff/change-tree.ts";
-import type { ChangeStatus } from "../../diff/change-tree.ts";
-import type { ViewedState } from "../../diff/changes-viewed.ts";
+} from "../diff/change-tree.ts";
+import type { ChangeStatus } from "../diff/change-tree.ts";
+import type { ViewedState } from "../diff/changes-viewed.ts";
 import type { LineStat } from "@nyte-ai/sdk";
 import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
-import { syncTreePaths } from "../../editor/tree-paths.ts";
-import { treeItemHeight, useTreeStatusTheme } from "../../editor/tree-theme.ts";
-import { workbenchStyles } from "../workbench.stylex.ts";
-import { SidePanel } from "../side-panel.tsx";
+import { syncTreePaths } from "../editor/tree-paths.ts";
+import { treeItemHeight, useTreeStatusTheme } from "../editor/tree-theme.ts";
+import { workbenchStyles } from "../workbench/workbench.stylex.ts";
+import { SidePanel } from "../workbench/side-panel.tsx";
 
 export interface ChangesSidebarFile {
   readonly path: string;

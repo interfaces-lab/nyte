@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { preferences, useSetting } from "../../preferences/index.ts";
-import { persisted } from "../../lib/storage.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
+import { persisted } from "../lib/storage.ts";
 
 const MAX_SCOPES = 32;
 

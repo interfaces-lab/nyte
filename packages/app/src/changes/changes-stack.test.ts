@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { testRenderer } from "../../../test/renderer.ts";
+import { testRenderer } from "../../test/renderer.ts";
 
 test(
   "the native stacked diff collapses one file without affecting another and finds text in a collapsed file",

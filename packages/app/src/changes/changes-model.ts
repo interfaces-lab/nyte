@@ -7,12 +7,12 @@ import type {
   SessionId,
 } from "@nyte-ai/sdk";
 import type { IconName } from "@nyte-ai/ui/icon";
-import type { createPatchLoader, PatchEntry } from "../../diff/changes-patches.ts";
-import { patchDigest } from "../../diff/changes-viewed.ts";
-import type { ViewedState } from "../../diff/changes-viewed.ts";
-import { EMPTY_PATCH, patchStackSection } from "../../diff/stacked-diff.ts";
-import { changesScopeValue } from "../model.ts";
-import type { WorkbenchChangesScope } from "../model.ts";
+import type { createPatchLoader, PatchEntry } from "../diff/changes-patches.ts";
+import { patchDigest } from "../diff/changes-viewed.ts";
+import type { ViewedState } from "../diff/changes-viewed.ts";
+import { EMPTY_PATCH, patchStackSection } from "../diff/stacked-diff.ts";
+import { changesScopeValue } from "../workbench/model.ts";
+import type { WorkbenchChangesScope } from "../workbench/model.ts";
 import { scopeFiles } from "./change-scopes.ts";
 import type { ChangesRepository, ChangeTotals, TurnChangeOption } from "./change-scopes.ts";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";

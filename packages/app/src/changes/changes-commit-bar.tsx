@@ -15,8 +15,8 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { useGitHub, useGitHubAccountState, useGitHubState } from "../../account/github-account.ts";
-import { errorMessage } from "../../contract/errors.ts";
+import { useGitHub, useGitHubAccountState, useGitHubState } from "../account/github-account.ts";
+import { errorMessage } from "../contract/errors.ts";
 import {
   Menu,
   MenuContent,
@@ -27,9 +27,9 @@ import {
 } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { openExternal } from "../../lib/open-external.ts";
-import { keys, queryClient } from "../../data/query-client.ts";
-import { gitFor, refreshVcs } from "../../data/vcs.ts";
+import { openExternal } from "../lib/open-external.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { gitFor, refreshVcs } from "../data/vcs.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -37,8 +37,8 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
 import { ChangesPullRequest } from "./changes-pull-request.tsx";
-import type { WorkbenchChangesScope } from "../model.ts";
-import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
+import type { WorkbenchChangesScope } from "../workbench/model.ts";
+import { useWorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
 import {
   COMMIT_ACTIONS,
   DEFAULT_COMMIT_ACTION,

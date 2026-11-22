@@ -1,8 +1,8 @@
 import type { FileDiffMetadata, LineAnnotation } from "@nyte-ai/ui/diffs";
 import type { CodeViewItem } from "@nyte-ai/ui/diffs/react";
 import type { LineStat } from "@nyte-ai/sdk";
-import { patchDigest } from "../../diff/changes-viewed.ts";
-import type { ChangeStackSection } from "../../diff/stacked-diff.ts";
+import { patchDigest } from "../diff/changes-viewed.ts";
+import type { ChangeStackSection } from "../diff/stacked-diff.ts";
 
 export type ChangesStackItem = ChangeStackSection & { readonly stat: LineStat };
 

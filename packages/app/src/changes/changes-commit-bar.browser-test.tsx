@@ -1,4 +1,4 @@
-import "../../../test/window-bridge.ts";
+import "../../test/window-bridge.ts";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
@@ -14,13 +14,13 @@ import type {
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import { keys, queryClient } from "../../data/query-client.ts";
-import { installConnection } from "../../data/connection.ts";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { installConnection } from "../data/connection.ts";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { ChangesCommitBar } from "./changes-commit-bar.tsx";
-import { WorkbenchWorkspaceContext } from "../workbench-workspace.tsx";
-import "../../theme/tokens.stylex.ts";
-import "../../theme/global.css";
+import { WorkbenchWorkspaceContext } from "../workbench/workbench-workspace.tsx";
+import "../theme/tokens.stylex.ts";
+import "../theme/global.css";
 
 const WORKSPACE: WorkspaceId = asId("w1");
 

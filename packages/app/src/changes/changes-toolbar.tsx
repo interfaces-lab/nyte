@@ -19,15 +19,15 @@ import {
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { useRecordedChanges, useVcsLog } from "../../data/vcs.ts";
+import { useRecordedChanges, useVcsLog } from "../data/vcs.ts";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { workbenchStyles } from "../workbench.stylex.ts";
+import { workbenchStyles } from "../workbench/workbench.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { ChangeStats } from "../../components/change-stats.tsx";
+import { ChangeStats } from "../components/change-stats.tsx";
 import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
-import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
+import { useWorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
 import { changeRows, changeTotals } from "./changes-model.ts";
 import {
   commitScopeOptions,
@@ -44,9 +44,9 @@ import type {
   TurnChangeOption,
 } from "./change-scopes.ts";
 import type { ChangesLayout, ChangesViewOptions } from "./changes-view-options.ts";
-import { changesScopeValue } from "../model.ts";
-import type { WorkbenchChangesScope } from "../model.ts";
-import { nyte } from "../../contract/nyte.ts";
+import { changesScopeValue } from "../workbench/model.ts";
+import type { WorkbenchChangesScope } from "../workbench/model.ts";
+import { nyte } from "../contract/nyte.ts";
 
 const COMMIT_PAGE_SIZE = 20;
 

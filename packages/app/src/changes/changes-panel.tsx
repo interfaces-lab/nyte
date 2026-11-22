@@ -7,8 +7,8 @@ import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { Icon } from "@nyte-ai/ui/icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
-import { createDiffFilesLoader } from "../../diff/diff-expansion.ts";
-import type { DiffFilesLoader } from "../../diff/diff-expansion.ts";
+import { createDiffFilesLoader } from "../diff/diff-expansion.ts";
+import type { DiffFilesLoader } from "../diff/diff-expansion.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
   readGitPatches,
@@ -18,13 +18,13 @@ import {
   useVcsChanges,
   useVcsSnapshot,
   gitFor,
-} from "../../data/vcs.ts";
-import { useSessionRow } from "../../data/session-rows.ts";
-import { conversationTurns } from "../../chats/index.ts";
-import { chatStore } from "../../data/chat-store.ts";
-import { useWatchSelect } from "../../data/watch-store.ts";
-import { usePaneLayout } from "../../panes/pane-context.tsx";
-import { activeSelection, sameSelection } from "../../panes/pane-layout.ts";
+} from "../data/vcs.ts";
+import { useSessionRow } from "../data/session-rows.ts";
+import { conversationTurns } from "../chats/index.ts";
+import { chatStore } from "../data/chat-store.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
+import { usePaneLayout } from "../panes/pane-context.tsx";
+import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -40,18 +40,18 @@ import {
 } from "./change-scopes.ts";
 import type { TurnChangeOption } from "./change-scopes.ts";
 import { ChangesSidebar } from "./changes-sidebar.tsx";
-import { preferences, useSetting } from "../../preferences/index.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { ChangesStack } from "./changes-stack.tsx";
-import { createPatchLoader } from "../../diff/changes-patches.ts";
-import type { PatchSource } from "../../diff/changes-patches.ts";
+import { createPatchLoader } from "../diff/changes-patches.ts";
+import type { PatchSource } from "../diff/changes-patches.ts";
 import type { ChangesStackHandle } from "./changes-stack.tsx";
 import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
 import { setChangesViewOptions, useChangesViewOptions } from "./changes-view-options.ts";
-import { changesViewed } from "../../diff/changes-viewed.ts";
-import type { ViewedState } from "../../diff/changes-viewed.ts";
-import type { WorkbenchChangesScope } from "../model.ts";
-import { nyte } from "../../contract/nyte.ts";
-import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
+import { changesViewed } from "../diff/changes-viewed.ts";
+import type { ViewedState } from "../diff/changes-viewed.ts";
+import type { WorkbenchChangesScope } from "../workbench/model.ts";
+import { nyte } from "../contract/nyte.ts";
+import { useWorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
 import {
   changeRows,
   changeTotals,

@@ -19,6 +19,7 @@ const ENTRIES = [
         "chat",
         "markdown",
         "editor",
+        "changes",
         "canvas",
         "studio",
         "workbench",

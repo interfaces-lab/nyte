@@ -21,40 +21,40 @@ import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-s
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Button } from "@nyte-ai/ui/button";
-import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../../references/add-to-chat.ts";
-import type { DiffFilesLoader } from "../../diff/diff-expansion.ts";
+import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../references/add-to-chat.ts";
+import type { DiffFilesLoader } from "../diff/diff-expansion.ts";
 import {
   DIFF_SEPARATOR_CSS,
   DIFF_SEPARATOR_HEIGHT,
   EXPANSION_LINE_COUNT,
   adaptDiffExpanders,
   applyDiffScopes,
-} from "../../diff/diff-view.tsx";
-import { diffStyles } from "../../diff/diff.stylex.ts";
+} from "../diff/diff-view.tsx";
+import { diffStyles } from "../diff/diff.stylex.ts";
 import {
   PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "@nyte-ai/ui/worker-pool";
-import { diffView, workbench } from "../../theme/schema.stylex.ts";
-import { nyte } from "../../contract/nyte.ts";
-import { useAppearance } from "../../theme/appearance-store.ts";
-import { keyOwner } from "../../lib/focus-owner.ts";
+import { diffView, workbench } from "../theme/schema.stylex.ts";
+import { nyte } from "../contract/nyte.ts";
+import { useAppearance } from "../theme/appearance-store.ts";
+import { keyOwner } from "../lib/focus-owner.ts";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
-import { FindWidget } from "../find-widget.tsx";
-import type { FindWidgetHandle } from "../find-widget.tsx";
+import { FindWidget } from "../workbench/find-widget.tsx";
+import type { FindWidgetHandle } from "../workbench/find-widget.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { useCommitCount } from "../../lib/work-counts.ts";
+import { useCommitCount } from "../lib/work-counts.ts";
 import { createChangesCodeViewItems } from "./changes-stack-code-view.ts";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
-import { diffRangeExcerpt } from "../../references/diff-range.ts";
+import { diffRangeExcerpt } from "../references/diff-range.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
-import type { ViewedState } from "../../diff/changes-viewed.ts";
-import { ChangeStats } from "../../components/change-stats.tsx";
+import type { ViewedState } from "../diff/changes-viewed.ts";
+import { ChangeStats } from "../components/change-stats.tsx";
 
 const styles = create({
   stack: {

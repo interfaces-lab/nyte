@@ -7,7 +7,7 @@ import { chatStore } from "../data/chat-store.ts";
 import type { ChatView } from "../data/chat-store.ts";
 import { reconcile } from "../data/keep.ts";
 import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
-import { turnChangeOptions } from "../workbench/changes/change-scopes.ts";
+import { turnChangeOptions } from "../changes/change-scopes.ts";
 
 /** A file the workspace's chats changed, by the path their tools named, and the patches their edits made to it, newest first. */
 export interface ChatEdit {

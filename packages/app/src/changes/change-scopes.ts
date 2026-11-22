@@ -1,11 +1,11 @@
 import type { GitScope, GitStatus, RunId, SessionView } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
-import { worktreeFiles } from "../../editor/worktree-files.ts";
-import type { TurnMessages } from "../../chats/index.ts";
-import type { WorktreeFile } from "../../editor/worktree-files.ts";
-import { changesScopeValue } from "../model.ts";
-import type { WorkbenchChangesScope } from "../model.ts";
+import { worktreeFiles } from "../editor/worktree-files.ts";
+import type { TurnMessages } from "../chats/index.ts";
+import type { WorktreeFile } from "../editor/worktree-files.ts";
+import { changesScopeValue } from "../workbench/model.ts";
+import type { WorkbenchChangesScope } from "../workbench/model.ts";
 
 interface CommitInfo {
   readonly id: string;

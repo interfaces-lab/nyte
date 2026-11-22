@@ -1,12 +1,12 @@
-import "../../../test/window-bridge.ts";
+import "../../test/window-bridge.ts";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
-import { patchDigest } from "../../diff/changes-viewed.ts";
+import { patchDigest } from "../diff/changes-viewed.ts";
 import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import "../../theme/tokens.stylex.ts";
+import "../theme/tokens.stylex.ts";
 
 function buildPatch(path: string, prefix: string): string {
   const added = Array.from({ length: 16 }, (_, index) => `+${prefix} ${String(index)}`);
