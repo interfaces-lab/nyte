@@ -17,10 +17,10 @@ import { laidSends } from "../send/unsent.ts";
 import { headView } from "../view/head-view.ts";
 import type { HeadView } from "../view/head-view.ts";
 import { pages } from "../view/history.ts";
-import { streamText, withStreamedText } from "../view/streamed-text.ts";
-import type { StreamedText } from "../view/streamed-text.ts";
+import { streamedText } from "../view/streamed-text.ts";
 import type { HeadStore } from "./head.ts";
 import type { Health, TextUpdate } from "./host-connection.ts";
+import { listenerSet } from "./store.ts";
 import type { Freshness, Live } from "./store.ts";
 
 export interface ChatSnapshot {
@@ -112,13 +112,13 @@ interface Ask {
 const NO_MESSAGES: readonly MessageId[] = [];
 
 export function openChat(parts: ChatParts): Chat {
-  const listeners = new Set<() => void>();
+  const listeners = listenerSet();
   const target = parts.session.head(parts.head);
   const lay = laidSends(parts.journal, parts.session.id, parts.head);
   const paged = () => pages<HeadView>((query) => target.history(query));
   let paging = paged();
   let opened: Opened | null = null;
-  let texts: StreamedText = new Map();
+  let texts = streamedText();
   let laid: HeadView | null = null;
   let asked: Ask | null = null;
   let snapshot = unopened();
@@ -138,7 +138,7 @@ export function openChat(parts: ChatParts): Chat {
   };
 
   const draw = (freshness: Freshness, expired: readonly MessageId[]): void => {
-    const view = laid === null ? null : withStreamedText(paging.show(laid), texts);
+    const view = laid === null ? null : texts.lay(paging.show(laid));
     const stopping = showsStopping(view);
 
     if (
@@ -151,8 +151,7 @@ export function openChat(parts: ChatParts): Chat {
     }
     const seq = freshness.kind === "fresh" ? freshness.seq : snapshot.seq;
     snapshot = { view, seq, freshness, expired, stopping };
-
-    for (const listener of listeners) listener();
+    listeners.notify();
   };
 
   const redraw = (): void => draw(snapshot.freshness, snapshot.expired);
@@ -166,14 +165,14 @@ export function openChat(parts: ChatParts): Chat {
   };
 
   const stream = (update: TextUpdate): void => {
-    texts = streamText(texts, update);
+    texts.apply(update);
 
     if (laid !== null) redraw();
   };
 
   return {
     subscribe(listener) {
-      listeners.add(listener);
+      const leave = listeners.subscribe(listener);
 
       if (opened === null) {
         const head = parts.open();
@@ -191,12 +190,14 @@ export function openChat(parts: ChatParts): Chat {
       }
 
       return () => {
-        if (!listeners.delete(listener) || listeners.size > 0 || opened === null) return;
+        leave();
+
+        if (listeners.size() > 0 || opened === null) return;
 
         for (const stop of opened.stops) stop();
         opened.head.close();
         opened = null;
-        texts = new Map();
+        texts = streamedText();
         laid = null;
         paging = paged();
         snapshot = unopened();
@@ -205,24 +206,11 @@ export function openChat(parts: ChatParts): Chat {
     snapshot: () => snapshot,
     async send(content, options) {
       const id = options?.id ?? asId<"receipt">(crypto.randomUUID());
-      const journal = parts.journal;
-      const journaled = Promise.withResolvers<Sending>();
-
-      const leave = journal.subscribe(() => {
-        const sending = journal.sending(id);
-
-        if (sending !== null) journaled.resolve(sending);
-      });
-
+      const journaled = parts.journal.held(id);
       const sent = target.send(content, { ...options, id });
+      const sending = await Promise.race([journaled, sent.then(() => journaled)]);
 
-      try {
-        const sending = await Promise.race([journaled.promise, sent.then(() => journaled.promise)]);
-
-        return { id, delivered: delivered(sent, sending) };
-      } finally {
-        leave();
-      }
+      return { id, delivered: delivered(sent, sending) };
     },
     async resend(message) {
       await parts.journal.resend(parts.session.id, message);

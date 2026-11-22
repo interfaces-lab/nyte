@@ -1,17 +1,30 @@
-import type { Message, ToolProgress } from "@nyte-ai/schema";
+import type { Message, PartId, ToolProgress } from "@nyte-ai/schema";
 import type { HeadView } from "./head-view.ts";
 import type { TextUpdate } from "../live/host-connection.ts";
 
-export interface StreamedPart {
-  readonly version: number;
-  readonly text: string | null;
+/**
+ * The text and tool progress the host streams for parts ahead of their rows, laid over a head's
+ * view. Feed it every update from `connection.text`, and lay it over each view you draw.
+ */
+export interface StreamedText {
+  /** Keeps the update. An `append` to a part whose whole text hasn't arrived is dropped, since the host sends the whole text first. */
+  apply(update: TextUpdate): void;
+  /**
+   * Returns `view` with each live part's streamed text and progress in its state, or `view` itself
+   * when nothing streamed changes it. The same view and the same updates return the same object.
+   * Text for a part `view` doesn't hold changes nothing. A part `view` shows settled at or past
+   * its streamed version is forgotten, so the row takes over and a later `append` to it is dropped.
+   */
+  lay(view: HeadView): HeadView;
+}
+
+interface Streamed {
+  readonly text: { readonly version: number; readonly markdown: string } | null;
   readonly progress: ToolProgress | null;
 }
 
-export type StreamedText = ReadonlyMap<string, StreamedPart>;
-
 interface Laid {
-  readonly texts: StreamedText;
+  readonly parts: ReadonlyMap<PartId, Streamed>;
   readonly laid: ReadonlyMap<number, Message>;
   readonly result: HeadView;
 }
@@ -21,89 +34,90 @@ interface Drawn {
   readonly result: Message;
 }
 
-const views = new WeakMap<HeadView, Laid>();
+const drawn = new WeakMap<Streamed, Drawn>();
 
-const drawn = new WeakMap<StreamedPart, Drawn>();
+const indexed = new WeakMap<readonly Message[], ReadonlyMap<PartId, number>>();
 
-const indexed = new WeakMap<readonly Message[], ReadonlyMap<string, number>>();
+export function streamedText(): StreamedText {
+  const views = new WeakMap<HeadView, Laid>();
+  let parts: ReadonlyMap<PartId, Streamed> = new Map();
 
-const pruned = new WeakMap<StreamedText, StreamedText>();
+  return {
+    apply(update) {
+      parts = applied(parts, update);
+    },
+    lay(view) {
+      if (parts.size === 0) return view;
+      const previous = views.get(view);
 
-export function streamText(texts: StreamedText, update: TextUpdate): StreamedText {
-  const base = pruned.get(texts) ?? texts;
-  const known = base.get(update.part);
+      if (previous?.parts === parts) return previous.result;
+      const index = indexed.get(view.messages) ?? indexParts(view.messages);
+      const laid = new Map<number, Message>();
+      const settled = new Set<PartId>();
 
-  if ("progress" in update) {
-    return new Map(base).set(update.part, {
-      version: known?.version ?? 0,
-      text: known?.text ?? null,
-      progress: update.progress,
-    });
-  }
+      for (const [part, streamed] of parts) {
+        const at = index.get(part);
+        const message = at === undefined ? undefined : view.messages[at];
 
-  if ("text" in update) {
-    return new Map(base).set(update.part, {
-      version: update.version,
-      text: update.text,
-      progress: known?.progress ?? null,
-    });
-  }
+        if (at === undefined || message === undefined || message.kind !== "part") continue;
 
-  if (known === undefined || known.text === null) return texts;
+        if (
+          message.status.kind !== "live" &&
+          message.status.kind !== "waiting" &&
+          (streamed.text === null || message.version >= streamed.text.version)
+        ) {
+          settled.add(part);
+          continue;
+        }
 
-  return new Map(base).set(update.part, {
-    version: update.version,
-    text: known.text + update.append,
-    progress: known.progress,
-  });
+        const next = layPart(message, streamed);
+
+        if (next !== message) laid.set(at, next);
+      }
+
+      if (settled.size > 0) parts = new Map([...parts].filter(([part]) => !settled.has(part)));
+
+      const result =
+        laid.size === 0
+          ? view
+          : previous !== undefined &&
+              previous.laid.size === laid.size &&
+              Array.from(laid).every(([at, message]) => previous.laid.get(at) === message)
+            ? previous.result
+            : { ...view, messages: replaced(view.messages, laid) };
+
+      views.set(view, { parts, laid, result });
+
+      return result;
+    },
+  };
 }
 
-/** Lays streamed text over the view's parts, returning the view itself when no part in `texts` changes it. A part the view holds settled at or above its streamed version is dropped from the map `streamText` continues from; a live part keeps its entry, since the host's next append builds on it. */
-export function withStreamedText(view: HeadView, texts: StreamedText): HeadView {
-  if (texts.size === 0) return view;
-  const known = views.get(view);
+function applied(
+  parts: ReadonlyMap<PartId, Streamed>,
+  update: TextUpdate,
+): ReadonlyMap<PartId, Streamed> {
+  const known = parts.get(update.part);
 
-  if (known?.texts === texts) return known.result;
-  const index = indexed.get(view.messages) ?? indexParts(view.messages);
-  const laid = new Map<number, Message>();
-  const settled = new Set<string>();
+  switch (update.kind) {
+    case "text":
+      return new Map(parts).set(update.part, {
+        text: { version: update.version, markdown: update.text },
+        progress: known?.progress ?? null,
+      });
+    case "append":
+      if (known === undefined || known.text === null) return parts;
 
-  for (const entry of texts) {
-    const at = index.get(entry[0]);
-    const message = at === undefined ? undefined : view.messages[at];
-
-    if (at === undefined || message === undefined || message.kind !== "part") continue;
-
-    if (
-      message.status.kind !== "live" &&
-      message.status.kind !== "waiting" &&
-      message.version >= entry[1].version
-    ) {
-      settled.add(entry[0]);
-      continue;
-    }
-
-    const next = layPart(message, entry[1]);
-
-    if (next !== message) laid.set(at, next);
+      return new Map(parts).set(update.part, {
+        text: { version: update.version, markdown: known.text.markdown + update.append },
+        progress: known.progress,
+      });
+    case "progress":
+      return new Map(parts).set(update.part, {
+        text: known?.text ?? null,
+        progress: update.progress,
+      });
   }
-
-  if (settled.size > 0) {
-    pruned.set(texts, new Map(Array.from(texts).filter((entry) => !settled.has(entry[0]))));
-  }
-
-  const result =
-    laid.size === 0
-      ? view
-      : known !== undefined &&
-          known.laid.size === laid.size &&
-          Array.from(laid).every((entry) => known.laid.get(entry[0]) === entry[1])
-        ? known.result
-        : { ...view, messages: replaced(view.messages, laid) };
-
-  views.set(view, { texts, laid, result });
-
-  return result;
 }
 
 function replaced(
@@ -112,12 +126,12 @@ function replaced(
 ): readonly Message[] {
   const copy = messages.slice();
 
-  for (const entry of laid) copy[entry[0]] = entry[1];
+  for (const [at, message] of laid) copy[at] = message;
 
   return copy;
 }
 
-function indexParts(messages: readonly Message[]): ReadonlyMap<string, number> {
+function indexParts(messages: readonly Message[]): ReadonlyMap<PartId, number> {
   const index = new Map(
     messages.flatMap((message, at) =>
       message.kind === "part" ? [[message.part, at] as const] : [],
@@ -129,8 +143,8 @@ function indexParts(messages: readonly Message[]): ReadonlyMap<string, number> {
   return index;
 }
 
-function layPart(message: Message, part: StreamedPart): Message {
-  const known = drawn.get(part);
+function layPart(message: Message, streamed: Streamed): Message {
+  const known = drawn.get(streamed);
 
   if (known?.source === message) return known.result;
 
@@ -138,26 +152,28 @@ function layPart(message: Message, part: StreamedPart): Message {
   const state = message.state;
 
   if (typeof state !== "object" || state === null) return message;
+  const text = streamed.text;
 
   const grows =
-    part.text !== null &&
-    part.version > message.version &&
+    text !== null &&
+    text.version > message.version &&
     "markdown" in state &&
     typeof state.markdown === "string";
 
-  const progresses = part.progress !== null && "phase" in state && state.phase === "running";
+  const progresses = streamed.progress !== null && "phase" in state && state.phase === "running";
+
   const next: Record<string, unknown> = { ...state };
 
-  if (grows) next["markdown"] = part.text;
+  if (grows) next["markdown"] = text.markdown;
 
-  if (progresses) next["progress"] = part.progress;
+  if (progresses) next["progress"] = streamed.progress;
 
   const result =
     grows || progresses
-      ? { ...message, version: grows ? part.version : message.version, state: next }
+      ? { ...message, version: grows ? text.version : message.version, state: next }
       : message;
 
-  drawn.set(part, { source: message, result });
+  drawn.set(streamed, { source: message, result });
 
   return result;
 }

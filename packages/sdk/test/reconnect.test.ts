@@ -46,13 +46,17 @@ it("reports each lost watch and backs off before reopening it, restoring the lin
       return value;
     });
 
-    await vi.advanceTimersByTimeAsync(50);
+    await vi.advanceTimersByTimeAsync(24);
+    expect(link.current()).toMatchObject({ kind: "reconnecting", attempts: 1 });
+    await vi.advanceTimersByTimeAsync(26);
     expect(link.current()).toMatchObject({ kind: "reconnecting", attempts: 2 });
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(99);
+    expect(link.current()).toMatchObject({ kind: "reconnecting", attempts: 2 });
+    await vi.advanceTimersByTimeAsync(151);
     expect(link.current()).toMatchObject({ kind: "reconnecting", attempts: 3 });
-    await vi.advanceTimersByTimeAsync(499);
+    await vi.advanceTimersByTimeAsync(99);
     expect(returned).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(401);
     expect(await second).toEqual({ done: false, value: { kind: "jobs", jobs: [] } });
     expect(link.current()).toEqual({ kind: "connected" });
     expect(opened).toBe(4);

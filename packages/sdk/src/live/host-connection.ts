@@ -9,8 +9,10 @@ import type {
   Json,
   PartId,
   PerformEvent,
+  RunId,
   SessionId,
   TextFrame,
+  ToolProgress,
   WelcomeFrame,
 } from "@nyte-ai/schema";
 import { asSdkError, openHostSocket } from "@nyte-ai/protocol";
@@ -68,7 +70,16 @@ export interface LinkOptions {
   readonly fetch?: Fetch;
 }
 
-export type TextUpdate = Exclude<TextFrame, { readonly type: "closed" }>;
+/** What the host streams for a part ahead of its row: its whole `text` so far, an `append` to the text it last sent, or a running tool's `progress`. */
+export type TextUpdate =
+  | (TextSource & { readonly kind: "text"; readonly version: number; readonly text: string })
+  | (TextSource & { readonly kind: "append"; readonly version: number; readonly append: string })
+  | (TextSource & { readonly kind: "progress"; readonly progress: ToolProgress });
+
+interface TextSource {
+  readonly part: PartId;
+  readonly run: RunId | null;
+}
 
 export type Requester = PerformEvent["requester"];
 
@@ -214,8 +225,15 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
     for (const waiter of waiters) waiter.resolve(socket);
     waiters.clear();
     socket.onText((frame) => {
-      if ("type" in frame) openText(socket);
-      else for (const listener of texts) listener(frame);
+      if ("type" in frame) {
+        openText(socket);
+
+        return;
+      }
+
+      const update = textUpdate(frame);
+
+      for (const listener of texts) listener(update);
     });
 
     for (const entry of joined) {
@@ -507,6 +525,16 @@ async function loginStatus(
   await response?.body?.cancel().catch(() => undefined);
 
   return response?.status ?? null;
+}
+
+function textUpdate(frame: Exclude<TextFrame, { readonly type: "closed" }>): TextUpdate {
+  const source = { part: frame.part, run: frame.run };
+
+  if ("progress" in frame) return { ...source, kind: "progress", progress: frame.progress };
+
+  if ("text" in frame) return { ...source, kind: "text", version: frame.version, text: frame.text };
+
+  return { ...source, kind: "append", version: frame.version, append: frame.append };
 }
 
 function socketUrl(address: string): string {
