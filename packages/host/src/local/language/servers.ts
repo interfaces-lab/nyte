@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { findLanguage } from "@nyte-ai/schema";
+import { BASH_LANGUAGE_SERVER } from "./servers/bash-language-server.ts";
 import { GOPLS } from "./servers/gopls.ts";
 import { MARKSMAN } from "./servers/marksman.ts";
 import { OXLINT } from "./servers/oxlint.ts";
@@ -22,6 +23,7 @@ export const SERVERS: readonly ServerSpec[] = [
   TYPESCRIPT_LANGUAGE_SERVER,
   VSCODE_ESLINT_LANGUAGE_SERVER,
   OXLINT,
+  BASH_LANGUAGE_SERVER,
   VSCODE_JSON_LANGUAGE_SERVER,
   VSCODE_CSS_LANGUAGE_SERVER,
   VSCODE_HTML_LANGUAGE_SERVER,

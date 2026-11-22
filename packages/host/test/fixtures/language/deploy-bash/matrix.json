@@ -1,0 +1,330 @@
+{
+  "language": "bash",
+  "servers": [
+    "bash-language-server"
+  ],
+  "vscode": {
+    "extension": "mads-hartmann.bash-ide-vscode",
+    "source": "https://github.com/bash-lsp/bash-language-server/blob/main/vscode-client/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "  log_in",
+          "says": "log_info"
+        },
+        {
+          "file": "deploy.sh",
+          "after": "into $",
+          "says": "DEPLOY_ENV"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "build_release_pa",
+          "says": "Build the filesystem path"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "build_release_path "
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "build_release_pa",
+          "says": "release.sh"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "echo $release_pa"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "build_release_pa"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "build_release_pa"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "common.sh",
+          "after": "export DEPLOY_E",
+          "says": "deploy.sh"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "echo $release_pa"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "release.sh",
+          "says": "build_release_path"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "query": "check_service_health",
+          "says": "check_service_health"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "echo $release_pa",
+          "says": "Apply fix for SC2086"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "Provided by bash-language-server via ShellCheck quick fixes; VS Code's extension requires user-installed shellcheck on PATH, while Nyte downloads a pinned copy when absent."
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "deploy.sh"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "bash-language-server advertises documentFormattingProvider and shells out to shfmt (not bundled by VS Code's extension or Nyte). Without shfmt on PATH, the server returns an empty edit list, which the matrix harness records as edits."
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "local service="
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "release.sh",
+          "after": "build_release_pa",
+          "says": "deploy.sh"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "release.sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "deploy.sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "deploy.sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "echo $release_pa"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "deploy.sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": true,
+      "note": "Provided by VS Code's built-in shellscript language configuration (indentation and #region/#endregion markers); bash-language-server does not implement textDocument/foldingRange."
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "build_release_pa"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false,
+      "note": "bash-language-server does not implement textDocument/selectionRange; VS Code only falls back to generic word, bracket, and line selection."
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "deploy.sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "deploy.sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "deploy_relea"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "deploy_relea"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "says": "Double quote to prevent globbing and word splitting"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "Provided by bash-language-server via ShellCheck (SC2086); VS Code's extension requires user-installed shellcheck on PATH, while Nyte downloads a pinned copy when absent."
+    }
+  }
+}
