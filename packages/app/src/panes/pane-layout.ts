@@ -33,7 +33,7 @@ export function chatContent(selection: PaneSelection): PaneContent {
   return { kind: "chat", fields: { selection } };
 }
 
-export function shownChat(pane: Pane<PaneContent>): ChatPane | undefined {
+function shownChat(pane: Pane<PaneContent>): ChatPane | undefined {
   const tab = pane.tab;
 
   return tab.content.kind === "chat"

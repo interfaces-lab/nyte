@@ -95,7 +95,7 @@ export const DEFAULT_SESSION_VIEW_STATE: SessionViewState = {
   stepGroups: new Map(),
 };
 
-export function composerHasContent(composer: ComposerViewState): boolean {
+function composerHasContent(composer: ComposerViewState): boolean {
   return composer.draft.trim() !== "" || composer.attachments.length > 0;
 }
 
