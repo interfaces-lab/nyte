@@ -13,7 +13,21 @@ const USAGE = `Prints the pins a language server's install source needs.
 
   node packages/host/scripts/pin-language-server.ts npm <lock.json> <name@version>...
       Resolves the packages with npm and writes every tarball they need, with its
-      integrity, to <lock.json>.`;
+      integrity, to <lock.json>.
+
+  node packages/host/scripts/pin-language-server.ts schemas <schemas.json> <commit>
+      Writes the JSON files SchemaStore's catalog names at that commit, each with
+      its schema, to <schemas.json>. Keeps the schemas SchemaStore serves itself.`;
+
+const SCHEMA_HOSTS = ["https://www.schemastore.org/", "https://json.schemastore.org/"];
+
+const Catalog = compile(
+  Type.Object({
+    schemas: Type.Array(
+      Type.Object({ url: Type.String(), fileMatch: Type.Optional(Type.Array(Type.String())) }),
+    ),
+  }),
+);
 
 const Lockfile = compile(
   Type.Object({
@@ -34,6 +48,7 @@ const [mode, ...rest] = process.argv.slice(2);
 
 if (mode === "release" && rest.length > 0) await pinRelease(rest);
 else if (mode === "npm" && rest.length > 1) await pinNpm(rest[0] ?? "", rest.slice(1));
+else if (mode === "schemas" && rest.length === 2) await pinSchemas(rest[0] ?? "", rest[1] ?? "");
 else {
   console.error(USAGE);
   process.exitCode = 2;
@@ -106,4 +121,25 @@ async function pinNpm(output: string, packages: readonly string[]): Promise<void
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
+}
+
+async function pinSchemas(output: string, commit: string): Promise<void> {
+  const url = `https://raw.githubusercontent.com/SchemaStore/schemastore/${commit}/src/api/json/catalog.json`;
+  const response = await fetch(url);
+
+  if (!response.ok) throw new Error(`${url} answered ${response.status}.`);
+  const catalog: unknown = await response.json();
+
+  if (!Catalog.Check(catalog)) throw new Error("This script cannot read SchemaStore's catalog.");
+
+  const pinned = catalog.schemas.flatMap((schema) => {
+    const fileMatch = (schema.fileMatch ?? []).filter((pattern) => !/\.ya?ml$/u.test(pattern));
+
+    return fileMatch.length > 0 && SCHEMA_HOSTS.some((host) => schema.url.startsWith(host))
+      ? [{ fileMatch, url: schema.url }]
+      : [];
+  });
+
+  await writeFile(output, `${JSON.stringify(pinned, null, 2)}\n`);
+  console.log(`${pinned.length} schemas pinned in ${output}`);
 }
