@@ -3,11 +3,11 @@ title: language.watchStatus
 description: Streams the workspace's language servers each time one changes state.
 ---
 
-Streams the same rows as [`language.status`](/docs/reference/operations/language/status): first the rows as they are, then all of them again each time one server changes state. A reader that falls behind gets the latest rows, not every step.
+Streams the same rows as [`language.status`](/docs/reference/operations/language/status): first the rows as they are, then all of them again each time one server changes state, reports download progress or registers a feature. A reader that falls behind gets the latest rows, not every step.
 
 ## When to call it
 
-To keep a status bar or a server panel current, such as a `missing` server's install hint.
+To keep a status bar or a server panel current, such as a download's progress or a `missing` server's install hint.
 
 ## Access
 
@@ -26,12 +26,29 @@ A frame:
 ```json
 [
   {
-    "language": "typescript",
+    "languages": ["typescript"],
     "server": "typescript-language-server",
     "root": "web",
-    "state": { "kind": "busy", "title": "Initializing", "percent": null },
+    "state": {
+      "kind": "busy",
+      "title": "Initializing",
+      "percent": null
+    },
     "version": "TypeScript 6.0.3",
-    "executable": "/usr/local/bin/typescript-language-server"
+    "executable": "/usr/local/bin/typescript-language-server",
+    "features": ["completion", "hover", "definition", "references", "rename"]
+  },
+  {
+    "languages": ["python"],
+    "server": "ruff",
+    "root": "",
+    "state": {
+      "kind": "installing",
+      "percent": 42
+    },
+    "version": null,
+    "executable": null,
+    "features": []
   }
 ]
 ```
@@ -72,10 +89,36 @@ A frame:
   "type": "array",
   "items": {
     "type": "object",
-    "required": ["language", "server", "root", "state", "version", "executable"],
+    "required": ["languages", "server", "root", "state", "version", "executable", "features"],
     "properties": {
-      "language": {
-        "enum": ["go", "typescript"]
+      "languages": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "bash",
+            "c",
+            "csharp",
+            "css",
+            "elixir",
+            "go",
+            "html",
+            "java",
+            "json",
+            "kotlin",
+            "lua",
+            "markdown",
+            "php",
+            "python",
+            "ruby",
+            "rust",
+            "sql",
+            "swift",
+            "toml",
+            "typescript",
+            "yaml",
+            "zig"
+          ]
+        }
       },
       "server": {
         "type": "string"
@@ -143,6 +186,26 @@ A frame:
           },
           {
             "type": "object",
+            "required": ["kind", "percent"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "installing"
+              },
+              "percent": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": ["kind"],
             "properties": {
               "kind": {
@@ -195,6 +258,23 @@ A frame:
             "type": "null"
           }
         ]
+      },
+      "features": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "completion",
+            "hover",
+            "definition",
+            "typeDefinition",
+            "references",
+            "symbols",
+            "codeActions",
+            "format",
+            "formatRange",
+            "rename"
+          ]
+        }
       }
     }
   }

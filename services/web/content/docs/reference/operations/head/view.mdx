@@ -3303,6 +3303,27 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                 "type": "boolean",
                 "const": true
               },
+              "mode": {
+                "type": "object",
+                "required": ["icon"],
+                "properties": {
+                  "icon": {
+                    "type": "string"
+                  },
+                  "tint": {
+                    "type": "object",
+                    "required": ["hue", "chroma"],
+                    "properties": {
+                      "hue": {
+                        "type": "number"
+                      },
+                      "chroma": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              },
               "schema": {
                 "type": "object",
                 "patternProperties": {

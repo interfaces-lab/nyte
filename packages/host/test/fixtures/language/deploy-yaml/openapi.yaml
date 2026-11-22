@@ -1,0 +1,21 @@
+openapi: 3.1.0
+info:
+  title: Deploy Control API
+  version: 1.0.0
+paths:
+  /deployments:
+    get:
+      responses:
+        "200":
+          description: Current deployment status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeployStatus"
+components:
+  schemas:
+    DeployStatus:
+      type: object
+      properties:
+        state:
+          type: string

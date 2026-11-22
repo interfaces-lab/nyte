@@ -596,12 +596,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await language(id)).codeActions({ path, range, only }),
     "language.resolveCodeAction": async ({ workspace: id, token }) =>
       (await language(id)).resolveCodeAction({ token }),
-    "language.format": async ({ workspace: id, path, options }) =>
-      (await language(id)).format({ path, options }),
-    "language.signatureHelp": async ({ workspace: id, path, position }) =>
-      (await language(id)).signatureHelp({ path, position }),
-    "language.inlayHints": async ({ workspace: id, path, range }) =>
-      (await language(id)).inlayHints({ path, range }),
+    "language.format": async ({ workspace: id, path, options, range }) =>
+      (await language(id)).format({ path, options, range }),
 
     "github.account": () => connection.github.account(),
     "github.signIn": () => connection.github.signIn(),

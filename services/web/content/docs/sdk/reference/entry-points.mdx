@@ -236,7 +236,7 @@ Beside a `Connection`'s members, a `ClientConnection` has:
 | `head(session, head, { tail })` | A store of one head's last `tail` messages and the rows they need                                                                                                                                                                                                                   |
 | `part(session, part)`           | A store of one part by id, wherever it sits in the session, kept current from the session's changes                                                                                                                                                                                 |
 | `clients.open()`                | A store of the connected clients, a `Map` of `ClientRow` by client id. Close it when done                                                                                                                                                                                           |
-| `text(listener)`                | Opens the text channel and calls `listener` with each `TextUpdate`. Returns the unsubscribe                                                                                                                                                                                         |
+| `text(listener)`                | Opens the text channel and calls `listener` with each `TextUpdate` as it arrives, one call per update. Returns the unsubscribe                                                                                                                                                      |
 | `call(name, input)`             | Calls any query, command or receipt operation over the socket                                                                                                                                                                                                                       |
 | `offer(action, handler)`        | Declares `{ name, summary, input }` in this client's hello and answers each request with `handler(input, requester)`. Offer right after `connect` resolves and the first hello carries it; later, the socket reconnects to declare it. A hello holds 64 KB. Returns the disposer    |
 | `health`                        | A store of the socket: `connecting`, `open`, `retrying` with the next attempt's time, or `blocked` with reason `auth` or `version`. A socket that stops answering leaves `open` within 15 s while a call waits, and within 40 s while idle                                          |
@@ -244,6 +244,11 @@ Beside a `Connection`'s members, a `ClientConnection` has:
 | `retry()`                       | Dials again now, with the backoff reset, when the socket is `retrying` or `blocked`. When it is `open`, sends the host one small call, keeps the socket if anything comes back, and dials again if nothing does within 2 s. Call it on foreground, focus or the network coming back |
 
 Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()` and `close()`.
+`snapshot()` is current as soon as a change lands. Listeners run in a microtask after it, and
+changes that land before that microtask runs call each listener once, so read `snapshot()` in the
+listener rather than counting calls. A listener added after a change isn't called for it, and one
+that throws doesn't stop the others.
+
 The head, part and session stores also have `freshness()`: `fresh` with the `seq` their rows are current
 through, or `stale` while the socket is down or a read failed. A stale store keeps its rows and
 resumes from its seq once the socket is back.
@@ -291,11 +296,17 @@ takes over.
 
 These helpers read a head store on their own:
 
-| Helper                          | What it does                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------- |
-| `headView(snapshot)`            | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot      |
-| `streamText(texts, update)`     | Keeps the latest streamed text and tool progress of each part in a `StreamedText` map |
-| `withStreamedText(view, texts)` | Lays the streamed text over a `HeadView`                                              |
+| Helper               | What it does                                                                                                                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `headView(snapshot)` | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot                                                                                                        |
+| `streamedText()`     | A `StreamedText`. `apply(update)` keeps each `TextUpdate` from `connection.text`, and `lay(view)` returns the `HeadView` with the parts' streamed text and tool progress in their state |
+
+A `TextUpdate` names its `part` and `run`, and its `kind` says what it carries: `text`, the part's
+whole text so far at `version`; `append`, more text after the text the host last sent; or
+`progress`, a running tool's progress. `apply` drops an `append` to a part whose whole text it
+hasn't seen. `lay` returns the same view while nothing streamed changes it, ignores text for parts
+the view doesn't hold, and forgets a part once the view shows it settled at or past its streamed
+version.
 
 [Render a session](/docs/sdk/guides/render-a-session) shows a chat in use.
 

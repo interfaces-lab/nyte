@@ -19,6 +19,7 @@ import type {
   OperationOutput,
   Transport,
 } from "@nyte-ai/protocol";
+import { jittered } from "../live/store.ts";
 
 type LinkState = HostView["link"];
 
@@ -382,9 +383,9 @@ function hostGone(transport: Transport, error: unknown): boolean {
 }
 
 export function httpRetryDelay(attempts: number): number {
-  return attempts <= 1
-    ? FIRST_DELAY_MS
-    : Math.min(BASE_DELAY_MS * 2 ** (attempts - 2), MAX_DELAY_MS);
+  return jittered(
+    attempts <= 1 ? FIRST_DELAY_MS : Math.min(BASE_DELAY_MS * 2 ** (attempts - 2), MAX_DELAY_MS),
+  );
 }
 
 export function backoff(link: Link, ms: number, signal: AbortSignal): Promise<void> {

@@ -25,7 +25,7 @@ export const localMachine: Machine = {
 
     if (boot === null || target.boot !== boot || target.pid <= 1) return "unknown";
 
-    if (!exists(target.pid)) return "gone";
+    if (!processExists(target.pid)) return "gone";
     const seen = await readProcess(target.pid);
 
     if (seen === null || !sameReading(seen.started, target.started)) return "unknown";
@@ -35,7 +35,7 @@ export const localMachine: Machine = {
   async end(target) {
     if (!(await mayAct(target))) return "unknown";
 
-    if (!exists(target.pid)) return exists(-target.group) ? "unknown" : "gone";
+    if (!processExists(target.pid)) return processExists(-target.group) ? "unknown" : "gone";
     const seen = await readProcess(target.pid);
 
     if (seen === null || !sameReading(seen.started, target.started)) return "unknown";
@@ -46,7 +46,7 @@ export const localMachine: Machine = {
 
     if (await emptied(target.group, TERM_GRACE_MS)) return "ended";
 
-    if (exists(target.pid)) {
+    if (processExists(target.pid)) {
       const again = await readProcess(target.pid);
 
       if (again === null || again.started !== target.started) return "unknown";
@@ -141,7 +141,7 @@ function sameReading(left: string, right: string): boolean {
   return left.slice(0, left.indexOf(":")) === right.slice(0, right.indexOf(":"));
 }
 
-function exists(pid: number): boolean {
+export function processExists(pid: number): boolean {
   try {
     process.kill(pid, 0);
 
@@ -164,7 +164,7 @@ function signal(pid: number, name: NodeJS.Signals): boolean {
 async function emptied(group: number, within: number): Promise<boolean> {
   const deadline = Date.now() + within;
 
-  while (exists(-group)) {
+  while (processExists(-group)) {
     if (Date.now() >= deadline) return false;
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }

@@ -1,0 +1,75 @@
+import type { ServerSpec } from "../spec.ts";
+import { CSS_SETTINGS } from "./vscode-css-language-server.ts";
+import { langserversExtracted } from "./vscode-langservers-extracted.ts";
+
+export const VSCODE_HTML_LANGUAGE_SERVER: ServerSpec = {
+  name: "vscode-html-language-server",
+  languages: ["html"],
+  rootMarkers: ["package.json"],
+  program: "vscode-html-language-server",
+  probe: null,
+  arguments: ["--stdio"],
+  install: langserversExtracted("vscode-html-language-server"),
+  installHint: "Install the HTML language server: npm install -g vscode-langservers-extracted",
+  initializationOptions: {
+    embeddedLanguages: { css: true, javascript: true },
+    handledSchemas: ["file"],
+    dataPaths: [],
+    provideFormatter: true,
+    customCapabilities: { rangeFormatting: { editLimit: 10_000 } },
+  },
+  settings: {
+    html: {
+      completion: { attributeDefaultValue: "doublequotes" },
+      customData: [],
+      format: {
+        enable: true,
+        wrapLineLength: 120,
+        unformatted: "wbr",
+        contentUnformatted: "pre,code,textarea",
+        indentInnerHtml: false,
+        preserveNewLines: true,
+        maxPreserveNewLines: null,
+        indentHandlebars: false,
+        extraLiners: "head, body, /html",
+        wrapAttributes: "auto",
+        wrapAttributesIndentSize: null,
+        templating: false,
+        unformattedContentDelimiter: "",
+      },
+      suggest: { html5: true, hideEndTagSuggestions: false },
+      validate: { scripts: true, styles: true },
+      autoCreateQuotes: true,
+      autoClosingTags: true,
+      hover: { documentation: true, references: true },
+    },
+    css: CSS_SETTINGS,
+    javascript: {
+      format: {
+        enable: true,
+        insertSpaceAfterCommaDelimiter: true,
+        insertSpaceAfterConstructor: false,
+        insertSpaceAfterSemicolonInForStatements: true,
+        insertSpaceBeforeAndAfterBinaryOperators: true,
+        insertSpaceAfterKeywordsInControlFlowStatements: true,
+        insertSpaceAfterFunctionKeywordForAnonymousFunctions: true,
+        insertSpaceBeforeFunctionParenthesis: false,
+        insertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis: false,
+        insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets: false,
+        insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces: true,
+        insertSpaceAfterOpeningAndBeforeClosingEmptyBraces: true,
+        insertSpaceAfterOpeningAndBeforeClosingTemplateStringBraces: false,
+        insertSpaceAfterOpeningAndBeforeClosingJsxExpressionBraces: false,
+        placeOpenBraceOnNewLineForFunctions: false,
+        placeOpenBraceOnNewLineForControlBlocks: false,
+        semicolons: "ignore",
+      },
+    },
+    "js/ts": {
+      implicitProjectConfig: {
+        experimentalDecorators: false,
+        strictNullChecks: false,
+      },
+    },
+  },
+};

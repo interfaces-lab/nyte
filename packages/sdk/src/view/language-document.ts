@@ -4,15 +4,15 @@ import type { LanguageApi } from "@nyte-ai/core";
 
 export interface LanguageDocument {
   readonly path: string;
-  /** The server that took the document when it was opened, or null for a file no language handles. */
-  readonly server: LanguageServerView | null;
+  /** The servers that took the document when it was opened; empty for a file no server handles. */
+  readonly servers: readonly LanguageServerView[];
   /** Sends edits in the order they were made; a host that lost the document gets it again whole. */
   edit(changes: readonly TextChange[]): Promise<void>;
   close(): Promise<void>;
 }
 
 /**
- * Keeps one editor buffer in sync with the host's language server: each `edit` waits for the one
+ * Keeps one editor buffer in sync with the host's language servers: each `edit` waits for the one
  * before it and moves the version on, as `LanguageApi.change` needs. A sketch of the whole path:
  *
  * ```ts
@@ -34,7 +34,7 @@ export async function languageDocument(
   let current = text;
   let version = 1;
   let queue: Promise<void> = Promise.resolve();
-  const server = await language.open({ path, text, version });
+  const servers = await language.open({ path, text, version });
 
   const send = async (changes: readonly TextChange[]): Promise<void> => {
     current = changes.reduce(applyTextChange, current);
@@ -53,7 +53,7 @@ export async function languageDocument(
 
   return {
     path,
-    server,
+    servers,
     edit(changes) {
       const next = queue.then(() => send(changes));
       queue = next.catch(() => undefined);

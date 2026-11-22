@@ -1,0 +1,10 @@
+$card-radius: 8px;
+
+.card-shell {
+  border-radius: $card-radius;
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: $card-radius;
+  }
+}

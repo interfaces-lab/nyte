@@ -1,0 +1,188 @@
+{
+  "language": "typescript",
+  "servers": [
+    "typescript-language-server",
+    "vscode-eslint-language-server",
+    "oxlint"
+  ],
+  "vscode": {
+    "extension": "vscode.typescript-language-features with dbaeumer.vscode-eslint and oxc.oxc-vscode",
+    "source": "https://github.com/microsoft/vscode-eslint/blob/c999730b195bd8dc3eaf58435de71b185cb35138/client/src/client.ts"
+  },
+  "packages": {
+    "lock": "packages.lock.json",
+    "bins": {
+      "oxlint": "oxlint/bin/oxlint"
+    }
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "console.",
+          "says": "log"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "console.log(describeCou",
+          "says": "describeCounts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "console.log(describeCou",
+          "says": "src/counts.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": false,
+      "vscode": true,
+      "note": "The variable is a number, whose type has no source to go to."
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "after": "export function describeCou",
+          "says": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "says": "describeCounts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv",
+          "says": "Fix this no-var problem"
+        },
+        {
+          "file": "src/report.js",
+          "after": "debug",
+          "says": "Remove the debugger"
+        }
+      ],
+      "servers": [
+        "oxlint",
+        "typescript-language-server",
+        "vscode-eslint-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "The ESLint server and oxlint each add their quick fixes to the TypeScript server's refactorings."
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "after": "var deliv"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "src/counts.js",
+          "after": "export function describeCou",
+          "says": "src/report.js"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "src/report.js",
+          "says": "Unexpected var"
+        },
+        {
+          "file": "src/report.js",
+          "says": "`debugger` statement is not allowed"
+        },
+        {
+          "file": "src/report.js",
+          "says": "is not assignable to type 'number'"
+        }
+      ],
+      "servers": [
+        "typescript-language-server",
+        "vscode-eslint-language-server",
+        "oxlint"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "One list holds the findings of all three servers: no-var from ESLint, no-debugger from oxlint and the type error from the TypeScript server."
+    }
+  }
+}

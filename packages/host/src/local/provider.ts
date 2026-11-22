@@ -10,6 +10,7 @@ import { pluginFilesIn } from "../plugins/loader.ts";
 import { localFiles } from "./files/files.ts";
 import { localGit } from "./git/git.ts";
 import { localGitHub } from "./git/github.ts";
+import { languageInstaller } from "./language/install.ts";
 import { localLanguage } from "./language/manager.ts";
 import { folderIdentity } from "./identity.ts";
 import { localExec } from "./process/jobs.ts";
@@ -25,7 +26,7 @@ export function localProvider(options?: {
   readonly gh?: string;
   readonly ripgrep?: string;
   readonly formatter?: string;
-  /** Language servers pinned by program name, such as `{ gopls: "/opt/go/bin/gopls" }`; the rest are found on PATH. */
+  /** Language servers pinned by name, such as `{ gopls: "/opt/go/bin/gopls" }`; the rest are found in the project or on PATH, and otherwise downloaded into the home's `.nyte/language-servers`. */
   readonly languageServers?: Readonly<Record<string, string>>;
   /** The login shell a pty job without a command runs, read at each start; null or absent is `$SHELL`. */
   readonly shell?: () => string | null;
@@ -35,6 +36,7 @@ export function localProvider(options?: {
   const shared = new Map<string, SnapshotsApi>();
   let state: string | undefined;
   const github = localGitHub({ gh: options?.gh, git: options?.git });
+  const installer = languageInstaller(join(home, ".nyte", "language-servers"));
 
   return {
     kind: "local",
@@ -63,7 +65,7 @@ export function localProvider(options?: {
         projectSources: await projectSources(path),
       };
     },
-    async attach(target) {
+    async attach(target, trusted) {
       const path = readTargetPath(target);
 
       if (path === null) throw new SdkError("unavailable", "A local workspace needs a path.");
@@ -79,6 +81,7 @@ export function localProvider(options?: {
         files: localFiles(real, {
           ripgrep: options?.ripgrep,
           formatter: options?.formatter,
+          trusted,
           signal: detached.signal,
         }),
         exec: localExec(real, { shell: options?.shell, signal: detached.signal }),
@@ -89,7 +92,8 @@ export function localProvider(options?: {
     },
     git: (env) => localGit(env, { git: options?.git }),
     github,
-    language: (env, trusted) => localLanguage(env, { trusted, servers: options?.languageServers }),
+    language: (env, trusted) =>
+      localLanguage(env, { trusted, servers: options?.languageServers, installer }),
     snapshots(env) {
       state ??= join(realpathOrSelf(home), ".nyte");
 

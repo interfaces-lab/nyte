@@ -3,7 +3,7 @@ title: language.diagnostics
 description: Streams the diagnostics of each file whose list changed, starting with every file's known list.
 ---
 
-Streams diagnostics as the servers publish them. The first frame holds every file's known list; each later frame holds the files whose list changed since the frame before, each with its whole list. `version` is the document version a list describes, or null for a file no client opened. A list for an older version of an open document is dropped.
+Streams diagnostics as the servers report them. A file's list holds what every server that takes the file found, whether the server publishes its diagnostics or answers them when asked. The first frame holds every file's known list; each later frame holds the files whose list changed since the frame before, each with its whole list. `version` is the document version a list describes, or null for a file no client opened. A list for an older version of an open document is dropped.
 
 ## When to call it
 

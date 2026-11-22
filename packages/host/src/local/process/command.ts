@@ -174,6 +174,27 @@ export async function findExecutable(
   return null;
 }
 
+export function hostNode(): {
+  readonly command: readonly string[];
+  readonly env: Readonly<Record<string, string>>;
+} {
+  if (process.versions.electron !== undefined) {
+    return { command: [process.execPath], env: { ELECTRON_RUN_AS_NODE: "1" } };
+  }
+
+  return {
+    command: [process.execPath],
+    env: process.versions.bun === undefined ? {} : { BUN_BE_BUN: "1" },
+  };
+}
+
+export function projectBins(root: string): readonly string[] {
+  return [
+    join(root, "node_modules", ".bin"),
+    join(root, ".venv", process.platform === "win32" ? "Scripts" : "bin"),
+  ];
+}
+
 async function executable(path: string): Promise<boolean> {
   const found = await stat(path).catch(() => null);
 

@@ -62,9 +62,274 @@ export const LanguageLocationType = Type.Object({ path: Type.String(), range: Te
 
 export type LanguageLocation = Decoded<typeof LanguageLocationType>;
 
-export const LanguageNameType = Type.Enum(["go", "typescript"]);
+export const LanguageNameType = Type.Enum([
+  "bash",
+  "c",
+  "csharp",
+  "css",
+  "elixir",
+  "go",
+  "html",
+  "java",
+  "json",
+  "kotlin",
+  "lua",
+  "markdown",
+  "php",
+  "python",
+  "ruby",
+  "rust",
+  "sql",
+  "swift",
+  "toml",
+  "typescript",
+  "yaml",
+  "zig",
+]);
 
 export type LanguageName = Decoded<typeof LanguageNameType>;
+
+export const LANGUAGES: Readonly<
+  Record<
+    LanguageName,
+    {
+      readonly label: string;
+      readonly ids: Readonly<Record<string, string>>;
+      readonly fileNames?: Readonly<Record<string, string>>;
+    }
+  >
+> = {
+  bash: {
+    label: "Shell",
+    ids: {
+      ".sh": "shellscript",
+      ".bash": "shellscript",
+      ".zsh": "shellscript",
+      ".ksh": "shellscript",
+      ".ebuild": "shellscript",
+      ".eclass": "shellscript",
+      ".zsh-theme": "shellscript",
+    },
+    fileNames: {
+      ".bashrc": "shellscript",
+      ".bash_aliases": "shellscript",
+      ".bash_profile": "shellscript",
+      ".bash_login": "shellscript",
+      ".bash_logout": "shellscript",
+      ".profile": "shellscript",
+      ".xprofile": "shellscript",
+      ".xsession": "shellscript",
+      ".xsessionrc": "shellscript",
+      ".zshrc": "shellscript",
+      ".zprofile": "shellscript",
+      ".zlogin": "shellscript",
+      ".zlogout": "shellscript",
+      ".zshenv": "shellscript",
+      ".envrc": "shellscript",
+      APKBUILD: "shellscript",
+      PKGBUILD: "shellscript",
+      zshrc: "shellscript",
+      zshenv: "shellscript",
+      zlogin: "shellscript",
+      zprofile: "shellscript",
+      zlogout: "shellscript",
+      bashrc_Apple_Terminal: "shellscript",
+      zshrc_Apple_Terminal: "shellscript",
+    },
+  },
+  c: {
+    label: "C and C++",
+    ids: {
+      ".c": "c",
+      ".h": "c",
+      ".i": "c",
+      ".cc": "cpp",
+      ".ccm": "cpp",
+      ".cpp": "cpp",
+      ".cppm": "cpp",
+      ".cxx": "cpp",
+      ".cxxm": "cpp",
+      ".c++": "cpp",
+      ".c++m": "cpp",
+      ".hh": "cpp",
+      ".hpp": "cpp",
+      ".hxx": "cpp",
+      ".h++": "cpp",
+      ".ii": "cpp",
+      ".inl": "cpp",
+      ".ino": "cpp",
+      ".ipp": "cpp",
+      ".ixx": "cpp",
+      ".mpp": "cpp",
+      ".mxx": "cpp",
+      ".tpp": "cpp",
+      ".txx": "cpp",
+      ".cu": "cuda-cpp",
+      ".cuh": "cuda-cpp",
+      ".m": "objective-c",
+      ".mm": "objective-cpp",
+    },
+  },
+  csharp: { label: "C#", ids: { ".cs": "csharp" } },
+  css: { label: "CSS", ids: { ".css": "css", ".scss": "scss", ".less": "less" } },
+  elixir: { label: "Elixir", ids: { ".ex": "elixir", ".exs": "elixir" } },
+  go: {
+    label: "Go",
+    ids: { ".go": "go", ".tmpl": "gotmpl", ".gotmpl": "gotmpl" },
+    fileNames: { "go.mod": "go.mod", "go.work": "go.work", "go.sum": "go.sum" },
+  },
+  html: {
+    label: "HTML",
+    ids: {
+      ".html": "html",
+      ".htm": "html",
+      ".shtml": "html",
+      ".xhtml": "html",
+      ".xht": "html",
+      ".mdoc": "html",
+      ".jsp": "html",
+      ".asp": "html",
+      ".aspx": "html",
+      ".jshtm": "html",
+      ".volt": "html",
+      ".ejs": "html",
+      ".rhtml": "html",
+      ".handlebars": "handlebars",
+      ".hbs": "handlebars",
+      ".hjs": "handlebars",
+    },
+  },
+  java: { label: "Java", ids: { ".java": "java" } },
+  json: {
+    label: "JSON",
+    ids: {
+      ".json": "json",
+      ".bowerrc": "json",
+      ".jscsrc": "json",
+      ".webmanifest": "json",
+      ".har": "json",
+      ".jslintrc": "json",
+      ".jsonld": "json",
+      ".geojson": "json",
+      ".ipynb": "json",
+      ".vuerc": "json",
+      ".jsonc": "jsonc",
+      ".eslintrc": "jsonc",
+      ".jsfmtrc": "jsonc",
+      ".jshintrc": "jsonc",
+      ".swcrc": "jsonc",
+      ".hintrc": "jsonc",
+      ".babelrc": "jsonc",
+      ".code-snippets": "jsonc",
+    },
+    fileNames: {
+      "composer.lock": "json",
+      ".watchmanconfig": "json",
+      "*.js.map": "json",
+      "*.css.map": "json",
+      "*.ts.map": "json",
+      "tsconfig.json": "jsonc",
+      "tsconfig.*.json": "jsonc",
+      "tsconfig-*.json": "jsonc",
+      "jsconfig.json": "jsonc",
+      "jsconfig.*.json": "jsonc",
+      "jsconfig-*.json": "jsonc",
+      ".eslintrc.json": "jsonc",
+      "babel.config.json": "jsonc",
+      ".babelrc.json": "jsonc",
+      ".ember-cli": "jsonc",
+      "bun.lock": "jsonc",
+      "typedoc.json": "jsonc",
+    },
+  },
+  kotlin: { label: "Kotlin", ids: { ".kt": "kotlin", ".kts": "kotlin" } },
+  lua: { label: "Lua", ids: { ".lua": "lua" } },
+  markdown: { label: "Markdown", ids: { ".md": "markdown", ".markdown": "markdown" } },
+  php: { label: "PHP", ids: { ".php": "php" } },
+  python: { label: "Python", ids: { ".py": "python", ".pyi": "python" } },
+  ruby: { label: "Ruby", ids: { ".rb": "ruby", ".rake": "ruby", ".gemspec": "ruby" } },
+  rust: { label: "Rust", ids: { ".rs": "rust" } },
+  sql: { label: "SQL", ids: { ".sql": "sql" } },
+  swift: { label: "Swift", ids: { ".swift": "swift" } },
+  toml: { label: "TOML", ids: { ".toml": "toml" } },
+  typescript: {
+    label: "TypeScript and JavaScript",
+    ids: {
+      ".ts": "typescript",
+      ".mts": "typescript",
+      ".cts": "typescript",
+      ".tsx": "typescriptreact",
+      ".js": "javascript",
+      ".mjs": "javascript",
+      ".cjs": "javascript",
+      ".jsx": "javascriptreact",
+    },
+  },
+  yaml: {
+    label: "YAML",
+    ids: { ".yaml": "yaml", ".yml": "yaml", ".eyaml": "yaml", ".eyml": "yaml", ".cff": "yaml" },
+    fileNames: { ".clang-format": "yaml", "_clang-format": "yaml", ".clang-tidy": "yaml" },
+  },
+  zig: { label: "Zig", ids: { ".zig": "zig", ".zon": "zig" } },
+};
+
+interface FoundLanguage {
+  readonly name: LanguageName;
+  readonly id: string;
+}
+
+const LANGUAGE_BY_EXTENSION = new Map(
+  LanguageNameType.enum.flatMap((name) =>
+    Object.entries(LANGUAGES[name].ids).map((entry) => [entry[0], { name, id: entry[1] }] as const),
+  ),
+);
+
+const FILE_NAMES = LanguageNameType.enum.flatMap((name) =>
+  Object.entries(LANGUAGES[name].fileNames ?? {}).map((entry) => {
+    const pattern = entry[0].toLowerCase();
+    const star = pattern.indexOf("*");
+    const found: FoundLanguage = { name, id: entry[1] };
+
+    return star < 0
+      ? { prefix: pattern, suffix: null, found }
+      : { prefix: pattern.slice(0, star), suffix: pattern.slice(star + 1), found };
+  }),
+);
+
+export function findLanguage(path: string): FoundLanguage | null {
+  const file = path
+    .slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1)
+    .toLowerCase();
+
+  const named = FILE_NAMES.find((entry) =>
+    entry.suffix === null
+      ? file === entry.prefix
+      : file.length >= entry.prefix.length + entry.suffix.length &&
+        file.startsWith(entry.prefix) &&
+        file.endsWith(entry.suffix),
+  );
+
+  if (named !== undefined) return named.found;
+
+  const dot = file.lastIndexOf(".");
+
+  return dot < 0 ? null : (LANGUAGE_BY_EXTENSION.get(file.slice(dot)) ?? null);
+}
+
+export const LanguageFeatureType = Type.Enum([
+  "completion",
+  "hover",
+  "definition",
+  "typeDefinition",
+  "references",
+  "symbols",
+  "codeActions",
+  "format",
+  "formatRange",
+  "rename",
+]);
+
+export type LanguageFeature = Decoded<typeof LanguageFeatureType>;
 
 export const LanguageServerStateType = Type.Union([
   Type.Object({ kind: Type.Literal("starting") }),
@@ -75,6 +340,7 @@ export const LanguageServerStateType = Type.Union([
     percent: nullable(Type.Number()),
   }),
   Type.Object({ kind: Type.Literal("missing"), hint: Type.String() }),
+  Type.Object({ kind: Type.Literal("installing"), percent: nullable(Type.Number()) }),
   Type.Object({ kind: Type.Literal("untrusted") }),
   Type.Object({ kind: Type.Literal("failed"), reason: Type.String() }),
   Type.Object({ kind: Type.Literal("idle") }),
@@ -82,14 +348,15 @@ export const LanguageServerStateType = Type.Union([
 
 export type LanguageServerState = Decoded<typeof LanguageServerStateType>;
 
-/** One language server for one language and project root: `idle` after it shut down for want of use, until the next request starts it again; `untrusted` while the user has not trusted the folder, since a server runs project code. */
+/** One language server for one project root: `installing` while its pinned version downloads; `idle` after it shut down for want of use, until the next request starts it again; `untrusted` while the user has not trusted the folder, since a server runs project code. `features` lists what it answers, and is empty until it is ready. */
 export const LanguageServerViewType = Type.Object({
-  language: LanguageNameType,
+  languages: Type.Array(LanguageNameType),
   server: Type.String(),
   root: Type.String(),
   state: LanguageServerStateType,
   version: nullable(Type.String()),
   executable: nullable(Type.String()),
+  features: Type.Array(LanguageFeatureType),
 });
 
 export type LanguageServerView = Decoded<typeof LanguageServerViewType>;
@@ -110,7 +377,7 @@ export const LanguageDiagnosticType = Type.Object({
 
 export type LanguageDiagnostic = Decoded<typeof LanguageDiagnosticType>;
 
-/** A file's whole diagnostic list as its server last published it; `version` is the document version it describes, null for a file no client opened. */
+/** A file's whole diagnostic list, each server's last report after the other's; `version` is the document version it describes, null for a file no client opened. */
 export const DiagnosticsFrameType = Type.Object({
   path: Type.String(),
   version: nullable(Type.Number()),
@@ -209,21 +476,6 @@ export type CompletionList = Decoded<typeof CompletionListType>;
 export const HoverType = Type.Object({ markdown: Type.String(), range: nullable(TextRangeType) });
 
 export type Hover = Decoded<typeof HoverType>;
-
-/** Each parameter is a span of `label` in UTF-16 code units. */
-export const SignatureHelpType = Type.Object({
-  signatures: Type.Array(
-    Type.Object({
-      label: Type.String(),
-      documentation: Type.String(),
-      parameters: Type.Array(Type.Object({ utf16Start: Type.Number(), utf16End: Type.Number() })),
-    }),
-  ),
-  activeSignature: Type.Number(),
-  activeParameter: nullable(Type.Number()),
-});
-
-export type SignatureHelp = Decoded<typeof SignatureHelpType>;
 
 export const SymbolKindType = Type.Enum([
   "file",
@@ -324,16 +576,6 @@ export const CodeActionOutcomeType = Type.Union([
 
 export type CodeActionOutcome = Decoded<typeof CodeActionOutcomeType>;
 
-export const InlayHintType = Type.Object({
-  position: TextPositionType,
-  label: Type.String(),
-  kind: Type.Enum(["type", "parameter", "other"]),
-  padLeft: Type.Boolean(),
-  padRight: Type.Boolean(),
-});
-
-export type InlayHint = Decoded<typeof InlayHintType>;
-
 export const FormatOptionsType = Type.Object({
   tabSize: Type.Number(),
   insertSpaces: Type.Boolean(),
@@ -341,7 +583,6 @@ export const FormatOptionsType = Type.Object({
 
 export type FormatOptions = Decoded<typeof FormatOptionsType>;
 
-/** `unavailable` when no server for the file formats documents, `failed` when its server errored. */
 export const LanguageFormatOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("edits"), edits: Type.Array(TextEditType) }),
   Type.Object({ kind: Type.Literal("unavailable"), reason: Type.String() }),

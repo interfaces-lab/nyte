@@ -303,7 +303,9 @@ describe.skipIf(!hasGit)("worktree isolation on a local host", () => {
 
     const provider = localProvider({ home });
 
-    expect(provider.snapshots?.(await provider.attach(workspace.target))).toBeDefined();
+    expect(
+      provider.snapshots?.(await provider.attach(workspace.target, async () => false)),
+    ).toBeDefined();
     expect(await host.session(child.id).remove()).toEqual({ kind: "removed" });
     expect(await readFile(join(path, "note.txt"), "utf8")).toBe("from the subagent\n");
     expect((await host.workspaces.list()).map((listed) => listed.id)).toContain(child.workspace);

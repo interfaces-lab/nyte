@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef } from "react";
+import { findLanguage } from "@nyte-ai/schema";
 import type {
   DiagnosticSeverity,
   LanguageDiagnostic,
@@ -10,7 +11,7 @@ import { languageFor } from "../data/language.ts";
 import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { workspaceFile } from "../workbench/paths.ts";
 import { fileActions } from "./file-store.ts";
-import { languageDocuments, languageFamily } from "./language-documents.ts";
+import { languageDocuments } from "./language-documents.ts";
 import { editorRange } from "./pierre-language.ts";
 
 const SEVERITIES = {
@@ -47,7 +48,7 @@ export function useDiagnostics(input: DiagnosticsInput) {
 
     if (id === undefined || root === undefined || relative === undefined) return undefined;
 
-    if (languageFamily(path) === undefined) return undefined;
+    if (findLanguage(path) === null) return undefined;
     const stop = new AbortController();
 
     void follow({ viewKey, path, id, root, relative }, stop.signal, show).catch(() => undefined);

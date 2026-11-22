@@ -1,14 +1,7 @@
+import { findLanguage } from "@nyte-ai/schema";
+import type { LanguageName } from "@nyte-ai/schema";
 import { languageDocument } from "@nyte-ai/sdk";
 import type { LanguageApi, LanguageDocument, TextChange } from "@nyte-ai/sdk";
-
-type Family = "go" | "typescript";
-
-const FAMILIES = new Map<string, Family>([
-  ["go", "go"],
-  ...["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"].map(
-    (extension) => [extension, "typescript"] satisfies [string, Family],
-  ),
-]);
 
 interface Held {
   readonly document: Promise<LanguageDocument | null>;
@@ -18,21 +11,11 @@ interface Held {
 interface Workspace {
   readonly api: LanguageApi;
   readonly held: Map<string, Held>;
-  readonly wanted: Set<Family>;
+  readonly wanted: Set<LanguageName>;
 }
 
 const workspaces = new Map<string, Workspace>();
 
-/** The language server family that would take a file, by its extension. */
-export function languageFamily(path: string): Family | undefined {
-  return FAMILIES.get(path.slice(path.lastIndexOf(".") + 1).toLowerCase());
-}
-
-/**
- * Keeps the host's language servers on the editor's text. A file is sent once its family's server
- * is in use and the editor's text differs from the disk the server would otherwise read: whole
- * when it opens, then each edit's changes, in order. Until then the server reads the file from disk.
- */
 export const languageDocuments = {
   /** Records an edit the editor made, as LSP orders changes; `text` is the whole new text, read only if the file opens now. */
   edited(
@@ -42,9 +25,9 @@ export const languageDocuments = {
     text: () => string,
   ): void {
     const found = workspaces.get(workspace);
-    const family = languageFamily(path);
+    const language = findLanguage(path)?.name;
 
-    if (found === undefined || family === undefined || !found.wanted.has(family)) return;
+    if (found === undefined || language === undefined || !found.wanted.has(language)) return;
     const held = found.held.get(path);
 
     if (held === undefined) {
@@ -60,10 +43,6 @@ export const languageDocuments = {
     });
   },
 
-  /**
-   * Starts sending a family's files before a query: every open file whose text differs from disk
-   * opens now, and the query waits until the server has every edit made so far.
-   */
   async prepare(
     workspace: string,
     api: LanguageApi,
@@ -74,17 +53,17 @@ export const languageDocuments = {
       readonly savedContents: string;
     }>,
   ): Promise<void> {
-    const family = languageFamily(path);
+    const language = findLanguage(path)?.name;
     const found = workspaces.get(workspace) ?? { api, held: new Map(), wanted: new Set() };
 
     workspaces.set(workspace, found);
 
-    if (family === undefined) return;
-    found.wanted.add(family);
+    if (language === undefined) return;
+    found.wanted.add(language);
 
     for (const buffer of buffers) {
       if (
-        languageFamily(buffer.path) === family &&
+        findLanguage(buffer.path)?.name === language &&
         !found.held.has(buffer.path) &&
         buffer.contents !== buffer.savedContents
       ) {

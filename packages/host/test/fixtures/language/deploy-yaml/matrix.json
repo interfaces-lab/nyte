@@ -1,0 +1,159 @@
+{
+  "language": "yaml",
+  "servers": [
+    "yaml-language-server"
+  ],
+  "vscode": {
+    "extension": "redhat.vscode-yaml",
+    "source": "https://github.com/redhat-developer/vscode-yaml/blob/main/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "service.yaml",
+          "after": "environment: ",
+          "says": "production"
+        }
+      ],
+      "servers": [
+        "yaml-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "service.yaml",
+          "after": "repli",
+          "says": "Number of running service instances."
+        },
+        {
+          "file": ".github/workflows/ci.yml",
+          "after": "runs-o",
+          "says": "machine"
+        }
+      ],
+      "servers": [
+        "yaml-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "The service.yaml probe resolves its schema offline via a modeline; the .github/workflows/ci.yml probe resolves the GitHub Actions workflow schema from SchemaStore by filename and needs the network."
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "anchors.yaml",
+          "after": "*service_def",
+          "says": "anchors.yaml"
+        }
+      ],
+      "servers": [
+        "yaml-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "anchors.yaml",
+          "after": "*service_def"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "anchors.yaml",
+          "after": "&service_def"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "manifests.yaml",
+          "says": "release"
+        }
+      ],
+      "servers": [
+        "yaml-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "service.yaml",
+          "after": "enabled: \"tr",
+          "says": "Convert to boolean"
+        }
+      ],
+      "servers": [
+        "yaml-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "service.yaml"
+        }
+      ],
+      "servers": [
+        "yaml-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "service.yaml",
+          "after": "labels:"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "anchors.yaml",
+          "after": "&service_def",
+          "says": "anchors.yaml"
+        }
+      ],
+      "servers": [
+        "yaml-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "service.yaml",
+          "says": "Incorrect type. Expected"
+        }
+      ],
+      "servers": [
+        "yaml-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}

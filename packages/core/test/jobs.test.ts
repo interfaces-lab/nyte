@@ -909,8 +909,8 @@ describe("jobs", () => {
     const entered = Promise.withResolvers<void>();
     const attach = provider.attach.bind(provider);
 
-    provider.attach = async (target) => {
-      const attached = await attach(target);
+    provider.attach = async (target, trusted) => {
+      const attached = await attach(target, trusted);
 
       return {
         ...attached,

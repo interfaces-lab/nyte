@@ -191,6 +191,54 @@
       "licenseFile": "tree-sitter-bash.txt",
       "foldQuery": "bash.scm",
       "symbolQuery": "bash-symbols.scm"
+    },
+    {
+      "language": "c",
+      "aliases": ["c", "h"],
+      "package": "tree-sitter-c",
+      "version": "0.24.1",
+      "archive": "https://registry.npmjs.org/tree-sitter-c/-/tree-sitter-c-0.24.1.tgz",
+      "integrity": "sha512-lkYwWN3SRecpvaeqmFKkuPNR3ZbtnvHU+4XAEEkJdrp3JfSp2pBrhXOtvfsENUneye76g889Y0ddF2DM0gEDpA==",
+      "entry": "package/tree-sitter-c.wasm",
+      "sha256": "c852c2a85ebf2beb636aa3b0ef7f7e70458684d74f6741b20dcb296885bed9f9",
+      "bytes": 625918,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-c.txt",
+      "foldQuery": "c.scm",
+      "symbolQuery": "c-symbols.scm"
+    },
+    {
+      "language": "cpp",
+      "aliases": ["cpp", "c++", "cc", "cxx", "hpp", "hh", "hxx", "objective-cpp"],
+      "package": "tree-sitter-cpp",
+      "version": "0.23.4",
+      "archive": "https://registry.npmjs.org/tree-sitter-cpp/-/tree-sitter-cpp-0.23.4.tgz",
+      "integrity": "sha512-qR5qUDyhZ5jJ6V8/umiBxokRbe89bCGmcq/dk94wI4kN86qfdV8k0GHIUEKaqWgcu42wKal5E97LKpLeVW8sKw==",
+      "entry": "package/tree-sitter-cpp.wasm",
+      "sha256": "174eb0deb75b2ec7881bcacda9f995648d8e683956e5c2267e69ab6dc503fcbf",
+      "bytes": 3434931,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-cpp.txt",
+      "foldQuery": "cpp.scm",
+      "symbolQuery": "cpp-symbols.scm"
+    },
+    {
+      "language": "swift",
+      "aliases": ["swift"],
+      "package": "@binclusive/tree-sitter-swift-wasm",
+      "version": "0.1.0",
+      "archive": "https://registry.npmjs.org/@binclusive/tree-sitter-swift-wasm/-/tree-sitter-swift-wasm-0.1.0.tgz",
+      "integrity": "sha512-QZr3UahyLhPUZtBmcleKzx/TTWT4dcXv9Xb8OeGrubtqsu1aNbaBYrlzeiM4XZzmm/Q+YDQEnk7/rg15SGZU1A==",
+      "entry": "package/wasm/tree-sitter-swift.wasm",
+      "sha256": "0258a7ef17303a8079ffe0748b3583d59656b5c3e8653fca7b6451b3e6689eb2",
+      "bytes": 3825025,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "@binclusive--tree-sitter-swift-wasm.txt",
+      "foldQuery": "swift.scm",
+      "symbolQuery": "swift-symbols.scm"
     }
   ],
   "runtime": {
@@ -263,6 +311,11 @@
       "source": "https://registry.npmjs.org/tree-sitter-bash/-/tree-sitter-bash-0.25.1.tgz#package/LICENSE"
     },
     {
+      "file": "@binclusive--tree-sitter-swift-wasm.txt",
+      "sha256": "3533cec129bb4bba015c0d61d86dd7c3b7e82110e4d2ff7837a01eff5bad5ccc",
+      "source": "https://registry.npmjs.org/@binclusive/tree-sitter-swift-wasm/-/tree-sitter-swift-wasm-0.1.0.tgz#package/LICENSE"
+    },
+    {
       "file": "web-tree-sitter-LICENSE.txt",
       "source": "https://registry.npmjs.org/web-tree-sitter/-/web-tree-sitter-0.25.10.tgz#package/LICENSE",
       "sha256": "5f9cf9fb6acb1972b35ae29119ce563bb60ec097656bc4b69b9bac2d04c7a147"
@@ -271,6 +324,16 @@
       "file": "tree-sitter-markdown-v0.5.1.txt",
       "source": "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-markdown/v0.5.1/LICENSE",
       "sha256": "52ec8a1bf8256511e2a92613e0bb41ffefba3897f16fa958d7bb28c466dd4804"
+    },
+    {
+      "file": "tree-sitter-c.txt",
+      "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "source": "https://registry.npmjs.org/tree-sitter-c/-/tree-sitter-c-0.24.1.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-cpp.txt",
+      "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "source": "https://registry.npmjs.org/tree-sitter-cpp/-/tree-sitter-cpp-0.23.4.tgz#package/LICENSE"
     }
   ]
 }

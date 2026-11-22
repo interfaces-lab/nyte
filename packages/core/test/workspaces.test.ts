@@ -273,10 +273,10 @@ describe("workspaces", () => {
     const attach = provider.attach.bind(provider);
     let attempts = 0;
 
-    provider.attach = async (target) => {
+    provider.attach = async (target, trusted) => {
       attempts += 1;
 
-      return attach(target);
+      return attach(target, trusted);
     };
 
     const { session } = await host.sessions.start({ workspace, content: "Hi." });

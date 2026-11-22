@@ -18,6 +18,15 @@ const SCRIPT: readonly Pattern[] = [
   [/^(?:export\s+)?(?:const|let|var)\s+([\w$]+)/u, "variable"],
 ];
 
+const C_LIKE: readonly Pattern[] = [
+  [/^\s*(?:template\s*<[^>]*>\s*)?class\s+(\w+)/u, "class"],
+  [/^\s*(?:typedef\s+)?(?:struct|union|enum(?:\s+class)?|using)\s+(\w+)/u, "type"],
+  [
+    /^(?:(?:static|inline|extern|virtual|constexpr|const|unsigned|signed|struct|enum|union)\s+)*[\w:*&<>]+\s+[*&]?(\w+(?:::\w+)?)\s*\([^;]*$/u,
+    "function",
+  ],
+];
+
 const PATTERNS = new Map<string, readonly Pattern[]>([
   ["typescript", SCRIPT],
   ["tsx", SCRIPT],
@@ -42,6 +51,26 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
     [
       [/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)/u, "function"],
       [/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait|type)\s+(\w+)/u, "type"],
+    ],
+  ],
+  ["c", C_LIKE],
+  ["cpp", C_LIKE],
+  ["objective-cpp", C_LIKE],
+  [
+    "swift",
+    [
+      [
+        /^\s*(?:(?:public|private|fileprivate|internal|open|package|static|class|final|override|mutating|nonmutating|async)\s+)*func\s+(\w+)/u,
+        "function",
+      ],
+      [
+        /^\s*(?:(?:public|private|fileprivate|internal|open|package|final|indirect)\s+)*(?:class|actor)\s+(\w+)/u,
+        "class",
+      ],
+      [
+        /^\s*(?:(?:public|private|fileprivate|internal|open|package|indirect)\s+)*(?:struct|enum|protocol|extension|typealias)\s+(\w+)/u,
+        "type",
+      ],
     ],
   ],
 ]);

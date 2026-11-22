@@ -12,13 +12,11 @@ import {
   DocumentSymbolType,
   FormatOptionsType,
   HoverType,
-  InlayHintType,
   LanguageLocationType,
   LanguageFormatOutcomeType,
   LanguageServerViewType,
   RenameOutcomeType,
   RenameTargetType,
-  SignatureHelpType,
   TextChangeType,
   TextPositionType,
   TextRangeType,
@@ -59,10 +57,10 @@ export const LANGUAGE_OPERATIONS = {
   "language.open": {
     ...LANGUAGE,
     summary:
-      "Opens a document with the client's text and version, starting its language server if none runs.",
+      "Opens a document with the client's text and version in every language server that takes it, starting the ones not running.",
     kind: "command",
     input: wireObject({ ...DOCUMENT, text: Type.String(), version: Type.Number() }),
-    output: wireSchema(nullable(LanguageServerViewType)),
+    output: SERVERS,
   },
   "language.change": {
     ...LANGUAGE,
@@ -170,23 +168,14 @@ export const LANGUAGE_OPERATIONS = {
   },
   "language.format": {
     ...LANGUAGE,
-    summary: "Computes the edits that format a document, or why no server formatted it.",
+    summary:
+      "Computes the edits that format a document, or a range of it, or why no server formatted it.",
     kind: "query",
-    input: wireObject({ ...DOCUMENT, options: FormatOptionsType }),
+    input: wireObject({
+      ...DOCUMENT,
+      options: FormatOptionsType,
+      range: Type.Optional(TextRangeType),
+    }),
     output: wireSchema(LanguageFormatOutcomeType),
-  },
-  "language.signatureHelp": {
-    ...LANGUAGE,
-    summary: "Reads the signature of the call at a position and its active parameter.",
-    kind: "query",
-    input: ON_POSITION,
-    output: wireSchema(nullable(SignatureHelpType)),
-  },
-  "language.inlayHints": {
-    ...LANGUAGE,
-    summary: "Lists the inlay hints, such as parameter names and inferred types, in a range.",
-    kind: "query",
-    input: wireObject({ ...DOCUMENT, range: TextRangeType }),
-    output: wireSchema(Type.Array(InlayHintType)),
   },
 } as const satisfies OperationRows;

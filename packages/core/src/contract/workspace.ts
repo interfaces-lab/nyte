@@ -82,29 +82,8 @@ import type {
   TrashOutcome,
   TrashToken,
   RestoreOutcome,
-  CodeAction,
-  CodeActionKind,
-  CodeActionOutcome,
-  CodeActionResolveToken,
-  CompletionItem,
-  CompletionList,
-  CompletionResolveToken,
-  CompletionTrigger,
-  DiagnosticsFrame,
-  DocumentSymbol,
-  FormatOptions,
-  Hover,
-  InlayHint,
-  LanguageLocation,
-  LanguageFormatOutcome,
-  LanguageServerView,
-  RenameOutcome,
-  RenameTarget,
-  SignatureHelp,
-  TextChange,
-  TextPosition,
-  TextRange,
 } from "@nyte-ai/schema";
+import type { LanguageApi, LanguageService } from "./language.ts";
 import type { Login, PluginStorage } from "./host.ts";
 import type { OsProcess } from "./records.ts";
 import type { Receipt } from "./session.ts";
@@ -156,74 +135,6 @@ export interface GitHubApi {
   state(): Promise<GitHubState>;
   /** Opens a pull request for the checked-out branch, which the caller has pushed; an open one for the branch answers `exists` and opens nothing. */
   createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
-}
-
-/**
- * Language intelligence for a workspace's files, from a language server per language and project
- * root. Paths are workspace-relative or absolute and come back workspace-relative inside the
- * workspace. A client drives the text of the documents it opens: `open` with its version, then
- * `change` with each newer version, one at a time and in order, then `close`. A file no client
- * opened is read from disk for each request. Queries on a file no server handles, or whose
- * server is missing or failed, answer empty; `status` says why.
- */
-export interface LanguageApi {
-  status(): Promise<readonly LanguageServerView[]>;
-  watchStatus(): AsyncIterable<readonly LanguageServerView[]>;
-  /** The server that took the document, or null for a file no language handles. */
-  open(input: {
-    readonly path: string;
-    readonly text: string;
-    readonly version: number;
-  }): Promise<LanguageServerView | null>;
-  /** Throws `SdkError("unknown")` for a document no client opened and `SdkError("stale")` for a version no newer than the last; open the document again to start over. */
-  change(input: {
-    readonly path: string;
-    readonly version: number;
-    readonly changes: readonly TextChange[];
-  }): Promise<null>;
-  close(input: { readonly path: string }): Promise<null>;
-  /** Each frame holds the files whose list changed since the last; the first holds every file's known list. */
-  diagnostics(): AsyncIterable<readonly DiagnosticsFrame[]>;
-  completion(
-    input: LanguagePosition & { readonly trigger: CompletionTrigger },
-  ): Promise<CompletionList>;
-  resolveCompletion(input: {
-    readonly token: CompletionResolveToken;
-  }): Promise<CompletionItem | null>;
-  hover(input: LanguagePosition): Promise<Hover | null>;
-  definition(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
-  typeDefinition(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
-  references(
-    input: LanguagePosition & { readonly includeDeclaration: boolean },
-  ): Promise<readonly LanguageLocation[]>;
-  symbols(input: { readonly path: string }): Promise<readonly DocumentSymbol[]>;
-  prepareRename(input: LanguagePosition): Promise<RenameTarget | null>;
-  rename(input: LanguagePosition & { readonly name: string }): Promise<RenameOutcome>;
-  /** With `only`, just the actions of those kinds and the kinds under them, as a server offers some only when asked. */
-  codeActions(input: {
-    readonly path: string;
-    readonly range: TextRange;
-    readonly only?: readonly CodeActionKind[];
-  }): Promise<readonly CodeAction[]>;
-  resolveCodeAction(input: { readonly token: CodeActionResolveToken }): Promise<CodeActionOutcome>;
-  format(input: {
-    readonly path: string;
-    readonly options: FormatOptions;
-  }): Promise<LanguageFormatOutcome>;
-  signatureHelp(input: LanguagePosition): Promise<SignatureHelp | null>;
-  inlayHints(input: {
-    readonly path: string;
-    readonly range: TextRange;
-  }): Promise<readonly InlayHint[]>;
-}
-
-export type LanguagePosition = { readonly path: string; readonly position: TextPosition };
-
-/** What a provider hands its attachment: the API, and `shutdown` to stop every server when the workspace detaches. */
-export interface LanguageService extends LanguageApi {
-  /** Follows a change to the folder's trust: trusting starts the servers that waited for it and hold documents, and withdrawing it stops every running server. */
-  trustChanged(trusted: boolean): Promise<void>;
-  shutdown(): Promise<void>;
 }
 
 export interface GitHubAccountApi {
@@ -403,7 +314,7 @@ export interface EnvironmentProvider {
     readonly availability: Availability;
     readonly projectSources: readonly string[];
   }>;
-  attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
+  attach(target: WorkspaceTarget, trusted: () => Promise<boolean>): Promise<ExecutionEnv>;
   readonly git?: (env: ExecutionEnv) => GitApi | undefined;
   readonly github?: (env: ExecutionEnv) => GitHubApi | undefined;
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;

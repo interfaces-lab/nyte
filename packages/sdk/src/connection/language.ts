@@ -22,7 +22,5 @@ export function languageApi(rows: Rows, workspace: WorkspaceId): LanguageApi {
     codeActions: (input) => rows.call("language.codeActions", { workspace, ...input }),
     resolveCodeAction: (input) => rows.call("language.resolveCodeAction", { workspace, ...input }),
     format: (input) => rows.call("language.format", { workspace, ...input }),
-    signatureHelp: (input) => rows.call("language.signatureHelp", { workspace, ...input }),
-    inlayHints: (input) => rows.call("language.inlayHints", { workspace, ...input }),
   };
 }

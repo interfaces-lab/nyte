@@ -34,8 +34,10 @@ const RETRY_BASE_MS = 1000;
 const RETRY_MAX_MS = 30_000;
 
 export function socketRetryDelay(attempt: number): number {
-  const ceiling = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt);
+  return jittered(Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt));
+}
 
+export function jittered(ceiling: number): number {
   return ceiling / 2 + (Math.random() * ceiling) / 2;
 }
 
@@ -140,23 +142,43 @@ export function sameJson<T>(left: T, right: T): boolean {
 export interface Listeners {
   readonly subscribe: (listener: () => void) => Disposer;
   readonly notify: () => void;
+  readonly size: () => number;
   readonly clear: () => void;
 }
 
 export function listenerSet(): Listeners {
-  const listeners = new Set<() => void>();
+  const listeners = new Map<() => void, number>();
+  let changes = 0;
+  let queued = false;
+
+  const flush = (): void => {
+    queued = false;
+
+    for (const [listener, since] of listeners) {
+      if (since === changes) continue;
+
+      queueMicrotask(() => {
+        if (listeners.get(listener) === since) listener();
+      });
+    }
+  };
 
   return {
     subscribe: (listener) => {
-      listeners.add(listener);
+      listeners.set(listener, changes);
 
       return () => {
         listeners.delete(listener);
       };
     },
     notify: () => {
-      for (const listener of listeners) listener();
+      changes += 1;
+
+      if (queued) return;
+      queued = true;
+      queueMicrotask(flush);
     },
+    size: () => listeners.size,
     clear: () => listeners.clear(),
   };
 }

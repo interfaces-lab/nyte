@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Site Theme",
+  "type": "object",
+  "definitions": {
+    "colorHex": {
+      "type": "string",
+      "format": "color-hex"
+    }
+  },
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Display title of the theme."
+    },
+    "accent": {
+      "type": "string",
+      "format": "color-hex",
+      "description": "Primary brand accent color."
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri-reference",
+      "description": "Documentation link for the theme."
+    },
+    "nested": {
+      "type": "object",
+      "properties": {
+        "border": {
+          "$ref": "#/definitions/colorHex"
+        },
+        "padding": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { findLanguage, LANGUAGES } from "@nyte-ai/schema";
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
@@ -11,10 +12,9 @@ import { errorMessage } from "../contract/errors.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { languageStatusWatch } from "../data/watches.ts";
 import { trustWorkspace, useHomeWorkspace } from "../data/workspaces.ts";
-import { workspaceFile } from "../workbench/paths.ts";
-import { languageFamily } from "./language-documents.ts";
+import { servesFile } from "./declaration.ts";
 
-const LANGUAGES = { go: "Go", typescript: "TypeScript and JavaScript" } as const;
+const WAITING = ["untrusted", "installing"] as const;
 
 const styles = create({
   bar: {
@@ -29,33 +29,27 @@ const styles = create({
   message: { flex: 1, minWidth: 0, textWrap: "pretty" },
 });
 
-export function TrustBar(input: {
+export function LanguageBar(input: {
   readonly path: string;
   readonly folder: { readonly id: WorkspaceId; readonly path: string } | undefined;
   readonly onTrusted: () => void;
 }) {
-  const family = languageFamily(input.path);
+  const name = findLanguage(input.path)?.name;
   const home = useHomeWorkspace();
+  const folder = input.folder;
 
-  const relative =
-    input.folder === undefined
-      ? undefined
-      : workspaceFile(input.path, [input.folder.path])?.relative;
-
-  const untrusted = useWatchSelect(
-    input.folder === undefined || family === undefined
-      ? undefined
-      : languageStatusWatch(input.folder.id),
+  const waiting = useWatchSelect(
+    folder === undefined || name === undefined ? undefined : languageStatusWatch(folder.id),
     (state) =>
-      state.value
-        ?.filter(
-          (view) =>
-            view.language === family &&
-            relative !== undefined &&
-            (view.root === "" || relative.startsWith(`${view.root}/`)),
-        )
-        .toSorted((left, right) => right.root.length - left.root.length)[0]?.state.kind ===
-      "untrusted",
+      WAITING.flatMap(
+        (kind) =>
+          state.value?.find(
+            (view) =>
+              view.state.kind === kind &&
+              folder !== undefined &&
+              servesFile(view, input.path, folder.path),
+          ) ?? [],
+      ).at(0),
   );
 
   const trust = useMutation({
@@ -69,12 +63,22 @@ export function TrustBar(input: {
       }),
   });
 
-  const folder = input.folder;
+  if (waiting === undefined || folder === undefined || name === undefined) return null;
+  const language = LANGUAGES[name].label;
+  const state = waiting.state;
 
-  if (!untrusted || folder === undefined || family === undefined) return null;
-  const language = LANGUAGES[family];
+  if (state.kind === "installing") {
+    return (
+      <div role="status" {...props(text.sm, styles.bar, hairline.blockEnd)}>
+        <span {...props(styles.message)}>
+          Downloading {language} code intelligence
+          {state.percent === null ? "." : `: ${String(Math.round(state.percent))}%`}
+        </span>
+      </div>
+    );
+  }
 
-  if (folder.id === home)
+  if (folder.id === home) {
     return (
       <div role="status" {...props(text.sm, styles.bar, hairline.blockEnd)}>
         <span {...props(styles.message)}>
@@ -83,11 +87,12 @@ export function TrustBar(input: {
         </span>
       </div>
     );
+  }
 
   return (
     <div role="status" {...props(text.sm, styles.bar, hairline.blockEnd)}>
       <span {...props(styles.message)}>
-        Trust this folder to turn on {language} code intelligence. Its language server runs code
+        Trust this folder to turn on {language} code intelligence. Its language servers run code
         from the folder.
       </span>
       <Button size="2xs" loading={trust.isPending} onClick={() => trust.mutate(folder.id)}>

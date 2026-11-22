@@ -3,7 +3,9 @@ title: language.status
 description: Lists the workspace's language servers and their state.
 ---
 
-Lists one row per language server the workspace has started: its language, program, project root, state, version and executable. A server is `starting`, `ready`, `busy` with a progress title, `missing` with the command that installs it, `untrusted` while the folder isn't trusted, since a server runs code from it, and stopped again when trust is withdrawn, `failed` with a reason, or `idle` after it shut down for want of use. There is one server per language and project root, the nearest folder holding a `go.mod` or `go.work` for Go and a `tsconfig.json`, `jsconfig.json` or `package.json` for TypeScript and JavaScript.
+Lists one row per language server the workspace has started: the languages it serves, its name, project root, state, version, executable and the features it answers. A server is `installing` while its pinned version downloads, `starting`, `ready`, `busy` with a progress title, `missing` with the command that installs it, `untrusted` while the folder isn't trusted, since a server runs code from it, and stopped again when trust is withdrawn, `failed` with a reason, or `idle` after it shut down for want of use. `features` is empty until the server is ready, and grows when a server registers a feature after it started.
+
+Every server that takes a file gets it, each with its own row per project root, the nearest folder holding one of its marker files: a `go.mod` or `go.work` for `gopls`, a `pyproject.toml`, `ruff.toml` or `.ruff.toml` for `ruff`, and a `tsconfig.json`, `jsconfig.json` or `package.json` for `typescript-language-server`. Some servers take a file only when their configuration sits in its folder or above it, as `oxlint` does. A server installed in the project's `node_modules/.bin` or `.venv` runs before one on `PATH`. One found in neither is downloaded at a pinned version into `~/.nyte/language-servers`, once the folder is trusted. A server that has no download, or whose download failed, is `missing`.
 
 ## When to call it
 
@@ -26,12 +28,25 @@ Response:
 ```json
 [
   {
-    "language": "go",
+    "languages": ["go"],
     "server": "gopls",
     "root": "",
-    "state": { "kind": "ready" },
+    "state": {
+      "kind": "ready"
+    },
     "version": "v0.24.0",
-    "executable": "/Users/ada/go/bin/gopls"
+    "executable": "/Users/ada/go/bin/gopls",
+    "features": [
+      "completion",
+      "hover",
+      "definition",
+      "typeDefinition",
+      "references",
+      "symbols",
+      "codeActions",
+      "format",
+      "rename"
+    ]
   }
 ]
 ```
@@ -72,10 +87,36 @@ Response:
   "type": "array",
   "items": {
     "type": "object",
-    "required": ["language", "server", "root", "state", "version", "executable"],
+    "required": ["languages", "server", "root", "state", "version", "executable", "features"],
     "properties": {
-      "language": {
-        "enum": ["go", "typescript"]
+      "languages": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "bash",
+            "c",
+            "csharp",
+            "css",
+            "elixir",
+            "go",
+            "html",
+            "java",
+            "json",
+            "kotlin",
+            "lua",
+            "markdown",
+            "php",
+            "python",
+            "ruby",
+            "rust",
+            "sql",
+            "swift",
+            "toml",
+            "typescript",
+            "yaml",
+            "zig"
+          ]
+        }
       },
       "server": {
         "type": "string"
@@ -143,6 +184,26 @@ Response:
           },
           {
             "type": "object",
+            "required": ["kind", "percent"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "installing"
+              },
+              "percent": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": ["kind"],
             "properties": {
               "kind": {
@@ -195,6 +256,23 @@ Response:
             "type": "null"
           }
         ]
+      },
+      "features": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "completion",
+            "hover",
+            "definition",
+            "typeDefinition",
+            "references",
+            "symbols",
+            "codeActions",
+            "format",
+            "formatRange",
+            "rename"
+          ]
+        }
       }
     }
   }

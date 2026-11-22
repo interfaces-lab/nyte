@@ -387,20 +387,27 @@ describe("localFiles", () => {
     });
   }
 
-  it("formats with a detected formatter and answers failed when it can't run", async () => {
+  it("formats with a detected formatter, answers failed when it can't run, and runs nothing in an untrusted folder", async () => {
     const root = await folder();
-
-    const files = localFiles(root, {
-      formatter: join(import.meta.dirname, "../../../node_modules/.bin/oxfmt"),
-    });
+    const formatter = join(import.meta.dirname, "../../../node_modules/.bin/oxfmt");
+    const trusted = async () => true;
+    const files = localFiles(root, { formatter, trusted });
 
     const formatted = await files.format("a.ts", "const   a=1\n");
 
     expect(formatted).toEqual({ kind: "formatted", contents: "const a = 1;\n" });
     expect(await files.format("a.ts", "const a = 1;\n")).toEqual({ kind: "unchanged" });
     expect(
-      (await localFiles(root, { formatter: join(root, "none") }).format("a.ts", "x")).kind,
+      (await localFiles(root, { formatter: join(root, "none"), trusted }).format("a.ts", "x")).kind,
     ).toBe("failed");
+    expect(
+      (
+        await localFiles(root, { formatter, trusted: async () => false }).format(
+          "a.ts",
+          "const   a=1\n",
+        )
+      ).kind,
+    ).toBe("unavailable");
   });
 
   it("watches created, modified and removed files, coalesced, without ignored paths", async () => {
