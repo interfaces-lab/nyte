@@ -55,7 +55,7 @@ export function pendingConfigurations(
     });
 }
 
-export function showsChoice(
+function showsChoice(
   view: Pick<SessionView, "configuration">,
   selected: Pick<Configuration, "model" | "thinking">,
 ): boolean {
