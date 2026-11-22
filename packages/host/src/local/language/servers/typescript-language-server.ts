@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { compile } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import type { ServerSpec } from "../spec.ts";
+import type { Install, Project, ServerSpec } from "../spec.ts";
 import packages from "./typescript-language-server.lock.json" with { type: "json" };
 
 const PackageManifest = compile(Type.Object({ version: Type.String() }));
@@ -30,6 +30,14 @@ const LANGUAGE = {
   suggest: { completeFunctionCalls: false },
 } as const;
 
+const INSTALL: Install = {
+  kind: "npm",
+  package: "typescript-language-server",
+  version: "6.1.0",
+  packages,
+  entry: "node_modules/typescript-language-server/lib/cli.mjs",
+};
+
 export const TYPESCRIPT_LANGUAGE_SERVER: ServerSpec = {
   name: "typescript-language-server",
   languages: ["typescript"],
@@ -38,19 +46,16 @@ export const TYPESCRIPT_LANGUAGE_SERVER: ServerSpec = {
   program: "typescript-language-server",
   probe: ["--version"],
   arguments: ["--stdio"],
-  install: {
-    kind: "npm",
-    version: "6.1.0",
-    packages,
-    entry: "node_modules/typescript-language-server/lib/cli.mjs",
-  },
+  install: INSTALL,
   runtime: null,
   installHint:
     "Install the TypeScript language server: npm install -g typescript-language-server typescript",
   initializationOptions: { preferences: PREFERENCES },
   settings: { typescript: LANGUAGE, javascript: LANGUAGE },
-  async prepare(root) {
-    const typescript = await findUpward(root, join("node_modules", "typescript"));
+  async prepare(project) {
+    const typescript =
+      (await findUpward(project.root, join("node_modules", "typescript"))) ??
+      (await findPinnedTypeScript(project));
 
     const manifest =
       typescript === null
@@ -59,17 +64,23 @@ export const TYPESCRIPT_LANGUAGE_SERVER: ServerSpec = {
 
     const version = manifest === null ? null : readPackageVersion(manifest);
 
+    if (typescript === null || version === null) return {};
+
     return {
       initializationOptions: {
         preferences: PREFERENCES,
-        ...(typescript === null || version === null
-          ? {}
-          : { tsserver: { path: join(typescript, "lib", "tsserver.js") } }),
+        tsserver: { path: join(typescript, "lib", "tsserver.js") },
       },
-      runsOn: version === null ? null : `TypeScript ${version}`,
+      runsOn: `TypeScript ${version}`,
     };
   },
 };
+
+async function findPinnedTypeScript(project: Project): Promise<string | null> {
+  const installed = await project.install(INSTALL);
+
+  return installed === null ? null : join(installed.folder, "node_modules", "typescript");
+}
 
 async function findUpward(from: string, name: string): Promise<string | null> {
   const candidate = join(from, name);

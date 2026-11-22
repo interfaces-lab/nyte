@@ -103,7 +103,7 @@ describe.each(downloads ? fixtures : [])("matrix: $folder", (fixture) => {
         spec.install !== null && matrix.servers.includes(spec.name)
           ? [
               installer
-                .install(spec.name, spec.install, () => undefined)
+                .install(spec.install, () => undefined)
                 .then(async (installed) => {
                   if (installed.kind === "binary") return [spec.name, installed.path] as const;
                   const launcher = join(launchers, spec.name);

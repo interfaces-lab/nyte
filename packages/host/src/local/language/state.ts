@@ -14,6 +14,7 @@ export interface Run {
   readonly progress: Map<string, { readonly title: string; readonly percent: number | null }>;
   readonly registrations: Map<string, Registration>;
   capabilities: ServerCapabilities;
+  settings: Json;
   initialized: boolean;
   stopping: boolean;
   collecting: WorkspaceEdit[] | null;

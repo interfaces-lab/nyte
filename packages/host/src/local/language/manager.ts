@@ -235,7 +235,7 @@ export function localLanguage(
 
       switch (method) {
         case "workspace/configuration":
-          return answerConfiguration(slot.spec.settings, params);
+          return answerConfiguration(run?.settings ?? slot.spec.settings, params);
         case "workspace/workspaceFolders":
           return [{ uri: uri(slot.root), name: basename(slot.root) }];
         case "workspace/applyEdit":
@@ -387,7 +387,7 @@ export function localLanguage(
     setState(slot, { kind: "installing", percent: null });
 
     const installed = await download.installer
-      .install(spec.name, download.source, (percent) => {
+      .install(download.source, (percent) => {
         if (slot.state.kind === "installing") setState(slot, { kind: "installing", percent });
       })
       .catch((error: unknown) => {
@@ -449,6 +449,7 @@ export function localLanguage(
       progress: new Map(),
       registrations: new Map(),
       capabilities: NO_CAPABILITIES,
+      settings: slot.spec.settings,
       initialized: false,
       stopping: false,
       collecting: null,
@@ -461,15 +462,28 @@ export function localLanguage(
       () => exited(slot, run, null),
     );
 
+    const installer = options.installer;
+
     const prepared =
       slot.spec.prepare === undefined
-        ? { initializationOptions: slot.spec.initializationOptions, runsOn: null }
-        : await slot.spec.prepare(slot.root);
+        ? {}
+        : await slot.spec.prepare({
+            root: slot.root,
+            install: async (source) =>
+              installer === undefined
+                ? null
+                : installer.install(source, () => undefined).catch(() => null),
+          });
+
+    run.settings = prepared.settings ?? slot.spec.settings;
 
     const answer = await rpc
       .request(
         "initialize",
-        initializeParams(slot.root, prepared.initializationOptions),
+        initializeParams(
+          slot.root,
+          prepared.initializationOptions ?? slot.spec.initializationOptions,
+        ),
         AbortSignal.timeout(START_DEADLINE_MS),
       )
       .catch((error: unknown) => error);
@@ -493,9 +507,10 @@ export function localLanguage(
 
     run.capabilities = initialized.capabilities;
     slot.version =
-      [initialized.version, prepared.runsOn].filter((part) => part !== null).join(", ") || null;
+      [initialized.version, prepared.runsOn ?? null].filter((part) => part !== null).join(", ") ||
+      null;
     rpc.notify("initialized", {});
-    rpc.notify("workspace/didChangeConfiguration", { settings: slot.spec.settings });
+    rpc.notify("workspace/didChangeConfiguration", { settings: run.settings });
     run.initialized = true;
 
     for (const document of documents.values()) {

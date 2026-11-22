@@ -30,9 +30,11 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 9. **`program` is looked up first**, in the project's `node_modules/.bin` and `.venv`, then on `PATH`. A found program always wins over a download.
 34. **`probe` checks that a found program runs.** rustup and mise put a shim on `PATH` for a tool that is not installed. Give the arguments that make the server print its version and exit 0. A found program that fails them is skipped, and the download is used. The host runs the probe only once the folder is trusted.
 10. **`install` is the fallback, and it is data.** `release` is one pinned asset per platform. `npm` is a pinned list of tarballs plus the script to run. `toolchain` runs a program such as `go install`, with `INSTALL_FOLDER` standing for the folder it installs into. `null` means never downloaded: the server ships with a toolchain, or must match the project's own version.
+36. **`package` names what is downloaded, and keys the cache.** Servers that ship in one npm package share one `package` and `version` and differ in `entry`, so the package is installed once.
 11. **`runtime` names a program the server cannot run without.** The host runs it with `probe` and treats a failure as `missing` with `installHint`. Never download a runtime.
 12. **`initializationOptions` and `settings` are plain data.** `settings` answers `workspace/configuration` by dotted section and is sent as `workspace/didChangeConfiguration`.
-13. **`prepare` is only for values that depend on the project's disk**, such as the path of the project's own TypeScript. A value you can write down goes in the data.
+13. **`prepare` is only for values that depend on the project's disk or on an install**, such as the path of the project's own TypeScript. It may return `initializationOptions`, `settings` and `runsOn`, each replacing the spec's own. A value you can write down goes in the data.
+37. **A server that needs a second pinned thing installs it in `prepare`.** `project.install` takes an `Install` and answers where it landed, or null when the host has no installer. The Bash server's shellcheck and a fallback TypeScript are such things. Write its `Install` as data in the spec file.
 14. **No server names outside its spec file.** If the manager, a reader or the test needs to know which server it talks to, the spec is missing a field. Stop and report what the spec cannot express.
 
 ## Pin the download

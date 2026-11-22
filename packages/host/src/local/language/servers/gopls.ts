@@ -20,6 +20,7 @@ export const GOPLS: ServerSpec = {
   arguments: [],
   install: {
     kind: "toolchain",
+    package: "gopls",
     version: "v0.24.0",
     program: "go",
     arguments: ["install", "golang.org/x/tools/gopls@v0.24.0"],

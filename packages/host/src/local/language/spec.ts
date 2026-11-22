@@ -30,26 +30,41 @@ export interface NpmPackage {
   readonly cpu?: readonly string[];
 }
 
-export type Install =
+export type Install = { readonly package: string; readonly version: string } & (
   | {
       readonly kind: "release";
-      readonly version: string;
       readonly assets: Readonly<Partial<Record<Platform, Asset>>>;
     }
   | {
       readonly kind: "npm";
-      readonly version: string;
       readonly packages: readonly NpmPackage[];
       readonly entry: string;
     }
   | {
       readonly kind: "toolchain";
-      readonly version: string;
       readonly program: string;
       readonly arguments: readonly string[];
       readonly env: Readonly<Record<string, string>>;
       readonly bin: string;
-    };
+    }
+);
+
+export interface Installed {
+  readonly kind: "binary" | "script";
+  readonly path: string;
+  readonly folder: string;
+}
+
+export interface Project {
+  readonly root: string;
+  install(source: Install): Promise<Installed | null>;
+}
+
+export interface Prepared {
+  readonly initializationOptions?: Json;
+  readonly settings?: Json;
+  readonly runsOn?: string;
+}
 
 export interface ServerSpec {
   readonly name: string;
@@ -68,7 +83,5 @@ export interface ServerSpec {
   readonly installHint: string;
   readonly initializationOptions: Json;
   readonly settings: Json;
-  prepare?(
-    root: string,
-  ): Promise<{ readonly initializationOptions: Json; readonly runsOn: string | null }>;
+  prepare?(project: Project): Promise<Prepared>;
 }

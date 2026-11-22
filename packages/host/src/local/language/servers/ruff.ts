@@ -23,6 +23,7 @@ export const RUFF: ServerSpec = {
   arguments: ["server"],
   install: {
     kind: "release",
+    package: "ruff",
     version: VERSION,
     assets: {
       "darwin-arm64": asset(

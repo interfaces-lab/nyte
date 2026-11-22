@@ -5,7 +5,7 @@ import { gunzipSync } from "node:zlib";
 import { findExecutable, run } from "../process/command.ts";
 import { unpack, untar } from "./archive.ts";
 import { INSTALL_FOLDER, PLATFORMS } from "./spec.ts";
-import type { Install, NpmPackage } from "./spec.ts";
+import type { Install, Installed, NpmPackage } from "./spec.ts";
 
 const UNUSED_VERSION_MS = 30 * 24 * 60 * 60_000;
 
@@ -13,52 +13,44 @@ const TOOLCHAIN_DEADLINE_MS = 10 * 60_000;
 
 const TEMPORARY = /^\.tmp-(\d+)-/;
 
-export interface Installed {
-  readonly kind: "binary" | "script";
-  readonly path: string;
-}
-
 export interface Installer {
-  install(
-    name: string,
-    source: Install,
-    report: (percent: number | null) => void,
-  ): Promise<Installed>;
+  /** The pinned version of what `source` names, downloaded and verified unless its folder is there already; concurrent calls share one download. `report` hears the percent downloaded, null when the size is unknown. Rejects with the reason nothing was installed. */
+  install(source: Install, report: (percent: number | null) => void): Promise<Installed>;
 }
 
+/** Installs pinned language servers under `cache`, one folder per package, version and platform, which exists only once complete. A version no launch has used for 30 days is removed when another version of its package installs. */
 export function languageInstaller(cache: string): Installer {
-  const running = new Map<string, Promise<Installed>>();
+  const running = new Map<string, Promise<void>>();
 
   return {
-    install(name, source, report) {
-      const home = join(cache, name);
+    async install(source, report) {
+      const home = join(cache, source.package);
       const folder = join(home, `${source.version}-${process.platform}-${process.arch}`);
-      const shared = running.get(folder);
+      const installed = locate(source, folder);
 
-      if (shared !== undefined) return shared;
-
-      const started = install(home, folder, source, report).finally(() => running.delete(folder));
+      const started =
+        running.get(folder) ??
+        fillFolder(home, folder, source, report).finally(() => running.delete(folder));
 
       running.set(folder, started);
+      await started;
 
-      return started;
+      return installed;
     },
   };
 }
 
-async function install(
+async function fillFolder(
   home: string,
   folder: string,
   source: Install,
   report: (percent: number | null) => void,
-): Promise<Installed> {
-  const installed = locate(source, folder);
-
+): Promise<void> {
   if ((await stat(folder).catch(() => null)) !== null) {
     const now = new Date();
     await utimes(folder, now, now).catch(() => undefined);
 
-    return installed;
+    return;
   }
 
   await mkdir(home, { recursive: true });
@@ -76,21 +68,20 @@ async function install(
   }
 
   await removeUnused(home, folder);
-
-  return installed;
 }
 
 function locate(source: Install, folder: string): Installed {
-  if (source.kind === "npm") return { kind: "script", path: join(folder, source.entry) };
+  if (source.kind === "npm") return { kind: "script", path: join(folder, source.entry), folder };
 
   if (source.kind === "toolchain") {
     return {
       kind: "binary",
       path: join(folder, process.platform === "win32" ? `${source.bin}.exe` : source.bin),
+      folder,
     };
   }
 
-  return { kind: "binary", path: join(folder, findAsset(source).bin) };
+  return { kind: "binary", path: join(folder, findAsset(source).bin), folder };
 }
 
 function findAsset(source: Extract<Install, { kind: "release" }>) {
