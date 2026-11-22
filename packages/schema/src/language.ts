@@ -251,7 +251,18 @@ export const LANGUAGES: Readonly<
   rust: { label: "Rust", ids: { ".rs": "rust" } },
   sql: { label: "SQL", ids: { ".sql": "sql" } },
   swift: { label: "Swift", ids: { ".swift": "swift" } },
-  toml: { label: "TOML", ids: { ".toml": "toml" } },
+  toml: {
+    label: "TOML",
+    ids: { ".toml": "toml" },
+    fileNames: {
+      "Cargo.lock": "toml",
+      "Gopkg.lock": "toml",
+      Pipfile: "toml",
+      "pdm.lock": "toml",
+      "poetry.lock": "toml",
+      "uv.lock": "toml",
+    },
+  },
   typescript: {
     label: "TypeScript and JavaScript",
     ids: {
