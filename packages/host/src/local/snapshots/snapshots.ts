@@ -457,9 +457,15 @@ export function localSnapshots(
       }
     | { readonly kind: "tree"; readonly from: Tree; readonly to: Tree }
   > => {
+    const kinds = new Set([from, to].flatMap((id) => (id === "" ? [] : id.split(":", 1))));
+
+    if (kinds.size > 1) {
+      throw new SdkError("invalid", `Snapshots ${from} and ${to} are of two kinds.`);
+    }
+
     if (to.startsWith(JOURNAL)) {
       const range = await journal.range(
-        from.startsWith(JOURNAL) ? from.slice(JOURNAL.length) : null,
+        from === "" ? null : from.slice(JOURNAL.length),
         to.slice(JOURNAL.length),
       );
 
@@ -469,11 +475,6 @@ export function localSnapshots(
         to: { files: range.after, incomplete: false },
       };
     }
-
-    const kinds = new Set([from, to].flatMap((id) => (id === "" ? [] : id.split(":", 1))));
-
-    if (kinds.size > 1)
-      throw new SdkError("invalid", `Snapshots ${from} and ${to} are of two kinds.`);
 
     if (kinds.has("tree") || kinds.size === 0)
       return {
