@@ -13,7 +13,7 @@ export function routeSettings(router: RegisteredRouter): void {
   windowRouter = router;
 }
 
-export function settingsReturn(state: WindowState): string {
+function settingsReturn(state: WindowState): string {
   return placeHref(tabPlace(activeTab(state)));
 }
 
