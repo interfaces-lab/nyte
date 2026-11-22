@@ -6,30 +6,45 @@ import { useLayoutSelect } from "./layout-store.ts";
 import type { LayoutStore } from "./layout-store.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import { canSplitPane, chatPanes } from "./pane-layout.ts";
+import type { PaneCommand } from "./pane-commands.ts";
 import type { DropPlacement } from "./pane-layout.ts";
 import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
-import type { TabPanes } from "../tabs/window-store.ts";
 
-const PaneControllerContext = createContext<TabPanes | undefined>(undefined);
+export interface PaneController {
+  readonly window: {
+    run(tabId: string, command: PaneCommand): void;
+    openDraftChat(
+      tabId: string,
+      draftId: string,
+      sessionId: SessionId,
+      composer?: ComposerViewState,
+    ): void;
+  };
+  readonly tabId: string;
+  readonly layout: LayoutStore;
+  readonly viewState: SessionViewStateStore;
+}
+
+const PaneControllerContext = createContext<PaneController | undefined>(undefined);
 
 export function PaneControllerProvider({
   panes,
   children,
 }: {
-  panes: TabPanes;
+  panes: PaneController;
   children: ReactNode;
 }): ReactElement {
   return <PaneControllerContext value={panes}>{children}</PaneControllerContext>;
 }
 
-export function splitPanes(panes: TabPanes, direction: SplitDirection): boolean {
+export function splitPanes(panes: PaneController, direction: SplitDirection): boolean {
   if (!canSplitPane(panes.layout.getSnapshot(), windowWidth())) return false;
   panes.window.run(panes.tabId, { kind: "split", direction });
 
   return true;
 }
 
-export function focusNextPane(panes: TabPanes): boolean {
+export function focusNextPane(panes: PaneController): boolean {
   const layout = panes.layout.getSnapshot();
   const shown = chatPanes(layout);
 
@@ -43,7 +58,7 @@ export function focusNextPane(panes: TabPanes): boolean {
   return true;
 }
 
-function useTabPanes(): TabPanes {
+function usePaneController(): PaneController {
   const panes = use(PaneControllerContext);
 
   if (panes === undefined) throw new Error("Pane controller is missing");
@@ -52,7 +67,7 @@ function useTabPanes(): TabPanes {
 }
 
 export function usePaneLayoutStore(): LayoutStore {
-  return useTabPanes().layout;
+  return usePaneController().layout;
 }
 
 export function usePaneLayout<T>(
@@ -87,7 +102,7 @@ export function useCanSplitPane(): boolean {
 }
 
 export function usePaneViewStateStore(): SessionViewStateStore {
-  return useTabPanes().viewState;
+  return usePaneController().viewState;
 }
 
 export interface PaneActions {
@@ -98,7 +113,7 @@ export interface PaneActions {
 }
 
 export function usePaneActions(): PaneActions {
-  const panes = useTabPanes();
+  const panes = usePaneController();
 
   return {
     openDraftChat(draftId, sessionId, composer) {
