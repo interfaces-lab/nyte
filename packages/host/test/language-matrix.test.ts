@@ -1,5 +1,16 @@
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { compile, LanguageFeatureType, LanguageNameType } from "@nyte-ai/schema";
@@ -9,6 +20,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { languageInstaller } from "../src/local/language/install.ts";
+import type { Installer } from "../src/local/language/install.ts";
 import { localLanguage } from "../src/local/language/manager.ts";
 import { SERVERS } from "../src/local/language/servers.ts";
 import { localEnv, until } from "./language-harness.ts";
@@ -42,8 +54,23 @@ const Matrix = compile(
     servers: Type.Array(Type.String()),
     vscode: Type.Object({ extension: Type.String(), source: Type.String() }),
     unproven: Type.Optional(Type.String()),
+    packages: Type.Optional(
+      Type.Object({ lock: Type.String(), bins: Type.Record(Type.String(), Type.String()) }),
+    ),
     features: Type.Object(Object.fromEntries(ROWS.map((row) => [row, RowType] as const))),
   }),
+);
+
+const Lock = compile(
+  Type.Array(
+    Type.Object({
+      path: Type.String(),
+      url: Type.String(),
+      integrity: Type.String(),
+      os: Type.Optional(Type.Array(Type.String())),
+      cpu: Type.Optional(Type.Array(Type.String())),
+    }),
+  ),
 );
 
 const downloads = process.env.NYTE_LANGUAGE_DOWNLOADS === "1";
@@ -89,7 +116,7 @@ const proven = fixtures.filter((fixture) => fixture.matrix.unproven === undefine
 describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
   const matrix = fixture.matrix;
   let root: string;
-  let launchers: string;
+  let scratch: string;
   let language: LanguageService;
 
   const rows = LanguageFeatureType.enum
@@ -97,9 +124,13 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
     .toSorted((left, right) => Number(right.answers) - Number(left.answers));
 
   beforeAll(async () => {
-    root = await realpath(fixture.root);
-    launchers = await mkdtemp(join(tmpdir(), "nyte-matrix-"));
+    scratch = await realpath(await mkdtemp(join(tmpdir(), "nyte-matrix-")));
     const installer = languageInstaller(join(homedir(), ".nyte", "language-servers"));
+
+    root =
+      matrix.packages === undefined
+        ? await realpath(fixture.root)
+        : await copyWithPackages(fixture, matrix.packages, installer, join(scratch, "project"));
 
     const pinned = await Promise.all(
       SERVERS.flatMap((spec) =>
@@ -109,13 +140,9 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
                 .install(spec.install, () => undefined)
                 .then(async (installed) => {
                   if (installed.kind === "binary") return [spec.name, installed.path] as const;
-                  const launcher = join(launchers, spec.name);
+                  const launcher = join(scratch, spec.name);
 
-                  await writeFile(
-                    launcher,
-                    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(installed.path)} "$@"\n`,
-                    { mode: 0o755 },
-                  );
+                  await writeLauncher(launcher, installed.path);
 
                   return [spec.name, launcher] as const;
                 }),
@@ -159,7 +186,7 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
 
   afterAll(async () => {
     await language.shutdown();
-    await rm(launchers, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
   });
 
   const locate = async (probe: Probe): Promise<TextPosition> => {
@@ -420,3 +447,48 @@ describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
     ).toEqual([]);
   });
 });
+
+async function writeLauncher(path: string, script: string): Promise<void> {
+  await writeFile(
+    path,
+    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`,
+    { mode: 0o755 },
+  );
+}
+
+async function copyWithPackages(
+  fixture: { readonly folder: string; readonly root: string },
+  packages: { readonly lock: string; readonly bins: Readonly<Record<string, string>> },
+  installer: Installer,
+  copy: string,
+): Promise<string> {
+  const text = await readFile(join(fixture.root, packages.lock), "utf8");
+  const lock: unknown = JSON.parse(text);
+
+  if (!Lock.Check(lock)) throw new Error(`${fixture.folder}/${packages.lock} is not a lock.`);
+
+  const installed = await installer.install(
+    {
+      kind: "npm",
+      package: `fixture-${fixture.folder}`,
+      version: createHash("sha256").update(text).digest("hex").slice(0, 12),
+      packages: lock,
+      entry: "node_modules",
+    },
+    () => undefined,
+  );
+
+  await cp(fixture.root, copy, { recursive: true });
+  await mkdir(join(copy, "node_modules", ".bin"), { recursive: true });
+
+  await Promise.all([
+    ...(await readdir(installed.path)).map((name) =>
+      symlink(join(installed.path, name), join(copy, "node_modules", name)),
+    ),
+    ...Object.entries(packages.bins).map((entry) =>
+      writeLauncher(join(copy, "node_modules", ".bin", entry[0]), join(installed.path, entry[1])),
+    ),
+  ]);
+
+  return copy;
+}

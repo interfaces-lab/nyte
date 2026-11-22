@@ -60,6 +60,8 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 23. **The server must load it offline.** No dependency it would fetch, no build output, no vendored tree.
 24. **Never change another language's fixture.**
 
+40. **A fixture that needs npm packages pins them.** A linter that lives in the project, such as ESLint or oxlint, cannot run in a bare fixture. Pin the packages with the pin script into a lock file in the fixture folder and name it in the matrix as `packages`, with `bins` for the executables a server is looked up by. The test installs them into the cache and runs the fixture from a temporary copy. Never commit `node_modules`.
+
 ## The matrix
 
 25. **`matrix.json` in the fixture folder holds one row per feature**, every feature of `LanguageFeature` plus `diagnostics`.
