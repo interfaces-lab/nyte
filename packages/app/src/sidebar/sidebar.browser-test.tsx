@@ -9,7 +9,7 @@ import type { Execution, HostView, SessionInfo, WorkspaceInfo } from "@nyte-ai/s
 import { asId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { PaneControllerProvider } from "../panes/pane-context.tsx";
+import { WindowPanesProvider } from "../tabs/window-panes.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { queryClient } from "../data/query-client.ts";
@@ -477,13 +477,13 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider>
+            <WindowPanesProvider>
               <SessionDndProvider>
                 <Sidebar
                   renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}
                 />
               </SessionDndProvider>
-            </PaneControllerProvider>
+            </WindowPanesProvider>
           </TooltipProvider>
         </RouterContextProvider>
       </QueryClientProvider>,

@@ -8,7 +8,7 @@ import type { ModelCatalogView, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { HostState } from "../../contract/nyte.ts";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { PaneControllerProvider } from "../../panes/pane-context.tsx";
+import { WindowPanesProvider } from "../../tabs/window-panes.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { SessionScreen } from "../../shell/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
@@ -112,11 +112,11 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider>
+            <WindowPanesProvider>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
-            </PaneControllerProvider>
+            </WindowPanesProvider>
           </TooltipProvider>
         </RouterContextProvider>
       </QueryClientProvider>,

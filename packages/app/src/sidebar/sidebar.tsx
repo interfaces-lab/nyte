@@ -16,7 +16,7 @@ import {
   clientActionKeys,
   clientActions,
 } from "../contract/client-actions.ts";
-import { usePaneActions, usePaneLayout } from "../panes/pane-context.tsx";
+import { usePaneLayout } from "../panes/pane-context.tsx";
 import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -92,7 +92,6 @@ function NewChatRow({
   readonly paletteOpen: boolean;
   readonly mac: boolean;
 }): ReactElement {
-  const panes = usePaneActions();
   const { drafts, activeDraftId } = useDrafts();
   const listed = listsDrafts && drafts.some((draft) => draft.id === activeDraftId);
   const current = activeDraftId !== undefined && !listed && !paletteOpen;
@@ -103,7 +102,7 @@ function NewChatRow({
       selected={current}
       aria-current={current ? "page" : undefined}
       xstyle={styles.navRow}
-      onClick={() => panes.newChat()}
+      onClick={() => windowTabs.newChat()}
     >
       <Row.Leading xstyle={styles.navLeading}>
         <Icon name={actionIcons[clientActions.newChat.id]} size="sm" />

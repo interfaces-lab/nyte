@@ -19,7 +19,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Loader } from "@nyte-ai/ui/loader";
 import { ToastProvider } from "@nyte-ai/ui/toast";
 import { Titlebar } from "./titlebar.tsx";
-import { PaneControllerProvider } from "../panes/pane-context.tsx";
+import { WindowPanesProvider } from "../tabs/window-panes.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { useHostProcess, useHostBuildMismatch } from "../data/host.ts";
 import { useHostProcessAction } from "../environments/host-process.tsx";
@@ -155,9 +155,9 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   return (
     <TooltipProvider>
       <ToastProvider>
-        <PaneControllerProvider>
+        <WindowPanesProvider>
           <ShellChrome appIcon={appIcon} />
-        </PaneControllerProvider>
+        </WindowPanesProvider>
       </ToastProvider>
     </TooltipProvider>
   );

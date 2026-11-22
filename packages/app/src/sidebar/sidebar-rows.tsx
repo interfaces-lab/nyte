@@ -35,7 +35,7 @@ import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { chatWindow, useChatMark } from "../window/index.ts";
 import { sessionActions } from "../data/session-rows.ts";
 import { shellActions } from "../tabs/shell-state.ts";
-import { hideFromPanes } from "../panes/pane-context.tsx";
+import { hideFromPanes } from "../tabs/window-panes.tsx";
 import { sessionIsRunning } from "./sidebar-view.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 

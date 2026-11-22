@@ -16,12 +16,8 @@ import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { switchApp } from "../commands/apps.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
 import { DESKTOP_APP_LABELS } from "../contract/desktop-window.ts";
-import {
-  hideFromPanes,
-  useCanSplitPane,
-  usePaneActions,
-  usePaneLayout,
-} from "../panes/pane-context.tsx";
+import { useCanSplitPane, usePaneActions, usePaneLayout } from "../panes/pane-context.tsx";
+import { hideFromPanes } from "../tabs/window-panes.tsx";
 import { activeSelection, chatPanes, sameSelection } from "../panes/pane-layout.ts";
 import { nyte, offeredApps, windowApp } from "../contract/nyte.ts";
 import { chatDirectory, chatTitle, useChat } from "../chats/index.ts";

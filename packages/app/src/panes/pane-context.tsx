@@ -8,7 +8,6 @@ import type { PaneContent } from "./pane-kinds.ts";
 import { canSplitPane, chatPanes } from "./pane-layout.ts";
 import type { DropPlacement } from "./pane-layout.ts";
 import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
-import { windowTabs } from "../tabs/window-tabs.ts";
 import type { TabPanes } from "../tabs/window-store.ts";
 
 const PaneControllerContext = createContext<TabPanes | undefined>(undefined);
@@ -17,22 +16,10 @@ export function PaneControllerProvider({
   panes,
   children,
 }: {
-  panes?: TabPanes;
+  panes: TabPanes;
   children: ReactNode;
 }): ReactElement {
-  const tabId = useSyncExternalStore(
-    windowTabs.subscribe,
-    windowTabs.paneTabId,
-    windowTabs.paneTabId,
-  );
-
-  const value = panes ?? windowTabs.store.tab(tabId);
-
-  return <PaneControllerContext value={value}>{children}</PaneControllerContext>;
-}
-
-export function hideFromPanes(sessionId: SessionId): () => void {
-  return windowTabs.store.hide(sessionId);
+  return <PaneControllerContext value={panes}>{children}</PaneControllerContext>;
 }
 
 export function splitPanes(panes: TabPanes, direction: SplitDirection): boolean {
@@ -104,7 +91,6 @@ export function usePaneViewStateStore(): SessionViewStateStore {
 }
 
 export interface PaneActions {
-  newChat(): void;
   openDraftChat(draftId: string, sessionId: SessionId, composer?: ComposerViewState): void;
   split(direction: SplitDirection): void;
   close(paneId: PaneId): void;
@@ -115,9 +101,6 @@ export function usePaneActions(): PaneActions {
   const panes = useTabPanes();
 
   return {
-    newChat() {
-      windowTabs.newChat();
-    },
     openDraftChat(draftId, sessionId, composer) {
       panes.window.openDraftChat(panes.tabId, draftId, sessionId, composer);
     },

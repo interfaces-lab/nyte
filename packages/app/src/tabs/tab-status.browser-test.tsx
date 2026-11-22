@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
 import type { Execution, HeadInfo, HostView, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { PaneControllerProvider } from "../panes/pane-context.tsx";
+import { WindowPanesProvider } from "./window-panes.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { queryClient } from "../data/query-client.ts";
 import { installConnection } from "../data/connection.ts";
@@ -243,14 +243,14 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider>
+            <WindowPanesProvider>
               <SessionDndProvider>
                 <Strip />
                 <Sidebar
                   renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}
                 />
               </SessionDndProvider>
-            </PaneControllerProvider>
+            </WindowPanesProvider>
           </TooltipProvider>
         </RouterContextProvider>
       </QueryClientProvider>,

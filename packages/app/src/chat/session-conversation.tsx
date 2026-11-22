@@ -15,7 +15,8 @@ import type { BranchModelChoice, BranchModelPicker } from "./transcript/turn-vie
 import { observeActivation } from "../panes/open-workspace.tsx";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
-import { hideFromPanes, usePaneFocused, useSplitPanes } from "../panes/pane-context.tsx";
+import { usePaneFocused, useSplitPanes } from "../panes/pane-context.tsx";
+import { hideFromPanes } from "../tabs/window-panes.tsx";
 import type { PaneId } from "../panes/layout.ts";
 import { useCatalog } from "../data/catalog.ts";
 import { coordinatedProject } from "../data/projects.ts";
