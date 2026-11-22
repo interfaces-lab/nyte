@@ -12,7 +12,7 @@ export const GROUPINGS = [
 
 export const SORTS = ["created", "updated", "status"] as const;
 
-export const SHELVES = ["inbox", "working", "done", "archived"] as const;
+const SHELVES = ["inbox", "working", "done", "archived"] as const;
 
 export const SHOW_FIELDS = ["updated"] as const;
 
