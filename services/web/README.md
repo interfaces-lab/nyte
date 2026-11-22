@@ -58,7 +58,7 @@ Or add it to Nyte:
 nyte mcp add nyte-docs-local --url "$DOCS/mcp"
 ```
 
-A raw request needs both content types in `Accept`, and the answer arrives as a server-sent event:
+A raw request needs both content types in `Accept`. The answer arrives as a server-sent event:
 
 ```sh
 curl -s "$DOCS/mcp" -H 'content-type: application/json' \
@@ -72,9 +72,6 @@ Links in its answers use the address the request came in on, so a local or previ
 
 ```sh
 pnpm exec turbo typecheck --filter=@nyte-ai/web
-pnpm --dir services/web check:base-ui
 ```
-
-`check:base-ui` fails when the vendored Base UI reference pages are stale. Run `pnpm --dir services/web sync:base-ui` to update them. The generator's `BASE_UI_REF` must match the installed `@base-ui/react` release. Keep wording corrections in the generator so a sync preserves them.
 
 Read [AGENTS.md](AGENTS.md) before changing the site.

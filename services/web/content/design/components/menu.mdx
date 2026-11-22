@@ -139,18 +139,12 @@ accept plain values or functions of the underlying Base UI part's state. See [Th
 `Menu`, `MenuTrigger`, `MenuRadioGroup`, `MenuGroup`, `MenuSub`, and `MenuFilterProvider`
 pass through Base UI unstyled.
 
-The reference tables below come from Base UI, MIT, © Material-UI SAS.
+For every other prop, see Base UI's [Menu](https://base-ui.com/react/components/menu) reference.
 
 ### Menu
 
 `onItemHighlighted` accepts `(item: HTMLElement | undefined, eventDetails) => void`.
 Details include `label` and `reason` (`"keyboard"`, `"pointer"`, or `"none"`).
-
-<include>../../base-ui-reference/menu/Root.md</include>
-
-### MenuTrigger
-
-<include>../../base-ui-reference/menu/Trigger.md</include>
 
 ### MenuContent
 
@@ -170,14 +164,6 @@ Only the positioning props in this table are accepted. `ref`, `className`, and `
 | `footer`             | `ReactNode`                                                                                                    |                                                              |
 
 `footer` stays below the scrollable body, after a separator.
-
-#### Positioner
-
-<include>../../base-ui-reference/menu/Positioner.md</include>
-
-#### Popup
-
-<include>../../base-ui-reference/menu/Popup.md</include>
 
 ### MenuSubContent
 
@@ -200,30 +186,18 @@ Takes `MenuContent` props except `matchAnchorWidth` and `footer`. Defaults to `s
 | `layout`   | `"menu" \| "plain" \| "action"`    | `"menu"`    | `plain` removes leading content. `action` centers a compact row. |
 | `children` | `ReactNode`                        |             |                                                                  |
 
-<include>../../base-ui-reference/menu/Item.md</include>
-
 ### MenuLinkItem
 
 Renders a link. Takes the props in the `MenuItem` table except `variant`.
-
-<include>../../base-ui-reference/menu/LinkItem.md</include>
 
 ### MenuCheckboxItem
 
 Takes the props in the `MenuItem` table except `variant`. A checkmark follows `meta`
 while checked.
 
-<include>../../base-ui-reference/menu/CheckboxItem.md</include>
-
 ### MenuSwitchItem
 
 A `MenuCheckboxItem` that draws a switch in place of `meta` and the checkmark. It takes no `meta`.
-
-<include>../../base-ui-reference/menu/CheckboxItem.md</include>
-
-### MenuRadioGroup
-
-<include>../../base-ui-reference/menu/RadioGroup.md</include>
 
 ### MenuRadioItem
 
@@ -234,29 +208,15 @@ on the chosen row.
 | -------------- | --------- | ------- |
 | `closeOnClick` | `boolean` | `true`  |
 
-<include>../../base-ui-reference/menu/RadioItem.md</include>
-
-### MenuGroup
-
-<include>../../base-ui-reference/menu/Group.md</include>
-
-### MenuGroupLabel
-
-<include>../../base-ui-reference/menu/GroupLabel.md</include>
-
 ### MenuSeparator
 
 | Prop    | Type      | Default |
 | ------- | --------- | ------- |
 | `inset` | `boolean` | `false` |
 
-<include>../../base-ui-reference/menu/Separator.md</include>
-
 ### MenuSub
 
 Accepts `onItemHighlighted` as described for `Menu`.
-
-<include>../../base-ui-reference/menu/SubmenuRoot.md</include>
 
 ### MenuSubTrigger
 
@@ -267,23 +227,13 @@ Takes `icon`, `leading`, and `layout` as `MenuItem` does.
 | `value` | `ReactNode` | Choice before the chevron.        |
 | `meta`  | `ReactNode` | Replaces `value` and the chevron. |
 
-<include>../../base-ui-reference/menu/SubmenuTrigger.md</include>
-
-### MenuFilterProvider
-
-<include>../../base-ui-reference/menu/FilterProvider.md</include>
-
 ### MenuInput
 
 A bare input with no padding or icon. Place it in a row of your own.
 
-<include>../../base-ui-reference/menu/Input.md</include>
-
 ### MenuList
 
 Grows to fill the popup and scrolls.
-
-<include>../../base-ui-reference/menu/List.md</include>
 
 ### MenuItemBody
 
