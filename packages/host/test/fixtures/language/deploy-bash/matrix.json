@@ -171,7 +171,8 @@
     "format": {
       "probes": [
         {
-          "file": "deploy.sh"
+          "file": "deploy.sh",
+          "says": "main() {\\n  local service"
         }
       ],
       "servers": [
@@ -179,7 +180,7 @@
       ],
       "answers": true,
       "vscode": true,
-      "note": "bash-language-server advertises documentFormattingProvider and shells out to shfmt (not bundled by VS Code's extension or Nyte). Without shfmt on PATH, the server returns an empty edit list, which the matrix harness records as edits."
+      "note": "The server formats through shfmt. VS Code's extension needs one on PATH; Nyte downloads a pinned copy when there is none."
     },
     "formatRange": {
       "probes": [
