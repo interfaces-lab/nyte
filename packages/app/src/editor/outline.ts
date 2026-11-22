@@ -73,6 +73,19 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
       ],
     ],
   ],
+  [
+    "sql",
+    [
+      [
+        /^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure|trigger)\s+(?:if\s+not\s+exists\s+)?(?:\w+\.)?"?(\w+)"?/iu,
+        "function",
+      ],
+      [
+        /^\s*create\s+(?:or\s+replace\s+)?(?:(?:temp|temporary|unlogged)\s+)?(?:materialized\s+)?(?:table|view|type)\s+(?:if\s+not\s+exists\s+)?(?:\w+\.)?"?(\w+)"?/iu,
+        "type",
+      ],
+    ],
+  ],
 ]);
 
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {

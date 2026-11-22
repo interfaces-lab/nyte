@@ -239,6 +239,22 @@
       "licenseFile": "@binclusive--tree-sitter-swift-wasm.txt",
       "foldQuery": "swift.scm",
       "symbolQuery": "swift-symbols.scm"
+    },
+    {
+      "language": "sql",
+      "aliases": ["sql"],
+      "package": "@l1xnan/tree-sitter-sql",
+      "version": "0.4.7",
+      "archive": "https://registry.npmjs.org/@l1xnan/tree-sitter-sql/-/tree-sitter-sql-0.4.7.tgz",
+      "integrity": "sha512-esrn08xB01CFy+erlMXWX9bXVr2XxUjRdurOS23Vt5sznAfTDI8OWGsot8pQ3By5OjaI32nEkcy/EerYh7EZJA==",
+      "entry": "package/tree-sitter-sql.wasm",
+      "sha256": "edb252124ec2b96c28cde982099fe8ea80dbce1791f1f326af57963f303dae09",
+      "bytes": 2459212,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "@l1xnan--tree-sitter-sql.txt",
+      "foldQuery": "sql.scm",
+      "symbolQuery": "sql-symbols.scm"
     }
   ],
   "runtime": {
@@ -334,6 +350,11 @@
       "file": "tree-sitter-cpp.txt",
       "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
       "source": "https://registry.npmjs.org/tree-sitter-cpp/-/tree-sitter-cpp-0.23.4.tgz#package/LICENSE"
+    },
+    {
+      "file": "@l1xnan--tree-sitter-sql.txt",
+      "sha256": "3b3e4e4252d5d7d1c18e1257005f23242bf0580ad619204fd093c99b8c56748d",
+      "source": "https://registry.npmjs.org/@l1xnan/tree-sitter-sql/-/tree-sitter-sql-0.4.7.tgz#package/LICENSE"
     }
   ]
 }

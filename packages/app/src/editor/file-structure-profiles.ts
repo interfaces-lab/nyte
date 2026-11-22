@@ -59,6 +59,10 @@ export const STRUCTURE_PROFILES = [
     language: "swift",
     aliases: ["swift"],
   },
+  {
+    language: "sql",
+    aliases: ["sql"],
+  },
 ] as const;
 
 export type StructureLanguage = (typeof STRUCTURE_PROFILES)[number]["language"];
