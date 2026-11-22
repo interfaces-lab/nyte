@@ -16,6 +16,7 @@ import { Divider, Grid, Pane, Panes, Stack } from "./layout.tsx";
 import { useColorScheme } from "./scheme.ts";
 import { Switch } from "./switch.tsx";
 import { Callout, Card, Code, Section } from "./surface.tsx";
+import { Icon } from "./icon.tsx";
 import { Heading, Text } from "./text.tsx";
 
 export const kit = {
@@ -64,6 +65,7 @@ export const kit = {
   TooltipContent,
   Collapsible,
   Kbd,
+  Icon,
   Spinner,
   useColorScheme,
 };

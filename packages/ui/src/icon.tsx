@@ -1,6 +1,7 @@
 import { create, props, when } from "@stylexjs/stylex";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { createContext, use, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { createContext, use } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 
 import { FILLED_GLYPHS, GLYPHS } from "./glyphs/selected.generated.ts";
 import type { FilledIconName, IconName } from "./icon-names.ts";
@@ -11,6 +12,7 @@ import { motion as motionTokens } from "./styles/vars.stylex.ts";
 import type { Restyle } from "./styles/contracts.ts";
 
 export type { FilledIconName, IconName } from "./icon-names.ts";
+export { ICON_NAMES } from "./icon-names.ts";
 
 const styles = create({
   frame: {
