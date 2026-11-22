@@ -24,7 +24,7 @@ import { chatStore, warmSession } from "../data/chat-store.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
 import { workbench } from "../workbench/store.ts";
-import { SessionScreen } from "./session-screen.tsx";
+import { SessionScreen } from "../shell/session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";

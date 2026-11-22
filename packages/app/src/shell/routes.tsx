@@ -20,7 +20,7 @@ import { routeSessionExists } from "./route-session.ts";
 import { sessionList } from "../data/directory.ts";
 import { preferences } from "../preferences/index.ts";
 import type { ShellSearch } from "../tabs/search.ts";
-import { SessionScreen } from "../panes/session-screen.tsx";
+import { SessionScreen } from "./session-screen.tsx";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { activeTab, tabPlace } from "../tabs/model.ts";

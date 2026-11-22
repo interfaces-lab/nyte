@@ -14,7 +14,7 @@ import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { installConnection } from "../../data/connection.ts";
 import { createAppRouter } from "../../shell/routes.tsx";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import "../../theme/tokens.stylex.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 import { sessionRow } from "../../../test/view-fixtures.ts";
