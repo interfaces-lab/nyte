@@ -17,7 +17,7 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { selectedFontOption } from "./font-select-groups.ts";
 import type { FontOption, FontSelectGroup } from "./font-select-groups.ts";
-import { settingsStyles } from "./settings.stylex.ts";
+import { settingsStyles } from "../settings-rows/settings.stylex.ts";
 
 const FONT_SELECT_COLLISION: NonNullable<AutocompleteContentProps["collisionAvoidance"]> = {
   side: "flip",

@@ -7,8 +7,8 @@ import { modifierKeyLabel } from "../chat/composer/composer-keys.ts";
 import { DESKTOP_SETTING_SCHEMAS } from "../contract/desktop-settings.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
-import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
-import { settingsStyles as styles } from "./settings.stylex.ts";
+import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "../settings-rows/rows.tsx";
+import { settingsStyles as styles } from "../settings-rows/settings.stylex.ts";
 import { nyte } from "../contract/nyte.ts";
 
 const keepAwake = pluginSetting("desktop.keepAwake", DESKTOP_SETTING_SCHEMAS.keepAwake);

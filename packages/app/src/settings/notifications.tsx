@@ -28,8 +28,13 @@ import { useSetting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { available } from "../settings-sections/capability.ts";
-import { SettingsDialog, SettingsDialogCard } from "./dialog.tsx";
-import { SettingsRow, SettingsSection, SettingsSwitchRow, SwitchRow } from "./rows.tsx";
+import { SettingsDialog, SettingsDialogCard } from "../settings-rows/dialog.tsx";
+import {
+  SettingsRow,
+  SettingsSection,
+  SettingsSwitchRow,
+  SwitchRow,
+} from "../settings-rows/rows.tsx";
 
 const CHANNEL_LABEL: Readonly<Record<AlertChannel, string>> = {
   notification: "Notification",

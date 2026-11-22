@@ -11,7 +11,7 @@ import type { ReactElement } from "react";
 import type { Json, SettingInfo } from "@nyte-ai/sdk";
 import { useApplyPluginSetting } from "../data/plugins.ts";
 import type { PluginGroup } from "./plugin-pages.ts";
-import { SettingsRow, SettingsSection } from "./rows.tsx";
+import { SettingsRow, SettingsSection } from "../settings-rows/rows.tsx";
 
 /** Plugin settings on a page: one section per plugin, each setting with the field its definition calls for. A page with one plugin's settings needs no heading. */
 export function PluginGroups({

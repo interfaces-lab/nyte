@@ -29,6 +29,7 @@ const ENTRIES = [
         "sidebar",
         "settings",
         "settings-sections",
+        "settings-rows",
         "environments",
         "customize",
         "account",

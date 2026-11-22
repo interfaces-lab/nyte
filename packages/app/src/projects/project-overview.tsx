@@ -35,7 +35,7 @@ import { useWorkspaceCatalog } from "../data/plugins.ts";
 import { useProject } from "../data/projects.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { useWorkspaces } from "../data/workspaces.ts";
-import { settingsStyles as page } from "../settings/settings.stylex.ts";
+import { settingsStyles as page } from "../settings-rows/settings.stylex.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns as patterns } from "../theme/settings-patterns.stylex.ts";

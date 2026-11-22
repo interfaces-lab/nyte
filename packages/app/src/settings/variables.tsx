@@ -28,7 +28,7 @@ import { connected } from "../data/connection.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { parseEnv } from "./dotenv.ts";
-import { SettingsSection } from "./rows.tsx";
+import { SettingsSection } from "../settings-rows/rows.tsx";
 
 const ID = "variables.entries";
 

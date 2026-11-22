@@ -3,7 +3,13 @@ import { Deferred } from "../lib/deferred.tsx";
 import { DESKTOP_SETTING_SCHEMAS } from "../contract/desktop-settings.ts";
 import { preferences } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
-import { NumberRow, SelectRow, SettingsSection, SwitchRow, TextRow } from "./rows.tsx";
+import {
+  NumberRow,
+  SelectRow,
+  SettingsSection,
+  SwitchRow,
+  TextRow,
+} from "../settings-rows/rows.tsx";
 
 export const terminalShell = pluginSetting(
   "desktop.terminalShell",

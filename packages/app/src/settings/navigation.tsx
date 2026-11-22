@@ -15,7 +15,7 @@ import { placePluginSettings } from "./plugin-pages.ts";
 import { customSection, settingsSectionGroups } from "../settings-sections/sections.ts";
 import type { OpenSection, SettingsSection } from "../settings-sections/sections.ts";
 import { closeSettings } from "../settings-sections/return.ts";
-import { settingsStyles as styles } from "./settings.stylex.ts";
+import { settingsStyles as styles } from "../settings-rows/settings.stylex.ts";
 
 export function SettingsNavigation({ section }: { readonly section: OpenSection }): ReactElement {
   const router = useRouter();

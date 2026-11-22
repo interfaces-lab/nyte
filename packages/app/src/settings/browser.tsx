@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { DESKTOP_SETTING_SCHEMAS } from "../contract/desktop-settings.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
-import { SettingsSection, SwitchRow } from "./rows.tsx";
+import { SettingsSection, SwitchRow } from "../settings-rows/rows.tsx";
 
 const blockAds = pluginSetting("desktop.blockAds", DESKTOP_SETTING_SCHEMAS.blockAds);
 

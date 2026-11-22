@@ -16,7 +16,7 @@ import { BUILT_IN_THEMES } from "../theme/built-in-themes.ts";
 import { findTheme, parseVscodeTheme, themeSwatch } from "../theme/vscode-theme.ts";
 import type { ColorScheme, ThemeChoice, ThemeChoices, VscodeTheme } from "../theme/vscode-theme.ts";
 import { settings } from "../theme/schema.stylex.ts";
-import { SettingsRow, SettingsSection } from "./rows.tsx";
+import { SettingsRow, SettingsSection } from "../settings-rows/rows.tsx";
 
 const SLOTS = [
   { scheme: "light", title: "Light mode" },

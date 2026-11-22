@@ -8,7 +8,7 @@ import { pluginSetting } from "../preferences/plugin.ts";
 import { useWorkspaces } from "../data/workspaces.ts";
 import { sessionList } from "../data/directory.ts";
 import { useWatch } from "../data/watch-store.ts";
-import { NumberRow, SettingsRow, SettingsSection, TextRow } from "./rows.tsx";
+import { NumberRow, SettingsRow, SettingsSection, TextRow } from "../settings-rows/rows.tsx";
 import { StorageSection } from "./storage-cleanup.tsx";
 
 const branchPrefix = pluginSetting("worktrees.branchPrefix", Type.String());

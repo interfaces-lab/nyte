@@ -10,7 +10,7 @@ import type { TailnetNode } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { keys } from "../data/query-client.ts";
 import { useRemoteAccessState } from "../data/host.ts";
-import { SettingsRow, SettingsSection, SettingsSwitchRow } from "../settings/rows.tsx";
+import { SettingsRow, SettingsSection, SettingsSwitchRow } from "../settings-rows/rows.tsx";
 import { useConnectView } from "../account/connect-view.ts";
 import { FactRow } from "../components/connection-list.tsx";
 import { NyteConnection } from "./nyte-connection.tsx";

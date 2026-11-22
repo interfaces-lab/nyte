@@ -33,7 +33,7 @@ import { hostWatch, mcpWatch } from "../data/watches.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { useWatch, useWatchSelect } from "../data/watch-store.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { settingsStyles as page } from "../settings/settings.stylex.ts";
+import { settingsStyles as page } from "../settings-rows/settings.stylex.ts";
 import { PluginSetting } from "../settings/plugin-settings.tsx";
 import { ConnectionRow, ConnectionStatus } from "../components/connection-list.tsx";
 import { McpServersTab, mcpNeedsAttention } from "./customize-mcp.tsx";

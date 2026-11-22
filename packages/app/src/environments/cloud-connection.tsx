@@ -13,8 +13,8 @@ import { errorMessage } from "../contract/errors.ts";
 import { nyte } from "../contract/nyte.ts";
 import { keys } from "../data/query-client.ts";
 import { useServerState } from "../data/host.ts";
-import { SettingsField, SettingsFormDialog } from "../settings/dialog.tsx";
-import { SettingsSection } from "../settings/rows.tsx";
+import { SettingsField, SettingsFormDialog } from "../settings-rows/dialog.tsx";
+import { SettingsSection } from "../settings-rows/rows.tsx";
 import { ConnectionStatus, FactRow } from "../components/connection-list.tsx";
 
 const styles = create({

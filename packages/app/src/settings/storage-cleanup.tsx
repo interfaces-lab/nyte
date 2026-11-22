@@ -19,7 +19,7 @@ import type { ReactElement } from "react";
 import { errorMessage } from "../contract/errors.ts";
 import { connected } from "../data/connection.ts";
 import { formatBytes } from "../lib/format.ts";
-import { SettingsRow, SettingsSection } from "./rows.tsx";
+import { SettingsRow, SettingsSection } from "../settings-rows/rows.tsx";
 import { storageStyles } from "./storage-cleanup.stylex.ts";
 
 const scanQuery = queryOptions({

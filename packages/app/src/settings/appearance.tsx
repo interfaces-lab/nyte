@@ -31,8 +31,8 @@ import {
   SettingsSwitchRow,
   StepsRow,
   SwitchRow,
-} from "./rows.tsx";
-import { settingsStyles } from "./settings.stylex.ts";
+} from "../settings-rows/rows.tsx";
+import { settingsStyles } from "../settings-rows/settings.stylex.ts";
 
 const THEMES = [
   { value: "system", label: "System" },
