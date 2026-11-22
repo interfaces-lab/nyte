@@ -178,7 +178,7 @@ async function addPackage(entry: NpmPackage, folder: string): Promise<void> {
     );
   }
 
-  await untar(gunzipSync(bytes), join(folder, entry.path), 1);
+  await untar([gunzipSync(bytes)], join(folder, entry.path), 1);
 }
 
 async function download(
