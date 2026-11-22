@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { applyBrowserAgentOpened } from "./browser-surfaces.ts";
-import { browserSurface } from "../model.ts";
-import { workbenchViewKey } from "../paths.ts";
-import { createWorkbenchStore } from "../store.ts";
+import { browserSurface } from "../workbench/model.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
+import { createWorkbenchStore } from "../workbench/store.ts";
 
 test("an agent's page adds a quiet Browser tab showing that page, and leaves the user's tab alone", () => {
   const workbench = createWorkbenchStore(() => ({ browser: true }));

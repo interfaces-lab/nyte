@@ -39,7 +39,7 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { closeSettings } from "../settings/index.ts";
 import { settingsRoute } from "./routes.tsx";
-import { BrowserGuestHost } from "../workbench/browser/browser-guests.tsx";
+import { BrowserGuestHost } from "../browser/browser-guests.tsx";
 
 const styles = create({
   shell: {

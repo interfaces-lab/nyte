@@ -5,13 +5,13 @@ import type {
   BrowserKey,
   BrowserSurfaceState,
   HostEvent,
-} from "../../contract/bridge.ts";
-import { openUrl } from "../commands.ts";
-import { browserSurface } from "../model.ts";
-import type { WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
-import { workbenchViewKey } from "../paths.ts";
-import { workbench } from "../store.ts";
-import type { WorkbenchStore } from "../store.ts";
+} from "../contract/bridge.ts";
+import { openUrl } from "../workbench/commands.ts";
+import { browserSurface } from "../workbench/model.ts";
+import type { WorkbenchTabId, WorkbenchViewKey } from "../workbench/model.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
+import { workbench } from "../workbench/store.ts";
+import type { WorkbenchStore } from "../workbench/store.ts";
 
 interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;

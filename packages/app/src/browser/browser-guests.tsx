@@ -5,11 +5,11 @@ import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { useRef, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import { BROWSER_PAGE_PRESS_CHANNEL } from "../../contract/bridge.ts";
-import type { BrowserBridge, BrowserGuest, HostEvent } from "../../contract/bridge.ts";
-import { errorMessage } from "../../contract/errors.ts";
-import { nyte } from "../../contract/nyte.ts";
-import { keyOwner } from "../../lib/focus-owner.ts";
+import { BROWSER_PAGE_PRESS_CHANNEL } from "../contract/bridge.ts";
+import type { BrowserBridge, BrowserGuest, HostEvent } from "../contract/bridge.ts";
+import { errorMessage } from "../contract/errors.ts";
+import { nyte } from "../contract/nyte.ts";
+import { keyOwner } from "../lib/focus-owner.ts";
 import { useBrowserSurface } from "./browser-surfaces.ts";
 
 declare global {

@@ -1,11 +1,11 @@
-import "../../../test/window-bridge.ts";
+import "../../test/window-bridge.ts";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { AddressField } from "./browser-address-field.tsx";
 import { FindBar } from "./browser-find.tsx";
-import "../../theme/tokens.stylex.ts";
+import "../theme/tokens.stylex.ts";
 
 declare global {
   interface Window {

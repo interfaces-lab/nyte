@@ -7,19 +7,19 @@ import type {
   BrowserBridge,
   BrowserDesignChange,
   BrowserNavigationAction,
-} from "../../contract/bridge.ts";
-import { NO_DESIGN } from "../../contract/bridge.ts";
-import { errorMessage } from "../../contract/errors.ts";
+} from "../contract/bridge.ts";
+import { NO_DESIGN } from "../contract/bridge.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
-import { workbenchStyles } from "../workbench.stylex.ts";
-import { SidePanel } from "../side-panel.tsx";
+import { workbenchStyles } from "../workbench/workbench.stylex.ts";
+import { SidePanel } from "../workbench/side-panel.tsx";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { nyte } from "../../contract/nyte.ts";
-import { openExternal } from "../../lib/open-external.ts";
+import { nyte } from "../contract/nyte.ts";
+import { openExternal } from "../lib/open-external.ts";
 import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
 import type { AddressFieldHandle } from "./browser-address-field.tsx";
@@ -41,8 +41,8 @@ import { DownloadsBar } from "./browser-downloads.tsx";
 import { FindBar } from "./browser-find.tsx";
 import type { FindBarHandle } from "./browser-find.tsx";
 import { LoginDialog } from "./browser-login.tsx";
-import { repeatsWhenHeld, resolveBrowserShortcut } from "../../contract/browser-shortcuts.ts";
-import type { BrowserShortcut } from "../../contract/browser-shortcuts.ts";
+import { repeatsWhenHeld, resolveBrowserShortcut } from "../contract/browser-shortcuts.ts";
+import type { BrowserShortcut } from "../contract/browser-shortcuts.ts";
 
 import { toggleBookmark, toggleBookmarkBar, useBookmarks } from "./browser-bookmarks.ts";
 import { ShieldMenu } from "./browser-shield.tsx";

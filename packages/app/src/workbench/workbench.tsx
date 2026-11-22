@@ -36,7 +36,7 @@ import { launch, openUrl } from "./commands.ts";
 import { WorkbenchWorkspaceContext } from "./workbench-workspace.tsx";
 import type { WorkbenchWorkspace } from "./workbench-workspace.tsx";
 import { CompactRail, Rail, RailRow } from "./rail.tsx";
-import { BrowserPanel } from "./browser/browser-panel";
+import { BrowserPanel } from "../browser/browser-panel";
 import { CanvasPanel } from "../canvas/canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../lib/deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";

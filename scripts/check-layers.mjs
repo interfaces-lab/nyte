@@ -21,6 +21,7 @@ const ENTRIES = [
         "editor",
         "changes",
         "terminal",
+        "browser",
         "canvas",
         "studio",
         "workbench",

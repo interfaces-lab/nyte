@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import type { BrowserSurfaceState } from "../../contract/bridge.ts";
+import type { BrowserSurfaceState } from "../contract/bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import {
@@ -14,9 +14,9 @@ import {
 } from "@nyte-ai/ui/menu";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { DESKTOP_SETTING_SCHEMAS } from "../../contract/desktop-settings.ts";
-import { useSetting } from "../../preferences/index.ts";
-import { applyPluginSetting, pluginSetting } from "../../preferences/plugin.ts";
+import { DESKTOP_SETTING_SCHEMAS } from "../contract/desktop-settings.ts";
+import { useSetting } from "../preferences/index.ts";
+import { applyPluginSetting, pluginSetting } from "../preferences/plugin.ts";
 
 const styles = create({
   badge: {

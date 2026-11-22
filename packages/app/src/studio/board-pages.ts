@@ -6,15 +6,10 @@ import type { BrowserBridge, BrowserSurfaceState } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { connected } from "../data/connection.ts";
 import { workspacePath } from "../data/workspaces.ts";
-import { parseWebUrl } from "../workbench/browser/browser-address.ts";
-import {
-  focusGuest,
-  guestGeneration,
-  placeGuest,
-  sizeGuest,
-} from "../workbench/browser/browser-guests.tsx";
-import type { GuestRect, GuestSlot } from "../workbench/browser/browser-guests.tsx";
-import { addPickToChat } from "../workbench/browser/browser-pick.ts";
+import { parseWebUrl } from "../browser/browser-address.ts";
+import { focusGuest, guestGeneration, placeGuest, sizeGuest } from "../browser/browser-guests.tsx";
+import type { GuestRect, GuestSlot } from "../browser/browser-guests.tsx";
+import { addPickToChat } from "../browser/browser-pick.ts";
 import {
   applyBrowserEvent,
   claimBrowserSurface,
@@ -22,8 +17,8 @@ import {
   onBrowserBoard,
   onBrowserPick,
   watchBrowserSurface,
-} from "../workbench/browser/browser-surfaces.ts";
-import type { BrowserBoardEvent } from "../workbench/browser/browser-surfaces.ts";
+} from "../browser/browser-surfaces.ts";
+import type { BrowserBoardEvent } from "../browser/browser-surfaces.ts";
 import { studioStyles } from "./studio.stylex.ts";
 
 const MAX_GUESTS = 5;

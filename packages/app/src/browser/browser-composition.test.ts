@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { testRenderer } from "../../../test/renderer.ts";
+import { testRenderer } from "../../test/renderer.ts";
 
 const setup = `
 const finds = [];

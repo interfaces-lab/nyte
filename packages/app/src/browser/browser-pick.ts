@@ -1,5 +1,5 @@
-import type { BrowserDesignPick } from "../../contract/bridge.ts";
-import { addToChat, NO_CHAT } from "../../references/add-to-chat.ts";
+import type { BrowserDesignPick } from "../contract/bridge.ts";
+import { addToChat, NO_CHAT } from "../references/add-to-chat.ts";
 
 const PNG_DATA_URL = "data:image/png;base64,";
 
