@@ -17,7 +17,7 @@ import {
   resolveClientAction,
 } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
-import type { ChatFields } from "./chat-pane-kind.ts";
+import type { ChatFields } from "../panes/chat-pane-kind.ts";
 import { BlankConversation } from "./composer/blank-conversation.tsx";
 import type { ComposerEditorHandle } from "./composer/composer-editor.tsx";
 import { SessionConversation } from "./session-conversation.tsx";

@@ -1,4 +1,4 @@
-import { chatKind } from "../chat/chat-pane-kind.ts";
+import { chatKind } from "./chat-pane-kind.ts";
 import type { LayoutRules } from "./layout.ts";
 import type { StoredContent } from "./layout-persistence.ts";
 import type { PaneKind } from "./pane-kind.ts";

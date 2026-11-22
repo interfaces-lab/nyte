@@ -1,7 +1,7 @@
 import { Value } from "typebox/value";
-import type { PaneKind } from "../panes/pane-kind.ts";
-import { paneSelectionSchema } from "../panes/pane-layout.ts";
-import type { PaneSelection } from "../panes/pane-layout.ts";
+import type { PaneKind } from "./pane-kind.ts";
+import { paneSelectionSchema } from "./pane-layout.ts";
+import type { PaneSelection } from "./pane-layout.ts";
 
 export interface ChatFields {
   readonly selection: PaneSelection;
