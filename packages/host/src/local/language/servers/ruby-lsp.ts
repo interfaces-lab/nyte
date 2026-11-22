@@ -1,3 +1,4 @@
+import { delimiter } from "node:path";
 import { INSTALL_FOLDER } from "../spec.ts";
 import type { ServerSpec } from "../spec.ts";
 
@@ -48,7 +49,7 @@ export const RUBY_LSP: ServerSpec = {
     ],
     env: {
       GEM_HOME: INSTALL_FOLDER,
-      GEM_PATH: INSTALL_FOLDER,
+      GEM_PATH: `${INSTALL_FOLDER}${delimiter}`,
     },
     bin: "bin/ruby-lsp",
   },
