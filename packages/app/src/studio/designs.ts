@@ -81,7 +81,7 @@ function watchStores(watcher: () => void): () => void {
   return () => watchers.delete(watcher);
 }
 
-export function openDesignStore(workspace: SelectedWorkspace): DesignStore {
+function openDesignStore(workspace: SelectedWorkspace): DesignStore {
   const open = stores.get(workspace.id);
 
   if (open !== undefined) {

@@ -3,7 +3,7 @@ import type { Node } from "web-tree-sitter";
 import { DESIGN_ATTRIBUTE } from "@nyte-ai/plugin/design/board-protocol";
 import { fileStructureAssets, runtimeUrl } from "../workbench/editor/file-structure-assets.ts";
 
-export interface Range {
+interface Range {
   readonly start: number;
   readonly end: number;
 }
@@ -13,7 +13,7 @@ export interface Change extends Range {
 }
 
 /** One JSX element of a design file, with every offset into the file's text in UTF-16 code units. */
-export interface DesignElement extends Range {
+interface DesignElement extends Range {
   /** Where a `data-src` stamp goes: just after the element's name. */
   readonly stampAt: number;
   /** A DOM element (`<div>`), as opposed to a component instance (`<Button>`). */
@@ -23,7 +23,7 @@ export interface DesignElement extends Range {
   readonly pinned: boolean;
 }
 
-export interface DesignFrame {
+interface DesignFrame {
   readonly name: string;
   readonly element: DesignElement;
   /** The value of a literal `data-x` or `data-y`, inside its quotes or braces. */
