@@ -2,12 +2,11 @@ import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { FileStatus, SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { Value } from "typebox/value";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
-import { conversationTurns, editPatch } from "../chats/index.ts";
+import { conversationTurns, editPatch, turnChangedFiles } from "../chats/index.ts";
 import { chatStore } from "../data/chat-store.ts";
 import type { ChatView } from "../data/chat-store.ts";
 import { reconcile } from "../data/keep.ts";
 import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
-import { turnChangeOptions } from "../changes/change-scopes.ts";
 
 /** A file the workspace's chats changed, by the path their tools named, and the patches their edits made to it, newest first. */
 export interface ChatEdit {
@@ -113,7 +112,7 @@ function readChat(session: SessionId, view: ChatView): ChatEdits {
             ];
       })
       .toReversed(),
-    charged: turnChangeOptions(conversationTurns(view)).flatMap((turn) => turn.files),
+    charged: conversationTurns(view).toReversed().flatMap(turnChangedFiles),
   };
 
   chatEdits.set(view, read);

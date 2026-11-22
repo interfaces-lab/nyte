@@ -1,7 +1,7 @@
 import type { GitScope, GitStatus, RunId, SessionView } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import { worktreeFiles } from "../editor/worktree-files.ts";
+import { turnChangedFiles } from "../chats/index.ts";
 import type { TurnMessages } from "../chats/index.ts";
 import type { WorktreeFile } from "../editor/worktree-files.ts";
 import { changesScopeValue } from "../workbench/model.ts";
@@ -50,22 +50,12 @@ export interface TurnChangeOption {
 
 export function turnChangeOptions(turns: readonly TurnMessages[]): readonly TurnChangeOption[] {
   return turns
-    .map((turn, index): TurnChangeOption => {
-      const files = new Set<string>();
-
-      for (const message of turn.messages) {
-        if (showsTool(message) && message.state.phase === "settled") {
-          for (const path of message.state.changes?.paths ?? []) files.add(path);
-        }
-      }
-
-      return {
-        scope: { kind: "turn", turnId: turn.info.id },
-        run: turn.info.run,
-        label: index === turns.length - 1 ? "Latest" : `Turn ${String(index + 1)}`,
-        files: [...files],
-      };
-    })
+    .map((turn, index): TurnChangeOption => ({
+      scope: { kind: "turn", turnId: turn.info.id },
+      run: turn.info.run,
+      label: index === turns.length - 1 ? "Latest" : `Turn ${String(index + 1)}`,
+      files: turnChangedFiles(turn),
+    }))
     .reverse();
 }
 

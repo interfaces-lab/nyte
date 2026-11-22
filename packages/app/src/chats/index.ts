@@ -36,7 +36,7 @@ export { editPatch } from "./edit-patch.ts";
 
 export type { TurnMessages } from "./turns.ts";
 
-export { conversationTurns } from "./turns.ts";
+export { conversationTurns, turnChangedFiles } from "./turns.ts";
 
 export type { WaitingChat } from "./waiting.ts";
 
