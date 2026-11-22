@@ -95,5 +95,8 @@ Nyte runs agent conversations on a host, a process that stores every session. Th
 - After changing `@nyte-ai/schema` wire types or core's stored `*Record` schemas (`HeadRecord`, `SessionRecord`), run `pnpm --dir packages/host check:store`. Backfill what it reports.
 - After changing what a client receives over the wire, run `pnpm --dir packages/bench bench:wire:gate`.
 - After changing how a tool call snapshots its workspace (`SnapshotsApi`, `localSnapshots`), run `pnpm --dir packages/bench bench:snapshots:gate`.
+- After changing a `ServerSpec` or how the host talks to language servers, run `NYTE_LANGUAGE_DOWNLOADS=1 pnpm --dir packages/host test language-matrix`. Without the variable a fixture runs only when its servers are already installed.
+- A language fixture's matrix records which servers offer each feature and whether its probes got an answer. Change a row only to what the run showed.
+- Pin a server's download with the host's `pin-language-server` script. It prints the sha256 of each URL, or writes an npm tarball list.
 - Report failures in unrelated files. Don't fix them.
 - Before changing Turborepo config, read the docs that ship inside the installed `turbo` package.
