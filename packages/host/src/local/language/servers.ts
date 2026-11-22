@@ -6,6 +6,7 @@ import { CLANGD } from "./servers/clangd.ts";
 import { GOPLS } from "./servers/gopls.ts";
 import { MARKSMAN } from "./servers/marksman.ts";
 import { OXLINT } from "./servers/oxlint.ts";
+import { POSTGRES_LANGUAGE_SERVER } from "./servers/postgres-language-server.ts";
 import { RUFF } from "./servers/ruff.ts";
 import { RUST_ANALYZER } from "./servers/rust-analyzer.ts";
 import { SOURCEKIT_LSP } from "./servers/sourcekit-lsp.ts";
@@ -28,6 +29,7 @@ export const SERVERS: readonly CompleteSpec[] = [
   TYPESCRIPT_LANGUAGE_SERVER,
   VSCODE_ESLINT_LANGUAGE_SERVER,
   OXLINT,
+  POSTGRES_LANGUAGE_SERVER,
   YAML_LANGUAGE_SERVER,
   BASH_LANGUAGE_SERVER,
   VSCODE_JSON_LANGUAGE_SERVER,
