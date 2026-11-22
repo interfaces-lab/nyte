@@ -1,6 +1,6 @@
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
 import type { CommandInfo, SkillInfo } from "@nyte-ai/sdk";
-import type { ComposerDocumentState } from "./composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import { composerEnterAction } from "./composer-keys.ts";
 import type { SuggestionFrecency } from "./composer-recent.ts";
 import { fuzzyMatch } from "./composer-suggestion-ranking.ts";

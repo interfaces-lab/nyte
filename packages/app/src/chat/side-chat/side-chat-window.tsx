@@ -15,7 +15,7 @@ import { addToChat, ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { useChatWindow } from "../../window/index.ts";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type {

@@ -1,7 +1,7 @@
 import type { OpenQuestion, QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
 import type { PartId, SessionId } from "@nyte-ai/sdk";
-import { sameComposerDocument } from "../composer/composer-document.ts";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import { sameComposerDocument } from "../../panes/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import type { Ask } from "./asks.ts";
 
 type FieldDraft =

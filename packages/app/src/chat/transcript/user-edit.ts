@@ -1,5 +1,5 @@
 import type { UserContent } from "@nyte-ai/sdk";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import { composerContentEmpty } from "../composer/composer-plan.ts";
 import type { ComposerContent } from "../composer/composer-plan.ts";
 import type { ModelPickerChange } from "../composer/model-picker.tsx";

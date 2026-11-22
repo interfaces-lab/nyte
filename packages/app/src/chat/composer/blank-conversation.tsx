@@ -12,7 +12,7 @@ import { NO_INTAKE, nextIntake, takeFiles } from "./composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
-import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
+import type { ComposerDocumentState, ComposerSubmission } from "../../panes/composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSendPlan } from "./composer-plan.ts";
 import { omittedMessage } from "../../panes/composer-draft.ts";

@@ -18,12 +18,12 @@ import {
   replaceComposerText,
   restoreComposerDocument,
   sameComposerDocument,
-} from "./composer-document.ts";
+} from "../../panes/composer-document.ts";
 import type {
   ComposerCompletion,
   ComposerDocumentState,
   ComposerSubmission,
-} from "./composer-document.ts";
+} from "../../panes/composer-document.ts";
 import {
   ComposerSurfaceContent,
   editorContentStyle,

@@ -1,6 +1,6 @@
 import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
 import type { ImageContent } from "@nyte-ai/schema/model";
-import type { ComposerSubmission } from "./composer-document.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import type { ContentPart } from "../../references/message-references.ts";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { parsePluginCommand } from "./plugin-command.ts";

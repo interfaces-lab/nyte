@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { asId } from "@nyte-ai/schema";
 import type { ComposerViewState } from "../../panes/session-view-state.ts";
-import type { ComposerSubmission } from "./composer-document.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import type { SessionDraft } from "../../panes/composer-draft.ts";
 import { CLOSED_SESSION, stepSession } from "./composer-session.ts";
 import type {

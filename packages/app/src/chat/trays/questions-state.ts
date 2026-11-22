@@ -8,7 +8,7 @@ import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import { openAsks, requireAnswered } from "./asks.ts";
 import { dockView, stepDock } from "./question-dock.ts";
 import type { DockEvent, DockOutcome, Reply, RequestDraft } from "./question-dock.ts";

@@ -20,7 +20,7 @@ import type { MentionFile } from "../../data/files.ts";
 import type { CommandCompletion, SessionCatalogView } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
-import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
+import type { ComposerCompletion, ComposerDocumentState } from "../../panes/composer-document.ts";
 import type { ComposerComboboxState, ComposerEditorHandle } from "./composer-editor.tsx";
 import {
   rememberSuggestion,

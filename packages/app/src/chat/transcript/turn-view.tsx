@@ -28,7 +28,7 @@ import { SubagentGroupView, SubagentReportLine } from "../tools/subagent-call.ts
 import { ResponseView } from "./reply-view.tsx";
 import { AnswerLine } from "./answer-line.tsx";
 import { ActionLine } from "./action-line.tsx";
-import type { ComposerSubmission } from "../composer/composer-document.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { attachComposerFiles } from "../composer/composer-files.ts";

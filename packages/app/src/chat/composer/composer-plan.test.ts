@@ -4,7 +4,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import type { MessageReference, ContentPart } from "../../references/message-references.ts";
 import type { MessageFile } from "../transcript/message-content.tsx";
-import type { ComposerSubmission } from "./composer-document.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import { planEdit, planSubmission } from "./composer-plan.ts";
 import type { DraftCommands, SubmissionPlan } from "./composer-plan.ts";
 

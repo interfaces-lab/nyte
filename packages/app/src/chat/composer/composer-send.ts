@@ -23,7 +23,7 @@ import { filesFor } from "../../data/files.ts";
 import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { connected } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
-import type { ComposerSubmission } from "./composer-document.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { openSideChat } from "../side-chat/side-chats.ts";

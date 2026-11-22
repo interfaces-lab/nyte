@@ -7,7 +7,7 @@ import type {
   SessionViewStateStore,
   ComposerImageAttachment,
 } from "../../panes/session-view-state.ts";
-import type { ComposerSubmission } from "./composer-document.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import type { RefusedSend } from "@nyte-ai/sdk/client";
 import { messageFiles } from "../transcript/message-content.tsx";

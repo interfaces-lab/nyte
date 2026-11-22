@@ -15,7 +15,7 @@ import { nyte } from "../../contract/nyte.ts";
 import { clientActionAriaShortcut, clientActions } from "../../contract/client-actions.ts";
 import type { RunningMessagePreference } from "../../preferences/index.ts";
 import { ImagePreview } from "../../markdown/image-preview.tsx";
-import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
+import type { ComposerDocumentState, ComposerSubmission } from "../../panes/composer-document.ts";
 import { ComposerEditor } from "./composer-editor.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { useComposerSuggestions } from "./composer-suggestions.tsx";

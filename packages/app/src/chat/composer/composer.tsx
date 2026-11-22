@@ -22,7 +22,7 @@ import { useWatchSelect } from "../../data/watch-store.ts";
 import { useChatFolder, useChats } from "../../chats/index.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { usePaneViewStateStore } from "../../panes/pane-context.tsx";
-import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
+import type { ComposerDocumentState, ComposerSubmission } from "../../panes/composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerSurface } from "./composer-frame.tsx";

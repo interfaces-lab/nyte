@@ -1,7 +1,7 @@
 import type { Delivery, HeldMessage, MessageId, ReceiptId, ReviseOutcome } from "@nyte-ai/sdk";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ComposerImageAttachment, ComposerViewState } from "../../panes/session-view-state.ts";
-import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
+import type { ComposerDocumentState, ComposerSubmission } from "../../panes/composer-document.ts";
 import {
   errorNotice,
   handedOff,
