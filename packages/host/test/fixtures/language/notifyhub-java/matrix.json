@@ -1,0 +1,162 @@
+{
+  "language": "java",
+  "servers": [
+    "jdtls"
+  ],
+  "vscode": {
+    "extension": "redhat.java",
+    "source": "https://github.com/redhat-developer/vscode-java/blob/master/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Main.java",
+          "after": "Stats stats = hub.",
+          "says": "stats"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Main.java",
+          "after": "Stats stats = hub.st",
+          "says": "Stats"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Main.java",
+          "after": "Hub hub = new H",
+          "says": "Hub.java"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Main.java",
+          "after": "for (Message mes",
+          "says": "Message.java"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Stats.java",
+          "after": "private static Counts bu",
+          "says": "Stats.java"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Stats.java",
+          "says": "Counts"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Hub.java",
+          "after": "int unu"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Main.java",
+          "says": "\"range\""
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Main.java",
+          "after": "int   total=stats.total().submitted();",
+          "says": "\"text\":\" \""
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Stats.java",
+          "after": "public static final class Cou",
+          "says": "Stats.java"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "src/notifyhub/Hub.java",
+          "says": "unusedCount"
+        }
+      ],
+      "servers": [
+        "jdtls"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}

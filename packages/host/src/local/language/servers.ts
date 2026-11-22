@@ -4,6 +4,7 @@ import { findLanguage } from "@nyte-ai/schema";
 import { BASH_LANGUAGE_SERVER } from "./servers/bash-language-server.ts";
 import { CLANGD } from "./servers/clangd.ts";
 import { GOPLS } from "./servers/gopls.ts";
+import { JDTLS } from "./servers/jdtls.ts";
 import { MARKSMAN } from "./servers/marksman.ts";
 import { OXLINT } from "./servers/oxlint.ts";
 import { POSTGRES_LANGUAGE_SERVER } from "./servers/postgres-language-server.ts";
@@ -23,6 +24,7 @@ import type { CompleteSpec } from "./spec.ts";
 export const SERVERS: readonly CompleteSpec[] = [
   CLANGD,
   GOPLS,
+  JDTLS,
   TY,
   RUFF,
   TOMBI,
