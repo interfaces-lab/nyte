@@ -191,6 +191,38 @@
       "licenseFile": "tree-sitter-bash.txt",
       "foldQuery": "bash.scm",
       "symbolQuery": "bash-symbols.scm"
+    },
+    {
+      "language": "c",
+      "aliases": ["c", "h"],
+      "package": "tree-sitter-c",
+      "version": "0.24.1",
+      "archive": "https://registry.npmjs.org/tree-sitter-c/-/tree-sitter-c-0.24.1.tgz",
+      "integrity": "sha512-lkYwWN3SRecpvaeqmFKkuPNR3ZbtnvHU+4XAEEkJdrp3JfSp2pBrhXOtvfsENUneye76g889Y0ddF2DM0gEDpA==",
+      "entry": "package/tree-sitter-c.wasm",
+      "sha256": "c852c2a85ebf2beb636aa3b0ef7f7e70458684d74f6741b20dcb296885bed9f9",
+      "bytes": 625918,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-c.txt",
+      "foldQuery": "c.scm",
+      "symbolQuery": "c-symbols.scm"
+    },
+    {
+      "language": "cpp",
+      "aliases": ["cpp", "c++", "cc", "cxx", "hpp", "hh", "hxx", "objective-cpp"],
+      "package": "tree-sitter-cpp",
+      "version": "0.23.4",
+      "archive": "https://registry.npmjs.org/tree-sitter-cpp/-/tree-sitter-cpp-0.23.4.tgz",
+      "integrity": "sha512-qR5qUDyhZ5jJ6V8/umiBxokRbe89bCGmcq/dk94wI4kN86qfdV8k0GHIUEKaqWgcu42wKal5E97LKpLeVW8sKw==",
+      "entry": "package/tree-sitter-cpp.wasm",
+      "sha256": "174eb0deb75b2ec7881bcacda9f995648d8e683956e5c2267e69ab6dc503fcbf",
+      "bytes": 3434931,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-cpp.txt",
+      "foldQuery": "cpp.scm",
+      "symbolQuery": "cpp-symbols.scm"
     }
   ],
   "runtime": {
@@ -271,6 +303,16 @@
       "file": "tree-sitter-markdown-v0.5.1.txt",
       "source": "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-markdown/v0.5.1/LICENSE",
       "sha256": "52ec8a1bf8256511e2a92613e0bb41ffefba3897f16fa958d7bb28c466dd4804"
+    },
+    {
+      "file": "tree-sitter-c.txt",
+      "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "source": "https://registry.npmjs.org/tree-sitter-c/-/tree-sitter-c-0.24.1.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-cpp.txt",
+      "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "source": "https://registry.npmjs.org/tree-sitter-cpp/-/tree-sitter-cpp-0.23.4.tgz#package/LICENSE"
     }
   ]
 }

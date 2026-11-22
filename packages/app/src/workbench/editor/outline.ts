@@ -18,6 +18,15 @@ const SCRIPT: readonly Pattern[] = [
   [/^(?:export\s+)?(?:const|let|var)\s+([\w$]+)/u, "variable"],
 ];
 
+const C_LIKE: readonly Pattern[] = [
+  [/^\s*(?:template\s*<[^>]*>\s*)?class\s+(\w+)/u, "class"],
+  [/^\s*(?:typedef\s+)?(?:struct|union|enum(?:\s+class)?|using)\s+(\w+)/u, "type"],
+  [
+    /^(?:(?:static|inline|extern|virtual|constexpr|const|unsigned|signed|struct|enum|union)\s+)*[\w:*&<>]+\s+[*&]?(\w+(?:::\w+)?)\s*\([^;]*$/u,
+    "function",
+  ],
+];
+
 const PATTERNS = new Map<string, readonly Pattern[]>([
   ["typescript", SCRIPT],
   ["tsx", SCRIPT],
@@ -44,6 +53,9 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
       [/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait|type)\s+(\w+)/u, "type"],
     ],
   ],
+  ["c", C_LIKE],
+  ["cpp", C_LIKE],
+  ["objective-cpp", C_LIKE],
 ]);
 
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {

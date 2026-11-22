@@ -47,6 +47,14 @@ export const STRUCTURE_PROFILES = [
     language: "bash",
     aliases: ["bash", "shell", "shellscript", "sh"],
   },
+  {
+    language: "c",
+    aliases: ["c", "h"],
+  },
+  {
+    language: "cpp",
+    aliases: ["cpp", "c++", "cc", "cxx", "hpp", "hh", "hxx", "objective-cpp"],
+  },
 ] as const;
 
 export type StructureLanguage = (typeof STRUCTURE_PROFILES)[number]["language"];
