@@ -177,12 +177,13 @@ const LANGUAGE_BY_EXTENSION = new Map(
 
 const LANGUAGE_NAMES = LanguageNameType.enum.flatMap((name) =>
   Object.entries(LANGUAGES[name].names ?? {}).map((entry) => {
-    const star = entry[0].indexOf("*");
+    const pattern = entry[0].toLowerCase();
+    const star = pattern.indexOf("*");
     const found: FoundLanguage = { name, id: entry[1] };
 
     return star < 0
-      ? { start: entry[0], end: null, found }
-      : { start: entry[0].slice(0, star), end: entry[0].slice(star + 1), found };
+      ? { start: pattern, end: null, found }
+      : { start: pattern.slice(0, star), end: pattern.slice(star + 1), found };
   }),
 );
 
