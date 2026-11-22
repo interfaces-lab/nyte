@@ -201,6 +201,19 @@
       "answers": true,
       "vscode": true
     },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "notifyhub/hub.py",
+          "after": "class Hub"
+        }
+      ],
+      "servers": [
+        "ruff"
+      ],
+      "answers": true,
+      "vscode": true
+    },
     "rename": {
       "probes": [
         {
@@ -214,6 +227,50 @@
       ],
       "answers": true,
       "vscode": true
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "notifyhub/stats.py",
+          "says": "notifyhub/hub.py"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "notifyhub/hub.py"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "notifyhub/hub.py"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "notifyhub/hub.py",
+          "after": "class Hub"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
     },
     "foldingRanges": {
       "probes": [

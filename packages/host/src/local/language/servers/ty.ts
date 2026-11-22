@@ -19,9 +19,11 @@ export const TY: ServerSpec = {
   rootMarkers: ["ty.toml", "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"],
   requiresRootMarker: false,
   program: "ty",
+  probe: ["--version"],
   arguments: ["server"],
   install: {
     kind: "release",
+    package: "ty",
     version: VERSION,
     assets: {
       "darwin-arm64": asset(
