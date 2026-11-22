@@ -2,6 +2,8 @@ import type { ServerSpec } from "../spec.ts";
 import schemas from "./vscode-json-schemas.json" with { type: "json" };
 import { langserversExtracted } from "./vscode-langservers-extracted.ts";
 
+export const SCHEMA_STORE = "https://www.schemastore.org/";
+
 export const VSCODE_JSON_LANGUAGE_SERVER: ServerSpec = {
   name: "vscode-json-language-server",
   languages: ["json"],
@@ -19,7 +21,10 @@ export const VSCODE_JSON_LANGUAGE_SERVER: ServerSpec = {
   settings: {
     http: { proxy: "", proxyStrictSSL: true },
     json: {
-      schemas,
+      schemas: Object.entries(schemas).map(([file, fileMatch]) => ({
+        fileMatch,
+        url: `${SCHEMA_STORE}${file}`,
+      })),
       validate: { enable: true },
       format: { enable: true },
       keepLines: { enable: false },

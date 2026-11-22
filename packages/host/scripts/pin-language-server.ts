@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { compile } from "@nyte-ai/schema";
+import { join, posix } from "node:path";
+import { compile, findLanguage, LANGUAGES } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import { SCHEMA_STORE } from "../src/local/language/servers/vscode-json-language-server.ts";
 import { run } from "../src/local/process/command.ts";
 
 const USAGE = `Prints the pins a language server's install source needs.
@@ -16,10 +17,14 @@ const USAGE = `Prints the pins a language server's install source needs.
       integrity, to <lock.json>.
 
   node packages/host/scripts/pin-language-server.ts schemas <schemas.json> <commit>
-      Writes the JSON files SchemaStore's catalog names at that commit, each with
-      its schema, to <schemas.json>. Keeps the schemas SchemaStore serves itself.`;
+      Writes the schemas SchemaStore's catalog names at that commit, each with the
+      file patterns it takes, to <schemas.json>. Keeps the schemas SchemaStore serves
+      itself, and the patterns a file the JSON server opens can match.`;
 
-const SCHEMA_HOSTS = ["https://www.schemastore.org/", "https://json.schemastore.org/"];
+const JSON_FILES = [
+  ...Object.keys(LANGUAGES.json.ids).map((extension) => `x${extension}`),
+  ...Object.keys(LANGUAGES.json.fileNames ?? {}).map((name) => name.replaceAll("*", "x")),
+];
 
 const Catalog = compile(
   Type.Object({
@@ -133,13 +138,20 @@ async function pinSchemas(output: string, commit: string): Promise<void> {
   if (!Catalog.Check(catalog)) throw new Error("This script cannot read SchemaStore's catalog.");
 
   const pinned = catalog.schemas.flatMap((schema) => {
-    const fileMatch = (schema.fileMatch ?? []).filter((pattern) => !/\.ya?ml$/u.test(pattern));
+    const fileMatch = (schema.fileMatch ?? []).filter((pattern) => {
+      const name = pattern.slice(pattern.lastIndexOf("/") + 1);
 
-    return fileMatch.length > 0 && SCHEMA_HOSTS.some((host) => schema.url.startsWith(host))
-      ? [{ fileMatch, url: schema.url }]
+      return (
+        findLanguage(name.replaceAll(/\*+|\?/gu, "x"))?.name === "json" ||
+        JSON_FILES.some((file) => posix.matchesGlob(file, name))
+      );
+    });
+
+    return fileMatch.length > 0 && schema.url.startsWith(SCHEMA_STORE)
+      ? [`  ${JSON.stringify(schema.url.slice(SCHEMA_STORE.length))}: ${JSON.stringify(fileMatch)}`]
       : [];
   });
 
-  await writeFile(output, `${JSON.stringify(pinned, null, 2)}\n`);
+  await writeFile(output, `{\n${pinned.join(",\n")}\n}\n`);
   console.log(`${pinned.length} schemas pinned in ${output}`);
 }

@@ -1,1576 +1,299 @@
-[
-  {
-    "fileMatch": ["**/*.sigmacv.json"],
-    "url": "https://www.schemastore.org/sigmacv.json"
-  },
-  {
-    "fileMatch": [".revola.json", ".revola.config.json", "revola.json", "revola.config.json"],
-    "url": "https://www.schemastore.org/revola.json"
-  },
-  {
-    "fileMatch": [
-      "algovoi-compliance-receipt.json",
-      "algovoi-compliance-receipt-*.json",
-      "**/algovoi/compliance-receipt-*.json"
-    ],
-    "url": "https://www.schemastore.org/algovoi-compliance-receipt-v1.json"
-  },
-  {
-    "fileMatch": ["**/s3-cors.json", "**/s3-bucket-cors.json", "**/s3-cors-configuration.json"],
-    "url": "https://www.schemastore.org/s3-bucket-cors.json"
-  },
-  {
-    "fileMatch": ["grpc_api_gateway.json", "*_gateway.json", "*_openapi.json"],
-    "url": "https://www.schemastore.org/grpc-api-gateway.json"
-  },
-  {
-    "fileMatch": ["aspire-manifest.json"],
-    "url": "https://www.schemastore.org/aspire-8.0.json"
-  },
-  {
-    "fileMatch": [".awc.json", ".awc.jsonc", ".awc"],
-    "url": "https://www.schemastore.org/anywork-ac-1.1.json"
-  },
-  {
-    "fileMatch": [".agripparc.json", "agripparc.json"],
-    "url": "https://www.schemastore.org/agripparc-1.4.json"
-  },
-  {
-    "fileMatch": [".aiproj.json"],
-    "url": "https://www.schemastore.org/aiproj-1.11.json"
-  },
-  {
-    "fileMatch": ["**/abtop/config.toml"],
-    "url": "https://www.schemastore.org/abtop.json"
-  },
-  {
-    "fileMatch": ["abc-inventory-module-data-*.json"],
-    "url": "https://www.schemastore.org/abc-inventory-module-data-5.4.0.json"
-  },
-  {
-    "fileMatch": ["abc-clinical-demand-forecast-*.json"],
-    "url": "https://www.schemastore.org/abc-clinical-demand-forecast-6.0.0.json"
-  },
-  {
-    "fileMatch": ["abc-supply-plan-*.json"],
-    "url": "https://www.schemastore.org/abc-supply-plan-14.3.0.json"
-  },
-  {
-    "fileMatch": [".aih-config.json"],
-    "url": "https://www.schemastore.org/aih-config.json"
-  },
-  {
-    "fileMatch": ["aih-org-policy.json"],
-    "url": "https://www.schemastore.org/aih-org-policy.json"
-  },
-  {
-    "fileMatch": ["aiconfig.json", "aiconfig.jsonc", "*.aiconfig.json", "*.aiconfig.jsonc"],
-    "url": "https://www.schemastore.org/aiconfig-1.0.json"
-  },
-  {
-    "fileMatch": ["apple-app-site-association"],
-    "url": "https://www.schemastore.org/apple-app-site-association.json"
-  },
-  {
-    "fileMatch": ["appsscript.json"],
-    "url": "https://www.schemastore.org/appsscript.json"
-  },
-  {
-    "fileMatch": ["appsettings.json", "appsettings.*.json"],
-    "url": "https://www.schemastore.org/appsettings.json"
-  },
-  {
-    "fileMatch": ["arazzo.json"],
-    "url": "https://www.schemastore.org/openapi-arazzo-1.X.json"
-  },
-  {
-    "fileMatch": [".attw.json"],
-    "url": "https://www.schemastore.org/attw.json"
-  },
-  {
-    "fileMatch": ["asconfig.json"],
-    "url": "https://www.schemastore.org/asconfig-schema.json"
-  },
-  {
-    "fileMatch": ["*.avsc"],
-    "url": "https://www.schemastore.org/avro-avsc.json"
-  },
-  {
-    "fileMatch": ["*.appConfig.featureFlags.json"],
-    "url": "https://www.schemastore.org/aws-cdk-appconfig-featureflags-1.0.0.json"
-  },
-  {
-    "fileMatch": ["*.containerapp-template.json"],
-    "url": "https://www.schemastore.org/azure-containerapp-template.json"
-  },
-  {
-    "fileMatch": ["*.importmanifest.json"],
-    "url": "https://www.schemastore.org/azure-deviceupdate-import-manifest-5.0.json"
-  },
-  {
-    "fileMatch": ["*.updatemanifest.json"],
-    "url": "https://www.schemastore.org/azure-deviceupdate-update-manifest-5.json"
-  },
-  {
-    "fileMatch": ["deployment.template.json", "deployment.debug.template.json"],
-    "url": "https://www.schemastore.org/azure-iot-edge-deployment-template-4.0.json"
-  },
-  {
-    "fileMatch": ["buf.lock"],
-    "url": "https://www.schemastore.org/buf.lock.json"
-  },
-  {
-    "fileMatch": ["**/.cargo/mutants.toml"],
-    "url": "https://www.schemastore.org/cargo-mutants-config.json"
-  },
-  {
-    "fileMatch": ["manifest.json"],
-    "url": "https://www.schemastore.org/foxx-manifest.json"
-  },
-  {
-    "fileMatch": ["fly.toml"],
-    "url": "https://www.schemastore.org/fly.json"
-  },
-  {
-    "fileMatch": ["*.asmdef"],
-    "url": "https://www.schemastore.org/asmdef.json"
-  },
-  {
-    "fileMatch": [".babelrc", ".babelrc.json", "babel.config.json"],
-    "url": "https://www.schemastore.org/babelrc.json"
-  },
-  {
-    "fileMatch": [".backportrc.json"],
-    "url": "https://www.schemastore.org/backportrc.json"
-  },
-  {
-    "fileMatch": ["*.bigquery.json"],
-    "url": "https://www.schemastore.org/bigquery-table.json"
-  },
-  {
-    "fileMatch": ["bitrise.json"],
-    "url": "https://www.schemastore.org/bitrise.json"
-  },
-  {
-    "fileMatch": [".bootstraprc"],
-    "url": "https://www.schemastore.org/bootstraprc.json"
-  },
-  {
-    "fileMatch": ["bower.json", ".bower.json"],
-    "url": "https://www.schemastore.org/bower.json"
-  },
-  {
-    "fileMatch": [".bowerrc"],
-    "url": "https://www.schemastore.org/bowerrc.json"
-  },
-  {
-    "fileMatch": ["**/jobs/*/spec"],
-    "url": "https://www.schemastore.org/bosh-job-spec.json"
-  },
-  {
-    "fileMatch": ["**/packages/*/spec"],
-    "url": "https://www.schemastore.org/bosh-package-spec.json"
-  },
-  {
-    "fileMatch": ["boyka-config.json"],
-    "url": "https://www.schemastore.org/boyka-config.json"
-  },
-  {
-    "fileMatch": [".suite.json", ".xsuite.json"],
-    "url": "https://www.schemastore.org/bozr.json"
-  },
-  {
-    "fileMatch": ["messages.json"],
-    "url": "https://www.schemastore.org/browser.i18n.json"
-  },
-  {
-    "fileMatch": ["bun.lock"],
-    "url": "https://www.schemastore.org/bun-lock.json"
-  },
-  {
-    "fileMatch": ["bundleconfig.json"],
-    "url": "https://www.schemastore.org/bundleconfig.json"
-  },
-  {
-    "fileMatch": ["bunfig.toml"],
-    "url": "https://www.schemastore.org/bunfig.json"
-  },
-  {
-    "fileMatch": ["**/.cargo/config", "**/.cargo/config.toml"],
-    "url": "https://www.schemastore.org/cargo-config.json"
-  },
-  {
-    "fileMatch": ["Cargo.toml"],
-    "url": "https://www.schemastore.org/cargo.json"
-  },
-  {
-    "fileMatch": ["Makefile.toml"],
-    "url": "https://www.schemastore.org/cargo-make.json"
-  },
-  {
-    "fileMatch": ["chezmoi.json", "chezmoi.jsonc", "chezmoi.toml"],
-    "url": "https://www.schemastore.org/chezmoi.json"
-  },
-  {
-    "fileMatch": ["**/.claude/keybindings.json"],
-    "url": "https://www.schemastore.org/claude-code-keybindings.json"
-  },
-  {
-    "fileMatch": ["**/.claude-plugin/plugin.json"],
-    "url": "https://www.schemastore.org/claude-code-plugin-manifest.json"
-  },
-  {
-    "fileMatch": ["**/.claude-plugin/marketplace.json"],
-    "url": "https://www.schemastore.org/claude-code-marketplace.json"
-  },
-  {
-    "fileMatch": ["**/.claude/settings.json"],
-    "url": "https://www.schemastore.org/claude-code-settings.json"
-  },
-  {
-    "fileMatch": ["dein.toml"],
-    "url": "https://www.schemastore.org/dein.json"
-  },
-  {
-    "fileMatch": ["Chart.lock"],
-    "url": "https://www.schemastore.org/chart-lock.json"
-  },
-  {
-    "fileMatch": [".codeclimate.json"],
-    "url": "https://www.schemastore.org/codeclimate.json"
-  },
-  {
-    "fileMatch": [".clasp.json"],
-    "url": "https://www.schemastore.org/clasp.json"
-  },
-  {
-    "fileMatch": [".clangd"],
-    "url": "https://www.schemastore.org/clangd.json"
-  },
-  {
-    "fileMatch": [".clang-tidy"],
-    "url": "https://www.schemastore.org/clang-tidy.json"
-  },
-  {
-    "fileMatch": ["clib.json"],
-    "url": "https://www.schemastore.org/clib.json"
-  },
-  {
-    "fileMatch": ["**/.codex/hooks.json"],
-    "url": "https://www.schemastore.org/codex-hooks.json"
-  },
-  {
-    "fileMatch": ["**/.codex-plugin/plugin.json"],
-    "url": "https://www.schemastore.org/codex-plugin-manifest.json"
-  },
-  {
-    "fileMatch": ["compilerconfig.json"],
-    "url": "https://www.schemastore.org/compilerconfig.json"
-  },
-  {
-    "fileMatch": ["compile_commands.json"],
-    "url": "https://www.schemastore.org/compile-commands.json"
-  },
-  {
-    "fileMatch": ["complexipy.toml", ".complexipy.toml"],
-    "url": "https://www.schemastore.org/complexipy.json"
-  },
-  {
-    "fileMatch": ["commands.json"],
-    "url": "https://www.schemastore.org/commands.json"
-  },
-  {
-    "fileMatch": ["cosmos.config.json"],
-    "url": "https://www.schemastore.org/cosmos-config.json"
-  },
-  {
-    "fileMatch": ["**/_locales/*/messages.json"],
-    "url": "https://www.schemastore.org/chrome-extension-locales-messages.json"
-  },
-  {
-    "fileMatch": ["chutzpah.json"],
-    "url": "https://www.schemastore.org/chutzpah.json"
-  },
-  {
-    "fileMatch": ["contentmanifest.json"],
-    "url": "https://www.schemastore.org/vsix-manifestinjection.json"
-  },
-  {
-    "fileMatch": ["cloudbuild.json", "*.cloudbuild.json"],
-    "url": "https://www.schemastore.org/cloudbuild.json"
-  },
-  {
-    "fileMatch": ["workflows.json", "*.workflows.json"],
-    "url": "https://www.schemastore.org/workflows.json"
-  },
-  {
-    "fileMatch": ["cdk.json"],
-    "url": "https://www.schemastore.org/cdk.json"
-  },
-  {
-    "fileMatch": ["coffeelint.json"],
-    "url": "https://www.schemastore.org/coffeelint.json"
-  },
-  {
-    "fileMatch": [
-      "cchk.toml",
-      "commit-check.toml",
-      "**/.github/cchk.toml",
-      "**/.github/commit-check.toml"
-    ],
-    "url": "https://www.schemastore.org/commit-check.json"
-  },
-  {
-    "fileMatch": ["component.json"],
-    "url": "https://www.schemastore.org/component.json"
-  },
-  {
-    "fileMatch": ["cdmanifest.json", "cgmanifest.json"],
-    "url": "https://www.schemastore.org/component-detection-manifest.json"
-  },
-  {
-    "fileMatch": ["**/.crucible/config.json", "**/.crucible/config.local.json"],
-    "url": "https://www.schemastore.org/crucible-code-schema.json"
-  },
-  {
-    "fileMatch": [".creatomic"],
-    "url": "https://www.schemastore.org/creatomic.json"
-  },
-  {
-    "fileMatch": [".csscomb.json"],
-    "url": "https://www.schemastore.org/csscomb.json"
-  },
-  {
-    "fileMatch": [".csslintrc"],
-    "url": "https://www.schemastore.org/csslintrc.json"
-  },
-  {
-    "fileMatch": [".dla.json"],
-    "url": "https://www.schemastore.org/datalogic-scan2deploy-android.json"
-  },
-  {
-    "fileMatch": [".dlc.json"],
-    "url": "https://www.schemastore.org/datalogic-scan2deploy-ce.json"
-  },
-  {
-    "fileMatch": ["debugsettings.json"],
-    "url": "https://www.schemastore.org/debugsettings.json"
-  },
-  {
-    "fileMatch": ["dockerd.json", "docker.json"],
-    "url": "https://www.schemastore.org/dockerd.json"
-  },
-  {
-    "fileMatch": ["docker-bake.json", "docker-bake.override.json"],
-    "url": "https://www.schemastore.org/docker-bake.json"
-  },
-  {
-    "fileMatch": ["docfx.json"],
-    "url": "https://www.schemastore.org/docfx.json"
-  },
-  {
-    "fileMatch": ["dofigen.json", "*.dofigen.json"],
-    "url": "https://www.schemastore.org/dofigen.json"
-  },
-  {
-    "fileMatch": ["dotnet-release-index.json"],
-    "url": "https://www.schemastore.org/dotnet-releases-index.json"
-  },
-  {
-    "fileMatch": ["dotnet-tools.json"],
-    "url": "https://www.schemastore.org/dotnet-tools.json"
-  },
-  {
-    "fileMatch": ["dotnetcli.host.json"],
-    "url": "https://www.schemastore.org/dotnetcli.host.json"
-  },
-  {
-    "fileMatch": [".dust.toml", "**/.config/dust/config.toml"],
-    "url": "https://www.schemastore.org/dust.json"
-  },
-  {
-    "fileMatch": ["ecosystem.json", "ecosystem.config.json"],
-    "url": "https://www.schemastore.org/pm2-ecosystem.json"
-  },
-  {
-    "fileMatch": [".esmrc", ".esmrc.json"],
-    "url": "https://www.schemastore.org/esmrc.json"
-  },
-  {
-    "fileMatch": ["epr-manifest.json"],
-    "url": "https://www.schemastore.org/epr-manifest.json"
-  },
-  {
-    "fileMatch": ["electron-builder.json"],
-    "url": "https://www.schemastore.org/electron-builder.json"
-  },
-  {
-    "fileMatch": ["*.easyvcr", "**/cassettes/*.json"],
-    "url": "https://www.schemastore.org/easyvcr-net.json"
-  },
-  {
-    "fileMatch": [".eslintrc", ".eslintrc.json"],
-    "url": "https://www.schemastore.org/eslintrc.json"
-  },
-  {
-    "fileMatch": ["eslint-suppressions.json"],
-    "url": "https://www.schemastore.org/eslint-suppressions.json"
-  },
-  {
-    "fileMatch": ["fabric.mod.json"],
-    "url": "https://www.schemastore.org/fabric.mod.json"
-  },
-  {
-    "fileMatch": ["**/*.flatpak.json"],
-    "url": "https://www.schemastore.org/flatpak-manifest.json"
-  },
-  {
-    "fileMatch": ["**/modules/*/module.json"],
-    "url": "https://www.schemastore.org/foundryvtt-module-manifest.json"
-  },
-  {
-    "fileMatch": ["**/systems/*/system.json"],
-    "url": "https://www.schemastore.org/foundryvtt-system-manifest.json"
-  },
-  {
-    "fileMatch": ["**/worlds/*/world.json"],
-    "url": "https://www.schemastore.org/foundryvtt-world-manifest.json"
-  },
-  {
-    "fileMatch": ["**/systems/*/template.json"],
-    "url": "https://www.schemastore.org/foundryvtt-template.json"
-  },
-  {
-    "fileMatch": ["function.json"],
-    "url": "https://www.schemastore.org/function.json"
-  },
-  {
-    "fileMatch": ["gaspar.config.json"],
-    "url": "https://www.schemastore.org/gaspar-3.0.json"
-  },
-  {
-    "fileMatch": [
-      ".glamour-style.json",
-      "*.glamour-style.json",
-      "*.glamour.json",
-      "*.glow-style.json",
-      "glamour-style.json",
-      "glow-style.json"
-    ],
-    "url": "https://www.schemastore.org/glamour-style.json"
-  },
-  {
-    "fileMatch": ["**/.well-known/gpc.json"],
-    "url": "https://www.schemastore.org/gpc.json"
-  },
-  {
-    "fileMatch": ["gitleaks.toml", ".gitleaks.toml"],
-    "url": "https://www.schemastore.org/gitleaks.json"
-  },
-  {
-    "fileMatch": ["cliff.toml", ".cliff.toml", "**/.config/cliff.toml"],
-    "url": "https://www.schemastore.org/git-cliff.json"
-  },
-  {
-    "fileMatch": ["**/.github/workflow-templates/**.properties.json"],
-    "url": "https://www.schemastore.org/github-workflow-template-properties.json"
-  },
-  {
-    "fileMatch": ["global.json"],
-    "url": "https://www.schemastore.org/global.json"
-  },
-  {
-    "fileMatch": ["**/gollama/config.json"],
-    "url": "https://www.schemastore.org/gollama.json"
-  },
-  {
-    "fileMatch": ["treefmt.toml"],
-    "url": "https://www.schemastore.org/treefmt.json"
-  },
-  {
-    "fileMatch": ["copy.json"],
-    "url": "https://www.schemastore.org/grunt-copy-task.json"
-  },
-  {
-    "fileMatch": ["clean.json"],
-    "url": "https://www.schemastore.org/grunt-clean-task.json"
-  },
-  {
-    "fileMatch": ["cssmin.json"],
-    "url": "https://www.schemastore.org/grunt-cssmin-task.json"
-  },
-  {
-    "fileMatch": ["jshint.json"],
-    "url": "https://www.schemastore.org/grunt-jshint-task.json"
-  },
-  {
-    "fileMatch": ["watch.json"],
-    "url": "https://www.schemastore.org/grunt-watch-task.json"
-  },
-  {
-    "fileMatch": ["**/grunt/*.json", "*-tasks.json"],
-    "url": "https://www.schemastore.org/grunt-task.json"
-  },
-  {
-    "fileMatch": ["vault.json", "vault.config.json"],
-    "url": "https://www.schemastore.org/vault.json"
-  },
-  {
-    "fileMatch": ["host.json"],
-    "url": "https://www.schemastore.org/host.json"
-  },
-  {
-    "fileMatch": ["host-meta.json"],
-    "url": "https://www.schemastore.org/host-meta.json"
-  },
-  {
-    "fileMatch": [".htmlhintrc"],
-    "url": "https://www.schemastore.org/htmlhint.json"
-  },
-  {
-    "fileMatch": ["ide.host.json"],
-    "url": "https://www.schemastore.org/ide.host.json"
-  },
-  {
-    "fileMatch": ["imageoptimizer.json"],
-    "url": "https://www.schemastore.org/imageoptimizer.json"
-  },
-  {
-    "fileMatch": [".imgbotconfig"],
-    "url": "https://www.schemastore.org/imgbotconfig.json"
-  },
-  {
-    "fileMatch": ["importmap.json", "import_map.json", "import-map.json"],
-    "url": "https://www.schemastore.org/importmap.json"
-  },
-  {
-    "fileMatch": ["*.content.json", "*.content.toml"],
-    "url": "https://www.schemastore.org/intlayer.json"
-  },
-  {
-    "fileMatch": ["jasmine.json"],
-    "url": "https://www.schemastore.org/jasmine.json"
-  },
-  {
-    "fileMatch": ["jest.config.json"],
-    "url": "https://www.schemastore.org/jest.json"
-  },
-  {
-    "fileMatch": ["jreleaser.json"],
-    "url": "https://www.schemastore.org/jreleaser-1.27.0.json"
-  },
-  {
-    "fileMatch": [".jsbeautifyrc"],
-    "url": "https://www.schemastore.org/jsbeautifyrc.json"
-  },
-  {
-    "fileMatch": [".jsbeautifyrc"],
-    "url": "https://www.schemastore.org/jsbeautifyrc-nested.json"
-  },
-  {
-    "fileMatch": [".jscsrc", "jscsrc.json"],
-    "url": "https://www.schemastore.org/jscsrc.json"
-  },
-  {
-    "fileMatch": [".jshintrc"],
-    "url": "https://www.schemastore.org/jshintrc.json"
-  },
-  {
-    "fileMatch": [".jsinspectrc"],
-    "url": "https://www.schemastore.org/jsinspectrc.json"
-  },
-  {
-    "fileMatch": ["feed.json"],
-    "url": "https://www.schemastore.org/feed.json"
-  },
-  {
-    "fileMatch": ["*.jsonld"],
-    "url": "https://www.schemastore.org/jsonld.json"
-  },
-  {
-    "fileMatch": ["*.patch", "*.patch.json"],
-    "url": "https://www.schemastore.org/json-patch.json"
-  },
-  {
-    "fileMatch": ["jsconfig.json"],
-    "url": "https://www.schemastore.org/jsconfig.json"
-  },
-  {
-    "fileMatch": ["launchsettings.json"],
-    "url": "https://www.schemastore.org/launchsettings.json"
-  },
-  {
-    "fileMatch": ["lego.json"],
-    "url": "https://www.schemastore.org/lego.json"
-  },
-  {
-    "fileMatch": ["lerna.json"],
-    "url": "https://www.schemastore.org/lerna.json"
-  },
-  {
-    "fileMatch": ["libman.json"],
-    "url": "https://www.schemastore.org/libman.json"
-  },
-  {
-    "fileMatch": ["license-report-config.json"],
-    "url": "https://www.schemastore.org/license-report-config.json"
-  },
-  {
-    "fileMatch": ["linkinator.config.json"],
-    "url": "https://www.schemastore.org/linkinator-config.json"
-  },
-  {
-    "fileMatch": ["litertlm_manifest.json"],
-    "url": "https://www.schemastore.org/litertlm_manifest.json"
-  },
-  {
-    "fileMatch": ["local.settings.json"],
-    "url": "https://www.schemastore.org/local.settings.json"
-  },
-  {
-    "fileMatch": ["*.lsdl.json"],
-    "url": "https://www.schemastore.org/lsdlschema.json"
-  },
-  {
-    "fileMatch": [".luaurc"],
-    "url": "https://www.schemastore.org/luaurc.json"
-  },
-  {
-    "fileMatch": [".madgerc"],
-    "url": "https://www.schemastore.org/madge.json"
-  },
-  {
-    "fileMatch": [".map.json"],
-    "url": "https://www.schemastore.org/mapehr.json"
-  },
-  {
-    "fileMatch": ["**/micro/settings.json"],
-    "url": "https://www.schemastore.org/micro.json"
-  },
-  {
-    "fileMatch": ["mimetypes.json"],
-    "url": "https://www.schemastore.org/mimetypes.json"
-  },
-  {
-    "fileMatch": ["mikrotik-mcp.json", "mikrotik-mcp.config.json", "**/.mikrotik-mcp/config.json"],
-    "url": "https://www.schemastore.org/mikrotik-mcp.json"
-  },
-  {
-    "fileMatch": ["**/data/*/advancements/*.json"],
-    "url": "https://www.schemastore.org/minecraft-advancement.json"
-  },
-  {
-    "fileMatch": ["**/data/*/worldgen/biome/*.json"],
-    "url": "https://www.schemastore.org/minecraft-biome.json"
-  },
-  {
-    "fileMatch": ["**/data/*/worldgen/configured_carver/*.json"],
-    "url": "https://www.schemastore.org/minecraft-configured-carver.json"
-  },
-  {
-    "fileMatch": ["**/data/*/damage_type/*.json"],
-    "url": "https://www.schemastore.org/minecraft-damage-type.json"
-  },
-  {
-    "fileMatch": ["**/data/*/dimension_type/*.json"],
-    "url": "https://www.schemastore.org/minecraft-dimension-type.json"
-  },
-  {
-    "fileMatch": ["**/data/*/dimension/*.json"],
-    "url": "https://www.schemastore.org/minecraft-dimension.json"
-  },
-  {
-    "fileMatch": ["**/data/*/item_modifiers/*.json"],
-    "url": "https://www.schemastore.org/minecraft-item-modifier.json"
-  },
-  {
-    "fileMatch": ["**/data/*/loot_tables/**/*.json"],
-    "url": "https://www.schemastore.org/minecraft-loot-table.json"
-  },
-  {
-    "fileMatch": ["**/pack.mcmeta"],
-    "url": "https://www.schemastore.org/minecraft-pack-mcmeta.json"
-  },
-  {
-    "fileMatch": ["**/data/*/predicates/*.json"],
-    "url": "https://www.schemastore.org/minecraft-predicate.json"
-  },
-  {
-    "fileMatch": ["**/data/*/recipes/*.json"],
-    "url": "https://www.schemastore.org/minecraft-recipe.json"
-  },
-  {
-    "fileMatch": ["**/data/*/tags/**/*.json"],
-    "url": "https://www.schemastore.org/minecraft-tag.json"
-  },
-  {
-    "fileMatch": ["**/data/*/worldgen/template_pool/*.json"],
-    "url": "https://www.schemastore.org/minecraft-template-pool.json"
-  },
-  {
-    "fileMatch": ["**/assets/*/lang/*.json"],
-    "url": "https://www.schemastore.org/minecraft-lang.json"
-  },
-  {
-    "fileMatch": ["**/assets/*/particles/*.json"],
-    "url": "https://www.schemastore.org/minecraft-particle.json"
-  },
-  {
-    "fileMatch": ["**/assets/*/textures/**/*.png.mcmeta"],
-    "url": "https://www.schemastore.org/minecraft-texture-mcmeta.json"
-  },
-  {
-    "fileMatch": ["**/data/*/trim_material/*.json"],
-    "url": "https://www.schemastore.org/minecraft-trim-material.json"
-  },
-  {
-    "fileMatch": ["**/data/*/trim_pattern/*.json"],
-    "url": "https://www.schemastore.org/minecraft-trim-pattern.json"
-  },
-  {
-    "fileMatch": [".mocharc.json", ".mocharc.jsonc"],
-    "url": "https://www.schemastore.org/mocharc.json"
-  },
-  {
-    "fileMatch": [".modernizrrc"],
-    "url": "https://www.schemastore.org/modernizrrc.json"
-  },
-  {
-    "fileMatch": ["mycode.json"],
-    "url": "https://www.schemastore.org/mycode.json"
-  },
-  {
-    "fileMatch": ["nightwatch.json"],
-    "url": "https://www.schemastore.org/nightwatch.json"
-  },
-  {
-    "fileMatch": [".nestcli.json", ".nest-cli.json", "nest-cli.json", "nest.json"],
-    "url": "https://www.schemastore.org/nest-cli.json"
-  },
-  {
-    "fileMatch": [".nodehawkrc"],
-    "url": "https://www.schemastore.org/nodehawkrc.json"
-  },
-  {
-    "fileMatch": ["nodemon.json"],
-    "url": "https://www.schemastore.org/nodemon.json"
-  },
-  {
-    "fileMatch": [
-      ".npmpackagejsonlintrc",
-      "npmpackagejsonlintrc.json",
-      ".npmpackagejsonlintrc.json"
-    ],
-    "url": "https://www.schemastore.org/npmpackagejsonlintrc.json"
-  },
-  {
-    "fileMatch": ["nswag.json"],
-    "url": "https://www.schemastore.org/nswag.json"
-  },
-  {
-    "fileMatch": ["ocelot.json"],
-    "url": "https://www.schemastore.org/ocelot.json"
-  },
-  {
-    "fileMatch": ["*.odgs-metrics.json"],
-    "url": "https://www.schemastore.org/odgs-standard-metrics.json"
-  },
-  {
-    "fileMatch": ["*.odgs-rules.json"],
-    "url": "https://www.schemastore.org/odgs-data-rules.json"
-  },
-  {
-    "fileMatch": ["*.odgs-ontology.json"],
-    "url": "https://www.schemastore.org/odgs-ontology-graph.json"
-  },
-  {
-    "fileMatch": ["omnisharp.json"],
-    "url": "https://www.schemastore.org/omnisharp.json"
-  },
-  {
-    "fileMatch": ["openapi.json", "*.openapi.json"],
-    "url": "https://www.schemastore.org/openapi-3.X.json"
-  },
-  {
-    "fileMatch": ["overlay.json", "*.overlay.json"],
-    "url": "https://www.schemastore.org/openapi-overlay-1.X.json"
-  },
-  {
-    "fileMatch": ["*.ustx"],
-    "url": "https://www.schemastore.org/openutau-ustx.json"
-  },
-  {
-    "fileMatch": ["package.json"],
-    "url": "https://www.schemastore.org/package.json"
-  },
-  {
-    "fileMatch": ["package.manifest"],
-    "url": "https://www.schemastore.org/package.manifest.json"
-  },
-  {
-    "fileMatch": ["packer.json"],
-    "url": "https://www.schemastore.org/packer.json"
-  },
-  {
-    "fileMatch": ["pdm.toml"],
-    "url": "https://www.schemastore.org/pdm.json"
-  },
-  {
-    "fileMatch": ["submol*.json"],
-    "url": "https://www.schemastore.org/pgap_yaml_input_reader.json"
-  },
-  {
-    "fileMatch": ["pgrls.toml"],
-    "url": "https://www.schemastore.org/pgrls.json"
-  },
-  {
-    "fileMatch": ["pattern.json"],
-    "url": "https://www.schemastore.org/pattern.json"
-  },
-  {
-    "fileMatch": ["plagiarize.json"],
-    "url": "https://www.schemastore.org/plagiarize.json"
-  },
-  {
-    "fileMatch": ["plagiarize-me.json"],
-    "url": "https://www.schemastore.org/plagiarize-me.json"
-  },
-  {
-    "fileMatch": ["*.popxf", "*.popxf.json"],
-    "url": "https://www.schemastore.org/popxf-1.0.json"
-  },
-  {
-    "fileMatch": ["*.popxf-corr", "*.popxf-corr.json"],
-    "url": "https://www.schemastore.org/popxf-corr-1.0.json"
-  },
-  {
-    "fileMatch": [".postcssrc", ".postcssrc.json"],
-    "url": "https://www.schemastore.org/postcssrc.json"
-  },
-  {
-    "fileMatch": [".powerpages-web-template-manifest"],
-    "url": "https://www.schemastore.org/powerpages-web-template-manifest.json"
-  },
-  {
-    "fileMatch": ["prek.toml"],
-    "url": "https://www.schemastore.org/prek.json"
-  },
-  {
-    "fileMatch": [".prettierrc", ".prettierrc.json"],
-    "url": "https://www.schemastore.org/prettierrc.json"
-  },
-  {
-    "fileMatch": ["project.json"],
-    "url": "https://www.schemastore.org/project.json"
-  },
-  {
-    "fileMatch": ["proxies.json"],
-    "url": "https://www.schemastore.org/proxies.json"
-  },
-  {
-    "fileMatch": [".putout.json"],
-    "url": "https://www.schemastore.org/putout.json"
-  },
-  {
-    "fileMatch": ["pyrseas-0.8.json"],
-    "url": "https://www.schemastore.org/pyrseas-0.8.json"
-  },
-  {
-    "fileMatch": ["*.rh.json"],
-    "url": "https://www.schemastore.org/radiohound-v0.json"
-  },
-  {
-    "fileMatch": ["rc-auth.json"],
-    "url": "https://www.schemastore.org/rc3-auth-0.0.3.json"
-  },
-  {
-    "fileMatch": ["rc-collection.json"],
-    "url": "https://www.schemastore.org/rc3-collection-0.0.3.json"
-  },
-  {
-    "fileMatch": ["**/environments/*.json", "rc-global.json"],
-    "url": "https://www.schemastore.org/rc3-environment-0.0.3.json"
-  },
-  {
-    "fileMatch": ["rc-folder.json"],
-    "url": "https://www.schemastore.org/rc3-folder-0.0.3.json"
-  },
-  {
-    "fileMatch": ["**/*.request"],
-    "url": "https://www.schemastore.org/rc3-request-0.0.3.json"
-  },
-  {
-    "fileMatch": ["rc-settings.json"],
-    "url": "https://www.schemastore.org/rc3-settings-0.0.3.json"
-  },
-  {
-    "fileMatch": [".rehyperc", ".rehyperc.json"],
-    "url": "https://www.schemastore.org/rehyperc.json"
-  },
-  {
-    "fileMatch": [".remarkrc", ".remarkrc.json"],
-    "url": "https://www.schemastore.org/remarkrc.json"
-  },
-  {
-    "fileMatch": ["replit.toml"],
-    "url": "https://www.schemastore.org/replit.json"
-  },
-  {
-    "fileMatch": ["*.resjson"],
-    "url": "https://www.schemastore.org/resjson.json"
-  },
-  {
-    "fileMatch": ["ruff.toml", ".ruff.toml"],
-    "url": "https://www.schemastore.org/ruff.json"
-  },
-  {
-    "fileMatch": ["rust-project.json"],
-    "url": "https://www.schemastore.org/rust-project.json"
-  },
-  {
-    "fileMatch": [".roomodes", "*.roomodes"],
-    "url": "https://www.schemastore.org/roomodes.json"
-  },
-  {
-    "fileMatch": ["rustfmt.toml", ".rustfmt.toml"],
-    "url": "https://www.schemastore.org/rustfmt.json"
-  },
-  {
-    "fileMatch": ["ryl.toml", ".ryl.toml"],
-    "url": "https://www.schemastore.org/ryl.json"
-  },
-  {
-    "fileMatch": ["rust-toolchain.toml"],
-    "url": "https://www.schemastore.org/rust-toolchain.json"
-  },
-  {
-    "fileMatch": ["Scarb.toml"],
-    "url": "https://www.schemastore.org/scarb.json"
-  },
-  {
-    "fileMatch": ["**/*.evidence-bundle.json"],
-    "url": "https://www.schemastore.org/evidence-bundle.json"
-  },
-  {
-    "fileMatch": [".releaserc", ".releaserc.json"],
-    "url": "https://www.schemastore.org/semantic-release.json"
-  },
-  {
-    "fileMatch": ["sergen.json", "sergen.*.json", "*.sergen.json"],
-    "url": "https://www.schemastore.org/sergen.json"
-  },
-  {
-    "fileMatch": ["vercel.serve.json"],
-    "url": "https://www.schemastore.org/serve.json"
-  },
-  {
-    "fileMatch": ["settings.job"],
-    "url": "https://www.schemastore.org/settings.job.json"
-  },
-  {
-    "fileMatch": ["silkit.json", "*.silkit.json"],
-    "url": "https://www.schemastore.org/sil-kit-participant-configuration.json"
-  },
-  {
-    "fileMatch": ["silkit-registry.json", "*.silkit-registry.json"],
-    "url": "https://www.schemastore.org/sil-kit-registry-configuration.json"
-  },
-  {
-    "fileMatch": [".size-limit.json"],
-    "url": "https://www.schemastore.org/size-limit.json"
-  },
-  {
-    "fileMatch": ["**/.snowflake/config.toml", "**/snowflake/config.toml"],
-    "url": "https://www.schemastore.org/snowflake-config.json"
-  },
-  {
-    "fileMatch": ["**/.snowflake/connections.toml", "**/snowflake/connections.toml"],
-    "url": "https://www.schemastore.org/snowflake-connections.json"
-  },
-  {
-    "fileMatch": ["solarxy.toml"],
-    "url": "https://www.schemastore.org/solarxy-config.json"
-  },
-  {
-    "fileMatch": [".solidarity", ".solidarity.json"],
-    "url": "https://www.schemastore.org/solidaritySchema.json"
-  },
-  {
-    "fileMatch": ["*.slnf"],
-    "url": "https://www.schemastore.org/solution-filter.json"
-  },
-  {
-    "fileMatch": ["*.map"],
-    "url": "https://www.schemastore.org/sourcemap-v3.json"
-  },
-  {
-    "fileMatch": ["*.specif", "*.specif.json"],
-    "url": "https://www.schemastore.org/specif-1.1.json"
-  },
-  {
-    "fileMatch": ["specmatic.json"],
-    "url": "https://www.schemastore.org/specmatic.json"
-  },
-  {
-    "fileMatch": ["*.mixins.json"],
-    "url": "https://www.schemastore.org/sponge-mixins.json"
-  },
-  {
-    "fileMatch": ["*.sprite"],
-    "url": "https://www.schemastore.org/sprite.json"
-  },
-  {
-    "fileMatch": ["sqlc.json"],
-    "url": "https://www.schemastore.org/sqlc-2.0.json"
-  },
-  {
-    "fileMatch": ["staticwebapp.config.json"],
-    "url": "https://www.schemastore.org/staticwebapp.config.json"
-  },
-  {
-    "fileMatch": ["swa-cli.config.json"],
-    "url": "https://www.schemastore.org/swa-cli.config.json"
-  },
-  {
-    "fileMatch": [".stackblitzrc", "**/.stackblitz/config.json"],
-    "url": "https://www.schemastore.org/stackblitzrc.json"
-  },
-  {
-    "fileMatch": ["**/.streamlit/config.toml"],
-    "url": "https://www.schemastore.org/streamlit-config.json"
-  },
-  {
-    "fileMatch": [".stylelintrc", ".stylelintrc.json"],
-    "url": "https://www.schemastore.org/stylelintrc.json"
-  },
-  {
-    "fileMatch": ["task.json", "tasks.json"],
-    "url": "https://www.schemastore.org/task.json"
-  },
-  {
-    "fileMatch": ["**/.template.config/template.json"],
-    "url": "https://www.schemastore.org/template.json"
-  },
-  {
-    "fileMatch": ["templatesources.json"],
-    "url": "https://www.schemastore.org/templatesources.json"
-  },
-  {
-    "fileMatch": ["provider.tfps.json", "**/provider.tfps.json"],
-    "url": "https://www.schemastore.org/tfpowershell-provider.json"
-  },
-  {
-    "fileMatch": ["datasource.tfps.json", "**/datasource.tfps.json"],
-    "url": "https://www.schemastore.org/tfpowershell-datasource.json"
-  },
-  {
-    "fileMatch": ["resource.tfps.json", "**/resource.tfps.json"],
-    "url": "https://www.schemastore.org/tfpowershell-resource.json"
-  },
-  {
-    "fileMatch": ["settings.tfps.json", "**/settings.tfps.json"],
-    "url": "https://www.schemastore.org/tfpowershell-settings.json"
-  },
-  {
-    "fileMatch": [".tldr.json"],
-    "url": "https://www.schemastore.org/tldr.json"
-  },
-  {
-    "fileMatch": ["tombi.toml", "**/tombi/config.toml"],
-    "url": "https://www.schemastore.org/tombi.json"
-  },
-  {
-    "fileMatch": ["*.tmLanguage.json", "*.yaml-tmlanguage"],
-    "url": "https://www.schemastore.org/tmlanguage.json"
-  },
-  {
-    "fileMatch": ["testEnvironments.json"],
-    "url": "https://www.schemastore.org/testenvironments.json"
-  },
-  {
-    "fileMatch": ["*.tscript"],
-    "url": "https://www.schemastore.org/truescript.json"
-  },
-  {
-    "fileMatch": ["tsbuild.json"],
-    "url": "https://www.schemastore.org/tsbuild.json"
-  },
-  {
-    "fileMatch": ["tsconfig*.json"],
-    "url": "https://www.schemastore.org/tsconfig.json"
-  },
-  {
-    "fileMatch": ["tsd.json"],
-    "url": "https://www.schemastore.org/tsd.json"
-  },
-  {
-    "fileMatch": [".tsdrc"],
-    "url": "https://www.schemastore.org/tsdrc.json"
-  },
-  {
-    "fileMatch": ["ts-force-config.json"],
-    "url": "https://www.schemastore.org/ts-force-config.json"
-  },
-  {
-    "fileMatch": ["tslint.json"],
-    "url": "https://www.schemastore.org/tslint.json"
-  },
-  {
-    "fileMatch": ["ttheme-marketplace.toml"],
-    "url": "https://www.schemastore.org/ttheme-marketplace.json"
-  },
-  {
-    "fileMatch": ["typewiz.json"],
-    "url": "https://www.schemastore.org/typewiz.json"
-  },
-  {
-    "fileMatch": ["typings.json"],
-    "url": "https://www.schemastore.org/typings.json"
-  },
-  {
-    "fileMatch": [".typingsrc"],
-    "url": "https://www.schemastore.org/typingsrc.json"
-  },
-  {
-    "fileMatch": ["user-data"],
-    "url": "https://www.schemastore.org/ubuntu-server-autoinstall.json"
-  },
-  {
-    "fileMatch": ["up.json"],
-    "url": "https://www.schemastore.org/up.json"
-  },
-  {
-    "fileMatch": ["*.utam.json", ".utam.json"],
-    "url": "https://www.schemastore.org/utam-page-object.json"
-  },
-  {
-    "fileMatch": ["vector.json", "vector.toml"],
-    "url": "https://www.schemastore.org/vector.json"
-  },
-  {
-    "fileMatch": ["**/*vim*/addon-info.json"],
-    "url": "https://www.schemastore.org/vim-addon-info.json"
-  },
-  {
-    "fileMatch": [".vsls.json"],
-    "url": "https://www.schemastore.org/vsls.json"
-  },
-  {
-    "fileMatch": ["vs-2017.3.host.json"],
-    "url": "https://www.schemastore.org/vs-2017.3.host.json"
-  },
-  {
-    "fileMatch": ["*.filenesting.json", ".filenesting.json"],
-    "url": "https://www.schemastore.org/vs-nesting.json"
-  },
-  {
-    "fileMatch": ["*.vsconfig"],
-    "url": "https://www.schemastore.org/vsconfig.json"
-  },
-  {
-    "fileMatch": ["*.vsext"],
-    "url": "https://www.schemastore.org/vsext.json"
-  },
-  {
-    "fileMatch": ["vs-publish.json"],
-    "url": "https://www.schemastore.org/vsix-publish.json"
-  },
-  {
-    "fileMatch": ["vss-extension.json"],
-    "url": "https://www.schemastore.org/vss-extension.json"
-  },
-  {
-    "fileMatch": ["thunderbird-extension.json"],
-    "url": "https://www.schemastore.org/thunderbird-extension.json"
-  },
-  {
-    "fileMatch": ["manifest.json"],
-    "url": "https://www.schemastore.org/webextension.json"
-  },
-  {
-    "fileMatch": ["manifest.json", "*.webmanifest"],
-    "url": "https://www.schemastore.org/web-manifest-combined.json"
-  },
-  {
-    "fileMatch": ["webjea.json"],
-    "url": "https://www.schemastore.org/webjea.json"
-  },
-  {
-    "fileMatch": ["webjobs-list.json"],
-    "url": "https://www.schemastore.org/webjobs-list.json"
-  },
-  {
-    "fileMatch": ["webjobpublishsettings.json"],
-    "url": "https://www.schemastore.org/webjob-publish-settings.json"
-  },
-  {
-    "fileMatch": ["web-types.json", "*.web-types.json"],
-    "url": "https://www.schemastore.org/web-types.json"
-  },
-  {
-    "fileMatch": ["xunit.runner.json", "*.xunit.runner.json"],
-    "url": "https://www.schemastore.org/xunit.runner.schema.json"
-  },
-  {
-    "fileMatch": ["*.servicehub.service.json"],
-    "url": "https://www.schemastore.org/servicehub.service.schema.json"
-  },
-  {
-    "fileMatch": ["servicehub.config.json"],
-    "url": "https://www.schemastore.org/servicehub.config.schema.json"
-  },
-  {
-    "fileMatch": ["*.cryproj"],
-    "url": "https://www.schemastore.org/cryproj.json"
-  },
-  {
-    "fileMatch": [".huskyrc", ".huskyrc.json"],
-    "url": "https://www.schemastore.org/huskyrc.json"
-  },
-  {
-    "fileMatch": [".lintstagedrc", ".lintstagedrc.json"],
-    "url": "https://www.schemastore.org/lintstagedrc.schema.json"
-  },
-  {
-    "fileMatch": [".mdxlintrc", ".mdxlintrc.json"],
-    "url": "https://www.schemastore.org/mdxlintrc.json"
-  },
-  {
-    "fileMatch": ["*.mtaext"],
-    "url": "https://www.schemastore.org/mtaext.json"
-  },
-  {
-    "fileMatch": ["xs-app.json"],
-    "url": "https://www.schemastore.org/xs-app.json"
-  },
-  {
-    "fileMatch": ["hemtt.json", "hemtt.toml"],
-    "url": "https://www.schemastore.org/hemtt-0.6.2.json"
-  },
-  {
-    "fileMatch": ["now.json"],
-    "url": "https://www.schemastore.org/now.json"
-  },
-  {
-    "fileMatch": ["BizTalkServerInventory.json"],
-    "url": "https://www.schemastore.org/BizTalkServerApplicationSchema.json"
-  },
-  {
-    "fileMatch": [".httpmockrc", ".httpmock.json"],
-    "url": "https://www.schemastore.org/httpmockrc.json"
-  },
-  {
-    "fileMatch": ["conf.json", "jsdoc.json"],
-    "url": "https://www.schemastore.org/jsdoc-1.0.0.json"
-  },
-  {
-    "fileMatch": [".commitlintrc", ".commitlintrc.json"],
-    "url": "https://www.schemastore.org/commitlintrc.json"
-  },
-  {
-    "fileMatch": [".yamlfmt"],
-    "url": "https://www.schemastore.org/yamlfmt.json"
-  },
-  {
-    "fileMatch": ["**/.yamllint"],
-    "url": "https://www.schemastore.org/yamllint.json"
-  },
-  {
-    "fileMatch": ["yap.json"],
-    "url": "https://www.schemastore.org/yap.json"
-  },
-  {
-    "fileMatch": ["devinit.json", ".devinit.json"],
-    "url": "https://www.schemastore.org/devinit.schema-6.0.json"
-  },
-  {
-    "fileMatch": [".djlintrc", "djlint.toml", ".djlint.toml"],
-    "url": "https://www.schemastore.org/djlint.json"
-  },
-  {
-    "fileMatch": ["**/tsoa.json"],
-    "url": "https://www.schemastore.org/tsoa.json"
-  },
-  {
-    "fileMatch": ["**/api.json"],
-    "url": "https://www.schemastore.org/apibuilder.json"
-  },
-  {
-    "fileMatch": ["apollo-router-*.json"],
-    "url": "https://www.schemastore.org/apollo-router-2.17.0.json"
-  },
-  {
-    "fileMatch": ["**/db/changelog/**/*.json"],
-    "url": "https://www.schemastore.org/liquibase-3.2.json"
-  },
-  {
-    "fileMatch": [".markdown-link-check.json"],
-    "url": "https://www.schemastore.org/markdown-link-check.json"
-  },
-  {
-    "fileMatch": ["maturin.toml"],
-    "url": "https://www.schemastore.org/maturin.json"
-  },
-  {
-    "fileMatch": ["hugo.toml", "hugo.json"],
-    "url": "https://www.schemastore.org/hugo.json"
-  },
-  {
-    "fileMatch": [".deployedrc", ".deployed.json"],
-    "url": "https://www.schemastore.org/deployed.json"
-  },
-  {
-    "fileMatch": [".clang-format"],
-    "url": "https://www.schemastore.org/clang-format-21.x.json"
-  },
-  {
-    "fileMatch": ["ava.config.json"],
-    "url": "https://www.schemastore.org/ava.json"
-  },
-  {
-    "fileMatch": [".jscpd.json"],
-    "url": "https://www.schemastore.org/jscpd.json"
-  },
-  {
-    "fileMatch": ["egg-*.json"],
-    "url": "https://www.schemastore.org/pterodactyl.json"
-  },
-  {
-    "fileMatch": ["monika.json"],
-    "url": "https://www.schemastore.org/monika-config-schema.json"
-  },
-  {
-    "fileMatch": [".nycrc", ".nycrc.json"],
-    "url": "https://www.schemastore.org/nycrc.json"
-  },
-  {
-    "fileMatch": ["*-index.json"],
-    "url": "https://www.schemastore.org/mongodb-atlas-search-index-definition.json"
-  },
-  {
-    "fileMatch": ["embrace-config.json"],
-    "url": "https://www.schemastore.org/embrace-config-schema-1.0.0.json"
-  },
-  {
-    "fileMatch": ["petstore-v1.0.json"],
-    "url": "https://www.schemastore.org/petstore-v1.0.json"
-  },
-  {
-    "fileMatch": ["*.sublime-syntax"],
-    "url": "https://www.schemastore.org/sublime-syntax.json"
-  },
-  {
-    "fileMatch": ["qfconfig.json"],
-    "url": "https://www.schemastore.org/qfconfig.json"
-  },
-  {
-    "fileMatch": [".uplugin"],
-    "url": "https://www.schemastore.org/uplugin.json"
-  },
-  {
-    "fileMatch": [".uproject"],
-    "url": "https://www.schemastore.org/uproject.json"
-  },
-  {
-    "fileMatch": ["pants*.toml"],
-    "url": "https://www.schemastore.org/pantsbuild-2.32.0.json"
-  },
-  {
-    "fileMatch": [".all-contributorsrc"],
-    "url": "https://www.schemastore.org/all-contributors.json"
-  },
-  {
-    "fileMatch": [".es6importsorterrc.json"],
-    "url": "https://www.schemastore.org/es6importsorterrc.json"
-  },
-  {
-    "fileMatch": ["bpkg.json"],
-    "url": "https://www.schemastore.org/bpkg.json"
-  },
-  {
-    "fileMatch": [".aliases"],
-    "url": "https://www.schemastore.org/aliases.json"
-  },
-  {
-    "fileMatch": ["ty.toml"],
-    "url": "https://www.schemastore.org/ty.json"
-  },
-  {
-    "fileMatch": ["mainmenu.json"],
-    "url": "https://www.schemastore.org/minecraft-custom-main-menu-mod.json"
-  },
-  {
-    "fileMatch": ["kya-manifest.json", "kya.json", "*.kya.json", "kya-manifest.schema.json"],
-    "url": "https://www.schemastore.org/kya.json"
-  },
-  {
-    "fileMatch": [".omletrc", ".omletrc.json", "omletrc", "omletrc.json"],
-    "url": "https://www.schemastore.org/omletrc.json"
-  },
-  {
-    "fileMatch": ["mprocs.json"],
-    "url": "https://www.schemastore.org/mprocs-0.6.4.json"
-  },
-  {
-    "fileMatch": ["language-configuration.json"],
-    "url": "https://www.schemastore.org/language-configuration.json"
-  },
-  {
-    "fileMatch": ["**/.zeropress/config.json"],
-    "url": "https://www.schemastore.org/zeropress-build-pages-config-1.0.json"
-  },
-  {
-    "fileMatch": ["zeropress-preview-data.json"],
-    "url": "https://www.schemastore.org/zeropress-preview-data-0.7.json"
-  },
-  {
-    "fileMatch": ["wxr-import-base.json"],
-    "url": "https://www.schemastore.org/zeropress-wxr-import-base-0.7.json"
-  },
-  {
-    "fileMatch": ["elm.json"],
-    "url": "https://www.schemastore.org/elm.json"
-  },
-  {
-    "fileMatch": ["**/*@*/**/settings-schema.json"],
-    "url": "https://www.schemastore.org/cinnamon-spice-settings.json"
-  },
-  {
-    "fileMatch": ["**/*@*/**/metadata.json"],
-    "url": "https://www.schemastore.org/cinnamon-spice-metadata.json"
-  },
-  {
-    "fileMatch": ["**/*winutil*/config/applications.json"],
-    "url": "https://www.schemastore.org/winutil-applications.json"
-  },
-  {
-    "fileMatch": ["**/*winutil*/config/preset.json"],
-    "url": "https://www.schemastore.org/winutil-presets.json"
-  },
-  {
-    "fileMatch": ["**/*linutil*/**/tabs.toml"],
-    "url": "https://www.schemastore.org/linutil-tabs.json"
-  },
-  {
-    "fileMatch": ["**/*linutil*/**/tab_data.toml"],
-    "url": "https://www.schemastore.org/linutil-tab-data.json"
-  },
-  {
-    "fileMatch": ["*.jdsl"],
-    "url": "https://www.schemastore.org/architectfx.json"
-  },
-  {
-    "fileMatch": ["dtool-dataset.json"],
-    "url": "https://www.schemastore.org/dtool-dataset-metadata-1.0.json"
-  },
-  {
-    "fileMatch": ["*.utcm-monitor.json"],
-    "url": "https://www.schemastore.org/utcm-monitor.json"
-  },
-  {
-    "fileMatch": ["*.vtcfg"],
-    "url": "https://www.schemastore.org/vtcfg-v19.0.0.json"
-  },
-  {
-    "fileMatch": ["okh.json", "okh.toml", "*.okh.json", "*.okh.toml"],
-    "url": "https://www.schemastore.org/okh.json"
-  },
-  {
-    "fileMatch": ["assetlinks.json"],
-    "url": "https://www.schemastore.org/assetlinks.json"
-  },
-  {
-    "fileMatch": ["pylock.toml", "pylock.*.toml"],
-    "url": "https://www.schemastore.org/pylock.json"
-  },
-  {
-    "fileMatch": [".stylua.toml", "stylua.toml"],
-    "url": "https://www.schemastore.org/stylua.json"
-  },
-  {
-    "fileMatch": [".taplo.toml", "taplo.toml"],
-    "url": "https://www.schemastore.org/taplo.json"
-  },
-  {
-    "fileMatch": ["**/environment-definition.json"],
-    "url": "https://www.schemastore.org/ti8m-cdk-environment-definition.json"
-  },
-  {
-    "fileMatch": ["**/concrete-environments.json"],
-    "url": "https://www.schemastore.org/ti8m-cdk-concrete-environments.json"
-  },
-  {
-    "fileMatch": ["**/environment_config/*.json"],
-    "url": "https://www.schemastore.org/ti8m-cdk-concrete-environment-config.json"
-  },
-  {
-    "fileMatch": ["powerpages.config.json"],
-    "url": "https://www.schemastore.org/powerpages.config.json"
-  },
-  {
-    "fileMatch": ["*.erpn.toml", "*.erpn.json"],
-    "url": "https://www.schemastore.org/evolving-resolutive-process-notation-1.0.json"
-  },
-  {
-    "fileMatch": ["**/.changepacks/config.json"],
-    "url": "https://www.schemastore.org/changepacks.json"
-  },
-  {
-    "fileMatch": ["devup.json"],
-    "url": "https://www.schemastore.org/devup.json"
-  },
-  {
-    "fileMatch": ["**/vespertide.json"],
-    "url": "https://www.schemastore.org/vespertide.json"
-  },
-  {
-    "fileMatch": ["**/migrations/**/*.vespertide.json"],
-    "url": "https://www.schemastore.org/vespertide-migration.json"
-  },
-  {
-    "fileMatch": ["**/models/**/*.vespertide.json"],
-    "url": "https://www.schemastore.org/vespertide-model.json"
-  },
-  {
-    "fileMatch": [
-      "mail-servers-config.json",
-      "mail-servers-config.jsonc",
-      "mail-servers-config.json5",
-      "*.mail-servers-config.json",
-      "*.mail-servers-config.jsonc",
-      "*.mail-servers-config.json5",
-      "**/mail-servers-config.json",
-      "**/mail-servers-config.jsonc",
-      "**/mail-servers-config.json5"
-    ],
-    "url": "https://www.schemastore.org/mail-servers-config.json"
-  },
-  {
-    "fileMatch": ["**/.qwen/settings.json"],
-    "url": "https://www.schemastore.org/qwen-code-settings.json"
-  },
-  {
-    "fileMatch": ["quikrun.toml"],
-    "url": "https://www.schemastore.org/quikrun.json"
-  },
-  {
-    "fileMatch": ["okf.json"],
-    "url": "https://www.schemastore.org/okf-0.2.json"
-  },
-  {
-    "fileMatch": ["**/.claude/launch.json"],
-    "url": "https://www.schemastore.org/claude-code-launch.json"
-  },
-  {
-    "fileMatch": [".hias-hitf.json", ".hias-hitf.jsonc"],
-    "url": "https://www.schemastore.org/hias-hitf.json"
-  },
-  {
-    "fileMatch": ["urai.config.jsonc", "urai.config.json"],
-    "url": "https://www.schemastore.org/urai-ecma.json"
-  },
-  {
-    "fileMatch": ["**/.haijun-plugin/plugin.json"],
-    "url": "https://www.schemastore.org/haijun-code-plugin-manifest.json"
-  }
-]
+{
+  "sigmacv.json": ["**/*.sigmacv.json"],
+  "revola.json": [".revola.json",".revola.config.json","revola.json","revola.config.json"],
+  "algovoi-compliance-receipt-v1.json": ["algovoi-compliance-receipt.json","algovoi-compliance-receipt-*.json","**/algovoi/compliance-receipt-*.json"],
+  "s3-bucket-cors.json": ["**/s3-cors.json","**/s3-bucket-cors.json","**/s3-cors-configuration.json"],
+  "grpc-api-gateway.json": ["grpc_api_gateway.json","*_gateway.json","*_openapi.json"],
+  "aspire-8.0.json": ["aspire-manifest.json"],
+  "anywork-ac-1.1.json": [".awc.json",".awc.jsonc"],
+  "agripparc-1.4.json": [".agripparc.json","agripparc.json"],
+  "aiproj-1.11.json": [".aiproj.json"],
+  "abc-inventory-module-data-5.4.0.json": ["abc-inventory-module-data-*.json"],
+  "abc-clinical-demand-forecast-6.0.0.json": ["abc-clinical-demand-forecast-*.json"],
+  "abc-supply-plan-14.3.0.json": ["abc-supply-plan-*.json"],
+  "aih-config.json": [".aih-config.json"],
+  "aih-org-policy.json": ["aih-org-policy.json"],
+  "aiconfig-1.0.json": ["aiconfig.json","aiconfig.jsonc","*.aiconfig.json","*.aiconfig.jsonc"],
+  "appsscript.json": ["appsscript.json"],
+  "appsettings.json": ["appsettings.json","appsettings.*.json"],
+  "openapi-arazzo-1.X.json": ["arazzo.json"],
+  "attw.json": [".attw.json"],
+  "asconfig-schema.json": ["asconfig.json"],
+  "aws-cdk-appconfig-featureflags-1.0.0.json": ["*.appConfig.featureFlags.json"],
+  "azure-containerapp-template.json": ["*.containerapp-template.json"],
+  "azure-deviceupdate-import-manifest-5.0.json": ["*.importmanifest.json"],
+  "azure-deviceupdate-update-manifest-5.json": ["*.updatemanifest.json"],
+  "azure-iot-edge-deployment-template-4.0.json": ["deployment.template.json","deployment.debug.template.json"],
+  "foxx-manifest.json": ["manifest.json"],
+  "babelrc.json": [".babelrc",".babelrc.json","babel.config.json"],
+  "backportrc.json": [".backportrc.json"],
+  "bigquery-table.json": ["*.bigquery.json"],
+  "bitrise.json": ["bitrise.json"],
+  "bower.json": ["bower.json",".bower.json"],
+  "bowerrc.json": [".bowerrc"],
+  "boyka-config.json": ["boyka-config.json"],
+  "bozr.json": [".suite.json",".xsuite.json"],
+  "browser.i18n.json": ["messages.json"],
+  "bun-lock.json": ["bun.lock"],
+  "bundleconfig.json": ["bundleconfig.json"],
+  "chezmoi.json": ["chezmoi.json","chezmoi.jsonc"],
+  "claude-code-keybindings.json": ["**/.claude/keybindings.json"],
+  "claude-code-plugin-manifest.json": ["**/.claude-plugin/plugin.json"],
+  "claude-code-marketplace.json": ["**/.claude-plugin/marketplace.json"],
+  "claude-code-settings.json": ["**/.claude/settings.json"],
+  "codeclimate.json": [".codeclimate.json"],
+  "clasp.json": [".clasp.json"],
+  "clib.json": ["clib.json"],
+  "codex-hooks.json": ["**/.codex/hooks.json"],
+  "codex-plugin-manifest.json": ["**/.codex-plugin/plugin.json"],
+  "compilerconfig.json": ["compilerconfig.json"],
+  "compile-commands.json": ["compile_commands.json"],
+  "commands.json": ["commands.json"],
+  "cosmos-config.json": ["cosmos.config.json"],
+  "chrome-extension-locales-messages.json": ["**/_locales/*/messages.json"],
+  "chutzpah.json": ["chutzpah.json"],
+  "vsix-manifestinjection.json": ["contentmanifest.json"],
+  "cloudbuild.json": ["cloudbuild.json","*.cloudbuild.json"],
+  "workflows.json": ["workflows.json","*.workflows.json"],
+  "cdk.json": ["cdk.json"],
+  "coffeelint.json": ["coffeelint.json"],
+  "component.json": ["component.json"],
+  "component-detection-manifest.json": ["cdmanifest.json","cgmanifest.json"],
+  "crucible-code-schema.json": ["**/.crucible/config.json","**/.crucible/config.local.json"],
+  "csscomb.json": [".csscomb.json"],
+  "datalogic-scan2deploy-android.json": [".dla.json"],
+  "datalogic-scan2deploy-ce.json": [".dlc.json"],
+  "debugsettings.json": ["debugsettings.json"],
+  "dockerd.json": ["dockerd.json","docker.json"],
+  "docker-bake.json": ["docker-bake.json","docker-bake.override.json"],
+  "docfx.json": ["docfx.json"],
+  "dofigen.json": ["dofigen.json","*.dofigen.json"],
+  "dotnet-releases-index.json": ["dotnet-release-index.json"],
+  "dotnet-tools.json": ["dotnet-tools.json"],
+  "dotnetcli.host.json": ["dotnetcli.host.json"],
+  "pm2-ecosystem.json": ["ecosystem.json","ecosystem.config.json"],
+  "esmrc.json": [".esmrc.json"],
+  "epr-manifest.json": ["epr-manifest.json"],
+  "electron-builder.json": ["electron-builder.json"],
+  "easyvcr-net.json": ["**/cassettes/*.json"],
+  "eslintrc.json": [".eslintrc",".eslintrc.json"],
+  "eslint-suppressions.json": ["eslint-suppressions.json"],
+  "fabric.mod.json": ["fabric.mod.json"],
+  "flatpak-manifest.json": ["**/*.flatpak.json"],
+  "foundryvtt-module-manifest.json": ["**/modules/*/module.json"],
+  "foundryvtt-system-manifest.json": ["**/systems/*/system.json"],
+  "foundryvtt-world-manifest.json": ["**/worlds/*/world.json"],
+  "foundryvtt-template.json": ["**/systems/*/template.json"],
+  "function.json": ["function.json"],
+  "gaspar-3.0.json": ["gaspar.config.json"],
+  "glamour-style.json": [".glamour-style.json","*.glamour-style.json","*.glamour.json","*.glow-style.json","glamour-style.json","glow-style.json"],
+  "gpc.json": ["**/.well-known/gpc.json"],
+  "github-workflow-template-properties.json": ["**/.github/workflow-templates/**.properties.json"],
+  "global.json": ["global.json"],
+  "gollama.json": ["**/gollama/config.json"],
+  "grunt-copy-task.json": ["copy.json"],
+  "grunt-clean-task.json": ["clean.json"],
+  "grunt-cssmin-task.json": ["cssmin.json"],
+  "grunt-jshint-task.json": ["jshint.json"],
+  "grunt-watch-task.json": ["watch.json"],
+  "grunt-task.json": ["**/grunt/*.json","*-tasks.json"],
+  "vault.json": ["vault.json","vault.config.json"],
+  "host.json": ["host.json"],
+  "host-meta.json": ["host-meta.json"],
+  "ide.host.json": ["ide.host.json"],
+  "imageoptimizer.json": ["imageoptimizer.json"],
+  "importmap.json": ["importmap.json","import_map.json","import-map.json"],
+  "intlayer.json": ["*.content.json"],
+  "jasmine.json": ["jasmine.json"],
+  "jest.json": ["jest.config.json"],
+  "jreleaser-1.27.0.json": ["jreleaser.json"],
+  "jscsrc.json": [".jscsrc","jscsrc.json"],
+  "jshintrc.json": [".jshintrc"],
+  "feed.json": ["feed.json"],
+  "jsonld.json": ["*.jsonld"],
+  "json-patch.json": ["*.patch.json"],
+  "jsconfig.json": ["jsconfig.json"],
+  "launchsettings.json": ["launchsettings.json"],
+  "lego.json": ["lego.json"],
+  "lerna.json": ["lerna.json"],
+  "libman.json": ["libman.json"],
+  "license-report-config.json": ["license-report-config.json"],
+  "linkinator-config.json": ["linkinator.config.json"],
+  "litertlm_manifest.json": ["litertlm_manifest.json"],
+  "local.settings.json": ["local.settings.json"],
+  "lsdlschema.json": ["*.lsdl.json"],
+  "mapehr.json": [".map.json"],
+  "micro.json": ["**/micro/settings.json"],
+  "mimetypes.json": ["mimetypes.json"],
+  "mikrotik-mcp.json": ["mikrotik-mcp.json","mikrotik-mcp.config.json","**/.mikrotik-mcp/config.json"],
+  "minecraft-advancement.json": ["**/data/*/advancements/*.json"],
+  "minecraft-biome.json": ["**/data/*/worldgen/biome/*.json"],
+  "minecraft-configured-carver.json": ["**/data/*/worldgen/configured_carver/*.json"],
+  "minecraft-damage-type.json": ["**/data/*/damage_type/*.json"],
+  "minecraft-dimension-type.json": ["**/data/*/dimension_type/*.json"],
+  "minecraft-dimension.json": ["**/data/*/dimension/*.json"],
+  "minecraft-item-modifier.json": ["**/data/*/item_modifiers/*.json"],
+  "minecraft-loot-table.json": ["**/data/*/loot_tables/**/*.json"],
+  "minecraft-predicate.json": ["**/data/*/predicates/*.json"],
+  "minecraft-recipe.json": ["**/data/*/recipes/*.json"],
+  "minecraft-tag.json": ["**/data/*/tags/**/*.json"],
+  "minecraft-template-pool.json": ["**/data/*/worldgen/template_pool/*.json"],
+  "minecraft-lang.json": ["**/assets/*/lang/*.json"],
+  "minecraft-particle.json": ["**/assets/*/particles/*.json"],
+  "minecraft-trim-material.json": ["**/data/*/trim_material/*.json"],
+  "minecraft-trim-pattern.json": ["**/data/*/trim_pattern/*.json"],
+  "mocharc.json": [".mocharc.json",".mocharc.jsonc"],
+  "mycode.json": ["mycode.json"],
+  "nightwatch.json": ["nightwatch.json"],
+  "nest-cli.json": [".nestcli.json",".nest-cli.json","nest-cli.json","nest.json"],
+  "nodemon.json": ["nodemon.json"],
+  "npmpackagejsonlintrc.json": ["npmpackagejsonlintrc.json",".npmpackagejsonlintrc.json"],
+  "nswag.json": ["nswag.json"],
+  "ocelot.json": ["ocelot.json"],
+  "odgs-standard-metrics.json": ["*.odgs-metrics.json"],
+  "odgs-data-rules.json": ["*.odgs-rules.json"],
+  "odgs-ontology-graph.json": ["*.odgs-ontology.json"],
+  "omnisharp.json": ["omnisharp.json"],
+  "openapi-3.X.json": ["openapi.json","*.openapi.json"],
+  "openapi-overlay-1.X.json": ["overlay.json","*.overlay.json"],
+  "package.json": ["package.json"],
+  "packer.json": ["packer.json"],
+  "pgap_yaml_input_reader.json": ["submol*.json"],
+  "pattern.json": ["pattern.json"],
+  "plagiarize.json": ["plagiarize.json"],
+  "plagiarize-me.json": ["plagiarize-me.json"],
+  "popxf-1.0.json": ["*.popxf.json"],
+  "popxf-corr-1.0.json": ["*.popxf-corr.json"],
+  "postcssrc.json": [".postcssrc.json"],
+  "prettierrc.json": [".prettierrc.json"],
+  "project.json": ["project.json"],
+  "proxies.json": ["proxies.json"],
+  "putout.json": [".putout.json"],
+  "pyrseas-0.8.json": ["pyrseas-0.8.json"],
+  "radiohound-v0.json": ["*.rh.json"],
+  "rc3-auth-0.0.3.json": ["rc-auth.json"],
+  "rc3-collection-0.0.3.json": ["rc-collection.json"],
+  "rc3-environment-0.0.3.json": ["**/environments/*.json","rc-global.json"],
+  "rc3-folder-0.0.3.json": ["rc-folder.json"],
+  "rc3-settings-0.0.3.json": ["rc-settings.json"],
+  "rehyperc.json": [".rehyperc.json"],
+  "remarkrc.json": [".remarkrc.json"],
+  "rust-project.json": ["rust-project.json"],
+  "evidence-bundle.json": ["**/*.evidence-bundle.json"],
+  "semantic-release.json": [".releaserc.json"],
+  "sergen.json": ["sergen.json","sergen.*.json","*.sergen.json"],
+  "serve.json": ["vercel.serve.json"],
+  "sil-kit-participant-configuration.json": ["silkit.json","*.silkit.json"],
+  "sil-kit-registry-configuration.json": ["silkit-registry.json","*.silkit-registry.json"],
+  "size-limit.json": [".size-limit.json"],
+  "solidaritySchema.json": [".solidarity.json"],
+  "sourcemap-v3.json": ["*.map"],
+  "specif-1.1.json": ["*.specif.json"],
+  "specmatic.json": ["specmatic.json"],
+  "sponge-mixins.json": ["*.mixins.json"],
+  "sqlc-2.0.json": ["sqlc.json"],
+  "staticwebapp.config.json": ["staticwebapp.config.json"],
+  "swa-cli.config.json": ["swa-cli.config.json"],
+  "stackblitzrc.json": ["**/.stackblitz/config.json"],
+  "stylelintrc.json": [".stylelintrc.json"],
+  "task.json": ["task.json","tasks.json"],
+  "template.json": ["**/.template.config/template.json"],
+  "templatesources.json": ["templatesources.json"],
+  "tfpowershell-provider.json": ["provider.tfps.json","**/provider.tfps.json"],
+  "tfpowershell-datasource.json": ["datasource.tfps.json","**/datasource.tfps.json"],
+  "tfpowershell-resource.json": ["resource.tfps.json","**/resource.tfps.json"],
+  "tfpowershell-settings.json": ["settings.tfps.json","**/settings.tfps.json"],
+  "tldr.json": [".tldr.json"],
+  "tmlanguage.json": ["*.tmLanguage.json"],
+  "testenvironments.json": ["testEnvironments.json"],
+  "tsbuild.json": ["tsbuild.json"],
+  "tsconfig.json": ["tsconfig*.json"],
+  "tsd.json": ["tsd.json"],
+  "ts-force-config.json": ["ts-force-config.json"],
+  "tslint.json": ["tslint.json"],
+  "typewiz.json": ["typewiz.json"],
+  "typings.json": ["typings.json"],
+  "up.json": ["up.json"],
+  "utam-page-object.json": ["*.utam.json",".utam.json"],
+  "vector.json": ["vector.json"],
+  "vim-addon-info.json": ["**/*vim*/addon-info.json"],
+  "vsls.json": [".vsls.json"],
+  "vs-2017.3.host.json": ["vs-2017.3.host.json"],
+  "vs-nesting.json": ["*.filenesting.json",".filenesting.json"],
+  "vsix-publish.json": ["vs-publish.json"],
+  "vss-extension.json": ["vss-extension.json"],
+  "thunderbird-extension.json": ["thunderbird-extension.json"],
+  "webextension.json": ["manifest.json"],
+  "web-manifest-combined.json": ["manifest.json","*.webmanifest"],
+  "webjea.json": ["webjea.json"],
+  "webjobs-list.json": ["webjobs-list.json"],
+  "webjob-publish-settings.json": ["webjobpublishsettings.json"],
+  "web-types.json": ["web-types.json","*.web-types.json"],
+  "xunit.runner.schema.json": ["xunit.runner.json","*.xunit.runner.json"],
+  "servicehub.service.schema.json": ["*.servicehub.service.json"],
+  "servicehub.config.schema.json": ["servicehub.config.json"],
+  "huskyrc.json": [".huskyrc.json"],
+  "lintstagedrc.schema.json": [".lintstagedrc.json"],
+  "mdxlintrc.json": [".mdxlintrc.json"],
+  "xs-app.json": ["xs-app.json"],
+  "hemtt-0.6.2.json": ["hemtt.json"],
+  "now.json": ["now.json"],
+  "BizTalkServerApplicationSchema.json": ["BizTalkServerInventory.json"],
+  "httpmockrc.json": [".httpmock.json"],
+  "jsdoc-1.0.0.json": ["conf.json","jsdoc.json"],
+  "commitlintrc.json": [".commitlintrc.json"],
+  "yap.json": ["yap.json"],
+  "devinit.schema-6.0.json": ["devinit.json",".devinit.json"],
+  "tsoa.json": ["**/tsoa.json"],
+  "apibuilder.json": ["**/api.json"],
+  "apollo-router-2.17.0.json": ["apollo-router-*.json"],
+  "liquibase-3.2.json": ["**/db/changelog/**/*.json"],
+  "markdown-link-check.json": [".markdown-link-check.json"],
+  "hugo.json": ["hugo.json"],
+  "deployed.json": [".deployed.json"],
+  "ava.json": ["ava.config.json"],
+  "jscpd.json": [".jscpd.json"],
+  "pterodactyl.json": ["egg-*.json"],
+  "monika-config-schema.json": ["monika.json"],
+  "nycrc.json": [".nycrc.json"],
+  "mongodb-atlas-search-index-definition.json": ["*-index.json"],
+  "embrace-config-schema-1.0.0.json": ["embrace-config.json"],
+  "petstore-v1.0.json": ["petstore-v1.0.json"],
+  "qfconfig.json": ["qfconfig.json"],
+  "es6importsorterrc.json": [".es6importsorterrc.json"],
+  "bpkg.json": ["bpkg.json"],
+  "minecraft-custom-main-menu-mod.json": ["mainmenu.json"],
+  "kya.json": ["kya-manifest.json","kya.json","*.kya.json","kya-manifest.schema.json"],
+  "omletrc.json": [".omletrc.json","omletrc.json"],
+  "mprocs-0.6.4.json": ["mprocs.json"],
+  "language-configuration.json": ["language-configuration.json"],
+  "zeropress-build-pages-config-1.0.json": ["**/.zeropress/config.json"],
+  "zeropress-preview-data-0.7.json": ["zeropress-preview-data.json"],
+  "zeropress-wxr-import-base-0.7.json": ["wxr-import-base.json"],
+  "elm.json": ["elm.json"],
+  "cinnamon-spice-settings.json": ["**/*@*/**/settings-schema.json"],
+  "cinnamon-spice-metadata.json": ["**/*@*/**/metadata.json"],
+  "winutil-applications.json": ["**/*winutil*/config/applications.json"],
+  "winutil-presets.json": ["**/*winutil*/config/preset.json"],
+  "dtool-dataset-metadata-1.0.json": ["dtool-dataset.json"],
+  "utcm-monitor.json": ["*.utcm-monitor.json"],
+  "okh.json": ["okh.json","*.okh.json"],
+  "assetlinks.json": ["assetlinks.json"],
+  "ti8m-cdk-environment-definition.json": ["**/environment-definition.json"],
+  "ti8m-cdk-concrete-environments.json": ["**/concrete-environments.json"],
+  "ti8m-cdk-concrete-environment-config.json": ["**/environment_config/*.json"],
+  "powerpages.config.json": ["powerpages.config.json"],
+  "evolving-resolutive-process-notation-1.0.json": ["*.erpn.json"],
+  "changepacks.json": ["**/.changepacks/config.json"],
+  "devup.json": ["devup.json"],
+  "vespertide.json": ["**/vespertide.json"],
+  "vespertide-migration.json": ["**/migrations/**/*.vespertide.json"],
+  "vespertide-model.json": ["**/models/**/*.vespertide.json"],
+  "mail-servers-config.json": ["mail-servers-config.json","mail-servers-config.jsonc","*.mail-servers-config.json","*.mail-servers-config.jsonc","**/mail-servers-config.json","**/mail-servers-config.jsonc"],
+  "qwen-code-settings.json": ["**/.qwen/settings.json"],
+  "okf-0.2.json": ["okf.json"],
+  "claude-code-launch.json": ["**/.claude/launch.json"],
+  "hias-hitf.json": [".hias-hitf.json",".hias-hitf.jsonc"],
+  "urai-ecma.json": ["urai.config.jsonc","urai.config.json"],
+  "haijun-code-plugin-manifest.json": ["**/.haijun-plugin/plugin.json"]
+}

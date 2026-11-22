@@ -12,5 +12,6 @@ export default defineConfig({
     "**/*-snapshots/**",
     "**/.local/**",
     "packages/host/test/fixtures/language/**",
+    "packages/host/src/local/language/servers/vscode-json-schemas.json",
   ],
 });
