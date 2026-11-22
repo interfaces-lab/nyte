@@ -48,7 +48,7 @@ import { NeedsYou } from "./needs-you.tsx";
 import { WorkbenchTabStrip } from "./workbench-tab-strip.tsx";
 import type { WindowState } from "../tabs/model.ts";
 import { useWindowTabItems, useWindowTabsState } from "../tabs/use-window-tabs.tsx";
-import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
+import { WindowTabStrip } from "./window-tab-strip.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
 const SessionLink = createLink(ButtonLink);

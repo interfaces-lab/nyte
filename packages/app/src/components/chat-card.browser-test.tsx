@@ -13,7 +13,7 @@ import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import type { TabPanes } from "../tabs/window-store.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
+import { WindowTabStrip } from "../shell/window-tab-strip.tsx";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";

@@ -18,7 +18,7 @@ import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
 import { useWindowTabItems, useWindowTabsState } from "./use-window-tabs.tsx";
-import { WindowTabStrip } from "./window-tab-strip.tsx";
+import { WindowTabStrip } from "../shell/window-tab-strip.tsx";
 import { chatWindow } from "../window/index.ts";
 import { windowTabs } from "./window-tabs.ts";
 

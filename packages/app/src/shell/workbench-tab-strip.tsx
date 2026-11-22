@@ -31,7 +31,7 @@ import { fittingTabs, pixels, useTabRoom } from "../components/tab-fit.ts";
 import type { TabRoom } from "../components/tab-fit.ts";
 import { windowApp } from "../contract/nyte.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { stripStyles } from "../tabs/window-tab-strip.stylex.ts";
+import { stripStyles } from "./window-tab-strip.stylex.ts";
 import { tab as tabSize } from "../theme/schema.stylex.ts";
 import { control, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";

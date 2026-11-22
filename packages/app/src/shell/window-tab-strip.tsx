@@ -11,7 +11,6 @@ import {
   ContextMenuTrigger,
 } from "@nyte-ai/ui/context-menu";
 import { Icon } from "@nyte-ai/ui/icon";
-import type { IconName } from "@nyte-ai/ui/icon";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Input } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";
@@ -22,7 +21,8 @@ import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { ChatCardGroup, ChatCardTrigger } from "../components/chat-card.tsx";
 import { ChatMenuItems } from "../components/chat-menu.tsx";
 import { TaskMark } from "../components/task-mark.tsx";
-import { tabName } from "./tab-items.ts";
+import { tabName } from "../tabs/tab-items.ts";
+import type { WindowTabItem } from "../tabs/tab-items.ts";
 import { useSessionRow } from "../data/session-rows.ts";
 import { useCommitCount } from "../lib/work-counts.ts";
 import { useChatMark, useChatWindow } from "../window/index.ts";
@@ -35,23 +35,9 @@ import {
 } from "../components/sortable-strip.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
-import { nextHeld, RELEASED } from "./held-keys.ts";
-import type { HeldKeys } from "./held-keys.ts";
+import { nextHeld, RELEASED } from "../tabs/held-keys.ts";
+import type { HeldKeys } from "../tabs/held-keys.ts";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
-
-export type WindowTabSplit = "right" | "down";
-
-export interface WindowTabItem {
-  readonly id: string;
-  readonly title: string;
-  readonly tooltip: string;
-  readonly sessions: readonly SessionId[];
-  readonly parent?: SessionId;
-  readonly chat: SessionId | undefined;
-  readonly glyph: IconName | undefined;
-  readonly preview: boolean;
-  readonly split: WindowTabSplit | undefined;
-}
 
 export interface WindowTabStripProps {
   readonly tabs: readonly WindowTabItem[];

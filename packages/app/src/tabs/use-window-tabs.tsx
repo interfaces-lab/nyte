@@ -28,7 +28,7 @@ import {
 } from "./route-sync.ts";
 import type { FolderFollow, ShownDraft, ShownFolder } from "./route-sync.ts";
 import { windowTabItems } from "./tab-items.ts";
-import type { WindowTabItem } from "./window-tab-strip.tsx";
+import type { WindowTabItem } from "./tab-items.ts";
 import { windowTabs } from "./window-tabs.ts";
 
 export function useWindowTabsState(): WindowState {

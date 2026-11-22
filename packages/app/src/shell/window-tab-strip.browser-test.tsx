@@ -2,7 +2,8 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { enableTracing } from "@nyte-ai/sdk";
 import { WindowTabStrip } from "./window-tab-strip.tsx";
-import type { WindowTabItem, WindowTabStripProps } from "./window-tab-strip.tsx";
+import type { WindowTabStripProps } from "./window-tab-strip.tsx";
+import type { WindowTabItem } from "../tabs/tab-items.ts";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
