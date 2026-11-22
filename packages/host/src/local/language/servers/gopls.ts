@@ -13,7 +13,7 @@ const OPTIONS = {
   staticcheck: true,
   semanticTokens: true,
   hints: { parameterNames: true, constantValues: true },
-  analyses: { nilness: true, unusedparams: true, unusedwrite: true, shadow: true, useany: true },
+  analyses: { shadow: true },
 } as const;
 
 export const GOPLS: ServerSpec = {
