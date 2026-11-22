@@ -24,7 +24,7 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 
 4. **One file per server** in the `servers` folder beside `spec.ts`, exporting one `ServerSpec`. Add it to `SERVERS` in `servers.ts`.
 5. **Order in `SERVERS` is priority.** Where only one answer applies (rename, signature help, formatting, semantic tokens, highlights, hierarchies), the first server that answers wins. Put the server that understands the language before its linters.
-6. **`languages` names rows of `LANGUAGES` in the schema.** That table maps file extensions to the identifier LSP knows a file by. Add an extension there when one is missing. Never add a language name in a language branch: it changes a wire type.
+6. **`languages` names rows of `LANGUAGES` in the schema.** That table maps a file to the identifier LSP knows it by: `ids` by extension, `names` by whole file name, where `*` stands for any text, as in `tsconfig.*.json`. A name wins over an extension. Add an entry there when one is missing, and use `names` for a file whose extension belongs to others, such as `go.mod`. Never add a language name in a language branch: it changes a wire type.
 7. **`rootMarkers` find the project root.** The nearest folder at or above the file that holds one becomes the server's root, and the workspace folder when none does.
 8. **`requiresRootMarker: true` is for a server that runs only when configured.** oxlint takes a file only when its configuration sits at or above it. Its markers are its configuration files.
 9. **`program` is looked up first**, in the project's `node_modules/.bin` and `.venv`, then on `PATH`. A found program always wins over a download.

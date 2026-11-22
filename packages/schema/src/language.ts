@@ -90,7 +90,14 @@ export const LanguageNameType = Type.Enum([
 export type LanguageName = Decoded<typeof LanguageNameType>;
 
 export const LANGUAGES: Readonly<
-  Record<LanguageName, { readonly label: string; readonly ids: Readonly<Record<string, string>> }>
+  Record<
+    LanguageName,
+    {
+      readonly label: string;
+      readonly ids: Readonly<Record<string, string>>;
+      readonly names?: Readonly<Record<string, string>>;
+    }
+  >
 > = {
   bash: { label: "Shell", ids: { ".sh": "shellscript", ".bash": "shellscript" } },
   c: {
@@ -111,10 +118,25 @@ export const LANGUAGES: Readonly<
   csharp: { label: "C#", ids: { ".cs": "csharp" } },
   css: { label: "CSS", ids: { ".css": "css", ".scss": "scss", ".less": "less" } },
   elixir: { label: "Elixir", ids: { ".ex": "elixir", ".exs": "elixir" } },
-  go: { label: "Go", ids: { ".go": "go" } },
+  go: {
+    label: "Go",
+    ids: { ".go": "go" },
+    names: { "go.mod": "go.mod", "go.work": "go.work", "go.sum": "go.sum" },
+  },
   html: { label: "HTML", ids: { ".html": "html", ".htm": "html" } },
   java: { label: "Java", ids: { ".java": "java" } },
-  json: { label: "JSON", ids: { ".json": "json", ".jsonc": "jsonc" } },
+  json: {
+    label: "JSON",
+    ids: { ".json": "json", ".jsonc": "jsonc" },
+    names: {
+      "tsconfig.json": "jsonc",
+      "tsconfig.*.json": "jsonc",
+      "tsconfig-*.json": "jsonc",
+      "jsconfig.json": "jsonc",
+      "jsconfig.*.json": "jsonc",
+      "jsconfig-*.json": "jsonc",
+    },
+  },
   kotlin: { label: "Kotlin", ids: { ".kt": "kotlin", ".kts": "kotlin" } },
   lua: { label: "Lua", ids: { ".lua": "lua" } },
   markdown: { label: "Markdown", ids: { ".md": "markdown", ".markdown": "markdown" } },
@@ -142,20 +164,44 @@ export const LANGUAGES: Readonly<
   zig: { label: "Zig", ids: { ".zig": "zig", ".zon": "zig" } },
 };
 
+interface FoundLanguage {
+  readonly name: LanguageName;
+  readonly id: string;
+}
+
 const LANGUAGE_BY_EXTENSION = new Map(
   LanguageNameType.enum.flatMap((name) =>
     Object.entries(LANGUAGES[name].ids).map((entry) => [entry[0], { name, id: entry[1] }] as const),
   ),
 );
 
-export function findLanguage(
-  path: string,
-): { readonly name: LanguageName; readonly id: string } | null {
-  const dot = path.lastIndexOf(".");
+const LANGUAGE_NAMES = LanguageNameType.enum.flatMap((name) =>
+  Object.entries(LANGUAGES[name].names ?? {}).map((entry) => {
+    const star = entry[0].indexOf("*");
+    const found: FoundLanguage = { name, id: entry[1] };
 
-  if (dot < 0 || path.includes("/", dot)) return null;
+    return star < 0
+      ? { start: entry[0], end: null, found }
+      : { start: entry[0].slice(0, star), end: entry[0].slice(star + 1), found };
+  }),
+);
 
-  return LANGUAGE_BY_EXTENSION.get(path.slice(dot).toLowerCase()) ?? null;
+export function findLanguage(path: string): FoundLanguage | null {
+  const file = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
+
+  const named = LANGUAGE_NAMES.find((entry) =>
+    entry.end === null
+      ? file === entry.start
+      : file.length >= entry.start.length + entry.end.length &&
+        file.startsWith(entry.start) &&
+        file.endsWith(entry.end),
+  );
+
+  if (named !== undefined) return named.found;
+
+  const dot = file.lastIndexOf(".");
+
+  return dot < 0 ? null : (LANGUAGE_BY_EXTENSION.get(file.slice(dot)) ?? null);
 }
 
 export const LanguageFeatureType = Type.Enum([
