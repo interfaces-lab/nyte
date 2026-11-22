@@ -12,7 +12,7 @@ import { errorMessage } from "../../contract/errors.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { languageStatusWatch } from "../../data/watches.ts";
 import { trustWorkspace, useHomeWorkspace } from "../../data/workspaces.ts";
-import { workspaceFile } from "../paths.ts";
+import { servesFile } from "./declaration.ts";
 
 const WAITING = ["untrusted", "installing"] as const;
 
@@ -36,25 +36,18 @@ export function LanguageBar(input: {
 }) {
   const name = findLanguage(input.path)?.name;
   const home = useHomeWorkspace();
-
-  const relative =
-    input.folder === undefined
-      ? undefined
-      : workspaceFile(input.path, [input.folder.path])?.relative;
+  const folder = input.folder;
 
   const waiting = useWatchSelect(
-    input.folder === undefined || name === undefined
-      ? undefined
-      : languageStatusWatch(input.folder.id),
+    folder === undefined || name === undefined ? undefined : languageStatusWatch(folder.id),
     (state) =>
       WAITING.flatMap(
         (kind) =>
           state.value?.find(
             (view) =>
               view.state.kind === kind &&
-              view.languages.some((language) => language === name) &&
-              relative !== undefined &&
-              (view.root === "" || relative.startsWith(`${view.root}/`)),
+              folder !== undefined &&
+              servesFile(view, input.path, folder.path),
           ) ?? [],
       ).at(0),
   );
@@ -69,8 +62,6 @@ export function LanguageBar(input: {
         description: errorMessage(cause),
       }),
   });
-
-  const folder = input.folder;
 
   if (waiting === undefined || folder === undefined || name === undefined) return null;
   const language = LANGUAGES[name].label;

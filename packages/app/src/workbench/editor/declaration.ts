@@ -6,6 +6,7 @@ import type {
   TextRange,
 } from "@nyte-ai/sdk";
 import { findLanguage } from "@nyte-ai/schema";
+import { workspaceFile } from "../paths.ts";
 
 /** A place a navigation can land: an absolute path and the range of the name there. */
 export interface Landing {
@@ -70,7 +71,7 @@ export async function findDeclaration(
     ),
   );
 
-  if (found.length === 0) return nothing(api, input.path);
+  if (found.length === 0) return nothing(api, input.path, input.root);
 
   if (input.query === "declaration" && found.some((place) => covers(place, input))) {
     const usages = unique(
@@ -104,12 +105,19 @@ function choose(landings: readonly Landing[], title: string, none: string): Decl
     : { kind: "choose", title, landings };
 }
 
-async function nothing(api: LanguageApi, path: string): Promise<DeclarationOutcome> {
+export function servesFile(view: LanguageServerView, path: string, root: string): boolean {
   const name = findLanguage(path)?.name;
+  const relative = workspaceFile(path, [root])?.relative;
 
-  const servers = (await api.status()).filter((view) =>
-    view.languages.some((language) => language === name),
+  return (
+    view.languages.some((language) => language === name) &&
+    relative !== undefined &&
+    (view.root === "" || relative.startsWith(`${view.root}/`))
   );
+}
+
+async function nothing(api: LanguageApi, path: string, root: string): Promise<DeclarationOutcome> {
+  const servers = (await api.status()).filter((view) => servesFile(view, path, root));
 
   const answering = servers.some((view) => view.state.kind === "ready");
 
