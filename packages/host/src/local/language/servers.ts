@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { findLanguage } from "@nyte-ai/schema";
 import { BASH_LANGUAGE_SERVER } from "./servers/bash-language-server.ts";
+import { CLANGD } from "./servers/clangd.ts";
 import { GOPLS } from "./servers/gopls.ts";
 import { MARKSMAN } from "./servers/marksman.ts";
 import { OXLINT } from "./servers/oxlint.ts";
@@ -17,6 +18,7 @@ import { YAML_LANGUAGE_SERVER } from "./servers/yaml-language-server.ts";
 import type { ServerSpec } from "./spec.ts";
 
 export const SERVERS: readonly ServerSpec[] = [
+  CLANGD,
   GOPLS,
   TY,
   RUFF,
