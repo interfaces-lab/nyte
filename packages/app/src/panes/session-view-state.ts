@@ -4,7 +4,6 @@ import type { ModelRef, SessionId, Thinking } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import type { PaneId } from "./layout.ts";
-import type { WindowDrafts } from "../drafts/drafts.ts";
 import { NO_SENDING, persistedDraft, restorable } from "./composer-draft.ts";
 import type { SessionDraft } from "./composer-draft.ts";
 
@@ -145,11 +144,44 @@ function storedChanged(left: ComposerViewState, right: ComposerViewState): boole
   );
 }
 
+export interface DraftStore {
+  readonly sessions: Map<SessionId, SessionViewState>;
+  subscribe(listener: () => void): () => void;
+  subscribeKey(key: string, listener: () => void): () => void;
+  notify(key: string): void;
+  listedDrafts(): readonly ChatDraft[];
+  drafts(): readonly ChatDraft[];
+  pane(
+    tabId: string,
+    paneId: PaneId,
+  ): { active: ChatDraft; readonly parked: Map<string, ChatDraft> };
+  find(draftId: string):
+    | {
+        readonly kind: "active" | "parked";
+        readonly tabId: string;
+        readonly paneId: PaneId;
+        readonly draft: ChatDraft;
+      }
+    | undefined;
+  createDraft(): ChatDraft;
+  saveDraft(previous: ChatDraft, next: ChatDraft): void;
+  saveSession(sessionId: SessionId, previous: SessionDraft, next: SessionDraft): void;
+  saveSteps(sessionId: SessionId, stepGroups: ReadonlyMap<string, boolean>): void;
+  save(
+    owner: string,
+    previous: ComposerViewState,
+    next: ComposerViewState,
+    record: undefined,
+  ): void;
+  persist(): void;
+  emit(): void;
+}
+
 export class SessionViewStateStore {
-  private readonly window: WindowDrafts;
+  private readonly window: DraftStore;
   private readonly tabId: string;
 
-  constructor(drafts: WindowDrafts, tabId: string) {
+  constructor(drafts: DraftStore, tabId: string) {
     this.window = drafts;
     this.tabId = tabId;
   }
