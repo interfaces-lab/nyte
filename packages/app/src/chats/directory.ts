@@ -15,13 +15,13 @@ import { replaceEqualDeep } from "@tanstack/react-query";
 import { coordinatedProject } from "../data/projects.ts";
 import { workspaceName, workspacePath } from "../data/workspaces.ts";
 
-export interface Folder {
+interface Folder {
   readonly workspace: WorkspaceId;
   readonly path: string;
   readonly name: string;
 }
 
-export type ChatLocation =
+type ChatLocation =
   | { readonly kind: "loading" }
   | { readonly kind: "unlisted" }
   | (Folder & {
