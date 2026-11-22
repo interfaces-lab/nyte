@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { isJson } from "@nyte-ai/schema";
 import type { HostView, SessionId } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
-import { RawPartView } from "../chat/transcript/raw-part.tsx";
+import { RawPartView } from "./raw-part.tsx";
 import { connection } from "../data/connection.ts";
 import { CanvasFrame } from "./canvas-frame.tsx";
 import { readCode } from "./canvas-panel.tsx";

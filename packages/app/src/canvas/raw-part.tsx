@@ -2,8 +2,8 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { readRawPart } from "@nyte-ai/plugin/client/presentation";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ReactElement } from "react";
-import { Prose } from "../../markdown/prose.tsx";
-import { turnStyles } from "./turn.stylex.ts";
+import { Prose } from "../markdown/prose.tsx";
+import { turnStyles } from "../chat/transcript/turn.stylex.ts";
 
 export function RawPartView({ message }: { readonly message: PartMessage }): ReactElement {
   const raw = readRawPart(message);

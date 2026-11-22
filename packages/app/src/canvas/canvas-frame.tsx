@@ -36,7 +36,7 @@ import { canvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
 import { openConversationLink } from "../markdown/external-link.ts";
 import type { MentionFile } from "../data/files.ts";
-import { PartOrigin } from "../chat/transcript/part-origin.ts";
+import { PartOrigin } from "./part-origin.ts";
 import { useChatFolder } from "../chats/index.ts";
 import { linkReference, useCitableFiles } from "../markdown/prose.tsx";
 import { useReferenceOpener } from "../references/reference-opener.tsx";
