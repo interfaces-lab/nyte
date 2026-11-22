@@ -1,10 +1,10 @@
 # @nyte-ai/host
 
-The Node and edge sides of a Nyte host. It serves the host that `composeHost` in `@nyte-ai/core` builds, and it supplies the stores, workspaces and plugin loading a machine or a deployment needs.
+The Node and edge sides of a Nyte host. It serves the host that `composeHost` in `@nyte-ai/core` builds. It supplies the stores, workspaces and plugin loading a machine or a deployment needs.
 
 ## Quick start
 
-`openHost` composes a host for this machine and `listen` serves it over HTTP:
+`openHost` composes a host for this machine. `listen` serves it over HTTP:
 
 ```ts
 import process from "node:process";
@@ -43,7 +43,7 @@ Each store implements core's `Store` and publishes each change as one transactio
 
 ## Workspaces
 
-- `localProvider` serves a folder on this machine. It reads files over `node:fs` and versions them by content. It scans with `.gitignore` rules, searches with ripgrep or a scan when ripgrep is missing, and watches for changes. It runs processes over pipes or a pty through `@lydell/node-pty`, which doesn't run under Bun. It drives git through its CLI.
+- `localProvider` serves a folder on this machine. It reads files over `node:fs` and versions them by content. It scans with `.gitignore` rules. It searches with ripgrep, or falls back to a scan when ripgrep is missing. It watches for changes and drives git through its CLI. It runs processes over pipes or a pty through `@lydell/node-pty`, which doesn't run under Bun.
 - `chatOnlyProvider` serves a workspace with no files and no processes.
 - `sandboxProvider` serves a workspace in a remote sandbox through a `boot` function you supply.
 
@@ -51,7 +51,7 @@ Each store implements core's `Store` and publishes each change as one transactio
 
 ## Plugins
 
-`createPluginLoader` imports the core plugins in `.nyte/plugins` directories. It loads a plugin again when a file in its import graph changes, and keeps the same plugin while none does.
+`createPluginLoader` imports the core plugins in `.nyte/plugins` directories. It reloads a plugin when a file in its import graph changes. Otherwise it keeps the same plugin.
 
 ## Deployments
 

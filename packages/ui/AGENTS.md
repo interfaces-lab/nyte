@@ -1,9 +1,11 @@
-Load the nyte-styles skill before writing StyleX, tokens, or the base stylesheet.
+# UI
 
-Font roles and faces, and which loading indicator to show (`Spinner` or `Loader`), follow the Fonts
-and Loading indicators sections of the `@nyte-ai/app` AGENTS.md.
+- Load the nyte-styles skill before writing StyleX, tokens or the base stylesheet.
+- Font roles and faces follow the Fonts section of the `@nyte-ai/app` AGENTS.md.
+- Which loading indicator to show, `Spinner` or `Loader`, follows its Loading indicators section.
+- ui has no test script. An empty, zero-exit `pnpm --dir packages/ui test` is not a pass.
 
-# Dependencies
+## Engines
 
 Each ui module sits on one engine. Find it before changing the module.
 
@@ -16,105 +18,76 @@ Each ui module sits on one engine. Find it before changing the module.
 | TanStack Table              | Table (`Table`, `TableHead`, `TableResizer` and the other parts), column sizing and resizing                                          |
 | StyleX                      | Every style, through the tokens and roles the nyte-styles skill describes                                                             |
 
-## Pierre
+## Importing Pierre
 
-- Pierre is a dependency of `@nyte-ai/ui` only. Every other package imports it through the flat ui
-  subpath named like Pierre's: `@pierre/diffs/react` is `@nyte-ai/ui/diffs/react`, `@pierre/trees`
-  is `@nyte-ai/ui/trees`. `no-restricted-imports` rejects `@pierre/*` outside ui.
-- The subpaths re-export Pierre's names unchanged, values and types alike. To use another Pierre
-  name, add it to the matching ui subpath first, under the same name.
-- `@nyte-ai/ui/worker-pool` owns the shared worker pool (`PierreWorkerProvider`) and the options
-  and CSS every surface passes Pierre (`PIERRE_HIGHLIGHTER_OPTIONS`, `PIERRE_TREE_CSS`,
-  `PIERRE_TOKEN_CSS`). `@nyte-ai/ui/code-themes` owns `codeThemes`, Pierre's palettes raised to
-  the text contrast floor.
-- Keep one ui subpath per Pierre subpath, with no barrel. The app's `deferredEntries` fail the build
-  when `@pierre/diffs` or `@pierre/highlights` reaches a startup chunk.
-- Pierre is patched through the workspace's `patchedDependencies`, which key each patch on an exact
-  version. Pin a patched Pierre package to an exact version when you upgrade it, then redo its patch
-  with `pnpm patch` and check that every change in it still applies and is still needed.
-
-## TanStack Table
-
-- TanStack Table v9 is a dependency of `@nyte-ai/ui` only. Other packages import its names from
-  `@nyte-ai/ui/table`, which re-exports them unchanged beside the styled parts;
-  `no-restricted-imports` rejects `@tanstack/react-table` outside ui. Add a name there before using
-  it.
-- TanStack ships its agent skills in the package. List them with `npx @tanstack/intent@latest list`
-  from the ui package and load one with
-  `npx @tanstack/intent@latest load @tanstack/react-table#getting-started`. Load
-  `@tanstack/table-core#table-features` before adding a feature.
+- Pierre is a dependency of `@nyte-ai/ui` only. `no-restricted-imports` rejects `@pierre/*` outside ui.
+- Every other package imports Pierre through the flat ui subpath named like Pierre's. `@pierre/diffs/react` is `@nyte-ai/ui/diffs/react`, and `@pierre/trees` is `@nyte-ai/ui/trees`.
+- The subpaths re-export Pierre's names unchanged, values and types alike. To use another Pierre name, add it to the matching ui subpath first, under the same name.
+- Keep one ui subpath per Pierre subpath, with no barrel.
+- The app's `deferredEntries` fail the build when `@pierre/diffs` or `@pierre/highlights` reaches a startup chunk.
+- `@nyte-ai/ui/worker-pool` owns the shared worker pool (`PierreWorkerProvider`). It also owns the options and CSS every surface passes Pierre: `PIERRE_HIGHLIGHTER_OPTIONS`, `PIERRE_TREE_CSS` and `PIERRE_TOKEN_CSS`.
+- `@nyte-ai/ui/code-themes` owns `codeThemes`, Pierre's palettes raised to the text contrast floor.
+- Pierre is patched through the workspace's `patchedDependencies`, which key each patch on an exact version.
+- When you upgrade a patched Pierre package, pin it to an exact version. Then redo its patch with `pnpm patch`, and check that every change in it still applies and is still needed.
 
 ## Pierre surfaces
 
-These hold for every surface that renders through Pierre: the Editor, Changes, chat diffs, the
-declaration peek, the settings previews and the file trees.
+These hold for every surface that renders through Pierre: the Editor, Changes, chat diffs, the declaration peek, the settings previews and the file trees.
 
-- One worker pool, `PierreWorkerProvider`. It highlights anything up to `mainThreadMaxCharacters`
-  (100,000) on the main thread, as Pierre's docs ask for the highlights backend; only larger files
-  and diffs start a worker. Never mount `WorkerPoolContextProvider` or a second pool.
-- No pool around an edited file. The `Editor` tokenizes on the main thread and drops pool output.
-  If a pool must serve an editable surface, give it `useTokenTransformer: true`.
-- One `CodeView` per scroll region that lists only files and diffs, such as Changes. A list that
-  mixes other content, such as the chat transcript, keeps its own virtualizer and renders each diff
-  with `FileDiff`.
-- Keep `options` equal between renders. The React `CodeView` and `FileDiff` compare them shallowly,
-  and any unequal value re-renders the whole viewer. Nested objects (`layout`, `searchOptions`,
-  `itemMetrics`) are module constants or cached per input; callbacks read the latest state through
-  a store or ref instead of closing over per-render data.
-- `onPostRender` runs for every item Pierre renders or recycles, so it never reads computed style
-  or layout. Colours that depend on the appearance go on the surface's root once per appearance
-  (`applyDiffScopes`); the shadow host inherits them.
-- `itemMetrics` matches what the CSS draws: the line height from the code font size, and the hunk
-  separator and header heights whenever `unsafeCSS` or a custom header changes them.
-- A `cacheKey` names the content, such as a digest or a revision, never only a path. An accepted
-  edit gets a fresh one.
+- **One worker pool,** `PierreWorkerProvider`. Never mount `WorkerPoolContextProvider` or a second pool.
+- The pool highlights anything up to `mainThreadMaxCharacters` (100,000) on the main thread, as Pierre's docs ask for the highlights backend. Only larger files and diffs start a worker.
+- **No pool around an edited file.** The `Editor` tokenizes on the main thread and drops pool output. If a pool must serve an editable surface, give it `useTokenTransformer: true`.
+- **One `CodeView` per scroll region** that lists only files and diffs, such as Changes.
+- A list that mixes other content, such as the chat transcript, keeps its own virtualizer. It renders each diff with `FileDiff`.
+- **Keep `options` equal between renders.** The React `CodeView` and `FileDiff` compare them shallowly. Any unequal value re-renders the whole viewer.
+- Nested option objects (`layout`, `searchOptions`, `itemMetrics`) are module constants or cached per input.
+- Callbacks read the latest state through a store or ref. They never close over per-render data.
+- **`onPostRender` never reads computed style or layout.** It runs for every item Pierre renders or recycles.
+- Colours that depend on the appearance go on the surface's root once per appearance (`applyDiffScopes`). The shadow host inherits them.
+- **`itemMetrics` matches what the CSS draws.** Take the line height from the code font size. Update the hunk separator and header heights whenever `unsafeCSS` or a custom header changes them.
+- **A `cacheKey` names the content,** such as a digest or a revision. It never names only a path. An accepted edit gets a fresh one.
 - Key annotation UI by a stable metadata ID, not a line number.
-- File trees create their model once with `useFileTree`, push path changes with `resetPaths` or
-  `batch`, and statuses with `setGitStatus`. The tree reads its options once, so callbacks read the
-  latest props through a ref.
-- Chat code blocks highlight with `@pierre/highlights` directly (`codeToTokens`, `StreamTokenizer`),
-  not through a diffs component.
-- Measure a change to any of these with the desktop `pierre-surfaces` bench
-  (`NYTE_PIERRE_SURFACES`): a long chat of diffs, a 40-file Changes stack, a 6-file review and the
-  explorer on golang.org/x/tools.
+- **File trees create their model once** with `useFileTree`. Push path changes with `resetPaths` or `batch`, and statuses with `setGitStatus`.
+- The tree reads its options once, so callbacks read the latest props through a ref.
+- Chat code blocks highlight with `@pierre/highlights` directly (`codeToTokens`, `StreamTokenizer`), not through a diffs component.
+- Measure a change to any of these with the desktop `pierre-surfaces` bench (`NYTE_PIERRE_SURFACES`). It runs a long chat of diffs, a 40-file Changes stack, a 6-file review and the explorer on golang.org/x/tools.
 
 ## Pierre in tests
 
-- Pierre renders into open shadow roots: `diffs-container` for the editor, code view and diff,
-  `file-tree-container` for the file tree.
-- The editor is Pierre's `Editor`, not CodeMirror or Monaco. Its textbox's accessible name is the
-  file name as the workspace shows it, such as `README.md`.
+- Pierre renders into open shadow roots: `diffs-container` for the editor, code view and diff, `file-tree-container` for the file tree.
+- The editor is Pierre's `Editor`, not CodeMirror or Monaco. Its textbox's accessible name is the file name as the workspace shows it, such as `README.md`.
 - Tree rows are `treeitem`, named by the file name. Highlighted code is the `code` role.
-- Query by role and accessible name, never by Pierre's class names. In Playwright specs,
-  `getByRole` reaches into the open shadow roots, so `getByRole("textbox", { name })`,
-  `getByRole("treeitem", { name })` and `getByRole("code")` need no helper.
-- There is no shared Pierre helper. A browser test that runs through `testRenderer` uses DOM
-  queries, which stop at a shadow root: read the host element's `shadowRoot`, then query by `role`
-  or by Pierre's `data-*` attributes.
-- Gutter cells carry `data-column-number`; source cells carry `data-line`.
+- Query by role and accessible name, never by Pierre's class names.
+- In Playwright specs, `getByRole` reaches into the open shadow roots. `getByRole("textbox", { name })`, `getByRole("treeitem", { name })` and `getByRole("code")` need no helper.
+- A browser test that runs through `testRenderer` uses DOM queries, which stop at a shadow root. Read the host element's `shadowRoot`, then query by `role` or by Pierre's `data-*` attributes. There is no shared Pierre helper.
+- Gutter cells carry `data-column-number`. Source cells carry `data-line`.
+
+## TanStack Table
+
+- TanStack Table v9 is a dependency of `@nyte-ai/ui` only. `no-restricted-imports` rejects `@tanstack/react-table` outside ui.
+- Other packages import its names from `@nyte-ai/ui/table`, which re-exports them unchanged beside the styled parts. Add a name there before using it.
+- TanStack ships its agent skills in the package. List them from the ui package with `npx @tanstack/intent@latest list`.
+- Load one with `npx @tanstack/intent@latest load @tanstack/react-table#getting-started`.
+- Load `@tanstack/table-core#table-features` before adding a feature.
 
 ## Base UI
 
-- A trigger that shrinks on `:active` must not anchor a `Select` with `alignItemWithTrigger`: Base
-  UI reads the scale as zoom and opens the popup off the trigger. Give it `scale: 1`, as
-  `PickerTrigger` does.
-- To animate a popup with Motion, keep the Root controlled, wrap `{open && <X.Portal keepMounted>}`
-  in `AnimatePresence`, and pass the element form `render={<motion.div />}`. The function form
-  needs a cast.
-- Base UI ends the closing phase only for a Motion exit that animates `opacity`. Otherwise call
-  `eventDetails.preventUnmountOnClose()` and later `actionsRef.current.unmount()`.
+- A trigger that shrinks on `:active` must not anchor a `Select` with `alignItemWithTrigger`. Base UI reads the scale as zoom and opens the popup off the trigger. Give the trigger `scale: 1`, as `PickerTrigger` does.
+- To animate a popup with Motion, keep the Root controlled and wrap `{open && <X.Portal keepMounted>}` in `AnimatePresence`.
+- Pass the element form `render={<motion.div />}`. The function form needs a cast.
+- Base UI ends the closing phase only for a Motion exit that animates `opacity`. For any other exit, call `eventDetails.preventUnmountOnClose()` and later `actionsRef.current.unmount()`.
 
-# Tests
+## Typography
 
-- ui has no test script, so an empty, zero-exit `pnpm --dir packages/ui test` is not a pass.
+- Take line heights from the shared metrics: the `text` presets (`@nyte-ai/ui/styles/text.stylex`) or the `type.leading*` handles. Never copy a solid line height from a design export.
+- At the default 13px UI size, `--nyte-line-height-xs` is 14px, `--nyte-line-height-sm` (compact) is 16px, `--nyte-line-height-base` is 18px and `--nyte-line-height-lg` is 24px.
+- Inter text at 13px needs at least the compact 16px line height (`text.baseCompact`). A 13px solid line box can clip g, j, p, q and y when the text or an ancestor truncates or hides overflow.
+- Reserve `line-height: 1` and leading-none for glyphs, icons and reviewed display marks.
+- Don't compensate text with transforms, negative margins or clip-padding hacks.
 
-# Typography
+## StyleX capabilities
 
-Use the shared typography metrics instead of copying solid line heights from design exports: the `text` presets (`@nyte-ai/ui/styles/text.stylex`), or the `type.leading*` handles. At the default 13px UI size --nyte-line-height-xs is 14px, --nyte-line-height-sm (compact) is 16px, --nyte-line-height-base is 18px, and --nyte-line-height-lg is 24px.
-
-Inter text at 13px must use at least the compact 16px line height (`text.baseCompact`). A 13px solid line box can clip g, j, p, q, and y when the text or an ancestor truncates or hides overflow.
-
-Reserve line-height: 1 and leading-none for non-text glyphs, icons, or deliberately reviewed display marks. Do not compensate text with transforms, negative margins, or clip-padding hacks.
+`pnpm --dir packages/ui sync:stylex` writes this block, and `check:stylex` fails when it is stale. Don't edit it by hand.
 
 <!-- STYLEX-CAPS:START -->
 

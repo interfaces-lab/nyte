@@ -1,6 +1,6 @@
 # Cloudflare
 
-Runs one Nyte host in one SQLite-backed Durable Object, `NyteHost`, behind a Worker that sends every request to it. The host serves a chat-only workspace with no files and no processes.
+Runs one Nyte host in one SQLite-backed Durable Object, `NyteHost`. A Worker sends every request to it. The host serves a chat-only workspace with no files and no processes.
 
 ## Deploy
 
@@ -21,7 +21,7 @@ wrangler deploy
 
 ## How it works
 
-- The object keeps sessions in its own storage through `durableObjectStore` and answers the protocol through `listenFetch`.
+- The object keeps sessions in its own storage through `durableObjectStore`. It answers the protocol through `listenFetch`.
 - The object runs sessions from its alarm. Each pass advances up to 32 due heads within 10 seconds. When due heads remain, the object sets the alarm again at once. Otherwise it sets the alarm for the next due head in its `nyte_schedule` table, or clears it when no head is due.
 - `worker.ts` imports only the node-free subpaths of `@nyte-ai/host`, never its Node root.
 

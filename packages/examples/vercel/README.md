@@ -25,10 +25,10 @@ A Nitro app template that runs a Nyte host on Vercel. It keeps sessions in Postg
 
 ## How it works
 
-- `nitro.config.ts` serves `server/`, compiles the workflow in `server/workflows`, lets functions run up to 300 seconds and schedules the repair cron.
-- `server/routes/[...].ts` sends every path to the listener of a host that each function instance composes once. The host reads the store every second, so each instance sees the others' writes.
+- `nitro.config.ts` serves `server/` and compiles the workflow in `server/workflows`. It lets functions run up to 300 seconds and schedules the repair cron.
+- `server/routes/[...].ts` sends every path to the host listener. Each function instance composes that host once. The host reads the store every second, so each instance sees the others' writes.
 - The host runs with `dispatch` execution. After each commit, it starts the `driveHead` workflow in `server/workflows/drive.ts` for every head that a wake leaves with work to do. `driveHead` advances the head one step at a time and sleeps durably while the head waits. It ends when the head has nothing left to do or another instance holds it.
-- The cron calls `GET /.nyte/repair` to dispatch again any head that a failed dispatch left owed. The route accepts only `Authorization: Bearer <CRON_SECRET>`, compared in constant time, and answers anything else `unauthenticated`.
+- The cron calls `GET /.nyte/repair` to dispatch again any head that a failed dispatch left owed. The route accepts only `Authorization: Bearer <CRON_SECRET>`, compared in constant time. It answers anything else `unauthenticated`.
 - Jobs run per instance. A client reads another instance's job only through its exit report.
 
 ## Development

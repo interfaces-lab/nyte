@@ -1,6 +1,6 @@
 # Agent logo sources
 
-The SVG sources for the ASCII logos in [`ascii-logos.ts`](../../src/components/landing/hero-5/ascii-logos.ts), which the landing page renders as text. The ASCII samples come from these files and are not hand-drawn.
+The SVG sources for the ASCII logos in [`ascii-logos.ts`](../../src/components/landing/hero-5/ascii-logos.ts). The landing page renders those logos as text. The ASCII samples come from these files and are not hand-drawn.
 
 ## How the samples are made
 

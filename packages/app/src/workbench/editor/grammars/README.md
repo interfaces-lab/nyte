@@ -2,8 +2,8 @@
 
 `manifest.json` pins the npm archives, archive integrity, WASM hashes, ABI versions and licences.
 The worker fetches one grammar and its fold/symbol queries for the resolved editor language.
-It does not use these assets for highlighting. Captures whose node has a parse error are omitted;
-there is no regex fallback.
+It does not use these assets for highlighting. Captures whose node has a parse error are omitted.
+There is no regex fallback.
 
 From the repository root:
 
@@ -21,9 +21,9 @@ source changes, not part of an upstream refresh.
 The Markdown WASM comes from the immutable OpenTUI package recorded in the manifest. Its source
 configuration points to tree-sitter-markdown v0.5.1. OpenTUI uses the separate markdown_inline
 grammar for inline highlighting injections. These queries read headings and block structure
-from the block grammar alone; they do not parse inline content or fenced-language injections.
+from the block grammar alone. They do not parse inline content or fenced-language injections.
 Both the grammar's and distributor's MIT licences are retained.
 
 The app and desktop builds emit `NOTICE.txt`, the manifest and every licence under
-`assets/file-structure/`. Grammar/query URLs use `?url&no-inline`; importing the registry does
+`assets/file-structure/`. Grammar/query URLs use `?url&no-inline`. Importing the registry does
 not fetch those files. The worker owns the runtime, parser, queries and trees.

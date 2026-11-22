@@ -5,7 +5,7 @@ the `nyte` version you use.
 
 ## Get started
 
-Sign in to a model provider, then start a session in the folder you want the agent to work in:
+Sign in to a model provider. Then start a session in the folder you want the agent to work in:
 
 ```sh
 nyte login

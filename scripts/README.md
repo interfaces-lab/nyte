@@ -26,31 +26,30 @@ pnpm package:tui
 
 `package.sh` builds the binary through `pnpm build` in `packages/tui`, which ad-hoc signs it on
 macOS. Then it calls `assemble-release.sh` on `packages/tui/dist/nyte`. The assembly step copies
-the existing executable, `nyte-tailnet` and `packages/cli/docs`, writes `VERSION`, and creates
+the existing executable, `nyte-tailnet` and `packages/cli/docs`. It writes `VERSION` and creates
 `dist/nyte-v<version>-<target>.tar.gz` with a `.sha256` file beside it. It never downloads or
 publishes. The CLI and TUI package versions must match.
 
 `release-targets.mjs` lists the platforms Nyte ships. The `nyte` binary ships for `darwin-arm64`,
 `linux-x64` and `linux-arm64`. The desktop app ships for macOS and Linux x64. Releases don't
-include Windows, and a Windows desktop app already installed keeps the version it has.
-`pnpm package` builds only the target of the machine it runs on. `package.sh` asks
-`release-targets.mjs` for the binary's target, and the desktop build adds the machine's platform
-flags unless you pass one. No Intel build ships, so an Intel Mac or a shell under Rosetta stops
-with an error. The release workflow builds its matrices from the same list, each target on its own
-Blacksmith runner.
+include Windows. A Windows desktop app already installed keeps the version it has. `pnpm package`
+builds only the target of the machine it runs on. `package.sh` asks `release-targets.mjs` for the
+binary's target. The desktop build adds the machine's platform flags unless you pass one. No Intel
+build ships, so an Intel Mac or a shell under Rosetta stops with an error. The release workflow
+builds its matrices from the same list. Each target runs on its own Blacksmith runner.
 
 ## Nightly releases
 
-The **Nightly** workflow runs hourly and builds `main` when it has moved since the latest `v*`
-tag, nightly or stable. Start it by hand to build `main` anyway, or the tip of another branch. It
-derives a version such as `0.0.25-nightly.20261023.123` from the patch after the latest stable
-tag, the UTC date and the run number. It builds Apple silicon macOS only, skips the quality checks
-and tests, and publishes a GitHub prerelease and npm's `nightly` tag. Checked-in package versions stay as they
-are, and stable installations keep following stable releases.
+The **Nightly** workflow runs hourly. It builds `main` when it has moved since the latest `v*`
+tag, nightly or stable. Start it by hand to build `main` anyway, or to build the tip of another
+branch. It derives a version such as `0.0.25-nightly.20261023.123` from the patch after the latest
+stable tag, the UTC date and the run number. It builds Apple silicon macOS only and skips the
+quality checks and tests. It publishes a GitHub prerelease and npm's `nightly` tag. Checked-in
+package versions stay as they are. Stable installations keep following stable releases.
 
 To follow nightlies in the desktop app, open **Settings > Developer**, turn on **Developer Mode**,
 and set **Update channel** to **Nightly**. On that channel, Nyte checks for updates 30 seconds
-after startup and then hourly, downloads them in the background and installs them when you quit.
+after startup and then hourly. It downloads them in the background and installs them when you quit.
 **Restart to Update** installs sooner. Choose **Stable** to return to stable releases. The setting
 applies to this installation only.
 
@@ -78,7 +77,7 @@ packaging command. It sets the desktop package, bundled CLI and release archive 
 ## Build desktop assets on another OS
 
 Build the browser assets once, then package them on each target OS. Use clean checkouts at the
-same commit and lockfile, with the same `VITE_` environment variables and no `.env` files in
+same commit and lockfile, with the same `VITE_` environment variables. Leave no `.env` files in
 `packages/app` or `packages/canvas`. The packaging step refuses assets that don't match. The
 destination must not exist and must be outside the checkout.
 
@@ -123,9 +122,9 @@ their core and built-in plugins from that checkout. They never load a separately
 runtime.
 
 Pin the app release, not individual internal workspace packages. A plugin loaded from a user or
-project directory uses the running host's API. When the plugin API changes, update that plugin's
-source together with the host, because the API has no compatibility layer. An older app keeps its
-bundled API, and may not run plugins written for a newer release.
+project directory uses the running host's API. The API has no compatibility layer, so update that
+plugin's source together with the host when the plugin API changes. An older app keeps its bundled
+API and may not run plugins written for a newer release.
 
 ## Archive contents
 

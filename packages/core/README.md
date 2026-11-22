@@ -36,7 +36,7 @@ On a machine, `openHost` in [`@nyte-ai/host`](../host/README.md) calls `composeH
 
 ## How it works
 
-A store holds two kinds of data. Objects are immutable and content-addressed, and core writes them before any publish. Refs are the only mutable state, and core publishes them in one all-or-nothing `refs.set` batch. `memoryStore` keeps both in process. The SQLite, PostgreSQL and Durable Object stores live in `@nyte-ai/host`.
+A store holds two kinds of data. Objects are immutable and content-addressed. Core writes them before any publish. Refs are the only mutable state. Core publishes them in one all-or-nothing `refs.set` batch. `memoryStore` keeps both in process. The SQLite, PostgreSQL and Durable Object stores live in `@nyte-ai/host`.
 
 Core folds a session's log into its current state. `Head.view()` answers one `SessionView` from that fold. Clients in another process read rows and apply change events instead.
 
