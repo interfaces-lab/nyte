@@ -1,7 +1,7 @@
 import { Language, Parser } from "web-tree-sitter";
 import type { Node } from "web-tree-sitter";
 import { DESIGN_ATTRIBUTE } from "@nyte-ai/plugin/design/board-protocol";
-import { fileStructureAssets, runtimeUrl } from "../workbench/editor/file-structure-assets.ts";
+import { fileStructureAssets, runtimeUrl } from "../editor/file-structure-assets.ts";
 
 interface Range {
   readonly start: number;

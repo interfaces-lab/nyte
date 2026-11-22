@@ -8,9 +8,9 @@ import { commitHostWorkspace } from "../data/workspaces.ts";
 import { currentLights, HERE, watchLights } from "../light/light.ts";
 import { launch } from "../workbench/commands.ts";
 import { EDITOR_SLOT } from "../workbench/model.ts";
-import { spanTarget } from "../workbench/editor/editor-selection.ts";
-import { fileActions } from "../workbench/editor/file-store.ts";
-import type { FileTarget } from "../workbench/editor/file-store.ts";
+import { spanTarget } from "../editor/editor-selection.ts";
+import { fileActions } from "../editor/file-store.ts";
+import type { FileTarget } from "../editor/file-store.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
 import { workbench } from "../workbench/store.ts";
 

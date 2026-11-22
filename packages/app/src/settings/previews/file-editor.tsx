@@ -7,10 +7,10 @@ import { diffStyles } from "../../diff/diff.stylex.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { useAppearance } from "../../theme/appearance-store.ts";
 import { diffView } from "../../theme/schema.stylex.ts";
-import { createEditor } from "../../workbench/editor/file-code-view.tsx";
-import { editorViewOptions } from "../../workbench/editor/editor-view-options.ts";
-import { styles as editorStyles } from "../../workbench/editor/file-editor.tsx";
-import { viewerStyles } from "../../workbench/editor/file-viewers.tsx";
+import { createEditor } from "../../editor/file-code-view.tsx";
+import { editorViewOptions } from "../../editor/editor-view-options.ts";
+import { styles as editorStyles } from "../../editor/file-editor.tsx";
+import { viewerStyles } from "../../editor/file-viewers.tsx";
 
 const PATH = "src/format-bytes.ts";
 

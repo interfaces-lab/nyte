@@ -3,7 +3,7 @@ import { asId } from "@nyte-ai/schema";
 import { DEFAULT_VIEW, EDITOR_SLOT, FOLLOW_BROWSE } from "./model.ts";
 import type { WorkbenchBrowse } from "./model.ts";
 import { workbenchStripTabs } from "./selectors.ts";
-import { createFileTabStore } from "./editor/file-store.ts";
+import { createFileTabStore } from "../editor/file-store.ts";
 import type { WorkbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
 import { reduceView } from "./view-reducer.ts";

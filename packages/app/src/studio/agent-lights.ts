@@ -2,8 +2,8 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { loadDeferred, readDeferred } from "../lib/deferred.tsx";
 import { shineAgent } from "../light/light.ts";
-import type { ChatEdit } from "../workbench/editor/chat-changes.ts";
-import { lineChanges } from "../workbench/editor/line-changes.ts";
+import type { ChatEdit } from "../editor/chat-changes.ts";
+import { lineChanges } from "../editor/line-changes.ts";
 
 interface DesignPatch {
   readonly design: string;

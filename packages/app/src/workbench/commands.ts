@@ -7,7 +7,7 @@ import { nyte, windowApp } from "../contract/nyte.ts";
 import { documentsApi } from "../data/documents.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
-import { fileActions } from "./editor/file-store.ts";
+import { fileActions } from "../editor/file-store.ts";
 import { EDITOR_SLOT, FOLLOW_BROWSE, matchingTab, tabSlot, WORKBENCH_KINDS } from "./model.ts";
 import type {
   KindInput,

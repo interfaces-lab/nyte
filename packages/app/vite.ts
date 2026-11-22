@@ -217,7 +217,7 @@ export function deferredChunks(entries: Readonly<Record<string, DeferredEntry>>)
 }
 
 export function fileStructureLicenses(): Plugin {
-  const directory = new URL("./src/workbench/editor/grammars/", import.meta.url);
+  const directory = new URL("./src/editor/grammars/", import.meta.url);
 
   return {
     name: "nyte:file-structure-licenses",

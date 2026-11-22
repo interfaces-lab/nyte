@@ -24,6 +24,9 @@
     "./data/local-host.ts": "./src/data/local-host.ts",
     "./data/query-client.ts": "./src/data/query-client.ts",
     "./diff/diff.stylex.ts": "./src/diff/diff.stylex.ts",
+    "./editor/file-code-view.tsx": "./src/editor/file-code-view.tsx",
+    "./editor/file-editor.tsx": "./src/editor/file-editor.tsx",
+    "./editor/outside-edits.ts": "./src/editor/outside-edits.ts",
     "./environments/pairing-code.tsx": "./src/environments/pairing-code.tsx",
     "./environments/remote-share.tsx": "./src/environments/remote-share.tsx",
     "./lib/deferred-entries.ts": "./src/lib/deferred-entries.ts",
@@ -59,9 +62,6 @@
     "./theme/schema.stylex.ts": "./src/theme/schema.stylex.ts",
     "./theme/settings-patterns.stylex.ts": "./src/theme/settings-patterns.stylex.ts",
     "./theme/vscode-theme.ts": "./src/theme/vscode-theme.ts",
-    "./workbench/editor/file-code-view.tsx": "./src/workbench/editor/file-code-view.tsx",
-    "./workbench/editor/file-editor.tsx": "./src/workbench/editor/file-editor.tsx",
-    "./workbench/editor/outside-edits.ts": "./src/workbench/editor/outside-edits.ts",
     "./workbench/workbench.stylex.ts": "./src/workbench/workbench.stylex.ts",
     "./vite": "./vite.ts",
     "./dist/*": "./dist/*",
@@ -78,7 +78,7 @@
     "dev": "vite",
     "e2e": "pnpm --dir ../canvas build && pnpm build && playwright test --config e2e/playwright.config.ts",
     "test": "vitest --run",
-    "test:markdown-sweep": "NYTE_MARKDOWN_CORPUS=repository vitest --run --project unit src/workbench/editor/markdown-roundtrip.test.ts",
+    "test:markdown-sweep": "NYTE_MARKDOWN_CORPUS=repository vitest --run --project unit src/editor/markdown-roundtrip.test.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e"
   },
   "dependencies": {

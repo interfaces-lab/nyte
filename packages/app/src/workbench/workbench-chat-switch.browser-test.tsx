@@ -36,9 +36,9 @@ import { ChangesPanel } from "./changes/changes-panel.tsx";
 import { ChangesToolbar } from "./changes/changes-toolbar.tsx";
 import { workbenchViewKey } from "./paths.ts";
 import { workbench } from "./store.ts";
-import { TextFileEditor } from "./editor/file-editor.tsx";
-import { fileActions } from "./editor/file-store.ts";
-import { EditorPanel } from "./editor/editor-panel.tsx";
+import { TextFileEditor } from "../editor/file-editor.tsx";
+import { fileActions } from "../editor/file-store.ts";
+import { EditorPanel } from "../editor/editor-panel.tsx";
 import { Workbench } from "./workbench.tsx";
 
 const NAMES = ["alpha", "bravo", "charlie"] as const;
