@@ -97,6 +97,6 @@ Nyte runs agent conversations on a host, a process that stores every session. Th
 - After changing how a tool call snapshots its workspace (`SnapshotsApi`, `localSnapshots`), run `pnpm --dir packages/bench bench:snapshots:gate`.
 - After changing a `ServerSpec` or how the host talks to language servers, run `NYTE_LANGUAGE_DOWNLOADS=1 pnpm --dir packages/host test language-matrix`. It runs each server at its pinned version, downloaded into the home's language server cache, so a row never depends on what a machine has installed. Without the variable the matrix is skipped.
 - A language fixture's matrix records which servers offer each feature and whether its probes got an answer. Change a row only to what the run showed.
-- Pin a server's download with the host's `pin-language-server` script. It prints the sha256 of each URL, or writes an npm tarball list.
+- Pin a server's download by running the host's `pin-language-server` script file with node. It prints the sha256 of each URL, or writes an npm tarball list or the JSON server's schema list.
 - Report failures in unrelated files. Don't fix them.
 - Before changing Turborepo config, read the docs that ship inside the installed `turbo` package.

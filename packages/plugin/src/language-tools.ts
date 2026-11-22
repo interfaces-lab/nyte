@@ -107,7 +107,7 @@ function reply(value: string) {
 const definition: ToolDefinition<SymbolAt> = {
   name: "code_definition",
   description:
-    "Find where a symbol is defined, using the workspace's language server (Go, TypeScript, JavaScript). Answers path:line:column per definition.",
+    "Find where a symbol is defined, using the workspace's language servers (TypeScript, Python, Go, Rust, C and more). Answers path:line:column per definition.",
   parameters: SymbolAt,
   class: (args) => ({ kind: "read", path: args.path }),
   changes: "none",
@@ -126,7 +126,7 @@ const definition: ToolDefinition<SymbolAt> = {
 const references: ToolDefinition<SymbolAt> = {
   name: "code_references",
   description:
-    "Find every reference to a symbol, its declaration included, using the workspace's language server (Go, TypeScript, JavaScript). Answers path:line:column per reference.",
+    "Find every reference to a symbol, its declaration included, using the workspace's language servers (TypeScript, Python, Go, Rust, C and more). Answers path:line:column per reference.",
   parameters: SymbolAt,
   class: (args) => ({ kind: "read", path: args.path }),
   changes: "none",
@@ -152,7 +152,7 @@ const references: ToolDefinition<SymbolAt> = {
 const diagnostics: ToolDefinition<Infer<typeof InFile>> = {
   name: "code_diagnostics",
   description:
-    "List the compiler and analyzer errors and warnings for a file as it is on disk, from the workspace's language server (Go, TypeScript, JavaScript).",
+    "List the compiler and analyzer errors and warnings for a file as it is on disk, from the workspace's language servers (TypeScript, Python, Go, Rust, C and more).",
   parameters: InFile,
   class: (args) => ({ kind: "read", path: args.path }),
   changes: "none",
@@ -221,7 +221,7 @@ async function diagnosticsFor(
 const rename: ToolDefinition<Infer<typeof Rename>> = {
   name: "code_rename",
   description:
-    "Rename a symbol everywhere the workspace's language server (Go, TypeScript, JavaScript) finds it, and write the edited files. Refuses, changing nothing, when a file changed since the server read it.",
+    "Rename a symbol everywhere the workspace's language servers (TypeScript, Python, Go, Rust, C and more) find it, and write the edited files. Refuses, changing nothing, when a file changed since a server read it.",
   parameters: Rename,
   class: (args) => ({ kind: "edit", path: args.path }),
   rerun: "never",
