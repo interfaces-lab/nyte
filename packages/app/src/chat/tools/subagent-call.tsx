@@ -42,6 +42,7 @@ import { modelDisplayName, modelIcon, THINKING_LABELS } from "../composer/model-
 import { activityStyles } from "../transcript/activity.stylex.ts";
 import { useTranscriptScope } from "../transcript/transcript.tsx";
 import { proseStyles } from "../../markdown/prose.stylex.ts";
+import type { AgentCitation } from "../../markdown/prose.tsx";
 import { openJobOutput } from "./job-output.ts";
 import { subagentCallStyles } from "./subagent-call.stylex.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
@@ -584,3 +585,6 @@ export function SubagentCitation({
     </PreviewCard>
   );
 }
+
+/** Draws Markdown's `agent:` links as a {@link SubagentCitation}. */
+export const citeSubagent: AgentCitation = (citation) => <SubagentCitation {...citation} />;

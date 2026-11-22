@@ -4,6 +4,8 @@ import { ReferenceOpenerContext } from "../references/reference-opener.tsx";
 import { workbenchReferenceOpener } from "../workbench/commands.ts";
 import { useWorkbenchViewKey } from "../workbench/paths.ts";
 import { ChatFolderContext } from "../chats/index.ts";
+import { AgentCitationContext } from "../markdown/prose.tsx";
+import { citeSubagent } from "./tools/subagent-call.tsx";
 
 export function ChatScope({
   folder,
@@ -15,7 +17,7 @@ export function ChatScope({
   return (
     <ChatFolderContext value={folder}>
       <ReferenceOpenerContext value={workbenchReferenceOpener(useWorkbenchViewKey(folder?.path))}>
-        {children}
+        <AgentCitationContext value={citeSubagent}>{children}</AgentCitationContext>
       </ReferenceOpenerContext>
     </ChatFolderContext>
   );

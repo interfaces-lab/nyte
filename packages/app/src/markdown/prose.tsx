@@ -1,6 +1,6 @@
 import "@nyte-ai/ui/words/styles.css";
 import { asId } from "@nyte-ai/schema";
-import type { ByteReader, WorkspaceId } from "@nyte-ai/sdk";
+import type { ByteReader, SessionId, WorkspaceId } from "@nyte-ai/sdk";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Icon } from "@nyte-ai/ui/icon";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -10,7 +10,7 @@ import { defaultUrlTransform, Markdown } from "@nyte-ai/ui/words/react";
 import type { Components } from "@nyte-ai/ui/words/react";
 import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { createContext, use, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { filesFor, mentionFilesOptions } from "../data/files.ts";
@@ -26,7 +26,6 @@ import { useReferenceOpener } from "../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
 import { useChatFolder } from "../chats/index.ts";
 import { ImageViewer } from "../images/image-viewer.tsx";
-import { SubagentCitation } from "../chat/tools/subagent-call.tsx";
 import { openConversationLink } from "./external-link.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MarkdownTable } from "./markdown-table.tsx";
@@ -136,6 +135,15 @@ function filePath(url: string): string {
 
   return parsed === null ? "" : `${parsed.pathname}${parsed.hash}`;
 }
+
+/** Draws an `agent:` link in Markdown from the cited session and the link's text. */
+export type AgentCitation = (citation: {
+  readonly session: SessionId;
+  readonly label: string;
+}) => ReactNode;
+
+/** The renderer for `agent:` links. Without a provider a citation shows its plain text. */
+export const AgentCitationContext = createContext<AgentCitation>(({ label }) => label);
 
 export function Prose({
   markdown,
@@ -258,6 +266,8 @@ interface Tip {
 }
 
 function IslandContent({ island }: { readonly island: Island }): ReactNode {
+  const citation = use(AgentCitationContext);
+
   switch (island.kind) {
     case "code":
       return !island.open && island.language === "mermaid" ? (
@@ -266,7 +276,7 @@ function IslandContent({ island }: { readonly island: Island }): ReactNode {
         <CodeBlock code={island.code} lang={island.language} streaming={island.open} />
       );
     case "agent":
-      return <SubagentCitation session={asId<"session">(island.session)} label={island.label} />;
+      return citation({ session: asId<"session">(island.session), label: island.label });
     case "image":
       return <MarkdownImage src={island.src} alt={island.alt} />;
     case "table":
