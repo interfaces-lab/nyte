@@ -1,10 +1,11 @@
-import { findExecutable } from "../../process/command.ts";
 import type { Asset, Install, ServerSpec } from "../spec.ts";
 import packages from "./bash-language-server.lock.json" with { type: "json" };
 
 const VERSION = "5.8.1";
 
 const SHELLCHECK_VERSION = "0.11.0";
+
+const SHFMT_VERSION = "3.14.1";
 
 const SETTINGS = {
   backgroundAnalysisMaxFiles: 500,
@@ -70,6 +71,43 @@ const SHELLCHECK: Install = {
   },
 };
 
+function shfmtBinary(target: string, sha256: string): Asset {
+  return {
+    url: `https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_${target}`,
+    sha256,
+    format: "file",
+    bin: target.endsWith(".exe") ? "shfmt.exe" : "shfmt",
+  };
+}
+
+const SHFMT: Install = {
+  kind: "release",
+  package: "shfmt",
+  version: SHFMT_VERSION,
+  assets: {
+    "darwin-arm64": shfmtBinary(
+      "darwin_arm64",
+      "b7c872db63553ccffc7253aba3ed7d4885a27d83f1ba567b1138c6315a5847e5",
+    ),
+    "darwin-x64": shfmtBinary(
+      "darwin_amd64",
+      "d33eee0da0f92835b3562e9767a05cee7e4eaeef47daa03bfd09da17b4b590a6",
+    ),
+    "linux-arm64": shfmtBinary(
+      "linux_arm64",
+      "5f2db09dae91fca848f7adbdd014632e921a383863a2ad7e0450ad3aba0c6489",
+    ),
+    "linux-x64": shfmtBinary(
+      "linux_amd64",
+      "76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf",
+    ),
+    "win32-x64": shfmtBinary(
+      "windows_amd64.exe",
+      "13629ce28442ca80b6b5a819f7574ab39e1c28c6e26734ca816c9714e04851df",
+    ),
+  },
+};
+
 export const BASH_LANGUAGE_SERVER: ServerSpec = {
   name: "bash-language-server",
   languages: ["bash"],
@@ -90,16 +128,22 @@ export const BASH_LANGUAGE_SERVER: ServerSpec = {
   initializationOptions: null,
   settings: { bashIde: SETTINGS },
   async prepare(project) {
-    const found = await findExecutable("shellcheck");
-    const installed = found === null ? await project.install(SHELLCHECK) : null;
-    const shellcheck = found ?? installed?.path ?? null;
+    const shellcheck = await project.tool("shellcheck", ["--version"], SHELLCHECK);
+    const shfmt = await project.tool("shfmt", ["--version"], SHFMT);
 
-    if (shellcheck === null) return {};
+    const settings = {
+      bashIde: {
+        ...SETTINGS,
+        shellcheckPath: shellcheck?.path ?? "",
+        shfmt: { ...SETTINGS.shfmt, path: shfmt?.path ?? "" },
+      },
+    };
 
-    const settings = { bashIde: { ...SETTINGS, shellcheckPath: shellcheck } };
+    const pinned = [
+      shellcheck?.pinned === true ? `ShellCheck ${SHELLCHECK_VERSION}` : null,
+      shfmt?.pinned === true ? `shfmt ${SHFMT_VERSION}` : null,
+    ].filter((part) => part !== null);
 
-    if (installed === null) return { settings };
-
-    return { settings, runsOn: `ShellCheck ${SHELLCHECK_VERSION}` };
+    return pinned.length === 0 ? { settings } : { settings, runsOn: pinned.join(", ") };
   },
 };
