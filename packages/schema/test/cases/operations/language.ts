@@ -15,7 +15,8 @@ const server = {
   state: { kind: "busy", title: "Indexing", percent: null },
   version: "v0.24.0",
   executable: "/usr/local/bin/gopls",
-  features: ["hover", "rename"],
+  features: ["hover", "rename", "completion"],
+  completionTriggers: ["."],
 };
 
 const completionToken = { kind: "completion", server: "s1", answer: 3, item: 0 };
@@ -46,7 +47,15 @@ export const languageOperations = {
   "language.status input": operation(OPERATIONS["language.status"].input, workspaceInput, {}),
   "language.status output": operation(
     OPERATIONS["language.status"].output,
-    [server, { ...server, state: { kind: "installing", percent: 42 }, features: [] }],
+    [
+      server,
+      {
+        ...server,
+        state: { kind: "installing", percent: 42 },
+        features: [],
+        completionTriggers: [],
+      },
+    ],
     [{ ...server, features: ["telepathy"] }],
   ),
   "language.watchStatus input": operation(

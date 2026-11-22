@@ -99,7 +99,16 @@ Response:
   "type": "array",
   "items": {
     "type": "object",
-    "required": ["languages", "server", "root", "state", "version", "executable", "features"],
+    "required": [
+      "languages",
+      "server",
+      "root",
+      "state",
+      "version",
+      "executable",
+      "features",
+      "completionTriggers"
+    ],
     "properties": {
       "languages": {
         "type": "array",
@@ -284,6 +293,12 @@ Response:
             "formatRange",
             "rename"
           ]
+        }
+      },
+      "completionTriggers": {
+        "type": "array",
+        "items": {
+          "type": "string"
         }
       }
     }

@@ -43,7 +43,7 @@ export const TYPESCRIPT_LANGUAGE_SERVER: ServerSpec = {
   install: INSTALL,
   installHint:
     "Install the TypeScript language server: npm install -g typescript-language-server typescript",
-  initializationOptions: { preferences: PREFERENCES },
+  initializationOptions: { preferences: PREFERENCES, tsserver: { useSyntaxServer: "never" } },
   settings: { typescript: LANGUAGE, javascript: LANGUAGE },
   async prepare(project) {
     const typescript =
@@ -54,7 +54,10 @@ export const TYPESCRIPT_LANGUAGE_SERVER: ServerSpec = {
     return {
       initializationOptions: {
         preferences: PREFERENCES,
-        tsserver: { path: join(typescript.folder, "lib", "tsserver.js") },
+        tsserver: {
+          path: join(typescript.folder, "lib", "tsserver.js"),
+          useSyntaxServer: "never",
+        },
       },
       runsOn: `TypeScript ${typescript.version}`,
     };

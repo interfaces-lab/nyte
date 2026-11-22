@@ -30,11 +30,13 @@ import {
   wholeLineSelection,
 } from "./editor-selection.ts";
 import { ChangePeek, useLineChanges } from "./change-peek.tsx";
+import { CompletionList } from "./completion-list.tsx";
 import { DeclarationPopups } from "./declaration-popups.tsx";
 import { shareDocument } from "./document-channel.ts";
 import { mirrorDraft } from "./draft-mirror.ts";
 import { languageDocuments } from "./language-documents.ts";
 import { caretPosition, editorRange, selectionRange, textChanges } from "./pierre-language.ts";
+import { useCompletion } from "./use-completion.ts";
 import { useDeclarations } from "./use-declarations.ts";
 import { diagnosed, useDiagnostics } from "./use-diagnostics.ts";
 import {
@@ -398,6 +400,14 @@ export function TextFileEditor({
     focus: () => currentEditor()?.focus(),
   });
 
+  const completion = useCompletion({
+    viewKey,
+    path: file.path,
+    workspace: project,
+    readOnly: file.readOnly,
+    editor: currentEditor,
+  });
+
   const diagnostics = useDiagnostics({
     viewKey,
     path: file.path,
@@ -596,7 +606,10 @@ export function TextFileEditor({
   // oxlint-disable-next-line nyte-code/no-direct-effect -- latest attach and selection action for Pierre's callbacks, which the editor reads once when it is created
   useLayoutEffect(() => {
     latestEditor.set({
-      select: (selections) => selectionChanged.current(selections),
+      select: (selections) => {
+        selectionChanged.current(selections);
+        completion.moved();
+      },
       attach: attachEditor,
       add: addSelection,
     });
@@ -736,6 +749,10 @@ export function TextFileEditor({
       inert={!active}
       onContextMenu={openContextMenu}
       onAuxClick={documentView ? undefined : declarations.onAuxClick}
+      onKeyDownCapture={documentView ? undefined : completion.keyDown}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) completion.close();
+      }}
       onKeyDown={(event) => {
         if (!documentView && declarations.onKeyDown(event)) return;
         const shortcut = resolveSearchShortcut(event.nativeEvent, mac);
@@ -805,21 +822,27 @@ export function TextFileEditor({
 
                 if (held === undefined || held.editor !== editor) return;
 
-                if (buffer.edited(held.source, changes) && project !== undefined) {
-                  languageDocuments.edited(project.path, file.path, textChanges(changes), () =>
-                    buffer.text(),
-                  );
+                if (!buffer.edited(held.source, changes) || project === undefined) {
+                  completion.close();
+
+                  return;
                 }
+                languageDocuments.edited(project.path, file.path, textChanges(changes), () =>
+                  buffer.text(),
+                );
+                completion.edited(changes);
               }}
               onEnded={(editor, contents) => {
                 const held = attached.current;
 
                 if (held === undefined || held.editor !== editor) return;
                 attached.current = undefined;
+                completion.close();
                 buffer.detach(held.source, contents);
               }}
               onScroll={(top) => {
                 declarations.dismissHover();
+                completion.scrolled();
                 scrollTop.current = top;
               }}
               renderAnnotation={() =>
@@ -853,6 +876,15 @@ export function TextFileEditor({
             onAction={declarations.action}
             folder={project}
           />
+          {active && completion.popup !== undefined && (
+            <CompletionList
+              popup={completion.popup}
+              detail={completion.detail}
+              folder={project}
+              onPick={completion.pick}
+              onClose={completion.close}
+            />
+          )}
           <EditorFind
             search={search}
             onClose={() => {
