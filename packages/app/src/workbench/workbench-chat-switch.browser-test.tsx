@@ -39,7 +39,7 @@ import { workbench } from "./store.ts";
 import { TextFileEditor } from "../editor/file-editor.tsx";
 import { fileActions } from "../editor/file-store.ts";
 import { EditorPanel } from "../editor/editor-panel.tsx";
-import { Workbench } from "./workbench.tsx";
+import { Workbench } from "../shell/workbench.tsx";
 
 const NAMES = ["alpha", "bravo", "charlie"] as const;
 

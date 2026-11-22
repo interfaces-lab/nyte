@@ -1,4 +1,4 @@
-import { workbenchStyles } from "./workbench.stylex.ts";
+import { workbenchStyles } from "../workbench/workbench.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
@@ -19,23 +19,29 @@ import {
   workbenchPanelWidth,
   workbenchSeparatorValue,
   workbenchWidthBounds,
-} from "./width.ts";
-import { browserSurface, DEFAULT_VIEW, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "./model.ts";
+} from "../workbench/width.ts";
+import {
+  browserSurface,
+  DEFAULT_VIEW,
+  EDITOR_SLOT,
+  tabSlot,
+  workbenchShowsChat,
+} from "../workbench/model.ts";
 import type {
   WorkbenchBrowse,
   WorkbenchScope,
   WorkbenchTab,
   WorkbenchViewKey,
   WorkbenchViewState,
-} from "./model.ts";
-import { workbenchScope, workbenchViewKey, workspacePathForView } from "./paths.ts";
-import { railModel, shownWorkbenchTab, visibleTabs } from "./selectors.ts";
-import { useWorkbenchSnapshot, workbench } from "./store.ts";
-import type { ChangesTabPatch } from "./view-reducer.ts";
-import { launch, openUrl } from "./commands.ts";
-import { WorkbenchWorkspaceContext } from "./workbench-workspace.tsx";
-import type { WorkbenchWorkspace } from "./workbench-workspace.tsx";
-import { CompactRail, Rail, RailRow } from "./rail.tsx";
+} from "../workbench/model.ts";
+import { workbenchScope, workbenchViewKey, workspacePathForView } from "../workbench/paths.ts";
+import { railModel, shownWorkbenchTab, visibleTabs } from "../workbench/selectors.ts";
+import { useWorkbenchSnapshot, workbench } from "../workbench/store.ts";
+import type { ChangesTabPatch } from "../workbench/view-reducer.ts";
+import { launch, openUrl } from "../workbench/commands.ts";
+import { WorkbenchWorkspaceContext } from "../workbench/workbench-workspace.tsx";
+import type { WorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
+import { CompactRail, Rail, RailRow } from "../workbench/rail.tsx";
 import { BrowserPanel } from "../browser/browser-panel";
 import { CanvasPanel } from "../canvas/canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../lib/deferred.tsx";

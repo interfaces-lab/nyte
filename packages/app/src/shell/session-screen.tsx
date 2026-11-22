@@ -20,7 +20,7 @@ import { WORKBENCH_CHAT_TAB } from "../workbench/model.ts";
 import { activeWorkbenchTab } from "../workbench/selectors.ts";
 import { useWorkbenchFolder } from "../workbench/paths.ts";
 import { useWorkbenchView } from "../workbench/store.ts";
-import { Workbench } from "../workbench/workbench.tsx";
+import { Workbench } from "./workbench.tsx";
 import { useChatWindow } from "../window/index.ts";
 import { clientCapabilities } from "../contract/client-actions.ts";
 
