@@ -58,6 +58,12 @@ export interface Installed {
 export interface Project {
   readonly root: string;
   install(source: Install): Promise<Installed | null>;
+  /** A program the server runs beside itself: the one on `PATH` when its probe passes, else the pinned download. */
+  tool(
+    program: string,
+    probe: readonly string[],
+    source: Install,
+  ): Promise<{ readonly path: string; readonly pinned: boolean } | null>;
 }
 
 export interface Prepared {

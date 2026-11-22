@@ -14,7 +14,7 @@ import type { ExecutionEnv, LanguageService } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { feed } from "../feed.ts";
 import type { FeedSink } from "../feed.ts";
-import { findExecutable, hostNode, projectBins, run as runCommand } from "../process/command.ts";
+import { findExecutable, hostNode, projectBins } from "../process/command.ts";
 import {
   codeActions,
   completion,
@@ -40,6 +40,7 @@ import { answerConfiguration, initializeParams, readInitialize } from "./initial
 import type { Installer } from "./install.ts";
 import { readProgress, readWorkspaceEdit, toLspRange } from "./lsp.ts";
 import type { Place } from "./lsp.ts";
+import { openProject, runs } from "./project.ts";
 import { connectLsp, LspError, METHOD_NOT_FOUND, REQUEST_CANCELLED } from "./rpc.ts";
 import { findServers } from "./servers.ts";
 import type { ServerSpec } from "./spec.ts";
@@ -52,8 +53,6 @@ export const RESTART_LIMIT = { restarts: 3, windowMs: 3 * 60_000 } as const;
 export const IDLE_MS = 10 * 60_000;
 
 const START_DEADLINE_MS = 30_000;
-
-const PROBE_DEADLINE_MS = 10_000;
 
 const STOP_GRACE_MS = 2000;
 
@@ -472,18 +471,10 @@ export function localLanguage(
       () => exited(slot, run, null),
     );
 
-    const installer = options.installer;
-
     const prepared =
       slot.spec.prepare === undefined
         ? {}
-        : await slot.spec.prepare({
-            root: slot.root,
-            install: async (source) =>
-              installer === undefined
-                ? null
-                : installer.install(source, () => undefined).catch(() => null),
-          });
+        : await slot.spec.prepare(openProject(slot.root, options.installer));
 
     run.settings = prepared.settings ?? slot.spec.settings;
 
@@ -967,18 +958,6 @@ export function localLanguage(
       );
     },
   };
-}
-
-async function runs(program: string, probe: readonly string[], folder: string): Promise<boolean> {
-  const found = await findExecutable(program);
-
-  if (found === null) return false;
-
-  const ran = await runCommand(found, probe, { cwd: folder, timeoutMs: PROBE_DEADLINE_MS }).catch(
-    () => null,
-  );
-
-  return ran?.code === 0;
 }
 
 async function readText(path: string): Promise<string | null> {
