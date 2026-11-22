@@ -79,13 +79,7 @@ function Stage({ panes }: { readonly panes: TabPanes }): ReactElement {
         <SessionDndProvider>
           <ChatCardGroup placement="row">
             <div style={{ width: 240 }}>
-              <SessionRow
-                session={chat}
-                selected={false}
-                draggable
-                unreachable={false}
-                showUpdated={false}
-              />
+              <SessionRow session={chat} selected={false} unreachable={false} showUpdated={false} />
             </div>
           </ChatCardGroup>
         </SessionDndProvider>

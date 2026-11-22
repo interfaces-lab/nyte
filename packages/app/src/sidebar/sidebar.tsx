@@ -248,7 +248,6 @@ export function Sidebar(): ReactElement {
     view,
     showDrafts,
     activeSessionId,
-    openWorkspace: openPlace,
     unavailable: new Set(
       (workspaces.data ?? []).flatMap((workspace) => (!workspace.available ? [workspace.id] : [])),
     ),

@@ -48,7 +48,6 @@ export interface ListContext {
   readonly view: SessionViewSettings;
   readonly showDrafts: boolean;
   readonly activeSessionId: SessionId | undefined;
-  readonly openWorkspace: WorkspaceId | null;
   readonly unavailable: ReadonlySet<WorkspaceId>;
   readonly chats: ChatDirectory;
   readonly unread: ReadonlySet<SessionId>;
@@ -227,7 +226,6 @@ function ListedRow({
     <SessionRow
       session={listed.session}
       selected={listed.session.id === context.activeSessionId}
-      draggable={listed.place.workspace === context.openWorkspace}
       unreachable={
         listed.session.workspace !== null && context.unavailable.has(listed.session.workspace)
       }
@@ -382,7 +380,13 @@ export function FolderList({
 }): ReactElement | null {
   const { view, reveal } = context;
   const { drafts: openDrafts, activeDraftId } = useDrafts();
-  const drafts = context.showDrafts && open ? openDrafts : [];
+
+  const drafts = context.showDrafts
+    ? openDrafts.filter((draft) =>
+        draft.folder === undefined ? open : draft.folder === place.path,
+      )
+    : [];
+
   const now = useNowMinute();
 
   if (sessions === undefined && drafts.length === 0) return null;

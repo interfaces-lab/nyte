@@ -141,13 +141,11 @@ function showSession(sessionId: SessionId, target: OpenIntent | "beside"): void 
 export function SessionRow({
   session,
   selected,
-  draggable,
   unreachable,
   showUpdated,
 }: {
   readonly session: SessionInfo;
   readonly selected: boolean;
-  readonly draggable: boolean;
   readonly unreachable: boolean;
   readonly showUpdated: boolean;
 }): ReactElement {
@@ -159,7 +157,7 @@ export function SessionRow({
     <SessionRowView
       session={session}
       selected={selected}
-      draggable={draggable}
+      draggable
       unreachable={unreachable}
       showUpdated={showUpdated}
       mark={mark.state}
