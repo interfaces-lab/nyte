@@ -1,6 +1,6 @@
 import type { ScrollViewState } from "../../panes/session-view-state.ts";
 
-export const FOLLOW_TOLERANCE = 4;
+const FOLLOW_TOLERANCE = 4;
 
 const INPUT_WINDOW = 250;
 
@@ -20,7 +20,7 @@ export function steeringUp(input: ReaderInput, now: number): boolean {
   return input.pressed || (touching(input, now) && input.upward);
 }
 
-export interface Anchor {
+interface Anchor {
   readonly key: string;
   readonly element: Element | undefined;
   readonly top: number;

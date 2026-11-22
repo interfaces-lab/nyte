@@ -111,7 +111,7 @@ export async function archiveSideChat(parent: SessionId, id: SessionId): Promise
   }
 }
 
-export function sideChatPrompt(messages: readonly Message[]): string {
+function sideChatPrompt(messages: readonly Message[]): string {
   return `${FRAMING}\n\n<main_chat>\n${conversationText(messages, CONTEXT_CHARS)}\n</main_chat>`;
 }
 

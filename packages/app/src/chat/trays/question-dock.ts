@@ -4,7 +4,7 @@ import { sameComposerDocument } from "../composer/composer-document.ts";
 import type { ComposerDocumentState } from "../composer/composer-document.ts";
 import type { Ask } from "./asks.ts";
 
-export type FieldDraft =
+type FieldDraft =
   | {
       readonly kind: "single";
       readonly selection:
@@ -203,7 +203,7 @@ export function stepDock(
   }
 }
 
-export function fieldAnswers(field: FieldDraft): string[] {
+function fieldAnswers(field: FieldDraft): string[] {
   const custom = field.document.text.trim();
 
   if (field.kind === "multiple") {

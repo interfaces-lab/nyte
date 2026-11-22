@@ -11,7 +11,7 @@ import { openJobOutput } from "../tools/job-output.ts";
 import { TaskList, useStopTasks } from "./task-list.tsx";
 import { pillCounts, Tray, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 
-export type TerminalsTrayView = Extract<TrayView, { readonly kind: "closed" | "terminals" }>;
+type TerminalsTrayView = Extract<TrayView, { readonly kind: "closed" | "terminals" }>;
 
 export type TerminalTask = JobTask & { readonly job: JobView };
 

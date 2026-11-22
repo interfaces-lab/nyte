@@ -5,7 +5,7 @@ export const TRANSCRIPT_PADDING_START = 16;
 
 export const TRANSCRIPT_PADDING_END = 114;
 
-export const NEAR_END = 60;
+const NEAR_END = 60;
 
 function setDataState(element: HTMLElement, name: string, active: boolean): void {
   const value = active ? "true" : "false";
