@@ -9,7 +9,7 @@ import { MarkedPhoto } from "./markup-art.tsx";
 import type { Tone } from "./markup-art.tsx";
 import { exportMarkup, outputTransform } from "./markup-export.tsx";
 import type { Edit, Size } from "./markup-geometry.ts";
-import { imageViewer } from "../../theme/schema.stylex.ts";
+import { imageViewer } from "../theme/schema.stylex.ts";
 import type { Mark } from "./markup.ts";
 
 const SPANS = [1, 1.25, 1.5, 1.75, 2] as const;

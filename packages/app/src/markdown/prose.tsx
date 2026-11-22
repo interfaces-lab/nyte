@@ -24,8 +24,8 @@ import {
 import type { MessageReference } from "../references/message-references.ts";
 import { useReferenceOpener } from "../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
-import { useChatFolder } from "../chat/chat-folder.ts";
-import { ImageViewer } from "../chat/images/image-viewer.tsx";
+import { useChatFolder } from "../chats/index.ts";
+import { ImageViewer } from "../images/image-viewer.tsx";
 import { SubagentCitation } from "../chat/tools/subagent-call.tsx";
 import { openConversationLink } from "./external-link.ts";
 import { CodeBlock } from "./code-block.tsx";

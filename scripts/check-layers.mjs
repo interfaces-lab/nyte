@@ -14,7 +14,7 @@ const ENTRIES = [
       ["contract"],
       ["lib", "data", "light"],
       ["theme", "preferences", "components", "chats"],
-      ["diff", "references"],
+      ["diff", "references", "images"],
       [
         "chat",
         "markdown",

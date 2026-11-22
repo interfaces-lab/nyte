@@ -41,8 +41,13 @@ import { modelRefFor, sessionModel } from "./composer/model-picker-state.ts";
 import { StartupReadsHold } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";
-import { chatTitle, useChat, useChatTasks, useChatWorkspace } from "../chats/index.ts";
-import { useChatFolder } from "./chat-folder.ts";
+import {
+  chatTitle,
+  useChat,
+  useChatFolder,
+  useChatTasks,
+  useChatWorkspace,
+} from "../chats/index.ts";
 import { ChatScope } from "./chat-scope.tsx";
 import { SideChatWindow } from "./side-chat/side-chat-window.tsx";
 import { chatWindow, drawnTray, showTray, useChatWindow } from "../window/index.ts";

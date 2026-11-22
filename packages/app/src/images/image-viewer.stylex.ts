@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { imageViewer } from "../../theme/schema.stylex.ts";
+import { imageViewer } from "../theme/schema.stylex.ts";
 
 const compact = "@media (max-width: 640px)";
 

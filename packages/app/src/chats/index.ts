@@ -30,6 +30,8 @@ export type { ChildTask, JobTask, Task, TaskKey } from "./tasks.ts";
 
 export { childTitle, delegateKey, findTask, trayTasks } from "./tasks.ts";
 
+export { ChatFolderContext, useChatFolder } from "./chat-folder.ts";
+
 export { editPatch } from "./edit-patch.ts";
 
 export type { TurnMessages } from "./turns.ts";

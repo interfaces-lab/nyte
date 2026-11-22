@@ -6,7 +6,7 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { control, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { imageViewer } from "../../theme/schema.stylex.ts";
+import { imageViewer } from "../theme/schema.stylex.ts";
 import { MAX_ANGLE, clamp } from "./markup-geometry.ts";
 import { tween } from "./markup-tween.ts";
 

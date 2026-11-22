@@ -1,9 +1,9 @@
 import { createRef } from "react";
 import { flushSync } from "react-dom";
-import { ComposerEditor } from "../composer/composer-editor.tsx";
-import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
-import { attachComposerFiles } from "../composer/composer-files.ts";
-import { receiveChatExcerpts } from "../../references/add-to-chat.ts";
+import { ComposerEditor } from "../chat/composer/composer-editor.tsx";
+import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
+import { attachComposerFiles } from "../chat/composer/composer-files.ts";
+import { receiveChatExcerpts } from "../references/add-to-chat.ts";
 import { capture, check, openViewer, paint, until } from "./image-viewer.fixture.tsx";
 import { exportMarkup } from "./markup-export.tsx";
 import { wholeImage } from "./markup-geometry.ts";

@@ -38,7 +38,7 @@ import { useHomeWorkspace } from "../../data/workspaces.ts";
 import { preferences } from "../../preferences/index.ts";
 import { useWorkspaceCatalog } from "../../data/plugins.ts";
 import { draftModel, modelRefFor, selectedModelOption } from "./model-picker-state.ts";
-import { useChatFolder } from "../chat-folder.ts";
+import { useChatFolder } from "../../chats/index.ts";
 import { ChatScope } from "../chat-scope.tsx";
 
 const NO_COMMANDS: readonly CommandInfo[] = [];

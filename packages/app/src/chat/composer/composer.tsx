@@ -19,7 +19,7 @@ import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connected, connection } from "../../data/connection.ts";
 import { chatStore, resendMessage, stopChat, useChatStopping } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
-import { useChats } from "../../chats/index.ts";
+import { useChatFolder, useChats } from "../../chats/index.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { usePaneViewStateStore } from "../../panes/pane-context.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -60,7 +60,6 @@ import { QuestionDockContext, useQuestionDock } from "../trays/questions-state.t
 import { useCommitCount } from "../../lib/work-counts.ts";
 import { useDebouncedValue } from "../../lib/use-debounced-value.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { useChatFolder } from "../chat-folder.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 

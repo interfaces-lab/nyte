@@ -56,7 +56,7 @@ import type {
   SuggestionSources,
   SuggestionToken,
 } from "./composer-suggestion-menu.ts";
-import { useChatFolder } from "../chat-folder.ts";
+import { useChatFolder } from "../../chats/index.ts";
 import { activeEditorFile } from "../../workbench/model.ts";
 import { useWorkbenchViewKey } from "../../workbench/paths.ts";
 import { workbench } from "../../workbench/store.ts";

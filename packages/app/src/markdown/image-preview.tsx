@@ -5,7 +5,7 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { imageViewer } from "../theme/schema.stylex.ts";
-import { ImageViewer } from "../chat/images/image-viewer.tsx";
+import { ImageViewer } from "../images/image-viewer.tsx";
 
 const styles = create({
   frame: { position: "relative", display: "inline-flex", borderRadius: radius.control },

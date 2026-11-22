@@ -1,5 +1,5 @@
 import type { codeRuntime } from "../markdown/code.deferred.tsx";
-import type { imageViewerRuntime } from "../chat/images/image-viewer.deferred.tsx";
+import type { imageViewerRuntime } from "../images/image-viewer.deferred.tsx";
 import type { highlightRuntime } from "../markdown/highlight.deferred.ts";
 import type { mermaidRuntime } from "../markdown/mermaid.deferred.ts";
 import type { previewsRuntime } from "../settings/previews/previews.deferred.tsx";
@@ -10,7 +10,7 @@ import type { workbenchRuntime } from "../shell/panels.deferred.tsx";
 
 export const deferredEntries = {
   images: {
-    module: new URL("../chat/images/image-viewer.deferred.tsx", import.meta.url).href,
+    module: new URL("../images/image-viewer.deferred.tsx", import.meta.url).href,
     packages: [],
   },
   code: {

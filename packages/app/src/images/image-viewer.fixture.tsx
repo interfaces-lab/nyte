@@ -4,9 +4,9 @@ import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ReactNode } from "react";
-import "../../theme/tokens.stylex.ts";
-import "../../theme/global.css";
-import { publishDeferred } from "../../lib/deferred.tsx";
+import "../theme/tokens.stylex.ts";
+import "../theme/global.css";
+import { publishDeferred } from "../lib/deferred.tsx";
 import { ImageViewer } from "./image-viewer.tsx";
 import { imageViewerRuntime } from "./image-viewer.deferred.tsx";
 

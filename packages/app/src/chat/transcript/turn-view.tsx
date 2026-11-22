@@ -32,7 +32,7 @@ import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { attachComposerFiles } from "../composer/composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
-import { useChatFolder } from "../chat-folder.ts";
+import { useChatFolder } from "../../chats/index.ts";
 import { composerMessageContent } from "../composer/composer-plan.ts";
 import { uploadComposerContent } from "../composer/composer-send.ts";
 import { composerSource } from "../composer/composer-suggestions.tsx";

@@ -13,7 +13,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
-import { loadDeferred, useDeferred } from "../../lib/deferred.tsx";
+import { loadDeferred, useDeferred } from "../lib/deferred.tsx";
 import { imageViewerStyles } from "./image-viewer.stylex.ts";
 import type { Mark } from "./markup.ts";
 

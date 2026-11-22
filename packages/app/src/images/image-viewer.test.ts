@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { expect, test } from "vitest";
-import { testRenderer } from "../../../test/renderer.ts";
+import { testRenderer } from "../../test/renderer.ts";
 
 const captures = process.env.NYTE_IMAGE_CAPTURE;
 
