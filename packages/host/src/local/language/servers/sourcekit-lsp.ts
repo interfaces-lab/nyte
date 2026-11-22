@@ -10,17 +10,12 @@ export const SOURCEKIT_LSP: ServerSpec = {
     "compile_commands.json",
     "compile_flags.txt",
   ],
-  requiresRootMarker: false,
   program: "sourcekit-lsp",
   probe: ["--help"],
-  arguments: [],
-  install: null,
-  runtime: null,
   installHint:
     "Install a Swift toolchain: Xcode or Command Line Tools on macOS, or from https://www.swift.org/install",
   initializationOptions: {
     backgroundIndexing: true,
     backgroundPreparationMode: "enabled",
   },
-  settings: {},
 };

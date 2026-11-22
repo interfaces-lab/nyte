@@ -1,4 +1,5 @@
 import type { Asset, ServerSpec } from "../spec.ts";
+import { rustAssets } from "./rust-targets.ts";
 
 const VERSION = "2026-11-16";
 
@@ -42,40 +43,19 @@ export const RUST_ANALYZER: ServerSpec = {
   name: "rust-analyzer",
   languages: ["rust"],
   rootMarkers: ["Cargo.toml", "rust-project.json"],
-  requiresRootMarker: false,
   program: "rust-analyzer",
-  probe: ["--version"],
-  arguments: [],
   install: {
     kind: "release",
     package: "rust-analyzer",
     version: VERSION,
-    assets: {
-      "darwin-arm64": asset(
-        "aarch64-apple-darwin",
-        "608b7c7d6bec1fcd6c964578b1f8234888afe6d6c0e7915284f1e2fd36ef1343",
-      ),
-      "darwin-x64": asset(
-        "x86_64-apple-darwin",
-        "6901d956b4f2b091343eaf3570944098488f3ffec018987145285ed8253c07d2",
-      ),
-      "linux-arm64": asset(
-        "aarch64-unknown-linux-gnu",
-        "73d8b9b87384b3115a183a8a51db9f7c205ce4c89ea511f3c8c8fea863038a50",
-      ),
-      "linux-x64": asset(
-        "x86_64-unknown-linux-gnu",
-        "4a08727a03094e5114db4438e4bd1d6182cc26eff37d6962115ea1ec1a491ca3",
-      ),
-      "win32-arm64": asset(
-        "aarch64-pc-windows-msvc",
-        "2e8fd876300eeee87afd6de18c79eb17bab425a9b755043c63d5023d58de37b7",
-      ),
-      "win32-x64": asset(
-        "x86_64-pc-windows-msvc",
-        "dbf0c36ec54cf727d34cc40c9994fe71b7d52e3c28a3112c3deca1aba46fbc8f",
-      ),
-    },
+    assets: rustAssets(asset, {
+      "darwin-arm64": "608b7c7d6bec1fcd6c964578b1f8234888afe6d6c0e7915284f1e2fd36ef1343",
+      "darwin-x64": "6901d956b4f2b091343eaf3570944098488f3ffec018987145285ed8253c07d2",
+      "linux-arm64": "73d8b9b87384b3115a183a8a51db9f7c205ce4c89ea511f3c8c8fea863038a50",
+      "linux-x64": "4a08727a03094e5114db4438e4bd1d6182cc26eff37d6962115ea1ec1a491ca3",
+      "win32-arm64": "2e8fd876300eeee87afd6de18c79eb17bab425a9b755043c63d5023d58de37b7",
+      "win32-x64": "dbf0c36ec54cf727d34cc40c9994fe71b7d52e3c28a3112c3deca1aba46fbc8f",
+    }),
   },
   runtime: {
     program: "cargo",

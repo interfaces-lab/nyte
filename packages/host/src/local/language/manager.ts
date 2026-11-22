@@ -34,7 +34,7 @@ import type { Place } from "./lsp.ts";
 import { openProject, passesProbe } from "./project.ts";
 import { connectLsp, LspError, METHOD_NOT_FOUND, REQUEST_CANCELLED } from "./rpc.ts";
 import { findServers } from "./servers.ts";
-import type { ServerSpec } from "./spec.ts";
+import type { CompleteSpec } from "./spec.ts";
 import type { Document, Run, Servers, Slot, Synced, Target } from "./state.ts";
 
 export const RESTART_LIMIT = { restarts: 3, windowMs: 3 * 60_000 } as const;
@@ -136,7 +136,7 @@ export function localLanguage(
     slot.idle.unref?.();
   };
 
-  const findSlot = (spec: ServerSpec, root: string): Slot => {
+  const findSlot = (spec: CompleteSpec, root: string): Slot => {
     const key = `${spec.name}\u0000${root}`;
     const found = slots.get(key);
 

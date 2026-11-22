@@ -112,9 +112,7 @@ export const BASH_LANGUAGE_SERVER: ServerSpec = {
   name: "bash-language-server",
   languages: ["bash"],
   rootMarkers: [".shellcheckrc", ".git"],
-  requiresRootMarker: false,
   program: "bash-language-server",
-  probe: ["--version"],
   arguments: ["start"],
   install: {
     kind: "npm",
@@ -123,9 +121,7 @@ export const BASH_LANGUAGE_SERVER: ServerSpec = {
     packages,
     entry: "node_modules/bash-language-server/out/cli.js",
   },
-  runtime: null,
   installHint: "Install the Bash language server: npm install -g bash-language-server",
-  initializationOptions: null,
   settings: { bashIde: SETTINGS },
   async prepare(project) {
     const shellcheck = await project.tool("shellcheck", ["--version"], SHELLCHECK);

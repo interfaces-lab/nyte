@@ -20,10 +20,8 @@ export const GOPLS: ServerSpec = {
   name: "gopls",
   languages: ["go"],
   rootMarkers: ["go.work", "go.mod"],
-  requiresRootMarker: false,
   program: "gopls",
   probe: ["version"],
-  arguments: [],
   install: {
     kind: "toolchain",
     package: "gopls",
@@ -33,7 +31,6 @@ export const GOPLS: ServerSpec = {
     env: { GOBIN: INSTALL_FOLDER },
     bin: "gopls",
   },
-  runtime: null,
   installHint: "Install gopls: go install golang.org/x/tools/gopls@latest",
   initializationOptions: OPTIONS,
   settings: { gopls: OPTIONS },

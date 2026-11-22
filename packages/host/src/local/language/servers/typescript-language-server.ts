@@ -38,12 +38,9 @@ export const TYPESCRIPT_LANGUAGE_SERVER: ServerSpec = {
   name: "typescript-language-server",
   languages: ["typescript"],
   rootMarkers: ["tsconfig.json", "jsconfig.json", "package.json"],
-  requiresRootMarker: false,
   program: "typescript-language-server",
-  probe: ["--version"],
   arguments: ["--stdio"],
   install: INSTALL,
-  runtime: null,
   installHint:
     "Install the TypeScript language server: npm install -g typescript-language-server typescript",
   initializationOptions: { preferences: PREFERENCES },

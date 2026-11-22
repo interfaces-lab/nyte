@@ -1,5 +1,5 @@
 import type { ServerSpec } from "../spec.ts";
-import packages from "./vscode-langservers-extracted.lock.json" with { type: "json" };
+import { langserversExtracted } from "./vscode-langservers-extracted.ts";
 
 export const CSS_SETTINGS = {
   validate: true,
@@ -48,18 +48,10 @@ export const VSCODE_CSS_LANGUAGE_SERVER: ServerSpec = {
   name: "vscode-css-language-server",
   languages: ["css"],
   rootMarkers: ["package.json"],
-  requiresRootMarker: false,
   program: "vscode-css-language-server",
   probe: null,
   arguments: ["--stdio"],
-  install: {
-    kind: "npm",
-    package: "vscode-langservers-extracted",
-    version: "4.10.0",
-    packages,
-    entry: "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
-  },
-  runtime: null,
+  install: langserversExtracted("vscode-css-language-server"),
   installHint: "Install the CSS language server: npm install -g vscode-langservers-extracted",
   initializationOptions: {
     handledSchemas: ["file"],

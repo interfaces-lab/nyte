@@ -1,8 +1,8 @@
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Install, ServerSpec } from "../spec.ts";
+import type { ServerSpec } from "../spec.ts";
 import { findPackage } from "./packages.ts";
-import packages from "./vscode-langservers-extracted.lock.json" with { type: "json" };
+import { langserversExtracted } from "./vscode-langservers-extracted.ts";
 
 const BASE_SETTINGS = {
   validate: "probe",
@@ -25,14 +25,6 @@ const BASE_SETTINGS = {
   workingDirectory: { mode: "location" },
 } as const;
 
-const INSTALL: Install = {
-  kind: "npm",
-  package: "vscode-langservers-extracted",
-  version: "4.10.0",
-  packages,
-  entry: "node_modules/vscode-langservers-extracted/bin/vscode-eslint-language-server",
-};
-
 export const VSCODE_ESLINT_LANGUAGE_SERVER: ServerSpec = {
   name: "vscode-eslint-language-server",
   languages: ["typescript"],
@@ -54,8 +46,7 @@ export const VSCODE_ESLINT_LANGUAGE_SERVER: ServerSpec = {
   program: "vscode-eslint-language-server",
   probe: null,
   arguments: ["--stdio"],
-  install: INSTALL,
-  runtime: null,
+  install: langserversExtracted("vscode-eslint-language-server"),
   installHint: "Install the ESLint language server: npm install -g vscode-langservers-extracted",
   initializationOptions: {},
   settings: BASE_SETTINGS,

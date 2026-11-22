@@ -16,9 +16,9 @@ import { VSCODE_ESLINT_LANGUAGE_SERVER } from "./servers/vscode-eslint-language-
 import { VSCODE_HTML_LANGUAGE_SERVER } from "./servers/vscode-html-language-server.ts";
 import { VSCODE_JSON_LANGUAGE_SERVER } from "./servers/vscode-json-language-server.ts";
 import { YAML_LANGUAGE_SERVER } from "./servers/yaml-language-server.ts";
-import type { ServerSpec } from "./spec.ts";
+import type { CompleteSpec } from "./spec.ts";
 
-export const SERVERS: readonly ServerSpec[] = [
+export const SERVERS: readonly CompleteSpec[] = [
   CLANGD,
   GOPLS,
   TY,
@@ -34,14 +34,23 @@ export const SERVERS: readonly ServerSpec[] = [
   VSCODE_CSS_LANGUAGE_SERVER,
   VSCODE_HTML_LANGUAGE_SERVER,
   MARKSMAN,
-];
+].map((spec) => ({
+  requiresRootMarker: false,
+  probe: ["--version"],
+  arguments: [],
+  install: null,
+  runtime: null,
+  initializationOptions: null,
+  settings: {},
+  ...spec,
+}));
 
 export async function findServers(
   path: string,
   workspace: string,
 ): Promise<{
   readonly languageId: string;
-  readonly servers: readonly { readonly spec: ServerSpec; readonly root: string }[];
+  readonly servers: readonly { readonly spec: CompleteSpec; readonly root: string }[];
 } | null> {
   const language = findLanguage(path);
 
@@ -61,7 +70,7 @@ export async function findServers(
 }
 
 async function findMarkedFolder(
-  spec: ServerSpec,
+  spec: CompleteSpec,
   path: string,
   workspace: string,
 ): Promise<string | null> {

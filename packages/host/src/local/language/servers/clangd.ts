@@ -28,10 +28,7 @@ export const CLANGD: ServerSpec = {
     "meson.build",
     "Makefile",
   ],
-  requiresRootMarker: false,
   program: "clangd",
-  probe: ["--version"],
-  arguments: [],
   install: {
     kind: "release",
     package: "clangd",
@@ -49,9 +46,7 @@ export const CLANGD: ServerSpec = {
       ),
     },
   },
-  runtime: null,
   installHint:
     "Install clangd: brew install llvm, apt install clangd, or download from github.com/clangd/clangd/releases",
   initializationOptions: { clangdFileStatus: true, fallbackFlags: [] },
-  settings: {},
 };

@@ -82,21 +82,35 @@ export interface ServerSpec {
   readonly name: string;
   readonly languages: readonly LanguageName[];
   readonly rootMarkers: readonly string[];
-  readonly requiresRootMarker: boolean;
+  readonly requiresRootMarker?: boolean;
   readonly program: string;
-  readonly probe: readonly string[] | null;
-  readonly arguments: readonly string[];
+  readonly probe?: readonly string[] | null;
+  readonly arguments?: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
-  readonly install: Install | null;
-  readonly runtime: {
+  readonly install?: Install | null;
+  readonly runtime?: {
     readonly program: string;
     readonly probe: readonly string[];
     readonly installHint: string;
   } | null;
   readonly installHint: string;
-  readonly initializationOptions: Json;
-  readonly settings: Json;
+  readonly initializationOptions?: Json;
+  readonly settings?: Json;
   readonly replies?: Readonly<Record<string, Json>>;
   readVersion?(reported: string): string | null;
   prepare?(project: Project): Promise<Prepared>;
 }
+
+export type CompleteSpec = ServerSpec &
+  Required<
+    Pick<
+      ServerSpec,
+      | "requiresRootMarker"
+      | "probe"
+      | "arguments"
+      | "install"
+      | "runtime"
+      | "initializationOptions"
+      | "settings"
+    >
+  >;

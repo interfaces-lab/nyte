@@ -3,7 +3,7 @@ import type { Json, LanguageServerId, LanguageServerState, WorkspaceEdit } from 
 import type { Registration, ServerCapabilities } from "./capabilities.ts";
 import type { ActionPlan, Place, readCompletionItem } from "./lsp.ts";
 import type { LspConnection } from "./rpc.ts";
-import type { ServerSpec } from "./spec.ts";
+import type { CompleteSpec } from "./spec.ts";
 
 export interface Run {
   readonly id: LanguageServerId;
@@ -20,7 +20,7 @@ export interface Run {
 }
 
 export interface Slot {
-  readonly spec: ServerSpec;
+  readonly spec: CompleteSpec;
   readonly root: string;
   state: LanguageServerState;
   run: Run | null;

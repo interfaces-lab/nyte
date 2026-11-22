@@ -1,23 +1,15 @@
 import type { ServerSpec } from "../spec.ts";
 import { CSS_SETTINGS } from "./vscode-css-language-server.ts";
-import packages from "./vscode-langservers-extracted.lock.json" with { type: "json" };
+import { langserversExtracted } from "./vscode-langservers-extracted.ts";
 
 export const VSCODE_HTML_LANGUAGE_SERVER: ServerSpec = {
   name: "vscode-html-language-server",
   languages: ["html"],
   rootMarkers: ["package.json"],
-  requiresRootMarker: false,
   program: "vscode-html-language-server",
   probe: null,
   arguments: ["--stdio"],
-  install: {
-    kind: "npm",
-    package: "vscode-langservers-extracted",
-    version: "4.10.0",
-    packages,
-    entry: "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server",
-  },
-  runtime: null,
+  install: langserversExtracted("vscode-html-language-server"),
   installHint: "Install the HTML language server: npm install -g vscode-langservers-extracted",
   initializationOptions: {
     embeddedLanguages: { css: true, javascript: true },

@@ -21,9 +21,7 @@ export const MARKSMAN: ServerSpec = {
   name: "marksman",
   languages: ["markdown"],
   rootMarkers: [".marksman.toml", ".git"],
-  requiresRootMarker: false,
   program: "marksman",
-  probe: ["--version"],
   arguments: ["server"],
   install: {
     kind: "release",
@@ -49,9 +47,6 @@ export const MARKSMAN: ServerSpec = {
       ),
     },
   },
-  runtime: null,
   installHint:
     "Install Marksman: brew install marksman, or download a release from github.com/artempyanykh/marksman",
-  initializationOptions: null,
-  settings: {},
 };

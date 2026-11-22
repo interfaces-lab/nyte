@@ -1,23 +1,15 @@
 import type { ServerSpec } from "../spec.ts";
 import schemas from "./vscode-json-schemas.json" with { type: "json" };
-import packages from "./vscode-langservers-extracted.lock.json" with { type: "json" };
+import { langserversExtracted } from "./vscode-langservers-extracted.ts";
 
 export const VSCODE_JSON_LANGUAGE_SERVER: ServerSpec = {
   name: "vscode-json-language-server",
   languages: ["json"],
   rootMarkers: ["package.json"],
-  requiresRootMarker: false,
   program: "vscode-json-language-server",
   probe: null,
   arguments: ["--stdio"],
-  install: {
-    kind: "npm",
-    package: "vscode-langservers-extracted",
-    version: "4.10.0",
-    packages,
-    entry: "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
-  },
-  runtime: null,
+  install: langserversExtracted("vscode-json-language-server"),
   installHint: "Install the JSON language server: npm install -g vscode-langservers-extracted",
   initializationOptions: {
     handledSchemaProtocols: ["https", "http", "file"],

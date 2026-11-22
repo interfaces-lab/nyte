@@ -39,9 +39,7 @@ export const YAML_LANGUAGE_SERVER: ServerSpec = {
   name: "yaml-language-server",
   languages: ["yaml"],
   rootMarkers: [".git"],
-  requiresRootMarker: false,
   program: "yaml-language-server",
-  probe: ["--version"],
   arguments: ["--stdio"],
   install: {
     kind: "npm",
@@ -50,9 +48,7 @@ export const YAML_LANGUAGE_SERVER: ServerSpec = {
     packages,
     entry: "node_modules/yaml-language-server/bin/yaml-language-server",
   },
-  runtime: null,
   installHint: "Install the YAML language server: npm install -g yaml-language-server",
-  initializationOptions: null,
   settings: {
     yaml: YAML_SETTINGS,
     http: { proxy: "", proxyStrictSSL: false },
