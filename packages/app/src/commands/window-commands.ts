@@ -113,7 +113,9 @@ function closeFocusedWorkbenchTab(): boolean {
 
   const activeFile = tabSlot(shown) === EDITOR_SLOT ? activeEditorFile(view) : undefined;
 
-  void closeTab(viewKey, activeFile?.id ?? tabSlot(shown));
+  void closeTab(viewKey, activeFile?.id ?? tabSlot(shown)).then((outcome) => {
+    if (activeFile !== undefined && outcome.kind === "closed") fileActions.focusActive(viewKey);
+  });
 
   return true;
 }

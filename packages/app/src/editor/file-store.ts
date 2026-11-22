@@ -66,6 +66,8 @@ interface FileState {
 }
 
 export interface FileTab extends FileNavigation, FileState {
+  /** The tab was asked to take the keyboard, and its editor hasn't yet. */
+  readonly wantsFocus: boolean;
   readonly displayPath: string;
   readonly external: boolean;
   readonly id: WorkbenchTabId;
@@ -188,6 +190,7 @@ function fileKey(key: WorkbenchViewKey, path: string): string {
 
 export function createFileTabStore(store: WorkbenchStore = workbench) {
   const navigations = new Map<WorkbenchTabId, FileNavigation>();
+  const pendingFocus = new Set<WorkbenchTabId>();
   const files = new Map<string, FileState>();
   const buffers = new Map<string, HeldDocument>();
   const views = new Map<WorkbenchViewKey, FileViewRuntime>();
@@ -235,6 +238,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
         {
           ...navigation(tab.id),
           ...state,
+          wantsFocus: pendingFocus.has(tab.id),
           id: tab.id,
           path: tab.path,
           group: tab.group,
@@ -355,6 +359,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
 
     if (tab === undefined) return;
     navigations.delete(id);
+    pendingFocus.delete(id);
     releaseTab(key, id, tab.path);
 
     if (!fileTabs(key).some((other) => other.id !== id && other.path === tab.path)) {
@@ -479,6 +484,18 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       return () => {
         if (places.get(id) === read) places.delete(id);
       };
+    },
+    focusActive(key: WorkbenchViewKey): void {
+      const active = activeEditorFile(store.getView(key));
+
+      pendingFocus.clear();
+
+      if (active === undefined) return;
+      pendingFocus.add(active.id);
+      commit(key);
+    },
+    takeFocus(id: WorkbenchTabId): boolean {
+      return pendingFocus.delete(id);
     },
     reveal(key: WorkbenchViewKey, displayPath: string): void {
       const current = getRuntimeView(key);

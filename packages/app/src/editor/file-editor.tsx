@@ -587,6 +587,15 @@ export function TextFileEditor({
     return true;
   };
 
+  const takeKeyboard = (editor: Pick<Editor, "focus" | "getViewState" | "setSelections">): void => {
+    if ((editor.getViewState().selections ?? []).length === 0) {
+      const start = { line: 0, character: 0 };
+
+      editor.setSelections([{ start, end: start, direction: "none" }]);
+    }
+    editor.focus({ preventScroll: true });
+  };
+
   const attachEditor = (editor: ItemEditor): void => {
     if (editor.getFile() === undefined || attached.current?.editor === editor) return;
     const source = documentEditor(editor);
@@ -599,6 +608,8 @@ export function TextFileEditor({
     if (!showTarget(editor) && scrollTop.current > 0) {
       viewer.current?.scrollTo({ type: "position", position: scrollTop.current });
     }
+
+    if (active && fileActions.takeFocus(file.id)) takeKeyboard(editor);
   };
 
   const [latestEditor] = useState(() => latestValue<ItemEditorCallbacks | undefined>(undefined));
@@ -624,6 +635,13 @@ export function TextFileEditor({
 
     if (editor !== undefined) showCurrentTarget(editor);
   }, [active, file.path, file.target, navigationRevision]);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- hands the keyboard to the imperative editor once it is attached
+  useLayoutEffect(() => {
+    const editor = attached.current?.editor;
+
+    if (active && editor !== undefined && fileActions.takeFocus(file.id)) takeKeyboard(editor);
+  }, [active, file.id, file.wantsFocus]);
 
   const discard = async (): Promise<void> => {
     if (buffer.getSnapshot().status.kind === "saving") {
