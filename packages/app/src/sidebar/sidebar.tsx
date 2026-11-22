@@ -36,7 +36,7 @@ import { firstSettingsSection } from "../settings/index.ts";
 import type { SettingsSection } from "../settings/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { SidebarFooter } from "./account-footer.tsx";
-import { folderPicker } from "../panes/open-workspace.tsx";
+import { activateWorkspace, folderPicker } from "../panes/open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { actionIcons } from "./action-icons.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
@@ -67,7 +67,6 @@ import {
   deriveShelf,
 } from "./sidebar-view.ts";
 import type { ShelfHold } from "./sidebar-view.ts";
-import { activateWorkspace } from "./use-show-session.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 
 function listedNeighbours(

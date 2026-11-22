@@ -7,7 +7,7 @@ import type { HostState } from "../contract/bridge.ts";
 import type { ArrivalSubject, DesktopWindowOpen } from "../contract/desktop-window.ts";
 import { focusWithin, keyOwner } from "../lib/focus-owner.ts";
 import { shellActions } from "../tabs/shell-state.ts";
-import { folderPicker } from "../panes/open-workspace.tsx";
+import { activateWorkspace, folderPicker } from "../panes/open-workspace.tsx";
 import { APP_ACTIONS, clientCapabilities } from "../contract/client-actions.ts";
 import type { AppAction } from "../contract/client-actions.ts";
 import { focusNextPane, splitPanes } from "../panes/pane-context.tsx";
@@ -21,7 +21,6 @@ import {
   namesSettingsSection,
   showsSettingsSection,
 } from "../settings/sections.ts";
-import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { closeTab, launch, toggleExplorer } from "../workbench/commands.ts";

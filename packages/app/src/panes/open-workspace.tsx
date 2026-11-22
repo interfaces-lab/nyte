@@ -11,6 +11,7 @@ import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
+import type { HostState } from "../contract/nyte.ts";
 import type { HostBridge, OpenWorkspaceOutcome } from "../contract/bridge.ts";
 
 const styles = create({
@@ -91,6 +92,23 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
       return _exhaustive;
     }
   }
+}
+
+export async function activateWorkspace(path: string | null): Promise<boolean> {
+  const current = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path ?? null;
+
+  if (path === current) return true;
+
+  if (path === null) {
+    commitHostWorkspace(undefined);
+
+    return true;
+  }
+
+  const outcome = await nyte.host.openWorkspace({ path });
+  handleOpenOutcome(outcome);
+
+  return outcome.kind === "opened";
 }
 
 let failedShown = false;
