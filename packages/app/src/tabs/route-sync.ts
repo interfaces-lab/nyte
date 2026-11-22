@@ -9,7 +9,7 @@ export interface FolderFollow {
   readonly wanted: string | null;
 }
 
-export type FollowStep =
+type FollowStep =
   | { readonly kind: "none" }
   | { readonly kind: "activate"; readonly folder: string | null };
 

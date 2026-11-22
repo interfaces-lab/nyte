@@ -27,7 +27,7 @@ export type Page = CustomizePage | { readonly kind: "project"; readonly projectI
 
 export type Place = PaneSelection | Page;
 
-export type View =
+type View =
   | { readonly kind: "page"; readonly page: Page }
   | { readonly kind: "panes"; readonly layout: Layout<PaneContent> }
   | { readonly kind: "preview"; readonly layout: Layout<PaneContent> };
@@ -41,12 +41,12 @@ export interface LastingTab extends Tab {
   readonly view: Exclude<View, { readonly kind: "preview" }>;
 }
 
-export interface ClosedTab {
+interface ClosedTab {
   readonly tab: LastingTab;
   readonly index: number;
 }
 
-export interface HiddenPane {
+interface HiddenPane {
   readonly sessionId: SessionId;
   readonly tabId: string;
   readonly pane: PaneId;
@@ -108,7 +108,7 @@ const CLOSED_LIMIT = 25;
 
 const RECENT_LIMIT = 50;
 
-export function showsPage(place: Place): place is Page {
+function showsPage(place: Place): place is Page {
   return place.kind === "customize" || place.kind === "project";
 }
 
@@ -128,7 +128,7 @@ export function tabPlace(tab: Tab): Place {
   return tab.view.kind === "page" ? tab.view.page : activeSelection(tab.view.layout);
 }
 
-export function findChatTab(state: WindowState): Tab | undefined {
+function findChatTab(state: WindowState): Tab | undefined {
   const id = [state.activeTabId, ...state.recent].find((candidate) =>
     state.tabs.some((tab) => tab.id === candidate && tab.view.kind !== "page"),
   );
