@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { findLanguage } from "@nyte-ai/schema";
 import { GOPLS } from "./servers/gopls.ts";
+import { MARKSMAN } from "./servers/marksman.ts";
 import { OXLINT } from "./servers/oxlint.ts";
 import { RUFF } from "./servers/ruff.ts";
 import { RUST_ANALYZER } from "./servers/rust-analyzer.ts";
@@ -18,6 +19,7 @@ export const SERVERS: readonly ServerSpec[] = [
   TYPESCRIPT_LANGUAGE_SERVER,
   VSCODE_ESLINT_LANGUAGE_SERVER,
   OXLINT,
+  MARKSMAN,
 ];
 
 export async function findServers(
