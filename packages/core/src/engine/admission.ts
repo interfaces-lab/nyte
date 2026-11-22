@@ -407,7 +407,14 @@ async function admit(sending: Sending): Promise<SendReceipt> {
 
     const outcome = await commit(kernel, [
       await admitted(kernel, session, head, inbox, [...inbox.messages, message.id], message),
-      await pendingReceipt(kernel.store, session, id, digest, reservation),
+      await pendingReceipt(
+        kernel.store,
+        session,
+        id,
+        digest,
+        sending.context.principal,
+        reservation,
+      ),
     ]);
 
     if (outcome.kind === "stale") {
@@ -498,6 +505,7 @@ async function revise(sending: Sending, target: MessageId, gated: Gated, keyed: 
                 kind: "send",
                 digest: keyed.digest,
                 outcome: null,
+                principal: sending.context.principal,
               }),
               expect: "absent" as const,
             },
@@ -606,7 +614,7 @@ async function editGated(
         [...checked.inbox.messages, record.id],
         record,
       ),
-      await pendingReceipt(kernel.store, session, id, digest, "absent"),
+      await pendingReceipt(kernel.store, session, id, digest, sending.context.principal, "absent"),
     ]);
 
     dev("admission", "edit", { session, head, target, outcome: outcome.kind });
@@ -621,14 +629,14 @@ async function editGated(
     return replayed === null ? STALE : { kind: "replayed", receipt: replayed };
   });
 
+  const reserved = { id, kind: "send", digest, principal: sending.context.principal } as const;
+
   switch (edited.kind) {
     case "replayed":
       return edited.receipt;
 
     case "failed":
-      if (
-        !(await reserve(kernel, session, { id, kind: "send", digest, outcome: edited.outcome }))
-      ) {
+      if (!(await reserve(kernel, session, { ...reserved, outcome: edited.outcome }))) {
         return (
           (await readReplayReceipt(kernel, session, gated)) ?? sendReceipt(kernel, session, id)
         );
@@ -638,7 +646,7 @@ async function editGated(
     case "summarize": {
       const release = holdSummary(kernel, session, id);
 
-      if (!(await reserve(kernel, session, { id, kind: "send", digest, outcome: null }))) {
+      if (!(await reserve(kernel, session, { ...reserved, outcome: null }))) {
         release();
 
         return (

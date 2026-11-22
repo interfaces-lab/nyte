@@ -3,6 +3,7 @@ import type {
   HeadName,
   MessageId,
   MessageSource,
+  PrincipalId,
   ReceiptId,
   RefUpdate,
   RunId,
@@ -90,11 +91,12 @@ export async function pendingReceipt(
   session: SessionId,
   id: ReceiptId,
   digest: string,
+  principal: PrincipalId,
   expect: RefUpdate["expect"],
 ): Promise<RefUpdate> {
   return {
     name: receiptRef(session, id),
-    target: await put(store, "receipt", { id, kind: "send", digest, outcome: null }),
+    target: await put(store, "receipt", { id, kind: "send", digest, outcome: null, principal }),
     expect,
   };
 }

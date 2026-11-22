@@ -1,10 +1,10 @@
-import type { PartId, RunEnd, RunId, SessionId } from "@nyte-ai/schema";
+import type { HeadName, PartId, PrincipalId, RunEnd, RunId, SessionId } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
 import type { FoldState } from "../contract/fold.ts";
 import type { PartRecord } from "../contract/records.ts";
 import { LOCAL } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import { readSession } from "../store/session.ts";
+import { readReceipt, readSession } from "../store/session.ts";
 
 export async function withFold<T>(
   kernel: Kernel,
@@ -20,6 +20,28 @@ export async function withFold<T>(
   } finally {
     hold.release();
   }
+}
+
+export async function findSender(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+): Promise<PrincipalId | null> {
+  const latest = await withFold(kernel, session, (state) =>
+    state.heads
+      .get(head)
+      ?.messages.findLast(
+        (message) =>
+          message.kind === "user" &&
+          message.source.kind === "user" &&
+          message.status.kind === "landed",
+      ),
+  );
+
+  if (latest === undefined) return null;
+  const receipt = (await readReceipt(kernel.store, session, latest.id))?.record;
+
+  return receipt?.kind === "send" ? (receipt.principal ?? null) : null;
 }
 
 export function liveParts(

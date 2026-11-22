@@ -51,7 +51,7 @@ import { loadedTools } from "./transcript.ts";
 import { stepPluginApi } from "../extend/plugin-api.ts";
 import { offeredTools, toolSource } from "../extend/registry.ts";
 import { changesEvents } from "../fold/changes.ts";
-import { withFold } from "../watch/reads.ts";
+import { findSender, withFold } from "../watch/reads.ts";
 import { settling } from "../store/parts.ts";
 import { partRef, runRef } from "../store/refs.ts";
 import {
@@ -861,6 +861,7 @@ export function createInvocation(
     },
     workspace: sdk.workspace(input.workspace),
     env: input.env,
+    sender: () => findSender(kernel, session, head),
     progress(update) {
       publishPatch(kernel, session, run, {
         kind: "patch",
