@@ -1,9 +1,7 @@
 import { isJsonObject } from "@nyte-ai/schema";
 import type {
-  BlobId,
   CommitId,
   Configuration,
-  ExcerptSource,
   HeadName,
   Json,
   MessageSource,
@@ -25,7 +23,6 @@ import type {
   TextContent,
   ThinkingContent,
   ToolResultMessage,
-  UserMessage,
 } from "@nyte-ai/schema/model";
 import type { Models } from "@nyte-ai/ai";
 import { estimateContextTokens, estimateTextTokens } from "@nyte-ai/ai/utils/estimate";
@@ -36,12 +33,11 @@ import { decodeRunRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { walkCommitPath } from "../fold/paths.ts";
 import { withFold } from "../watch/reads.ts";
-import { modelImage } from "./images.ts";
+import { fileContent, userContent } from "./user-content.ts";
 import { THOUGHTS } from "./open-parts.ts";
 import { runRef } from "../store/refs.ts";
 import { load, readPositionCommit, requireSession, START } from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
-import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
 import { projectSections } from "./project-prompt.ts";
 import { resolveSections, settleSystemPrompt, systemSections } from "./prompt-sections.ts";
@@ -89,10 +85,6 @@ const CONTINUE =
 const projections = new WeakMap<object, CommitId>();
 
 const summaries = new WeakSet<Message>();
-
-const IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
-
-const imageCache = new WeakMap<Kernel, Map<BlobId, readonly (TextContent | ImageContent)[]>>();
 
 export function projectedCommit(message: Message): CommitId | null {
   return projections.get(message) ?? null;
@@ -191,8 +183,9 @@ async function readLoads(
         checked.kind === "invalid" ||
         checked.value.phase !== "settled" ||
         checked.value.outcome.kind !== "ok"
-      )
+      ) {
         return [];
+      }
       const output = await check(definition.output, checked.value.outcome.output);
 
       return output.kind === "invalid" ? [] : [[step.commit, definition.loads(output.value)]];
@@ -433,8 +426,9 @@ async function conversation(
       );
     }
 
-    for (const call of ordered)
+    for (const call of ordered) {
       push(await toolResult(kernel, call.id, call.state, call.at, input.images), call.commit);
+    }
 
     release();
   };
@@ -485,8 +479,9 @@ async function conversation(
     if (
       part.partKind === "tool" &&
       [...part.id.matchAll(/:/g)].some((colon) => calls.has(part.id.slice(0, colon.index)))
-    )
+    ) {
       return;
+    }
 
     if (part.partKind === "text" || part.partKind === "thinking" || part.partKind === "tool") {
       const blocks = await assistantBlocks(part, step.record.run);
@@ -510,8 +505,9 @@ async function conversation(
           group.run !== step.record.run ||
           (call === null && group.calls.length > 0) ||
           (call !== null && group.response !== null && response !== group.response))
-      )
+      ) {
         await flush();
+      }
 
       if (cut !== null) continueAfter(cut);
 
@@ -551,8 +547,9 @@ async function conversation(
     await flush();
     const note = await renderPartFallback(kernel, part);
 
-    if (note !== null)
+    if (note !== null) {
       push({ role: "user", content: note, timestamp: step.record.at }, step.commit);
+    }
   };
 
   for (const step of steps) {
@@ -572,8 +569,9 @@ async function conversation(
     input.run !== null &&
     trailing.run === input.run &&
     trailing.calls.length === 0
-  )
+  ) {
     continueAfter(trailing);
+  }
 
   const answered = answers.at(-1);
 
@@ -600,8 +598,9 @@ async function assistantBlocks(
   if (part.partKind === "text") {
     const checked = await check(text.state, part.state);
 
-    if (checked.kind === "invalid" || checked.value.markdown === "")
+    if (checked.kind === "invalid" || checked.value.markdown === "") {
       return { content: [], call: null };
+    }
     const signature = checked.value.signature;
 
     return {
@@ -629,8 +628,9 @@ async function assistantBlocks(
 
   const checked = await check(tool.state, part.state);
 
-  if (checked.kind === "invalid" || checked.value.phase !== "settled")
+  if (checked.kind === "invalid" || checked.value.phase !== "settled") {
     return { content: [], call: null };
+  }
   const settled = checked.value;
 
   return {
@@ -666,8 +666,9 @@ function reconstructThinkingContent(markdown: string, signature: Json | null): T
         typeof thought.length === "number" &&
         (thought.signature === null || typeof thought.signature === "string"),
     )
-  )
+  ) {
     return markdown === "" ? [] : [{ type: "thinking", thinking: markdown }];
+  }
 
   let offset = 0;
 
@@ -776,176 +777,6 @@ function reportContent(source: MessageSource, content: UserContent): UserContent
   return content === "" ? title : `${title}\n\n${content}`;
 }
 
-async function userContent(
-  kernel: Kernel,
-  content: UserContent,
-  images: boolean,
-): Promise<UserMessage["content"]> {
-  if (typeof content === "string") return content;
-
-  const parts = await Promise.all(
-    content.map((item): Promise<readonly (TextContent | ImageContent)[]> => {
-      switch (item.kind) {
-        case "text":
-          return Promise.resolve([{ type: "text", text: item.text }]);
-        case "file":
-          return fileContent(kernel, item, images);
-        case "reference":
-          return mentionContent(kernel.store, item).then((mention) => [mention]);
-        case "skill":
-          return Promise.resolve([
-            {
-              type: "text",
-              text: `<skill name="${escapeAttribute(item.name)}" location="${escapeAttribute(item.location)}">\nRead the skill's file at its location and follow it.\n</skill>`,
-            },
-          ]);
-        case "excerpt":
-          return Promise.resolve([
-            {
-              type: "text",
-              text: `<excerpt ${excerptAttributes(item.source)}>\n${fencedExcerpt(item.text)}\n</excerpt>`,
-            },
-          ]);
-      }
-    }),
-  );
-
-  return parts.flat();
-}
-
-async function fileContent(
-  kernel: Kernel,
-  file: { readonly blob: BlobId; readonly mime: string; readonly name?: string },
-  images: boolean,
-): Promise<readonly (TextContent | ImageContent)[]> {
-  const name = file.name ?? file.blob;
-  const image = images && file.mime.startsWith("image/");
-  const cache =
-    imageCache.get(kernel) ?? new Map<BlobId, readonly (TextContent | ImageContent)[]>();
-  imageCache.set(kernel, cache);
-  const cached = image ? cache.get(file.blob) : undefined;
-
-  if (cached !== undefined) {
-    cache.delete(file.blob);
-    cache.set(file.blob, cached);
-
-    return cached.map((part) => ({ ...part }));
-  }
-
-  const reader = await kernel.store.objects.blob(file.blob);
-
-  if (reader === null)
-    return [{ type: "text", text: `[File ${name}, ${file.mime}: no longer stored]` }];
-
-  try {
-    if (!image)
-      return [
-        {
-          type: "text",
-          text: `[File ${name}, ${reader.size === null ? "unknown size" : `${reader.size} bytes`}, ${file.mime}]`,
-        },
-      ];
-    const chunks: Uint8Array[] = [];
-
-    for await (const chunk of reader.chunks()) chunks.push(chunk);
-    const bytes = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
-    let offset = 0;
-
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
-    const content = await modelImage(kernel.images, { bytes, mime: file.mime, name });
-    cache.set(file.blob, content);
-    let size = [...cache.values()].reduce((total, kept) => total + cachedChars(kept), 0);
-
-    for (const [blob, kept] of cache) {
-      if (size <= IMAGE_CACHE_CHARS) break;
-      cache.delete(blob);
-      size -= cachedChars(kept);
-    }
-
-    return content.map((part) => ({ ...part }));
-  } finally {
-    await reader.close();
-  }
-}
-
-function cachedChars(content: readonly (TextContent | ImageContent)[]): number {
-  return content.reduce(
-    (total, part) => total + (part.type === "image" ? part.data.length : part.text.length),
-    0,
-  );
-}
-
-async function mentionContent(
-  store: StoreConnection,
-  mention: { readonly path: string; readonly blob?: BlobId },
-): Promise<TextContent> {
-  const reader = mention.blob === undefined ? null : await store.objects.blob(mention.blob);
-
-  if (reader === null) return { type: "text", text: `[Reference: ${mention.path}]` };
-
-  try {
-    const chunks: Uint8Array[] = [];
-
-    for await (const chunk of reader.chunks()) chunks.push(chunk);
-    const decoder = new TextDecoder();
-    const contents = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("");
-
-    return {
-      type: "text",
-      text: `<file path="${escapeAttribute(mention.path)}">\n${contents}${decoder.decode()}\n</file>`,
-    };
-  } finally {
-    await reader.close();
-  }
-}
-
-function excerptAttributes(source: ExcerptSource): string {
-  const attribute = (name: string, value: string): string => `${name}="${escapeAttribute(value)}"`;
-
-  switch (source.kind) {
-    case "diff": {
-      const lines =
-        source.start === source.end
-          ? String(source.start)
-          : `${String(source.start)}-${String(source.end)}`;
-
-      return `source="diff" ${attribute("path", source.path)} side="${source.side}" lines="${lines}"`;
-    }
-
-    case "terminal":
-      return source.command === undefined
-        ? `source="terminal"`
-        : `source="terminal" ${attribute("command", source.command)}`;
-    case "browser": {
-      const page = `source="browser" ${attribute("url", source.url)} ${attribute("selector", source.selector)}`;
-      const region = source.region;
-
-      if (region === undefined) return page;
-
-      return `${page} region="x=${String(Math.round(region.x))} y=${String(Math.round(region.y))} w=${String(Math.round(region.width))} h=${String(Math.round(region.height))}"`;
-    }
-    case "chat":
-      return `source="side chat" ${attribute("title", source.title)}`;
-    case "design": {
-      const file = `source="design" ${attribute("path", source.path)}`;
-
-      return source.frame === null ? file : `${file} ${attribute("frame", source.frame)}`;
-    }
-  }
-}
-
-function fencedExcerpt(text: string): string {
-  return text.replaceAll(/<(\s*)\/(\s*excerpt)/gi, "<$1\\/$2");
-}
-
-function escapeAttribute(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
-}
-
 function parseAttempt(part: string, run: RunId | null): string | null {
   if (run === null || !part.startsWith(`${run}:`)) return null;
 
@@ -979,8 +810,9 @@ function takesSystemUpdates(model: ReturnType<Models["getModel"]>): boolean {
 function resolveModelIdentity(models: Models, ref: ModelRef | null) {
   const model = ref === null ? undefined : models.getModel(ref.provider, ref.id);
 
-  if (model !== undefined)
+  if (model !== undefined) {
     return { api: model.api, provider: model.provider, model: model.variant?.base ?? model.id };
+  }
 
   return { api: "unknown", provider: ref?.provider ?? "unknown", model: ref?.id ?? "unknown" };
 }
