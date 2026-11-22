@@ -41,11 +41,10 @@ export function languageFeatures(
 
   const locate = async (
     feature: LanguageFeature,
-    method: string,
     input: LanguagePosition,
     params: (asked: Asked) => Json = at(input),
   ): Promise<readonly LanguageLocation[]> => {
-    const found = await askEvery(servers, { path: input.path, feature, method }, params, (answer) =>
+    const found = await askEvery(servers, { path: input.path, feature }, params, (answer) =>
       readLocations(answer, servers.place),
     );
 
@@ -59,12 +58,7 @@ export function languageFeatures(
   return {
     async hover(input) {
       const parts = (
-        await askEvery(
-          servers,
-          { path: input.path, feature: "hover", method: "textDocument/hover" },
-          at(input),
-          readHover,
-        )
+        await askEvery(servers, { path: input.path, feature: "hover" }, at(input), readHover)
       ).filter((part) => part !== null);
 
       return parts.length === 0
@@ -74,17 +68,17 @@ export function languageFeatures(
             range: parts.find((part) => part.range !== null)?.range ?? null,
           };
     },
-    definition: (input) => locate("definition", "textDocument/definition", input),
-    typeDefinition: (input) => locate("typeDefinition", "textDocument/typeDefinition", input),
+    definition: (input) => locate("definition", input),
+    typeDefinition: (input) => locate("typeDefinition", input),
     references: (input) =>
-      locate("references", "textDocument/references", input, (asked) => ({
+      locate("references", input, (asked) => ({
         ...at(input)(asked),
         context: { includeDeclaration: input.includeDeclaration },
       })),
     async symbols(input) {
       const blocks = await askEvery(
         servers,
-        { path: input.path, feature: "symbols", method: "textDocument/documentSymbol" },
+        { path: input.path, feature: "symbols" },
         inDocument,
         readSymbols,
       );

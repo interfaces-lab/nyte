@@ -1,5 +1,5 @@
 import type { Json, JsonSchema, LanguageFeature } from "@nyte-ai/schema";
-import { findProvider } from "./capabilities.ts";
+import { findProvider, PROVIDERS } from "./capabilities.ts";
 import { LspError } from "./rpc.ts";
 import type { Document, Servers, Target } from "./state.ts";
 
@@ -46,13 +46,18 @@ export async function ask(
 
 export async function askEvery<T>(
   servers: Servers,
-  input: { readonly path: string; readonly feature: LanguageFeature; readonly method: string },
+  input: { readonly path: string; readonly feature: LanguageFeature },
   params: (asked: Asked) => Json,
   read: (answer: unknown, asked: Asked) => T,
 ): Promise<readonly T[]> {
   const answers = await Promise.all(
     (await findProviders(servers, input.path, input.feature)).map(async (asked) => {
-      const asking = await ask(servers, asked.target, input.method, params(asked));
+      const asking = await ask(
+        servers,
+        asked.target,
+        PROVIDERS[input.feature].method,
+        params(asked),
+      );
 
       return asking instanceof LspError ? [] : [read(asking.answer, asked)];
     }),
