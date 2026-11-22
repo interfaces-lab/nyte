@@ -1,9 +1,9 @@
 ---
 title: language.format
-description: Computes the edits that format a document.
+description: Computes the edits that format a document, or why no server formatted it.
 ---
 
-Computes the edits that format a whole document with the server's formatter, gofmt for Go and TypeScript's for TypeScript and JavaScript. Nothing is written. A file no server handles, or whose server is `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+Computes the edits that format a whole document with the server's formatter, gofmt for Go and TypeScript's for TypeScript and JavaScript. Nothing is written. It answers `edits`, empty when the document is already formatted. A file no server handles, whose server is `missing` or `failed`, or whose server doesn't format documents answers `unavailable` rather than failing, so a client can fall back to [`files.format`](/docs/reference/operations/files/format); [`language.status`](/docs/reference/operations/language/status) says why. A server that errors while formatting answers `failed` with its message.
 
 ## When to call it
 
@@ -28,12 +28,18 @@ Request body:
 Response:
 
 ```json
-[
-  {
-    "range": { "start": { "line": 41, "utf16Column": 0 }, "end": { "line": 41, "utf16Column": 6 } },
-    "text": "\t"
-  }
-]
+{
+  "kind": "edits",
+  "edits": [
+    {
+      "range": {
+        "start": { "line": 41, "utf16Column": 0 },
+        "end": { "line": 41, "utf16Column": 6 }
+      },
+      "text": "\t"
+    }
+  ]
+}
 ```
 
 ## Errors
@@ -84,46 +90,86 @@ Response:
 
 ```json
 {
-  "type": "array",
-  "items": {
-    "type": "object",
-    "required": ["range", "text"],
-    "properties": {
-      "range": {
-        "type": "object",
-        "required": ["start", "end"],
-        "properties": {
-          "start": {
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "edits"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "edits"
+        },
+        "edits": {
+          "type": "array",
+          "items": {
             "type": "object",
-            "required": ["line", "utf16Column"],
+            "required": ["range", "text"],
             "properties": {
-              "line": {
-                "type": "number"
+              "range": {
+                "type": "object",
+                "required": ["start", "end"],
+                "properties": {
+                  "start": {
+                    "type": "object",
+                    "required": ["line", "utf16Column"],
+                    "properties": {
+                      "line": {
+                        "type": "number"
+                      },
+                      "utf16Column": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "end": {
+                    "type": "object",
+                    "required": ["line", "utf16Column"],
+                    "properties": {
+                      "line": {
+                        "type": "number"
+                      },
+                      "utf16Column": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
               },
-              "utf16Column": {
-                "type": "number"
-              }
-            }
-          },
-          "end": {
-            "type": "object",
-            "required": ["line", "utf16Column"],
-            "properties": {
-              "line": {
-                "type": "number"
-              },
-              "utf16Column": {
-                "type": "number"
+              "text": {
+                "type": "string"
               }
             }
           }
         }
-      },
-      "text": {
-        "type": "string"
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unavailable"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failed"
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     }
-  }
+  ]
 }
 ```
 

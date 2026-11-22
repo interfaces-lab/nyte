@@ -143,8 +143,9 @@ export function useRecentWorkspaces(
 
     if (path === null) continue;
 
-    for (const session of group.sessions)
+    for (const session of group.sessions) {
       lastActivity.set(path, Math.max(session.lastActivityAt, lastActivity.get(path) ?? 0));
+    }
   }
 
   const folders = [
@@ -197,6 +198,13 @@ export function useForgetWorkspace() {
   });
 }
 
+export async function trustWorkspace(id: WorkspaceId): Promise<void> {
+  const outcome = await (await connected()).workspace(id).update({ projectResources: true });
+
+  if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
+  await queryClient.invalidateQueries({ queryKey: keys.workspaces });
+}
+
 export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {
   queryClient.setQueryData<HostState>(keys.host, (host) => ({ ...host, workspace }));
 }
@@ -210,7 +218,5 @@ export function workspacePath(workspace: Pick<WorkspaceInfo, "target">): string 
 export function workspaceName(workspace: Pick<WorkspaceInfo, "target">): string {
   const path = workspacePath(workspace);
 
-  return path === null
-    ? workspace.target.kind
-    : (path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path);
+  return path === null ? workspace.target.kind : (path.split(/[\\/]/u).findLast(Boolean) ?? path);
 }

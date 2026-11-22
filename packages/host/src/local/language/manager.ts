@@ -52,7 +52,7 @@ export const IDLE_MS = 10 * 60_000;
 
 const START_DEADLINE_MS = 30_000;
 
-const STOP_GRACE_MS = 2_000;
+const STOP_GRACE_MS = 2000;
 
 const LOG_LINES = 200;
 
@@ -60,19 +60,17 @@ const ApplyEditRequest = compile(Type.Object({ edit: Type.Unknown() }));
 
 const LogMessage = compile(Type.Object({ message: Type.String() }));
 
-type Published = {
+interface Published {
   readonly frame: DiagnosticsFrame;
   readonly raw: readonly Json[];
-};
+}
 
-/**
- * Language servers for one local workspace: one per language and project root, found on PATH
- * (or at the path `servers` pins by program name), restarted after a crash up to
- * `RESTART_LIMIT`, and shut down after `IDLE_MS` without use.
- */
 export function localLanguage(
   env: ExecutionEnv,
-  options?: { readonly servers?: Readonly<Record<string, string>> },
+  options: {
+    readonly trusted: () => Promise<boolean>;
+    readonly servers?: Readonly<Record<string, string>>;
+  },
 ): LanguageService {
   const workspace = env.cwd;
   const slots = new Map<string, Slot>();
@@ -181,15 +179,18 @@ export function localLanguage(
       else if (
         (method === "window/logMessage" || method === "window/showMessage") &&
         LogMessage.Check(params)
-      )
+      ) {
         record(slot, params.message);
+      }
     },
     async request(method: string, params: unknown): Promise<Json> {
-      if (method === "workspace/configuration")
+      if (method === "workspace/configuration") {
         return answerConfiguration(slot.spec.settings, params);
+      }
 
-      if (method === "workspace/workspaceFolders")
+      if (method === "workspace/workspaceFolders") {
         return [{ uri: uri(slot.root), name: basename(slot.root) }];
+      }
 
       if (method === "workspace/applyEdit") return applyEdit(run(), params);
 
@@ -201,11 +202,12 @@ export function localLanguage(
   const applyEdit = (run: Run | null, params: unknown): Json => {
     const collecting = run?.collecting ?? null;
 
-    if (collecting === null || !ApplyEditRequest.Check(params))
+    if (collecting === null || !ApplyEditRequest.Check(params)) {
       return {
         applied: false,
         failureReason: "Nyte takes a server's edits only while it resolves a code action.",
       };
+    }
     const read = readWorkspaceEdit(params.edit, place);
 
     if (read.kind === "refused") return { applied: false, failureReason: read.reason };
@@ -220,11 +222,12 @@ export function localLanguage(
     if (run === null || report === null) return;
 
     if (report.kind === "end") run.progress.delete(report.token);
-    else
+    else {
       run.progress.set(report.token, {
         title: report.title ?? run.progress.get(report.token)?.title ?? "",
         percent: report.percent,
       });
+    }
 
     if (slot.run === run && run.initialized) setState(slot, workingState(run));
   };
@@ -244,8 +247,9 @@ export function localLanguage(
     const path = fileURLToPath(found.uri);
     const document = documents.get(path);
 
-    if (found.version !== null && document !== undefined && document.version !== found.version)
+    if (found.version !== null && document !== undefined && document.version !== found.version) {
       return;
+    }
 
     const frame: DiagnosticsFrame = {
       path: within(path),
@@ -279,18 +283,23 @@ export function localLanguage(
   };
 
   const launch = async (slot: Slot): Promise<Run | null> => {
-    setState(slot, { kind: "starting" });
-    const pinned = options?.servers?.[slot.spec.program];
+    const pinned = options.servers?.[slot.spec.program];
     const executable = await findExecutable(pinned ?? slot.spec.program);
+    slot.executable = executable;
 
     if (executable === null) {
-      slot.executable = null;
       setState(slot, { kind: "missing", hint: slot.spec.hint });
 
       return null;
     }
 
-    slot.executable = executable;
+    if (!(await options.trusted())) {
+      setState(slot, { kind: "untrusted" });
+
+      return null;
+    }
+
+    setState(slot, { kind: "starting" });
 
     const job = await env
       .exec([executable, ...slot.spec.arguments], { cwd: slot.root, stdio: "protocol" })
@@ -415,8 +424,9 @@ export function localLanguage(
 
     if (slot.run === null) return;
 
-    for (const document of documents.values())
+    for (const document of documents.values()) {
       if (document.slot === slot && document.owner === "disk") documents.delete(document.path);
+    }
 
     setState(slot, { kind: "idle" });
     await stop(slot);
@@ -428,7 +438,13 @@ export function localLanguage(
 
     if (slot.run !== null && slot.starting === null) return slot.run.initialized ? slot.run : null;
 
-    if (slot.state.kind === "missing" || slot.state.kind === "failed") return null;
+    if (
+      slot.state.kind === "missing" ||
+      slot.state.kind === "failed" ||
+      slot.state.kind === "untrusted"
+    ) {
+      return null;
+    }
 
     return start(slot);
   };
@@ -459,6 +475,28 @@ export function localLanguage(
     );
   };
 
+  const written = async (path: string): Promise<void> => {
+    const document = documents.get(path);
+    const run = document?.slot.run ?? null;
+
+    if (
+      document?.owner !== "client" ||
+      run === null ||
+      !run.opened.has(path) ||
+      run.capabilities.save === "none" ||
+      (await readText(path)) !== document.text
+    ) {
+      return;
+    }
+
+    const textDocument = { uri: uri(path) };
+
+    run.rpc.notify(
+      "textDocument/didSave",
+      run.capabilities.save === "text" ? { textDocument, text: document.text } : { textDocument },
+    );
+  };
+
   const sync = async (path: string): Promise<Synced | null> => {
     const full = absolute(path);
     const found = findServer(full);
@@ -472,7 +510,7 @@ export function localLanguage(
 
       if (text === null) return null;
 
-      if (!documents.has(full))
+      if (!documents.has(full)) {
         documents.set(full, {
           path: full,
           languageId: found.languageId,
@@ -481,6 +519,7 @@ export function localLanguage(
           text,
           version: 0,
         });
+      }
     }
 
     const document = documents.get(full);
@@ -539,8 +578,9 @@ export function localLanguage(
   });
 
   const findRun = (server: LanguageServerId): { readonly slot: Slot; readonly run: Run } | null => {
-    for (const slot of slots.values())
+    for (const slot of slots.values()) {
       if (slot.run?.id === server && slot.run.initialized) return { slot, run: slot.run };
+    }
 
     return null;
   };
@@ -584,6 +624,8 @@ export function localLanguage(
 
           if (changes.length > 0) run.rpc.notify("workspace/didChangeWatchedFiles", { changes });
         }
+
+        for (const event of next.value) await written(absolute(event.path));
       }
     })().catch(() => {
       watching = null;
@@ -635,7 +677,11 @@ export function localLanguage(
 
       documents.set(full, document);
 
-      if (slot.state.kind === "missing" || slot.state.kind === "failed") {
+      if (
+        slot.state.kind === "missing" ||
+        slot.state.kind === "failed" ||
+        slot.state.kind === "untrusted"
+      ) {
         slot.restarts = [];
         setState(slot, { kind: "idle" });
       }
@@ -649,14 +695,16 @@ export function localLanguage(
     async change(input) {
       const document = documents.get(absolute(input.path));
 
-      if (document === undefined || document.owner !== "client")
+      if (document === undefined || document.owner !== "client") {
         throw new SdkError("unknown", `${input.path} is not open. Open it first.`);
+      }
 
-      if (input.version <= document.version)
+      if (input.version <= document.version) {
         throw new SdkError(
           "stale",
           `${input.path} is at version ${document.version}, so version ${input.version} is stale. Open it again to start over.`,
         );
+      }
 
       document.text = input.changes.reduce(applyTextChange, document.text);
       document.version = input.version;
@@ -753,8 +801,9 @@ export function localLanguage(
     async rename(input) {
       const synced = await sync(input.path);
 
-      if (synced === null)
+      if (synced === null) {
         return { kind: "refused", reason: `No language server can rename in ${input.path}.` };
+      }
 
       const answer = await synced.run.rpc
         .request("textDocument/rename", {
@@ -774,14 +823,31 @@ export function localLanguage(
     },
     codeActions: (input) => codeActions(servers, input),
     resolveCodeAction: (input) => resolveCodeAction(servers, input),
-    format: (input) =>
-      ask(
-        input.path,
-        [],
-        "textDocument/formatting",
-        (target) => ({ textDocument: { uri: target.uri }, options: input.options }),
-        readTextEdits,
-      ),
+    async format(input) {
+      const synced = await sync(input.path);
+
+      if (synced === null || !synced.run.capabilities.formats) {
+        return {
+          kind: "unavailable",
+          reason: `No language server formats ${basename(input.path)}.`,
+        };
+      }
+
+      return synced.run.rpc
+        .request("textDocument/formatting", {
+          textDocument: { uri: uri(synced.document.path) },
+          options: input.options,
+        })
+        .then(
+          (answer) => ({ kind: "edits", edits: readTextEdits(answer) }) as const,
+          (error: unknown) => {
+            if (!(error instanceof LspError)) throw error;
+            record(synced.slot, `textDocument/formatting failed: ${error.message}`);
+
+            return { kind: "failed", reason: error.message } as const;
+          },
+        );
+    },
     signatureHelp: (input) =>
       ask(
         input.path,
@@ -798,6 +864,29 @@ export function localLanguage(
         (target) => ({ textDocument: { uri: target.uri }, range: toLspRange(input.range) }),
         readInlayHints,
       ),
+    async trustChanged(trusted) {
+      if (trusted) {
+        for (const slot of slots.values()) {
+          if (slot.state.kind === "untrusted") {
+            setState(slot, { kind: "idle" });
+
+            if ([...documents.values()].some((document) => document.slot === slot)) {
+              void ready(slot);
+            }
+          }
+        }
+
+        return;
+      }
+
+      await Promise.all(
+        [...slots.values()].map(async (slot) => {
+          if (slot.state.kind === "missing") return;
+          setState(slot, { kind: "untrusted" });
+          await stop(slot);
+        }),
+      );
+    },
     async shutdown() {
       closed = true;
       void watching?.return?.();

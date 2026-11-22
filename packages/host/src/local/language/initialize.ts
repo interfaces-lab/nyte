@@ -4,16 +4,20 @@ import { compile, isJsonObject } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 
-export type Capabilities = {
+export interface Capabilities {
   readonly incremental: boolean;
+  readonly save: "none" | "uri" | "text";
   readonly resolvesCompletion: boolean;
   readonly resolvesCodeAction: boolean;
-};
+  readonly formats: boolean;
+}
 
 export const NO_CAPABILITIES: Capabilities = {
   incremental: false,
+  save: "none",
   resolvesCompletion: false,
   resolvesCodeAction: false,
+  formats: false,
 };
 
 const CAPABILITIES = {
@@ -29,7 +33,7 @@ const CAPABILITIES = {
     executeCommand: {},
   },
   textDocument: {
-    synchronization: { didSave: false, willSave: false, willSaveWaitUntil: false },
+    synchronization: { didSave: true, willSave: false, willSaveWaitUntil: false },
     completion: {
       completionItem: {
         snippetSupport: true,
@@ -90,7 +94,18 @@ const InitializeAnswer = compile(
   Type.Object({
     capabilities: Type.Object({
       textDocumentSync: Type.Optional(
-        Type.Union([Type.Number(), Type.Object({ change: Type.Optional(Type.Number()) })]),
+        Type.Union([
+          Type.Number(),
+          Type.Object({
+            change: Type.Optional(Type.Number()),
+            save: Type.Optional(
+              Type.Union([
+                Type.Boolean(),
+                Type.Object({ includeText: Type.Optional(Type.Boolean()) }),
+              ]),
+            ),
+          }),
+        ]),
       ),
       completionProvider: Type.Optional(
         Type.Object({ resolveProvider: Type.Optional(Type.Boolean()) }),
@@ -101,6 +116,7 @@ const InitializeAnswer = compile(
           Type.Object({ resolveProvider: Type.Optional(Type.Boolean()) }),
         ]),
       ),
+      documentFormattingProvider: Type.Optional(Type.Union([Type.Boolean(), Type.Object({})])),
     }),
     serverInfo: Type.Optional(
       Type.Object({ name: Type.String(), version: Type.Optional(Type.String()) }),
@@ -132,14 +148,22 @@ export function readInitialize(
 ): { readonly capabilities: Capabilities; readonly version: string | null } | null {
   if (!InitializeAnswer.Check(answer)) return null;
   const sync = answer.capabilities.textDocumentSync;
+  const save = typeof sync === "object" ? sync.save : undefined;
   const actions = answer.capabilities.codeActionProvider;
   const version = answer.serverInfo?.version;
 
   return {
     capabilities: {
       incremental: (typeof sync === "number" ? sync : sync?.change) === 2,
+      save:
+        typeof save === "object" && save.includeText === true
+          ? "text"
+          : save === undefined || save === false
+            ? "none"
+            : "uri",
       resolvesCompletion: answer.capabilities.completionProvider?.resolveProvider === true,
       resolvesCodeAction: typeof actions === "object" && actions.resolveProvider === true,
+      formats: (answer.capabilities.documentFormattingProvider ?? false) !== false,
     },
     version: version === undefined ? null : (readGoVersion(version) ?? version),
   };

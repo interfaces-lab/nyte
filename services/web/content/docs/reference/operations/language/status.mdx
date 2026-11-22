@@ -3,7 +3,7 @@ title: language.status
 description: Lists the workspace's language servers and their state.
 ---
 
-Lists one row per language server the workspace has started: its language, program, project root, state, version and executable. A server is `starting`, `ready`, `busy` with a progress title, `missing` with the command that installs it, `failed` with a reason, or `idle` after it shut down for want of use. There is one server per language and project root, the nearest folder holding a `go.mod` or `go.work` for Go and a `tsconfig.json`, `jsconfig.json` or `package.json` for TypeScript and JavaScript.
+Lists one row per language server the workspace has started: its language, program, project root, state, version and executable. A server is `starting`, `ready`, `busy` with a progress title, `missing` with the command that installs it, `untrusted` while the folder isn't trusted, since a server runs code from it, and stopped again when trust is withdrawn, `failed` with a reason, or `idle` after it shut down for want of use. There is one server per language and project root, the nearest folder holding a `go.mod` or `go.work` for Go and a `tsconfig.json`, `jsconfig.json` or `package.json` for TypeScript and JavaScript.
 
 ## When to call it
 
@@ -138,6 +138,16 @@ Response:
               },
               "hint": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "untrusted"
               }
             }
           },

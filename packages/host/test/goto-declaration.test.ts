@@ -10,23 +10,27 @@ import { localLanguage } from "../src/local/language/manager.ts";
 import { findExecutable } from "../src/local/process/command.ts";
 
 /** A spot in a fixture file: the first line holding `line`, at the word `name` in it. */
-type Spot = { readonly file: string; readonly line: string; readonly name: string };
+interface Spot {
+  readonly file: string;
+  readonly line: string;
+  readonly name: string;
+}
 
 /** Where a navigation must land: a fixture file, or a standard library file under GOROOT's `src`. */
-type Place = {
+interface Place {
   readonly file: string;
   readonly line: string;
   readonly name: string;
   readonly root?: "goroot";
-};
+}
 
-type Case = {
+interface Case {
   readonly name: string;
   readonly query: "definition" | "typeDefinition" | "references";
   readonly at: Spot;
   readonly lands: readonly Place[];
   readonly edit?: { readonly file: string; readonly prefix: string };
-};
+}
 
 const at = (file: string, line: string, name: string): Spot => ({ file, line, name });
 
@@ -219,13 +223,16 @@ describe.skipIf((await findExecutable("gopls")) === null)(
     beforeAll(async () => {
       root = await realpath(ROOT);
       goSource = join(execFileSync("go", ["env", "GOROOT"], { encoding: "utf8" }).trim(), "src");
-      language = localLanguage({
-        identity: asId("goto"),
-        cwd: root,
-        files: localFiles(root),
-        exec: localExec(root),
-        close: async () => undefined,
-      });
+      language = localLanguage(
+        {
+          identity: asId("goto"),
+          cwd: root,
+          files: localFiles(root),
+          exec: localExec(root),
+          close: async () => undefined,
+        },
+        { trusted: async () => true },
+      );
     });
 
     afterAll(async () => {
@@ -236,12 +243,13 @@ describe.skipIf((await findExecutable("gopls")) === null)(
       const text = await readFile(join(root, entry.at.file), "utf8");
       const shift = entry.edit?.prefix.split("\n").length ?? 1;
 
-      if (entry.edit !== undefined)
+      if (entry.edit !== undefined) {
         await language.open({
           path: entry.edit.file,
           text: `${entry.edit.prefix}${text}`,
           version: 1,
         });
+      }
 
       try {
         const position = spot(text, entry.at);

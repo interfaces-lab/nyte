@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { FileDocument, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
+import type { FileDocument, WriteOutcome } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { createFileDocument } from "./file-document.ts";
 
@@ -13,7 +13,7 @@ const document: Extract<FileDocument, { readonly kind: "text" }> = {
   scope: "workspace",
   mime: "text/plain",
   contents: "original",
-  encoding: "utf-8",
+  encoding: "utf8",
   version: v1,
 };
 
@@ -48,36 +48,13 @@ test("an external refetch does not advance a dirty file's conflict baseline", as
   });
 });
 
-test("formatting does not overwrite edits made while the formatter was running", async () => {
-  const buffer = createFileDocument(document, "before format");
-  const pending = Promise.withResolvers<FormatOutcome>();
-  let writes = 0;
-
-  const saving = buffer.save({
-    format: () => pending.promise,
-    write: async () => {
-      writes += 1;
-
-      return { kind: "saved", version: v2 };
-    },
-  });
-
-  buffer.edit("new typing");
-  pending.resolve({ kind: "formatted", contents: "formatted old text" });
-  await saving;
-  expect(writes).toBe(0);
-  expect({ ...buffer.getSnapshot(), contents: buffer.text() }).toMatchObject({
-    contents: "new typing",
-    savedContents: "original",
-    status: { kind: "idle" },
-  });
-});
-
 test("formatter failure still saves the unformatted draft", async () => {
   const buffer = createFileDocument(document, "draft");
   const written: string[] = [];
   await buffer.save({
-    format: async () => ({ kind: "unavailable", reason: "No formatter" }),
+    format: async () => {
+      throw new Error("No formatter");
+    },
     write: async (input) => {
       written.push(input.contents);
 
@@ -89,13 +66,18 @@ test("formatter failure still saves the unformatted draft", async () => {
     contents: "draft",
     savedContents: "draft",
     status: { kind: "saved" },
+    formatFailure: "No formatter",
   });
 });
 
 test("failed writes retain formatted text and the old disk version for retry", async () => {
   const buffer = createFileDocument(document, "draft");
   await buffer.save({
-    format: async () => ({ kind: "formatted", contents: "formatted" }),
+    format: async () => {
+      buffer.edit("formatted");
+
+      return null;
+    },
     write: async () => {
       throw new Error("Read-only file");
     },

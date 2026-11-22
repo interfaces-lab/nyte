@@ -7,6 +7,8 @@ export type {
   EditorSelection,
   EditorType,
   EditorViewState,
+  Marker,
+  MarkerSeverity,
   Range,
   TextEdit,
 } from "@pierre/diffs/edit";

@@ -5,7 +5,7 @@ import { cp, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { collectErrors } from "@nyte-ai/app/e2e/errors";
-import { FIXTURES, prepareHome } from "./baseline.ts";
+import { FIXTURES, prepareHome, trustedProject } from "./baseline.ts";
 import { caretStatus, editor, goTo } from "./desk.ts";
 import { launchDesktop } from "./launch.ts";
 import { openChat, setTheme } from "./ui.ts";
@@ -20,14 +20,10 @@ interface Code {
   readonly application: ElectronApplication;
   readonly nyte: Page;
   readonly page: Page;
-  readonly home: string;
+  readonly project: string;
   capture(name: string): Promise<void>;
 }
 
-/**
- * A launch over a seeded home holding cobra and x/tools, with gopls on the login shell's PATH and the
- * user's module cache, and a Code window open on it.
- */
 const test = base.extend<{ readonly code: Code }>({
   code: async ({}, use, testInfo) => {
     await using stack = new AsyncDisposableStack();
@@ -35,6 +31,7 @@ const test = base.extend<{ readonly code: Code }>({
     stack.defer(() => rm(parent, { recursive: true, force: true }));
     const prepared = await prepareHome(parent);
     const home = prepared.home;
+    const project = await trustedProject(prepared, "code");
     const gopls = execFileSync("mise", ["which", "gopls"], { encoding: "utf8" }).trim();
     const go = execFileSync("mise", ["which", "go"], { encoding: "utf8" }).trim();
     const modules = execFileSync(go, ["env", "GOMODCACHE"], { encoding: "utf8" }).trim();
@@ -49,11 +46,12 @@ const test = base.extend<{ readonly code: Code }>({
       ].join("\n"),
     );
 
-    for (const [name, source] of Object.entries(REPOSITORIES))
-      await cp(source, join(home, name), {
+    for (const [name, source] of Object.entries(REPOSITORIES)) {
+      await cp(source, join(project, name), {
         recursive: true,
         filter: (path) => !path.includes("/.git"),
       });
+    }
 
     const launched = await launchDesktop({ home, parentDirectory: parent });
     stack.defer(() => launched.close());
@@ -79,7 +77,7 @@ const test = base.extend<{ readonly code: Code }>({
       application: launched.application,
       nyte: launched.page,
       page,
-      home,
+      project,
       capture: async (name) => {
         const path = testInfo.outputPath(`${name}.png`);
 
@@ -137,11 +135,11 @@ const test = base.extend<{ readonly code: Code }>({
   },
 });
 
-for (const theme of ["dark", "light"] as const)
+for (const theme of ["dark", "light"] as const) {
   test(`Go to Declaration and back, ${theme}`, async ({ code }, testInfo) => {
     test.setTimeout(420_000);
     const page = code.page;
-    const command = await source(code.home, "cobra/command.go");
+    const command = await source(code.project, "cobra/command.go");
 
     await setTheme({ application: code.application, page: code.nyte }, theme);
     await expect(page.locator("html")).toHaveAttribute("data-display-mode", theme);
@@ -206,7 +204,7 @@ for (const theme of ["dark", "light"] as const)
       await expect(chooser.getByText("Usages of stripFlags")).toBeVisible();
       await expect(chooser.getByRole("menuitem")).toHaveCount(
         usages(command, "stripFlags(") +
-          usages(await source(code.home, "cobra/command_test.go"), "stripFlags("),
+          usages(await source(code.project, "cobra/command_test.go"), "stripFlags("),
       );
       await code.capture(`04-${theme}-usages`);
       await page.keyboard.press("Escape");
@@ -322,14 +320,14 @@ for (const theme of ["dark", "light"] as const)
       ]);
 
       await openPath(page, "xtools/go/packages/packages.go");
-      const packages = await source(code.home, "xtools/go/packages/packages.go");
+      const packages = await source(code.project, "xtools/go/packages/packages.go");
       const warm = find(packages, "gocommand.WriteOverlays", "WriteOverlays");
 
       await goTo(page, warm.line, warm.column);
       await expect(async () => {
         await page.keyboard.press("Escape");
         await page.keyboard.press("Meta+B");
-        await expect(activeTab(page)).toHaveAccessibleName(/invoke\.go$/u, { timeout: 3_000 });
+        await expect(activeTab(page)).toHaveAccessibleName(/invoke\.go$/u, { timeout: 3000 });
       }).toPass({ timeout: 120_000 });
       await page.keyboard.press("Meta+BracketLeft");
       await expect(caretStatus(page)).toHaveText(
@@ -355,6 +353,7 @@ for (const theme of ["dark", "light"] as const)
       expect(report.xtools.p95, "x/tools p95 time to declaration").toBeLessThanOrEqual(100);
     });
   });
+}
 
 /** Times ⌘B from the key to the frame that shows the caret at the declaration, then ⌘[ back, which restores the caret, after one warm-up each. */
 async function timeJumps(
@@ -388,9 +387,9 @@ async function timeJumps(
                   const shown = status();
 
                   if (shown !== from && shown !== "") resolve(performance.now() - started);
-                  else if (performance.now() - started > 5_000)
+                  else if (performance.now() - started > 5000) {
                     reject(new Error(`⌘B from ${from} landed nowhere`));
-                  else requestAnimationFrame(tick);
+                  } else requestAnimationFrame(tick);
                 };
 
                 requestAnimationFrame(tick);
@@ -420,8 +419,8 @@ function summary(times: readonly number[]) {
   return { count: sorted.length, p50: pick(0.5), p95: pick(0.95), max: sorted.at(-1) ?? 0 };
 }
 
-async function source(home: string, path: string): Promise<string> {
-  return readFile(join(home, path), "utf8");
+async function source(project: string, path: string): Promise<string> {
+  return readFile(join(project, path), "utf8");
 }
 
 /** Columns per tab in the status bar and Go to Line, which count columns as GoLand does. */
@@ -445,8 +444,9 @@ function find(
   if (index < 0 || word === null) throw new Error(`"${line}" isn't in the file.`);
   let column = 0;
 
-  for (const character of found.slice(0, start + word.index))
+  for (const character of found.slice(0, start + word.index)) {
     column = character === "\t" ? column + TAB_COLUMNS - (column % TAB_COLUMNS) : column + 1;
+  }
 
   return { line: index + 1, column: column + 1 };
 }
@@ -487,7 +487,7 @@ async function openPath(page: Page, path: string): Promise<Locator> {
   const text = activeText(page);
 
   await expect(activeTab(page)).toHaveAccessibleName(
-    new RegExp(`^${path.replaceAll(".", "\\.")}`, "u"),
+    new RegExp(`^${path.replaceAll(".", String.raw`\.`)}`, "u"),
   );
   await expect(text).toBeVisible();
 

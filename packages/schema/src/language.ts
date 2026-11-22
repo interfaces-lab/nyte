@@ -75,13 +75,14 @@ export const LanguageServerStateType = Type.Union([
     percent: nullable(Type.Number()),
   }),
   Type.Object({ kind: Type.Literal("missing"), hint: Type.String() }),
+  Type.Object({ kind: Type.Literal("untrusted") }),
   Type.Object({ kind: Type.Literal("failed"), reason: Type.String() }),
   Type.Object({ kind: Type.Literal("idle") }),
 ]);
 
 export type LanguageServerState = Decoded<typeof LanguageServerStateType>;
 
-/** One language server for one language and project root: `idle` after it shut down for want of use, until the next request starts it again. */
+/** One language server for one language and project root: `idle` after it shut down for want of use, until the next request starts it again; `untrusted` while the user has not trusted the folder, since a server runs project code. */
 export const LanguageServerViewType = Type.Object({
   language: LanguageNameType,
   server: Type.String(),
@@ -339,3 +340,12 @@ export const FormatOptionsType = Type.Object({
 });
 
 export type FormatOptions = Decoded<typeof FormatOptionsType>;
+
+/** `unavailable` when no server for the file formats documents, `failed` when its server errored. */
+export const LanguageFormatOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("edits"), edits: Type.Array(TextEditType) }),
+  Type.Object({ kind: Type.Literal("unavailable"), reason: Type.String() }),
+  Type.Object({ kind: Type.Literal("failed"), reason: Type.String() }),
+]);
+
+export type LanguageFormatOutcome = Decoded<typeof LanguageFormatOutcomeType>;

@@ -3,7 +3,8 @@ import type { CodeViewItem } from "@nyte-ai/ui/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactElement } from "react";
-import type { LanguageApi } from "@nyte-ai/sdk";
+import type { CodeAction } from "@nyte-ai/schema";
+import type { LanguageApi, TextPosition } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Loader } from "@nyte-ai/ui/loader";
@@ -13,11 +14,14 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { PIERRE_EDITOR_HIGHLIGHTER_OPTIONS } from "@nyte-ai/ui/worker-pool";
-import type { ThemePreference } from "../../contract/bridge.ts";
+import type { SelectedWorkspace, ThemePreference } from "../../contract/bridge.ts";
+import { ChatScope } from "../../chat/chat-scope.tsx";
+import { Prose } from "../../chat/markdown/prose.tsx";
 import { documentsApi } from "../../data/documents.ts";
+import { CodeActionsMenu } from "./code-actions-menu.tsx";
 import type { Landing } from "./declaration.ts";
+import { RenameField } from "./rename-field.tsx";
 
-/** What the editor shows for a navigation: a chooser, a peek at a declaration, or a hint where it stands. */
 export type DeclarationPopup =
   | {
       readonly kind: "choose";
@@ -38,6 +42,28 @@ export type DeclarationPopup =
       readonly message: string;
       readonly detail?: string;
       readonly busy: boolean;
+    }
+  | {
+      readonly kind: "hover";
+      readonly anchor: DOMRect;
+      readonly markdown: string;
+      readonly position: TextPosition;
+      readonly pinned: boolean;
+    }
+  | {
+      readonly kind: "rename";
+      readonly anchor: DOMRect;
+      readonly position: TextPosition;
+      readonly name: string;
+      readonly revision: number;
+      readonly busy: boolean;
+    }
+  | {
+      readonly kind: "actions";
+      readonly anchor: DOMRect;
+      readonly actions: readonly CodeAction[];
+      readonly revision: number;
+      readonly running: CodeAction | undefined;
     };
 
 const PEEK_LINES = 18;
@@ -60,6 +86,13 @@ const styles = create({
   },
   hintText: { display: "flex", flexDirection: "column", minWidth: 0 },
   hintDetail: { color: role.contentSecondary, overflowWrap: "anywhere" },
+  hover: {
+    maxWidth: "min(560px, var(--available-width))",
+    maxHeight: "min(320px, var(--available-height))",
+    overflowY: "auto",
+    paddingBlock: space.s2,
+    paddingInline: space.s3,
+  },
   peek: {
     display: "flex",
     flexDirection: "column",
@@ -118,6 +151,10 @@ export function DeclarationPopups({
   onPick,
   onPeek,
   onClose,
+  onHover,
+  onRename,
+  onAction,
+  folder,
 }: {
   readonly popup: DeclarationPopup | undefined;
   readonly api: LanguageApi | undefined;
@@ -127,6 +164,10 @@ export function DeclarationPopups({
   readonly onPick: (landing: Landing) => void;
   readonly onPeek: (index: number) => void;
   readonly onClose: () => void;
+  readonly onHover: { readonly enter: () => void; readonly leave: () => void };
+  readonly onRename: { readonly submit: (name: string) => void; readonly cancel: () => void };
+  readonly onAction: { readonly pick: (action: CodeAction) => void; readonly close: () => void };
+  readonly folder: SelectedWorkspace | undefined;
 }): ReactElement | null {
   if (popup === undefined) return null;
   const anchor = { getBoundingClientRect: () => popup.anchor };
@@ -178,6 +219,47 @@ export function DeclarationPopups({
             </Popover.Positioner>
           </Popover.Portal>
         </Popover.Root>
+      );
+    case "hover":
+      return (
+        <Popover.Root open modal={false} onOpenChange={(open) => !open && onClose()}>
+          <Popover.Portal>
+            <Popover.Positioner anchor={anchor} side="top" align="start" sideOffset={4}>
+              <Popover.Popup
+                initialFocus={false}
+                aria-label="Documentation"
+                xstyle={styles.hover}
+                onPointerEnter={onHover.enter}
+                onPointerLeave={onHover.leave}
+              >
+                <ChatScope folder={folder}>
+                  <Prose markdown={popup.markdown} />
+                </ChatScope>
+              </Popover.Popup>
+            </Popover.Positioner>
+          </Popover.Portal>
+        </Popover.Root>
+      );
+    case "rename":
+      return (
+        <RenameField
+          anchor={anchor}
+          name={popup.name}
+          busy={popup.busy}
+          onRename={onRename.submit}
+          onCancel={onRename.cancel}
+          onClose={onClose}
+        />
+      );
+    case "actions":
+      return (
+        <CodeActionsMenu
+          anchor={anchor}
+          actions={popup.actions}
+          running={popup.running}
+          onPick={onAction.pick}
+          onClose={onAction.close}
+        />
       );
     default: {
       const exhaustive: never = popup;
@@ -414,7 +496,7 @@ function useLandingLines(landings: readonly Landing[]) {
 
       return new Map(read);
     },
-    staleTime: 5_000,
+    staleTime: 5000,
   });
 }
 

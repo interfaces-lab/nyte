@@ -117,6 +117,11 @@ function explain(server: LanguageServerView | undefined) {
       return { message: `${server.server} isn't installed.`, detail: server.state.hint };
     case "failed":
       return { message: `${server.server} stopped.`, detail: server.state.reason };
+    case "untrusted":
+      return {
+        message: `${server.server} doesn't run in untrusted folders.`,
+        detail: "Trust the folder to turn it on.",
+      };
     case "starting":
       return {
         message: `${server.server} is starting.`,
@@ -136,10 +141,11 @@ function explain(server: LanguageServerView | undefined) {
 }
 
 function landing(root: string, location: LanguageLocation): Landing {
-  return {
-    path: /^(?:[A-Za-z]:)?[\\/]/u.test(location.path) ? location.path : `${root}/${location.path}`,
-    range: location.range,
-  };
+  return { path: absolutePath(root, location.path), range: location.range };
+}
+
+export function absolutePath(root: string, path: string): string {
+  return /^(?:[A-Za-z]:)?[\\/]/u.test(path) ? path : `${root}/${path}`;
 }
 
 function covers(

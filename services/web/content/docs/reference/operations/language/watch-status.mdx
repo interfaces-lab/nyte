@@ -143,6 +143,16 @@ A frame:
           },
           {
             "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "untrusted"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": ["kind", "reason"],
             "properties": {
               "kind": {

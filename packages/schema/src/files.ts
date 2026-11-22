@@ -86,6 +86,7 @@ export const FormatOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("formatted"), contents: Type.String() }),
   Type.Object({ kind: Type.Literal("unchanged") }),
   Type.Object({ kind: Type.Literal("unavailable"), reason: Type.String() }),
+  Type.Object({ kind: Type.Literal("failed"), reason: Type.String() }),
 ]);
 
 export type FormatOutcome = Decoded<typeof FormatOutcomeType>;

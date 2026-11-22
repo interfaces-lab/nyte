@@ -32,6 +32,7 @@ import type {
 } from "../contract/workspace.ts";
 import { createJobs, jobHandle } from "../engine/jobs.ts";
 import { discardSession } from "../engine/start.ts";
+import { cleanStorage, scanStorage } from "./storage.ts";
 import { cleanWorktrees } from "./worktrees.ts";
 import { commit } from "../watch/commit.ts";
 import { endedRunRef, parseSessionRef, runRef, workspaceRef } from "../store/refs.ts";
@@ -46,6 +47,7 @@ import {
   readSession,
   STALE,
   threadStart,
+  workspaceRecords,
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
@@ -55,7 +57,6 @@ import {
   inspectWorkspaceAvailability,
   readWorkspace,
   sessionsOn,
-  workspaceRecords,
 } from "./environment.ts";
 import { mcpApi } from "./mcp.ts";
 import { keepPaths, readAttributedPaths, readRunPaths } from "./session-changes.ts";
@@ -213,6 +214,8 @@ export function createWorkspaces(
       });
     },
     cleanWorktrees: () => cleanWorktrees(kernel),
+    scanStorage: () => scanStorage(kernel),
+    cleanStorage: (items) => cleanStorage(kernel, items),
   };
 }
 
@@ -823,12 +826,15 @@ export async function trustChanged(kernel: Kernel, before: TrustSnapshot): Promi
     [...flipped].map((workspace) => sessionsOn(kernel.store, workspace)),
   );
 
-  await Promise.allSettled(
-    sessions
+  await Promise.allSettled([
+    ...moved.flatMap(([id, trust]) =>
+      flipped.has(id) ? [kernel.environments.trustChanged(id, trust.trusted === true)] : [],
+    ),
+    ...sessions
       .flat()
       .filter((session) => kernel.plugins.runtimes().has(session))
       .map((session) => kernel.plugins.reload(session)),
-  );
+  ]);
 }
 
 function invalidateResources(kernel: Kernel, workspace: WorkspaceId): void {

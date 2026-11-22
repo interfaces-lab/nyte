@@ -29,7 +29,8 @@ import {
   clientActions,
 } from "../../contract/client-actions.ts";
 import { nyte, windowApp } from "../../contract/nyte.ts";
-import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
+import { preferences, useSetting } from "../../preferences/index.ts";
+import type { Preference } from "../../preferences/index.ts";
 import { useVcsSnapshot } from "../../data/vcs.ts";
 import { useDocument } from "../../data/documents.ts";
 import { useMentionFiles } from "../../data/files.ts";
@@ -47,6 +48,7 @@ import { useTreeStatusTheme } from "./tree-theme.ts";
 import { FilePalette } from "./file-palette.tsx";
 import { FilesExplorer } from "./files-explorer.tsx";
 import { findSymbols } from "./outline.ts";
+import { opensUnwrapped } from "./long-line.ts";
 import { characterAtColumn, lineAt, TAB_COLUMNS } from "./indentation.ts";
 import { EditorGroupView } from "./editor-groups.tsx";
 import { EditorTabs } from "./editor-tabs.tsx";
@@ -101,15 +103,22 @@ const FILE_TOGGLES = [
 function FilePreferenceItem({
   label,
   setting,
+  overridden,
 }: {
   readonly label: string;
   readonly setting: Preference<boolean>;
+  readonly overridden: boolean;
 }): ReactElement {
   const checked = useSetting(setting);
 
   return (
-    <MenuSwitchItem layout="plain" checked={checked} onCheckedChange={setting.set}>
-      {label}
+    <MenuSwitchItem
+      layout="plain"
+      checked={checked && !overridden}
+      disabled={overridden}
+      onCheckedChange={setting.set}
+    >
+      {overridden ? `${label} (Line Too Long)` : label}
     </MenuSwitchItem>
   );
 }
@@ -254,8 +263,9 @@ export function EditorPanel({
     if (
       target !== document.body &&
       !(target instanceof Node && panelRef.current?.contains(target) === true)
-    )
+    ) {
       return;
+    }
     const step = historyKey(event, nyte.platform === "darwin");
 
     if (step === undefined) return;
@@ -330,8 +340,9 @@ export function EditorPanel({
     if (previous?.viewKey === viewKey) {
       if (previous.file?.id === activeFile.id && previous.file.path === activeFile.path) return;
 
-      if (previous.file !== undefined && !tabs.tabs.some((file) => file.id === previous.file?.id))
+      if (previous.file !== undefined && !tabs.tabs.some((file) => file.id === previous.file?.id)) {
         return;
+      }
     }
 
     fileActions.remember(viewKey, activeFile.path);
@@ -414,8 +425,9 @@ export function EditorPanel({
                   onValueChange={(value) => {
                     const next = value[0];
 
-                    if (next === "document" || next === "source")
+                    if (next === "document" || next === "source") {
                       fileActions.setShowSource(viewKey, activeFile.path, next === "source");
+                    }
                   }}
                 >
                   <Toggle value="document" size="2xs">
@@ -502,7 +514,16 @@ export function EditorPanel({
           )}
           <MenuSeparator inset />
           {FILE_TOGGLES.map(([label, setting]) => (
-            <FilePreferenceItem key={label} label={label} setting={setting} />
+            <FilePreferenceItem
+              key={label}
+              label={label}
+              setting={setting}
+              overridden={
+                setting === preferences.fileWordWrap &&
+                activeDocument?.kind === "text" &&
+                opensUnwrapped(activeDocument.contents)
+              }
+            />
           ))}
           {!code && (
             <MenuItem
@@ -822,8 +843,9 @@ function useCramped(body: RefObject<HTMLElement | null>): boolean {
     if (node === null) return;
 
     const measure = (): void => {
-      if (node.clientWidth > 0)
+      if (node.clientWidth > 0) {
         setCramped(node.clientWidth - sidePanelWidth.get() < EDITOR_MIN_WIDTH);
+      }
     };
 
     measure();

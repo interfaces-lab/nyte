@@ -1,7 +1,6 @@
-import { DEFAULT_CODE_VIEW_LAYOUT } from "@nyte-ai/ui/diffs";
-import { EditStateManager, Editor, resolveSearchShortcut } from "@nyte-ai/ui/diffs/edit";
-import type { EditorSelection } from "@nyte-ai/ui/diffs/edit";
-import type { CodeViewSearch, PostRenderPhase } from "@nyte-ai/ui/diffs";
+import { EditStateManager, resolveSearchShortcut } from "@nyte-ai/ui/diffs/edit";
+import type { EditorSelection, Editor } from "@nyte-ai/ui/diffs/edit";
+import type { CodeViewSearch } from "@nyte-ai/ui/diffs";
 import type { CodeViewHandle } from "@nyte-ai/ui/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,14 +18,12 @@ import type { Document } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
-import type { ThemePreference } from "../../contract/bridge.ts";
 import { diffStyles } from "../../diff/diff.stylex.ts";
 import { applyDiffScopes } from "../../diff/diff-view.tsx";
 import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { addFileToChat, addsToChat } from "../../references/add-to-chat.ts";
 import {
-  SELECTION_ACTION_CSS,
   selectedLines,
   revealSelection,
   shineSelection,
@@ -37,8 +34,9 @@ import { DeclarationPopups } from "./declaration-popups.tsx";
 import { shareDocument } from "./document-channel.ts";
 import { mirrorDraft } from "./draft-mirror.ts";
 import { languageDocuments } from "./language-documents.ts";
-import { caretPosition, editorRange, textChanges } from "./pierre-language.ts";
-import { DECLARATION_LINK_CSS, useDeclarations } from "./use-declarations.ts";
+import { caretPosition, editorRange, selectionRange, textChanges } from "./pierre-language.ts";
+import { useDeclarations } from "./use-declarations.ts";
+import { diagnosed, useDiagnostics } from "./use-diagnostics.ts";
 import {
   BlameText,
   CaretPosition,
@@ -53,18 +51,16 @@ import {
 import type { ItemEditor, ItemEditorCallbacks } from "./file-code-view.tsx";
 import { changeBarCss, revertEdit } from "./line-changes.ts";
 import type { LineChange } from "./line-changes.ts";
-import { PIERRE_EDITOR_HIGHLIGHTER_OPTIONS, PIERRE_TOKEN_CSS } from "@nyte-ai/ui/worker-pool";
 import { keys } from "../../data/query-client.ts";
-import { loadDeferred, useDeferred } from "../../lib/deferred.tsx";
-import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
-import { documentsApi, useDocument, useSaveDocument } from "../../data/documents.ts";
-import { filesFor } from "../../data/files.ts";
+import { useDocument, useSaveDocument } from "../../data/documents.ts";
 import { formatBytes } from "../../lib/format.ts";
 import { gitFor } from "../../data/vcs.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { useAppearance } from "../../theme/appearance-store.ts";
 import { watchFamily } from "../../data/watch-store.ts";
 import { EditorFind } from "./editor-find.tsx";
+import { formatDocument } from "./format-document.ts";
+import { TrustBar } from "./trust-bar.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -81,11 +77,12 @@ import {
 import type { DocumentEditor, FileBuffer } from "./file-document.ts";
 import { TAB_COLUMNS, visualColumn } from "./indentation.ts";
 import { FileImage, FileMessage, FileVideo, RevealButton, viewerStyles } from "./file-viewers.tsx";
-import type { SizedFile } from "./file-viewers.tsx";
 import { fileActions, holdDocument } from "./file-store.ts";
 import { MarkdownDocument } from "./markdown-document.tsx";
+import { FilePdf } from "./file-pdf.tsx";
 import { opensAsMarkdown } from "./markdown-parse.ts";
-import { pdfQuery } from "./pdf-query.ts";
+import { opensUnwrapped } from "./long-line.ts";
+import { editorViewOptions } from "./editor-view-options.ts";
 import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<Document, { readonly kind: "text" }>;
@@ -112,55 +109,6 @@ interface FileEditorProps {
   readonly visible: boolean;
   readonly autoSave: boolean;
   readonly onGoToLine: () => void;
-}
-
-const EDITOR_CSS = `
-${PIERRE_TOKEN_CSS}
-:host {
-  color-scheme: inherit;
-  --diffs-bg: transparent;
-}
-${SELECTION_ACTION_CSS}
-${DECLARATION_LINK_CSS}
-`;
-
-const EDITOR_LAYOUT = { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 };
-
-const ITEM_METRICS = new Map<number, { readonly lineHeight: number }>();
-
-function codeViewMetrics(codeFontSize: number) {
-  const held = ITEM_METRICS.get(codeFontSize);
-
-  if (held !== undefined) return held;
-  const made = { lineHeight: Math.ceil((codeFontSize * 20) / 12) };
-  ITEM_METRICS.set(codeFontSize, made);
-
-  return made;
-}
-
-export function editorViewOptions(input: {
-  readonly theme: ThemePreference;
-  readonly lineNumbers: boolean;
-  readonly wordWrap: boolean;
-  readonly codeFontSize: number;
-}) {
-  return {
-    ...PIERRE_EDITOR_HIGHLIGHTER_OPTIONS,
-    themeType: input.theme,
-    unsafeCSS: EDITOR_CSS,
-    disableFileHeader: true,
-    layout: EDITOR_LAYOUT,
-    itemMetrics: codeViewMetrics(input.codeFontSize),
-    disableLineNumbers: !input.lineNumbers,
-    overflow: input.wordWrap ? ("wrap" as const) : ("scroll" as const),
-    onPostRender: colorChanges,
-    searchOptions: { disableShortcuts: true },
-    pointerEventsOnScroll: true,
-  };
-}
-
-function colorChanges(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase]): void {
-  if (phase !== "unmount") applyDiffScopes(node);
 }
 
 export const styles = create({
@@ -205,8 +153,9 @@ function DiskSync({ path }: { readonly path: string }): null {
         shown !== undefined &&
         "version" in shown &&
         shown.version === event.version
-      )
+      ) {
         return;
+      }
 
       read();
     });
@@ -232,7 +181,7 @@ function FileView(
   const query = input.document;
   const retry = <Button onClick={() => void query.refetch()}>Retry</Button>;
 
-  if (query.data === undefined)
+  if (query.data === undefined) {
     return query.isError ? (
       <FileMessage active={input.active} alert title="The file could not be opened.">
         <span {...props(viewerStyles.messageDetail)}>{query.error.message}</span>
@@ -241,6 +190,7 @@ function FileView(
     ) : (
       <FileMessage active={input.active} title="Opening file…" />
     );
+  }
   const document = query.data;
   const reveal = <RevealButton path={document.path} />;
 
@@ -287,78 +237,6 @@ function FileView(
       return exhaustive;
     }
   }
-}
-
-function FilePdf(input: { readonly active: boolean; readonly document: SizedFile }): ReactElement {
-  const runtime = useDeferred("pdf");
-
-  useMountEffect(() => {
-    void loadDeferred("pdf").catch(() => undefined);
-  });
-
-  if (runtime === "failed")
-    return (
-      <FileMessage active={input.active} title="PDFs can't be previewed here.">
-        <span>PDF · {formatBytes(input.document.size)}</span>
-        <RevealButton path={input.document.path} />
-      </FileMessage>
-    );
-
-  if (runtime === undefined) return <FileMessage active={input.active} title="Opening file…" />;
-
-  return <PdfDocument {...input} runtime={runtime} />;
-}
-
-function PdfDocument(input: {
-  readonly active: boolean;
-  readonly document: SizedFile;
-  readonly runtime: DeferredRuntimes["pdf"];
-}): ReactElement {
-  const path = input.document.path;
-  const runtime = input.runtime;
-
-  const pdf = useQuery(
-    pdfQuery(
-      path,
-      input.document.version,
-      async () => (await documentsApi()).bytes(path),
-      runtime.openPdf,
-    ),
-  );
-
-  if (pdf.data === undefined) {
-    if (!pdf.isError) return <FileMessage active={input.active} title="Opening file…" />;
-
-    return (
-      <FileMessage
-        active={input.active}
-        alert
-        title={
-          pdf.error.name === "PasswordException"
-            ? "This PDF is password-protected."
-            : "This PDF could not be opened."
-        }
-      >
-        {pdf.error.name !== "PasswordException" && (
-          <span {...props(viewerStyles.messageDetail)}>{pdf.error.message}</span>
-        )}
-        <RevealButton path={path} />
-      </FileMessage>
-    );
-  }
-
-  return (
-    <div
-      aria-hidden={!input.active}
-      inert={!input.active}
-      {...props(viewerStyles.root, !input.active && viewerStyles.hidden)}
-    >
-      <runtime.PdfViewer
-        file={pdf.isPlaceholderData ? undefined : pdf.data}
-        label={path.split("/").at(-1) ?? path}
-      />
-    </div>
-  );
 }
 
 export function TextFileEditor({
@@ -459,8 +337,9 @@ export function TextFileEditor({
         text !== undefined &&
         window.document.hasFocus() &&
         root.current?.contains(window.document.activeElement) === true
-      )
+      ) {
         shineSelection(file.path, text, primary);
+      }
     };
   });
 
@@ -485,11 +364,11 @@ export function TextFileEditor({
   };
 
   const appearance = useAppearance();
-  const theme = appearance.theme;
+  const theme = appearance.dark ? "dark" : "light";
   const codeFont = useSetting(preferences.codeFont);
   const codeFontSize = useSetting(preferences.codeFontSize);
   const lineNumbers = useSetting(preferences.fileLineNumbers);
-  const wordWrap = useSetting(preferences.fileWordWrap);
+  const wordWrap = useSetting(preferences.fileWordWrap) && !opensUnwrapped(document.contents);
   const documentView = opensAsMarkdown(file.path) && !file.showSource;
   const browsed = useWorkbenchWorkspace();
 
@@ -510,9 +389,20 @@ export function TextFileEditor({
     buffer,
     workspace: project,
     mac,
+    readOnly: file.readOnly,
     caret: () => caretPosition(currentEditor()?.getViewState().selections?.at(-1)),
+    selection: () => selectionRange(currentEditor()?.getViewState().selections?.at(-1)),
     rangeRect: (range) => currentEditor()?.getRangeRect(editorRange(range)),
     fallbackRect: () => root.current?.getBoundingClientRect() ?? new DOMRect(),
+    diagnosed: (position) => diagnosed(diagnostics.markers(), position),
+    focus: () => currentEditor()?.focus(),
+  });
+
+  const diagnostics = useDiagnostics({
+    viewKey,
+    path: file.path,
+    workspace: project,
+    show: (markers) => attached.current?.editor.setMarkers(markers),
   });
 
   const gitBlame = useSetting(preferences.fileGitBlame) && workspace !== undefined && !documentView;
@@ -562,13 +452,21 @@ export function TextFileEditor({
     enabled: gitBlame && active && !dirty,
   });
 
+  const format = async (organize: boolean): Promise<string | null> =>
+    workspace === undefined || project === undefined
+      ? null
+      : formatDocument({ view: viewKey, workspace: project, path: file.path, buffer, organize });
+
   const save = async (): Promise<void> => {
     await buffer.save({
       write: (input) => saveFile.mutateAsync({ ...input, expect: input.version }),
-      format:
-        formatOnSave && workspace !== undefined
-          ? async (input) => (await filesFor(workspace)).format(input.path, input.contents)
-          : undefined,
+      format: formatOnSave
+        ? async () => {
+            await format(true);
+
+            return null;
+          }
+        : undefined,
     });
   };
 
@@ -617,8 +515,9 @@ export function TextFileEditor({
     const request = navigation.current;
     const shown = request.target;
 
-    if (!request.active || shown === undefined || appliedNavigation.current >= request.revision)
+    if (!request.active || shown === undefined || appliedNavigation.current >= request.revision) {
       return false;
+    }
     appliedNavigation.current = request.revision;
 
     if (shown.kind === "view") {
@@ -628,13 +527,14 @@ export function TextFileEditor({
 
       const primary = shown.view.selections?.at(-1);
 
-      if (primary !== undefined)
+      if (primary !== undefined) {
         viewer.current?.scrollTo({
           type: "line",
           id: file.path,
           lineNumber: (primary.direction === -1 ? primary.start.line : primary.end.line) + 1,
           align: "center",
         });
+      }
 
       return true;
     }
@@ -683,10 +583,12 @@ export function TextFileEditor({
 
     attached.current = { editor, source };
     buffer.attach(source);
+    editor.setMarkers(diagnostics.markers());
     showCaret(editor.getViewState().selections?.at(-1));
 
-    if (!showTarget(editor) && scrollTop.current > 0)
+    if (!showTarget(editor) && scrollTop.current > 0) {
       viewer.current?.scrollTo({ type: "position", position: scrollTop.current });
+    }
   };
 
   const [latestEditor] = useState(() => latestValue<ItemEditorCallbacks | undefined>(undefined));
@@ -711,8 +613,9 @@ export function TextFileEditor({
   }, [active, file.path, file.target, navigationRevision]);
 
   const discard = async (): Promise<void> => {
-    if (buffer.getSnapshot().status.kind === "saving")
+    if (buffer.getSnapshot().status.kind === "saving") {
       throw new Error("Wait for the current save to finish.");
+    }
     const result = await reload();
 
     if (result.error !== null) throw result.error;
@@ -721,15 +624,9 @@ export function TextFileEditor({
     buffer.discard(result.data);
   };
 
-  const format = async (): Promise<void> => {
-    if (workspace === undefined) return;
+  const formatNow = (): Promise<void> => buffer.format(() => format(false));
 
-    const result = await (await filesFor(workspace)).format(file.path, buffer.text());
-
-    if (result.kind === "formatted") buffer.edit(result.contents);
-  };
-
-  useImperativeHandle(ref, () => ({ save, discard, format }));
+  useImperativeHandle(ref, () => ({ save, discard, format: formatNow }));
 
   const revert = (change: LineChange): void => {
     const editor = attached.current?.editor;
@@ -771,7 +668,7 @@ export function TextFileEditor({
             workspace !== undefined && {
               kind: "item",
               label: "Format Document",
-              run: () => void format(),
+              run: () => void formatNow(),
             },
             {
               kind: "item",
@@ -814,7 +711,14 @@ export function TextFileEditor({
   };
 
   const saveText =
-    snapshot.status.kind === "saving" ? "Saving…" : snapshot.status.kind === "saved" ? "Saved" : "";
+    snapshot.status.kind === "saving"
+      ? "Saving…"
+      : [
+          snapshot.status.kind === "saved" ? "Saved" : "",
+          snapshot.formatFailure === null ? "" : `Couldn't format: ${snapshot.formatFailure}`,
+        ]
+          .filter((part) => part !== "")
+          .join(" · ");
 
   const errorText =
     snapshot.status.kind === "conflict"
@@ -857,8 +761,9 @@ export function TextFileEditor({
 
         if (event.defaultPrevented || !addsToChat(event.nativeEvent, mac)) return;
 
-        if (addSelection(currentEditor()?.getViewState().selections?.at(-1)))
+        if (addSelection(currentEditor()?.getViewState().selections?.at(-1))) {
           event.preventDefault();
+        }
       }}
       {...props(viewerStyles.root, !active && viewerStyles.hidden)}
     >
@@ -871,6 +776,7 @@ export function TextFileEditor({
         />
       ) : (
         <>
+          <TrustBar path={file.path} folder={project} onTrusted={() => currentEditor()?.focus()} />
           {visible && (
             <FileCodeView
               onViewer={setViewer}
@@ -895,10 +801,11 @@ export function TextFileEditor({
 
                 if (held === undefined || held.editor !== editor) return;
 
-                if (buffer.edited(held.source, changes) && project !== undefined)
+                if (buffer.edited(held.source, changes) && project !== undefined) {
                   languageDocuments.edited(project.path, file.path, textChanges(changes), () =>
                     buffer.text(),
                   );
+                }
               }}
               onEnded={(editor, contents) => {
                 const held = attached.current;
@@ -908,6 +815,7 @@ export function TextFileEditor({
                 buffer.detach(held.source, contents);
               }}
               onScroll={(top) => {
+                declarations.dismissHover();
                 scrollTop.current = top;
               }}
               renderAnnotation={() =>
@@ -936,6 +844,10 @@ export function TextFileEditor({
             onPick={declarations.land}
             onPeek={declarations.peekAt}
             onClose={declarations.close}
+            onHover={declarations.hoverPopup}
+            onRename={declarations.rename}
+            onAction={declarations.action}
+            folder={project}
           />
           <EditorFind
             search={search}

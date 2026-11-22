@@ -65,7 +65,7 @@ describe("localFiles", () => {
       scope: "workspace",
       mime: "text/plain",
       contents: "hello\n",
-      encoding: "utf-8",
+      encoding: "utf8",
       version: sha256("hello\n"),
     });
     expect(await files.read("b.bin")).toMatchObject({ kind: "binary", size: 3 });
@@ -176,8 +176,9 @@ describe("localFiles", () => {
 
     await writeFile(join(root, "run.sh"), "#!/bin/sh\n", { mode: 0o755 });
     await files.write("run.sh", "#!/bin/sh\necho\n");
-    if (process.platform !== "win32")
+    if (process.platform !== "win32") {
       expect((await stat(join(root, "run.sh"))).mode & 0o777).toBe(0o755);
+    }
 
     await symlink("new.txt", join(root, "alias"));
     const read = await files.read("alias");
@@ -251,7 +252,7 @@ describe("localFiles", () => {
   it("pages a tree by 500 entries, and a walk answers incomplete at its limit", async () => {
     const root = await folder();
     await Promise.all(
-      Array.from({ length: 1_200 }, (_, index) =>
+      Array.from({ length: 1200 }, (_, index) =>
         writeFile(join(root, `f${String(index).padStart(4, "0")}`), ""),
       ),
     );
@@ -288,7 +289,7 @@ describe("localFiles", () => {
     expect((await files.find({ query: "", limit: 500 })).length).toBeLessThanOrEqual(50);
   });
 
-  for (const engine of ["ripgrep", "scan"] as const)
+  for (const engine of ["ripgrep", "scan"] as const) {
     it(`searches content with smart case through ${engine}`, async () => {
       const root = await folder();
       await writeFile(join(root, "a.ts"), "const Alpha = 1;\nconst beta = alpha;\n");
@@ -327,8 +328,9 @@ describe("localFiles", () => {
         limit: 1,
       });
     });
+  }
 
-  for (const engine of ["ripgrep", "scan"] as const)
+  for (const engine of ["ripgrep", "scan"] as const) {
     it(`searches with case, word, regex, globs and drafts through ${engine}`, async () => {
       const root = await folder();
       await mkdir(join(root, "src"));
@@ -361,7 +363,7 @@ describe("localFiles", () => {
         "b.txt:1:1:5",
         "src/a.test.ts:1:1:5",
       ]);
-      expect(await found({ regex: true }, "al?pha \\w+")).toEqual([
+      expect(await found({ regex: true }, String.raw`al?pha \w+`)).toEqual([
         "b.txt:1:1:9",
         "src/a.test.ts:1:1:10",
         "src/a.ts:2:1:9",
@@ -383,8 +385,9 @@ describe("localFiles", () => {
         code: "invalid",
       });
     });
+  }
 
-  it("formats with a detected formatter and answers unavailable without one", async () => {
+  it("formats with a detected formatter and answers failed when it can't run", async () => {
     const root = await folder();
 
     const files = localFiles(root, {
@@ -397,7 +400,7 @@ describe("localFiles", () => {
     expect(await files.format("a.ts", "const a = 1;\n")).toEqual({ kind: "unchanged" });
     expect(
       (await localFiles(root, { formatter: join(root, "none") }).format("a.ts", "x")).kind,
-    ).toBe("unavailable");
+    ).toBe("failed");
   });
 
   it("watches created, modified and removed files, coalesced, without ignored paths", async () => {
@@ -452,8 +455,9 @@ describe("localFiles", () => {
     const root = await folder();
     const watching = Promise.withResolvers<void>();
     dev.on((line) => {
-      if (line === `DEV:files watching ${JSON.stringify({ path: root, recursive: false })}`)
+      if (line === `DEV:files watching ${JSON.stringify({ path: root, recursive: false })}`) {
         watching.resolve();
+      }
     });
     onTestFinished(() => dev.off());
     const controller = new AbortController();

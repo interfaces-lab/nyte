@@ -3,6 +3,7 @@ import { isJson } from "@nyte-ai/schema";
 import type {
   Json,
   CodeAction,
+  CodeActionKind,
   CodeActionOutcome,
   CodeActionResolveToken,
   CompletionItem,
@@ -89,8 +90,9 @@ export async function completion(
         ];
   });
 
-  if (synced.run.capabilities.resolvesCompletion)
+  if (synced.run.capabilities.resolvesCompletion) {
     await resolveDetails(synced.run, items, read.items, read.defaults);
+  }
 
   return { items, incomplete: read.incomplete };
 }
@@ -103,8 +105,9 @@ export async function resolveCompletion(
   const found = servers.findRun(token.server);
   const answer = found?.slot.completion;
 
-  if (found === null || answer === null || answer === undefined || answer.answer !== token.answer)
+  if (found === null || answer === null || answer === undefined || answer.answer !== token.answer) {
     return null;
+  }
   const raw = answer.items[token.item];
   const original = readCompletionItem(raw, answer.defaults);
 
@@ -129,7 +132,11 @@ export async function resolveCompletion(
 
 export async function codeActions(
   servers: Servers,
-  input: { readonly path: string; readonly range: TextRange },
+  input: {
+    readonly path: string;
+    readonly range: TextRange;
+    readonly only?: readonly CodeActionKind[];
+  },
 ): Promise<readonly CodeAction[]> {
   const synced = await servers.sync(input.path);
 
@@ -149,7 +156,11 @@ export async function codeActions(
     .request("textDocument/codeAction", {
       textDocument: { uri: servers.uri(synced.document.path) },
       range: toLspRange(input.range),
-      context: { diagnostics: overlapping, triggerKind: 1 },
+      context: {
+        diagnostics: overlapping,
+        triggerKind: 1,
+        ...(input.only === undefined ? {} : { only: [...input.only] }),
+      },
     })
     .catch((error: unknown) => {
       if (error instanceof LspError) return null;

@@ -10,6 +10,15 @@ export function caretPosition(selection: EditorSelection | undefined): TextPosit
   return { line: caret.line, utf16Column: caret.character };
 }
 
+export function selectionRange(selection: EditorSelection | undefined): TextRange | undefined {
+  if (selection === undefined) return undefined;
+
+  return {
+    start: { line: selection.start.line, utf16Column: selection.start.character },
+    end: { line: selection.end.line, utf16Column: selection.end.character },
+  };
+}
+
 export function editorRange(range: TextRange): Range {
   return {
     start: { line: range.start.line, character: range.start.utf16Column },

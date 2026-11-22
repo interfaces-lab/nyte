@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import {
+  CodeActionKindType,
   CodeActionOutcomeType,
   CodeActionResolveTokenType,
   CodeActionType,
@@ -13,12 +14,12 @@ import {
   HoverType,
   InlayHintType,
   LanguageLocationType,
+  LanguageFormatOutcomeType,
   LanguageServerViewType,
   RenameOutcomeType,
   RenameTargetType,
   SignatureHelpType,
   TextChangeType,
-  TextEditType,
   TextPositionType,
   TextRangeType,
 } from "../../language.ts";
@@ -152,7 +153,11 @@ export const LANGUAGE_OPERATIONS = {
     ...LANGUAGE,
     summary: "Lists the quick fixes and refactorings for a range, with the diagnostics on it.",
     kind: "query",
-    input: wireObject({ ...DOCUMENT, range: TextRangeType }),
+    input: wireObject({
+      ...DOCUMENT,
+      range: TextRangeType,
+      only: Type.Optional(Type.Array(CodeActionKindType)),
+    }),
     output: wireSchema(Type.Array(CodeActionType)),
   },
   "language.resolveCodeAction": {
@@ -165,10 +170,10 @@ export const LANGUAGE_OPERATIONS = {
   },
   "language.format": {
     ...LANGUAGE,
-    summary: "Computes the edits that format a document.",
+    summary: "Computes the edits that format a document, or why no server formatted it.",
     kind: "query",
     input: wireObject({ ...DOCUMENT, options: FormatOptionsType }),
-    output: wireSchema(Type.Array(TextEditType)),
+    output: wireSchema(LanguageFormatOutcomeType),
   },
   "language.signatureHelp": {
     ...LANGUAGE,

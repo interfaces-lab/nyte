@@ -28,6 +28,7 @@ import {
   decodeReceiptRecord,
   decodeRunRecord,
   decodeSessionRecord,
+  decodeWorkspaceRecord,
   envelope,
 } from "../contract/records.ts";
 import type {
@@ -38,6 +39,7 @@ import type {
   RecordKind,
   RunRecord,
   SessionRecord,
+  WorkspaceRecord,
 } from "../contract/records.ts";
 import { dev } from "../util/dev-log.ts";
 import { callRef, headRef, inboxRef, receiptRef, sessionRef } from "./refs.ts";
@@ -87,8 +89,9 @@ export async function load<T>(
   if (held === null) return null;
   const record = decode(held.object);
 
-  if (record === null)
+  if (record === null) {
     throw new SdkError("internal", `${held.ref.name} does not hold the record its name says.`);
+  }
 
   return { ref: held.ref, record };
 }
@@ -289,8 +292,9 @@ export async function attempt<T>(what: string, write: () => Promise<T | typeof S
     if (result !== STALE) return result;
     dev("store", "lost", { what, tries });
 
-    if (tries === WRITE_TRIES)
+    if (tries === WRITE_TRIES) {
       throw new SdkError("stale", `${what} lost to concurrent writes ${WRITE_TRIES} times.`);
+    }
     const backoff = WRITE_BACKOFF_MS * 2 ** (tries - 1) * (0.5 + Math.random());
     await new Promise((resolve) => setTimeout(resolve, backoff));
   }
@@ -382,6 +386,15 @@ export async function listSessionRecords(
   }
 }
 
+export async function workspaceRecords(
+  store: StoreConnection,
+): Promise<readonly WorkspaceRecord[]> {
+  const refs = await store.refs.list("workspaces/");
+  const found = await Promise.all(refs.map((ref) => load(store, ref, decodeWorkspaceRecord)));
+
+  return found.flatMap((entry) => (entry === null ? [] : [entry.record]));
+}
+
 export async function coveredSessions(
   store: StoreConnection,
   coverage: Exclude<ExecutionCoverage, { readonly kind: "all" }>,
@@ -389,19 +402,21 @@ export async function coveredSessions(
   if (coverage.kind === "sessions" && coverage.sessions.length === 0) return [];
   const records = await listSessionRecords(store);
 
-  if (coverage.kind === "workspace")
+  if (coverage.kind === "workspace") {
     return records.filter((record) => record.workspace === coverage.workspace);
+  }
   const included = new Set(coverage.sessions);
   let grew = true;
 
   while (grew) {
     grew = false;
 
-    for (const record of records)
+    for (const record of records) {
       if (!included.has(record.id) && record.parent !== null && included.has(record.parent)) {
         included.add(record.id);
         grew = true;
       }
+    }
   }
 
   return records.filter((record) => included.has(record.id));
@@ -417,11 +432,13 @@ export async function coversRecord(kernel: Kernel, record: SessionRecord | null)
   if (
     kernel.execution.kind === "run" &&
     (await covers(kernel.store, kernel.execution.coverage, record))
-  )
+  ) {
     return true;
+  }
 
-  for (const coverage of kernel.executionState.covers.values())
+  for (const coverage of kernel.executionState.covers.values()) {
     if (await covers(kernel.store, coverage, record)) return true;
+  }
 
   return false;
 }
@@ -479,8 +496,9 @@ export async function guard(
     liveRun(store, session, head),
   ]);
 
-  if (expect !== undefined && !sameRevision(expect, tip.ref))
+  if (expect !== undefined && !sameRevision(expect, tip.ref)) {
     return { kind: "stale", revision: tip.ref?.revision ?? EMPTY_REVISION };
+  }
 
   if (run !== null && running === "refuse") return { kind: "busy", run: run.record.view.id };
 

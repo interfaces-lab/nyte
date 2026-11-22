@@ -139,8 +139,9 @@ function targetLine(target: FileTarget | undefined): number {
 function samePlace(first: FileLocation, second: FileLocation): boolean {
   if (first.path !== second.path) return false;
 
-  if (first.target?.kind !== "view" || second.target?.kind !== "view")
+  if (first.target?.kind !== "view" || second.target?.kind !== "view") {
     return targetLine(first.target) === targetLine(second.target);
+  }
   const one = first.target.view.selections?.at(-1);
   const two = second.target.view.selections?.at(-1);
 
@@ -300,8 +301,9 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       next.draft?.contents === current.draft?.contents &&
       next.draft?.version === current.draft?.version &&
       next.draft?.savedContents === current.draft?.savedContents
-    )
+    ) {
       return;
+    }
 
     files.set(fileKey(key, path), next);
 
@@ -355,8 +357,9 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     navigations.delete(id);
     releaseTab(key, id, tab.path);
 
-    if (!fileTabs(key).some((other) => other.id !== id && other.path === tab.path))
+    if (!fileTabs(key).some((other) => other.id !== id && other.path === tab.path)) {
       files.delete(fileKey(key, tab.path));
+    }
 
     places.delete(id);
     views.set(key, {
@@ -422,12 +425,13 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
 
     navigate(id, location);
 
-    if (location.target !== undefined || location.readOnly === true)
+    if (location.target !== undefined || location.readOnly === true) {
       files.set(fileKey(key, location.path), {
         ...fileState(key, location.path),
         showSource: location.target !== undefined || fileState(key, location.path).showSource,
         readOnly: location.readOnly === true || fileState(key, location.path).readOnly,
       });
+    }
 
     views.set(key, next(getRuntimeView(key)));
     commit(key, {
@@ -557,6 +561,9 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
           : [],
       );
     },
+    buffer(key: WorkbenchViewKey, path: string): FileBuffer | undefined {
+      return buffers.get(fileKey(key, path))?.buffer;
+    },
     holds(key: WorkbenchViewKey, id: WorkbenchTabId): boolean {
       return store.getView(key).tabs.some((tab) => tab.id === id);
     },
@@ -577,12 +584,13 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     pin(key: WorkbenchViewKey, id: WorkbenchTabId): void {
       const tab = fileTabs(key).find((candidate) => candidate.id === id);
 
-      if (tab?.preview === true)
+      if (tab?.preview === true) {
         store.dispatch(key, {
           kind: "patch",
           id: tab.id,
           change: { kind: "file", patch: { preview: false } },
         });
+      }
     },
     split(key: WorkbenchViewKey, side: "before" | "after", id?: WorkbenchTabId): void {
       const source = fileTabs(key).find((tab) => tab.id === (id ?? store.getView(key).active));
@@ -631,8 +639,12 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       if (held === undefined) navigate(tab.id, { path: tab.path });
       commit(key, { kind: "place", tab, target, group: crypto.randomUUID() });
 
-      if (source.kind === "tab" && !store.getView(key).tabs.some((entry) => entry.id === source.id))
+      if (
+        source.kind === "tab" &&
+        !store.getView(key).tabs.some((entry) => entry.id === source.id)
+      ) {
         navigations.delete(source.id);
+      }
     },
     focusGroup(key: WorkbenchViewKey, group: EditorGroupId): void {
       commit(key, { kind: "focus-group", group });
@@ -758,8 +770,9 @@ export function scheduleSave(
       !current.dirty ||
       current.remote ||
       (current.status.kind !== "idle" && current.status.kind !== "saved")
-    )
+    ) {
       return;
+    }
 
     timer = setTimeout(() => {
       timer = undefined;

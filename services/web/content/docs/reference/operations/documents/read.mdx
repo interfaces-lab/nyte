@@ -89,7 +89,7 @@ Response:
   "anyOf": [
     {
       "type": "object",
-      "required": ["kind", "path", "mime", "contents", "version"],
+      "required": ["kind", "path", "mime", "contents", "encoding", "version"],
       "properties": {
         "kind": {
           "type": "string",
@@ -103,6 +103,9 @@ Response:
         },
         "contents": {
           "type": "string"
+        },
+        "encoding": {
+          "enum": ["utf8", "utf-16le", "utf-16be", "windows-1252"]
         },
         "version": {
           "type": "string"

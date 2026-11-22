@@ -1,4 +1,4 @@
-import type { Document, FileVersion, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
+import type { Document, FileVersion, WriteOutcome } from "@nyte-ai/sdk";
 import type { TextEncoding } from "@nyte-ai/schema";
 import type { EditorChange } from "@nyte-ai/ui/diffs/edit";
 import { errorMessage } from "../../contract/errors.ts";
@@ -14,7 +14,7 @@ interface FileSaveInput {
 
 interface FileSaveOperations {
   readonly write: (input: FileSaveInput) => Promise<WriteOutcome>;
-  readonly format?: (input: FileSaveInput) => Promise<FormatOutcome>;
+  readonly format?: () => Promise<string | null>;
 }
 
 type FileSaveState =
@@ -31,6 +31,7 @@ export interface FileDocumentSnapshot {
   readonly remote: boolean;
   readonly revision: number;
   readonly status: FileSaveState;
+  readonly formatFailure: string | null;
 }
 
 export type DocumentNews =
@@ -58,6 +59,7 @@ export interface DocumentEditor {
  * One open file's document. Without an editor attached it holds the text itself, so a hidden tab, the Markdown
  * document view, a save or a discard work the same. With editors attached, they hold it: Pierre's `TextDocument`
  * owns the draft and its history, and the document follows their changes without copying the text per keystroke.
+ * `edit` is one undo step; given the changes that make its text, the editors apply exactly those, so carets keep their place.
  */
 export function createFileDocument(document: TextFile, draft?: string) {
   let path = document.path;
@@ -84,6 +86,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
     remote: false,
     revision: 0,
     status: { kind: "idle" },
+    formatFailure: null,
   };
 
   const listeners = new Set<() => void>();
@@ -112,6 +115,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
         snapshot.status.kind === "saved" || snapshot.status.kind === "error"
           ? { kind: "idle" }
           : snapshot.status,
+      formatFailure: null,
     });
 
   const write = (editor: DocumentEditor, reported: boolean, change: () => void): void => {
@@ -124,15 +128,18 @@ export function createFileDocument(document: TextFile, draft?: string) {
     }
   };
 
-  const setText = (contents: string): boolean => {
+  const setText = (contents: string, changes?: readonly EditorChange[]): boolean => {
     if (contents === text()) return false;
     held = contents;
     heldLength = flatLength(contents);
 
     const first = reader();
 
-    for (const editor of editors.filter((each) => each.alive()))
-      write(editor, editor === first, () => editor.replace(contents));
+    for (const editor of editors.filter((each) => each.alive())) {
+      write(editor, changes === undefined && editor === first, () =>
+        changes === undefined ? editor.replace(contents) : editor.apply(changes),
+      );
+    }
 
     return true;
   };
@@ -148,7 +155,13 @@ export function createFileDocument(document: TextFile, draft?: string) {
       remote: false,
       revision: snapshot.revision + 1,
       status: { kind: "idle" },
+      formatFailure: null,
     });
+  };
+
+  const format = async (run: () => Promise<string | null>): Promise<void> => {
+    const failure = await run().catch((cause: unknown) => errorMessage(cause));
+    publish({ ...snapshot, formatFailure: failure });
   };
 
   const observeDisk = (next: TextFile): void => {
@@ -166,28 +179,17 @@ export function createFileDocument(document: TextFile, draft?: string) {
 
   const saveOnce = async (operations: FileSaveOperations): Promise<void> => {
     const captured = snapshot;
-    const unformatted = text();
     publish({ ...snapshot, status: { kind: "saving" } });
 
     try {
-      const input = { path, contents: unformatted, encoding, version: captured.version };
-
-      const formatted = await operations.format?.(input);
-
-      if (snapshot.revision !== captured.revision) {
-        publish({ ...snapshot, status: { kind: "idle" } });
-
-        return;
-      }
-
-      const contents = formatted?.kind === "formatted" ? formatted.contents : unformatted;
-
-      if (setText(contents)) {
-        publish({ ...snapshot, revision: snapshot.revision + 1 });
-        tell({ kind: "text", contents });
-      }
-
-      const outcome = await operations.write({ ...input, contents });
+      if (operations.format !== undefined) await format(operations.format);
+      const contents = text();
+      const outcome = await operations.write({
+        path,
+        contents,
+        encoding,
+        version: captured.version,
+      });
 
       if (outcome.kind === "stale") {
         publish({ ...snapshot, status: { kind: "conflict" } });
@@ -268,8 +270,8 @@ export function createFileDocument(document: TextFile, draft?: string) {
     move(nextPath: string): void {
       path = nextPath;
     },
-    edit(contents: string): void {
-      if (!setText(contents)) return;
+    edit(contents: string, changes?: readonly EditorChange[]): void {
+      if (!setText(contents, changes)) return;
       typed(false);
       tell({ kind: "text", contents });
     },
@@ -303,8 +305,9 @@ export function createFileDocument(document: TextFile, draft?: string) {
 
       if (live.length === 0) return false;
 
-      for (const editor of live)
+      for (const editor of live) {
         write(editor, editor === live[0], () => editor.apply(news.changes));
+      }
 
       typed(true);
 
@@ -315,8 +318,9 @@ export function createFileDocument(document: TextFile, draft?: string) {
 
       editors.push(editor);
 
-      if (editor.text() !== current)
+      if (editor.text() !== current) {
         write(editor, editors.length === 1, () => editor.replace(current));
+      }
     },
     detach(editor: DocumentEditor, final: string): void {
       const index = editors.indexOf(editor);
@@ -331,8 +335,9 @@ export function createFileDocument(document: TextFile, draft?: string) {
     edited(editor: DocumentEditor, changes: readonly EditorChange[]): boolean {
       if (writing !== undefined) return writing.editor === editor && writing.reported;
 
-      for (const other of editors)
+      for (const other of editors) {
         if (other !== editor && other.alive()) write(other, false, () => other.apply(changes));
+      }
 
       typed(false);
       tell({ kind: "changes", changes, length: length() });
@@ -340,6 +345,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
       return true;
     },
     observeDisk,
+    format,
     discard(next: TextFile): void {
       if (snapshot.status.kind === "saving") return;
       reload(next);
@@ -353,7 +359,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
 export type FileBuffer = ReturnType<typeof createFileDocument>;
 
 function flatLength(text: string): number {
-  return text.includes("\r") ? text.replace(/\r\n|\r/gu, "\n").length : text.length;
+  return text.includes("\r") ? text.replaceAll(/\r\n|\r/gu, "\n").length : text.length;
 }
 
 /** What an editor shows of its buffer besides the text: whether it differs from disk, and how saving is going. */
@@ -362,6 +368,7 @@ export interface BufferState {
   readonly savedContents: string;
   readonly version: FileVersion;
   readonly status: FileSaveState;
+  readonly formatFailure: string | null;
 }
 
 export function bufferState(snapshot: FileDocumentSnapshot): BufferState {
@@ -370,6 +377,7 @@ export function bufferState(snapshot: FileDocumentSnapshot): BufferState {
     savedContents: snapshot.savedContents,
     version: snapshot.version,
     status: snapshot.status,
+    formatFailure: snapshot.formatFailure,
   };
 }
 
@@ -378,7 +386,8 @@ export function sameBufferState(first: BufferState, second: BufferState): boolea
     first.dirty === second.dirty &&
     first.savedContents === second.savedContents &&
     first.version === second.version &&
-    first.status === second.status
+    first.status === second.status &&
+    first.formatFailure === second.formatFailure
   );
 }
 
@@ -414,8 +423,12 @@ export function settledContents(buffer: FileBuffer, quietMs: number) {
       editing.savedContents === previous.savedContents &&
       editing.status.kind !== "saving";
 
-    if (editing.revision === previous.revision && editing.savedContents === previous.savedContents)
+    if (
+      editing.revision === previous.revision &&
+      editing.savedContents === previous.savedContents
+    ) {
       return;
+    }
 
     if (!typed) return publish();
 

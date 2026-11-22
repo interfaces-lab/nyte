@@ -14,7 +14,16 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, matchesGlob, relative, sep } from "node:path";
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  matchesGlob,
+  relative,
+  sep,
+} from "node:path";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 import { asId, decodeTextFile, SdkError } from "@nyte-ai/schema";
@@ -59,7 +68,7 @@ const FIND_DEFAULT = 20;
 
 const FIND_CAP = 50;
 
-const FIND_TTL_MS = 5_000;
+const FIND_TTL_MS = 5000;
 
 const SEARCH_DEFAULT = 200;
 
@@ -67,7 +76,7 @@ const SEARCH_LINE = 500;
 
 const WATCH_DELAY_MS = 100;
 
-const WATCH_POLL_MS = 1_000;
+const WATCH_POLL_MS = 1000;
 
 const FORMATTERS = ["oxfmt", "prettier", "biome"] as const;
 
@@ -131,8 +140,9 @@ export function localFiles(
         return { kind: "symlink", size: stats.size, version: hashVersion(link), target: link };
       }
 
-      if (stats.isDirectory())
+      if (stats.isDirectory()) {
         return { kind: "directory", size: stats.size, version: await directoryVersion(target) };
+      }
 
       return { kind: "file", size: stats.size, version: await hashFile(target) };
     },
@@ -148,8 +158,9 @@ export function localFiles(
         (await currentVersion(target)) ??
         (link.isSymbolicLink() ? hashVersion(await readLink(target)) : null);
 
-      if (removeOptions?.expect !== undefined && removeOptions.expect !== current)
+      if (removeOptions?.expect !== undefined && removeOptions.expect !== current) {
         return { kind: "stale", current };
+      }
       await rm(target, { recursive: link.isDirectory() });
 
       return current === null ? { kind: "stale", current } : { kind: "saved", version: current };
@@ -226,7 +237,7 @@ export async function readDocument(
   if (head === null) return { kind: "missing", path };
   const file = classifyFile(target, head);
 
-  if (file.kind !== "text" && (file.mime !== "image/svg+xml" || as === "document"))
+  if (file.kind !== "text" && (file.mime !== "image/svg+xml" || as === "document")) {
     return {
       kind: file.kind,
       path,
@@ -234,8 +245,9 @@ export async function readDocument(
       size: stats.size,
       version: await hashFile(target),
     };
+  }
 
-  if (stats.size > TEXT_LIMIT)
+  if (stats.size > TEXT_LIMIT) {
     return {
       kind: "large",
       path,
@@ -243,6 +255,7 @@ export async function readDocument(
       size: stats.size,
       version: await hashFile(target),
     };
+  }
   const bytes = await readFile(target).catch(missing);
 
   if (bytes === null) return { kind: "missing", path };
@@ -318,16 +331,18 @@ export async function writeDocument(
   const current = await currentVersion(resolved);
   const expect = options?.expect;
 
-  if (expect === "absent" ? current !== null : expect !== undefined && expect !== current)
+  if (expect === "absent" ? current !== null : expect !== undefined && expect !== current) {
     return { kind: "stale", current };
+  }
   const parent = dirname(resolved);
   const folder = await stat(parent).catch(missing);
 
   if (folder === null) {
     if (options?.parents !== true) return { kind: "missing-parent" };
     await mkdir(parent, { recursive: true });
-  } else if (!folder.isDirectory())
+  } else if (!folder.isDirectory()) {
     throw new SdkError("invalid", `${dirname(path)} is not a directory.`);
+  }
 
   const bytes = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
   const mode = (await stat(resolved).catch(missing))?.mode;
@@ -441,11 +456,15 @@ function refusedBatch(): FileBatch {
 async function collectFiles(root: string): Promise<readonly FileEntryView[]> {
   const entries: FileEntryView[] = [];
 
-  for await (const frame of walkTree(root, { ignored: "exclude" }))
-    if (frame.kind === "entries")
-      for (const entry of frame.entries)
-        if (entry.kind !== "directory")
+  for await (const frame of walkTree(root, { ignored: "exclude" })) {
+    if (frame.kind === "entries") {
+      for (const entry of frame.entries) {
+        if (entry.kind !== "directory") {
           entries.push({ path: entry.path, kind: entry.kind, size: entry.size, version: null });
+        }
+      }
+    }
+  }
 
   return entries;
 }
@@ -508,32 +527,36 @@ async function format(
   contents: string,
   formatter: string | undefined,
 ): Promise<FormatOutcome> {
-  const binary = formatter ?? (await detectFormatter(root));
+  const binary = formatter ?? (await detectFormatter(root, path));
 
-  if (binary === null)
+  if (binary === null) {
     return { kind: "unavailable", reason: "No formatter is installed for this workspace." };
+  }
   const name = basename(binary).replace(/\.(cmd|exe)$/i, "");
 
   const args =
-    name === "biome"
-      ? ["format", `--stdin-file-path=${path}`]
-      : name === "oxfmt"
-        ? [`--stdin-filepath=${path}`]
-        : ["--stdin-filepath", path];
+    name === "gofmt"
+      ? []
+      : name === "biome"
+        ? ["format", `--stdin-file-path=${path}`]
+        : name === "oxfmt"
+          ? [`--stdin-filepath=${path}`]
+          : ["--stdin-filepath", path];
 
   let ran: Ran;
 
   try {
     ran = await run(binary, args, { cwd: root, input: contents });
   } catch (error) {
-    return { kind: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+    return { kind: "failed", reason: error instanceof Error ? error.message : String(error) };
   }
 
-  if (ran.code !== 0)
+  if (ran.code !== 0) {
     return {
-      kind: "unavailable",
+      kind: "failed",
       reason: `${name} could not format ${basename(path)}: ${ran.stderr.trim()}`,
     };
+  }
   const formatted = ran.stdout.toString("utf8");
 
   return formatted === contents
@@ -541,7 +564,9 @@ async function format(
     : { kind: "formatted", contents: formatted };
 }
 
-async function detectFormatter(root: string): Promise<string | null> {
+async function detectFormatter(root: string, path: string): Promise<string | null> {
+  if (extname(path) === ".go") return findExecutable("gofmt");
+
   for (const name of FORMATTERS) {
     const found = await findExecutable(name, [join(root, "node_modules", ".bin")]);
 
@@ -813,8 +838,9 @@ export function watchFiles(
       const reads = serial();
 
       const readEvent = async (path: string): Promise<FileEvent | null> => {
-        if (path.endsWith(".gitignore"))
+        if (path.endsWith(".gitignore")) {
           ignores?.forget(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
+        }
 
         if (ignores !== null && (await ignores.ignored(path, false))) return null;
         const at = resolve(path);
@@ -827,14 +853,15 @@ export function watchFiles(
         const before = known.get(path);
         known.set(path, version);
 
-        if (version === null)
+        if (version === null) {
           return before === null ? null : { kind: "removed", path, version: null };
+        }
 
         if (before === version) return null;
 
         const created =
           before === null ||
-          (before === undefined && stats !== null && stats.birthtimeMs >= started - 1_000);
+          (before === undefined && stats !== null && stats.birthtimeMs >= started - 1000);
 
         return { kind: created ? "created" : "modified", path, version };
       };
@@ -850,10 +877,13 @@ export function watchFiles(
 
         for await (const frame of walkTree(resolve(prefix), {
           ignored: "include",
-        }))
-          if (frame.kind === "entries")
-            for (const entry of frame.entries)
+        })) {
+          if (frame.kind === "entries") {
+            for (const entry of frame.entries) {
               if (entry.kind === "file") below.push(`${prefix}/${entry.path}`);
+            }
+          }
+        }
 
         return [prefix, ...below, ...inside];
       };

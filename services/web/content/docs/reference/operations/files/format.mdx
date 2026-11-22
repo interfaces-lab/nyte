@@ -5,8 +5,10 @@ description: Returns the given contents formatted for the file at that path, wit
 
 Formats contents as the file at that path would be formatted, without writing anything. A local
 workspace runs the project's formatter: `oxfmt`, `prettier` or `biome` from `node_modules/.bin`,
-then from the `PATH`, with the path for its config. It answers `formatted` with the new contents,
-`unchanged`, or `unavailable` with the reason when there is no formatter or it failed.
+then from the `PATH`, with the path for its config. A `.go` file runs `gofmt` from the `PATH` alone,
+so it runs no project code. It answers `formatted` with the new contents, `unchanged`,
+`unavailable` with the reason when no formatter applies to the file, or `failed` with the reason
+when one ran and errored, such as a non-zero exit or a binary that can't start.
 
 ## When to call it
 
@@ -37,8 +39,8 @@ Response:
 
 ## Errors
 
-- `unavailable` or `denied` when the workspace doesn't offer files. A missing or failing formatter
-  is the `unavailable` outcome, not an error.
+- `unavailable` or `denied` when the workspace doesn't offer files. A missing formatter is the
+  `unavailable` outcome and a failing one the `failed` outcome, not errors.
 
 {/* generated:start */}
 
@@ -106,6 +108,19 @@ Response:
         "kind": {
           "type": "string",
           "const": "unavailable"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failed"
         },
         "reason": {
           "type": "string"

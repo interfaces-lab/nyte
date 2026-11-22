@@ -17,7 +17,7 @@ import { IDLE_MS, RESTART_LIMIT, localLanguage } from "../src/local/language/man
 import { expandSnippet } from "../src/local/language/snippet.ts";
 import { findExecutable } from "../src/local/process/command.ts";
 
-type Fixture = {
+interface Fixture {
   readonly folder: string;
   readonly server: string;
   readonly files: readonly string[];
@@ -69,7 +69,7 @@ type Fixture = {
   };
   readonly annotated: string;
   readonly action: { readonly at: string; readonly title: string };
-};
+}
 
 const GO: Fixture = {
   folder: "notifyhub-go",
@@ -268,6 +268,7 @@ describe("document sync contract", () => {
     await writeFile(join(root, "main.go"), "package main\n");
 
     const language = localLanguage(localEnv(root), {
+      trusted: async () => true,
       servers: { gopls: join(root, "no-such-gopls") },
     });
 
@@ -290,10 +291,11 @@ describe("document sync contract", () => {
       { path: "main.go", version: 0, code: "stale" },
     ];
 
-    for (const refusal of refusals)
+    for (const refusal of refusals) {
       await expect(
         language.change({ path: refusal.path, version: refusal.version, changes: [] }),
       ).rejects.toMatchObject({ code: refusal.code });
+    }
 
     expect(
       await language.hover({ path: "main.go", position: { line: 0, utf16Column: 0 } }),
@@ -319,7 +321,7 @@ describe.each([GO, TYPESCRIPT].filter((fixture) => installed.has(fixture.server)
 
     beforeAll(async () => {
       const real = await realpath(root);
-      language = localLanguage(localEnv(real));
+      language = localLanguage(localEnv(real), { trusted: async () => true });
       before = await Promise.all(fixture.files.map((file) => readFile(join(real, file), "utf8")));
     });
 
@@ -561,13 +563,16 @@ describe.each([GO, TYPESCRIPT].filter((fixture) => installed.has(fixture.server)
         ],
       });
 
-      const edits = await language.format({
+      const formatted = await language.format({
         path: spec.file,
         options: { tabSize: 2, insertSpaces: false },
       });
 
       expect(
-        edits.some((edit) => edit.range.start.line <= line && line <= edit.range.end.line),
+        formatted.kind === "edits" &&
+          formatted.edits.some(
+            (edit) => edit.range.start.line <= line && line <= edit.range.end.line,
+          ),
       ).toBe(true);
       await language.change({
         path: spec.file,
@@ -655,8 +660,9 @@ describe.each([GO, TYPESCRIPT].filter((fixture) => installed.has(fixture.server)
         if (
           next.value.some((view) => view.state.kind === "ready") &&
           (await serverProcesses(fixture.server)).some((pid) => pid !== killed)
-        )
+        ) {
           break;
+        }
       }
 
       await status.return?.();
@@ -721,7 +727,10 @@ describe("the LSP client against a scripted server", () => {
     await chmod(server, 0o755);
     await writeFile(join(root, "go.mod"), "module example.com/scripted\n\ngo 1.24\n");
     await writeFile(join(root, "main.go"), "package main\n\nfunc main() {}\n");
-    language = localLanguage(localEnv(root), { servers: { gopls: server } });
+    language = localLanguage(localEnv(root), {
+      trusted: async () => true,
+      servers: { gopls: server },
+    });
     await language.open({ path: "main.go", text: "package main\n\nfunc main() {}\n", version: 1 });
   });
 
@@ -823,6 +832,47 @@ describe("the LSP client against a scripted server", () => {
   it.each(CONTRACTS)("$name", (contract) => contract.check());
 });
 
+describe("folder trust", () => {
+  it("runs a server process only while the folder is trusted", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-language-trust-")));
+    const server = join(root, "scripted-server");
+    await cp(join(FIXTURES, "scripted-server.cjs"), server);
+    await chmod(server, 0o755);
+    await writeFile(join(root, "main.go"), "package main\n");
+    let trusted = false;
+
+    const language = localLanguage(localEnv(root), {
+      trusted: async () => trusted,
+      servers: { gopls: server },
+    });
+
+    try {
+      const opened = await language.open({ path: "main.go", text: "package main\n", version: 1 });
+      await language.hover({ path: "main.go", position: { line: 0, utf16Column: 0 } });
+      await language.change({ path: "main.go", version: 2, changes: [] });
+
+      expect(opened?.state).toEqual({ kind: "untrusted" });
+      expect((await language.status()).map((view) => view.state)).toEqual([{ kind: "untrusted" }]);
+      expect(await serverProcesses(server)).toEqual([]);
+
+      trusted = true;
+      await language.trustChanged(true);
+      await until(language.watchStatus(), (views) => views[0]?.state.kind === "busy");
+
+      expect(await serverProcesses(server)).toHaveLength(1);
+
+      trusted = false;
+      await language.trustChanged(false);
+
+      expect((await language.status()).map((view) => view.state)).toEqual([{ kind: "untrusted" }]);
+      expect(await serverProcesses(server)).toEqual([]);
+    } finally {
+      await language.shutdown();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("an unused server", () => {
   it("shuts down after the idle time and starts again on the next request", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-language-idle-")));
@@ -830,7 +880,11 @@ describe("an unused server", () => {
     await cp(join(FIXTURES, "scripted-server.cjs"), server);
     await chmod(server, 0o755);
     await writeFile(join(root, "main.go"), "package main\n");
-    const language = localLanguage(localEnv(root), { servers: { gopls: server } });
+
+    const language = localLanguage(localEnv(root), {
+      trusted: async () => true,
+      servers: { gopls: server },
+    });
 
     try {
       await language.open({ path: "main.go", text: "package main\n", version: 1 });
@@ -858,7 +912,7 @@ describe.skipIf(!installed.has("gopls"))("gopls and files changed on disk", () =
     async () => {
       const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-language-disk-")));
       await cp(join(FIXTURES, "notifyhub-go"), root, { recursive: true });
-      const language = localLanguage(localEnv(root));
+      const language = localLanguage(localEnv(root), { trusted: async () => true });
 
       try {
         const main = await readFile(join(root, "main.go"), "utf8");

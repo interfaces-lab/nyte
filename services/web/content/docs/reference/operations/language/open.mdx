@@ -3,7 +3,7 @@ title: language.open
 description: Opens a document with the client's text and version, starting its language server if none runs.
 ---
 
-Hands a document's text to its language server, which from then on reads the client's text instead of the disk's, and starts the server if it isn't running. It answers the server's row, or null for a file no language handles. Opening a document again replaces its text and version. A server that was `missing` or `failed` is looked for and started again.
+Hands a document's text to its language server, which from then on reads the client's text instead of the disk's, and starts the server if it isn't running. It answers the server's row, or null for a file no language handles. Opening a document again replaces its text and version. A server that was `missing`, `failed` or `untrusted` is looked for and started again. In a folder the user hasn't trusted no server starts and the row is `untrusted`; trusting the folder starts the servers that hold open documents.
 
 ## When to call it
 
@@ -150,6 +150,16 @@ Response:
                 },
                 "hint": {
                   "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "untrusted"
                 }
               }
             },

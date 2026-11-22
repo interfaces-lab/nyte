@@ -142,8 +142,9 @@ async function seed(home: string, extra: ExtraChats): Promise<Manifest> {
     const settle = async (fixture: Fixture, text: string, receipt: SendReceipt): Promise<void> => {
       const outcome = await receipt.settled();
 
-      if (outcome.kind !== "completed")
+      if (outcome.kind !== "completed") {
         throw new Error(`Seeding ${FIXTURES[fixture]} failed on ${text}: ${outcome.kind}`);
+      }
     };
 
     for (const fixture of FIXTURE_NAMES) {
@@ -188,8 +189,9 @@ async function seed(home: string, extra: ExtraChats): Promise<Manifest> {
 async function settleExtra(name: string, text: string, receipt: SendReceipt): Promise<void> {
   const outcome = await receipt.settled();
 
-  if (outcome.kind !== "completed")
+  if (outcome.kind !== "completed") {
     throw new Error(`Seeding ${name} failed on ${text}: ${outcome.kind}`);
+  }
 }
 
 async function ensureBaseline(extra: ExtraChats): Promise<string> {
@@ -201,16 +203,21 @@ async function ensureBaseline(extra: ExtraChats): Promise<string> {
       () => true,
       () => false,
     )
-  )
+  ) {
     return published;
+  }
   await mkdir(CACHE_ROOT, { recursive: true });
   const building = join(CACHE_ROOT, `building-${randomUUID()}`);
 
   try {
     const seeded = await seed(join(building, "home"), extra);
     await writeFile(join(building, "manifest.json"), JSON.stringify(seeded, null, 2));
-    await rename(building, published).catch(async (cause: NodeJS.ErrnoException) => {
-      if (cause.code !== "EEXIST" && cause.code !== "ENOTEMPTY") throw cause;
+    await rename(building, published).catch(async (cause: unknown) => {
+      const raced =
+        cause instanceof Error &&
+        "code" in cause &&
+        (cause.code === "EEXIST" || cause.code === "ENOTEMPTY");
+      if (!raced) throw cause;
       await rm(building, { recursive: true, force: true });
     });
   } catch (cause) {
@@ -247,11 +254,16 @@ export async function prepareHome(parent: string, extra: ExtraChats = {}): Promi
 
     if (current === undefined) throw new Error(`The home workspace is not listed for ${home}`);
 
-    for (const id of [...Object.values(manifest.sessions), ...Object.values(manifest.extra ?? {})])
+    for (const id of [
+      ...Object.values(manifest.sessions),
+      ...Object.values(manifest.extra ?? {}),
+    ]) {
       await host.session(id).update({ workspace: current.id });
+    }
 
-    for (const workspace of workspaces)
+    for (const workspace of workspaces) {
       if (workspace.id !== current.id) await host.workspaces.forget(workspace.id);
+    }
   } finally {
     await host.close();
   }
@@ -277,4 +289,26 @@ export async function prepareHome(parent: string, extra: ExtraChats = {}): Promi
       unread: sessions("unread"),
     },
   };
+}
+
+export async function trustedProject(prepared: PreparedHome, name: string): Promise<string> {
+  const project = join(prepared.home, name);
+  await mkdir(project, { recursive: true });
+  const host = await openOffline(prepared.home);
+
+  try {
+    const seen = await host.workspaces.inspect({ kind: "local", path: project });
+    const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
+
+    if (added.kind !== "added") throw new Error(`Could not register ${project}: ${added.kind}`);
+    await host.workspace(added.workspace).update({ projectResources: true });
+
+    for (const id of Object.values(prepared.sessions)) {
+      await host.session(id).update({ workspace: added.workspace });
+    }
+  } finally {
+    await host.close();
+  }
+
+  return project;
 }
