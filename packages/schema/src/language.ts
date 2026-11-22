@@ -99,7 +99,44 @@ export const LANGUAGES: Readonly<
     }
   >
 > = {
-  bash: { label: "Shell", ids: { ".sh": "shellscript", ".bash": "shellscript" } },
+  bash: {
+    label: "Shell",
+    ids: {
+      ".sh": "shellscript",
+      ".bash": "shellscript",
+      ".zsh": "shellscript",
+      ".ksh": "shellscript",
+      ".ebuild": "shellscript",
+      ".eclass": "shellscript",
+      ".zsh-theme": "shellscript",
+    },
+    fileNames: {
+      ".bashrc": "shellscript",
+      ".bash_aliases": "shellscript",
+      ".bash_profile": "shellscript",
+      ".bash_login": "shellscript",
+      ".bash_logout": "shellscript",
+      ".profile": "shellscript",
+      ".xprofile": "shellscript",
+      ".xsession": "shellscript",
+      ".xsessionrc": "shellscript",
+      ".zshrc": "shellscript",
+      ".zprofile": "shellscript",
+      ".zlogin": "shellscript",
+      ".zlogout": "shellscript",
+      ".zshenv": "shellscript",
+      ".envrc": "shellscript",
+      APKBUILD: "shellscript",
+      PKGBUILD: "shellscript",
+      zshrc: "shellscript",
+      zshenv: "shellscript",
+      zlogin: "shellscript",
+      zprofile: "shellscript",
+      zlogout: "shellscript",
+      bashrc_Apple_Terminal: "shellscript",
+      zshrc_Apple_Terminal: "shellscript",
+    },
+  },
   c: {
     label: "C and C++",
     ids: {
