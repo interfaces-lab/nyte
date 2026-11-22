@@ -135,6 +135,11 @@ function explain(server: LanguageServerView | undefined) {
         message: `${server.server} doesn't run in untrusted folders.`,
         detail: "Trust the folder to turn it on.",
       };
+    case "available":
+      return {
+        message: `${server.server} isn't downloaded.`,
+        detail: "Download it from the bar above the file.",
+      };
     case "installing":
       return {
         message: `${server.server} is downloading.`,

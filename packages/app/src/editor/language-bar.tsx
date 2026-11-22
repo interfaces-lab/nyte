@@ -9,12 +9,14 @@ import { toast } from "@nyte-ai/ui/toast";
 import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { errorMessage } from "../contract/errors.ts";
+import { languageFor } from "../data/language.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { languageStatusWatch } from "../data/watches.ts";
 import { trustWorkspace, useHomeWorkspace } from "../data/workspaces.ts";
+import { formatBytes } from "../lib/format.ts";
 import { servesFile } from "./declaration.ts";
 
-const WAITING = ["untrusted", "installing"] as const;
+const WAITING = ["untrusted", "available", "installing"] as const;
 
 const styles = create({
   bar: {
@@ -63,6 +65,18 @@ export function LanguageBar(input: {
       }),
   });
 
+  const install = useMutation({
+    mutationFn: async (server: { readonly server: string; readonly root: string }) => {
+      if (folder !== undefined) await (await languageFor(folder.id)).install(server);
+    },
+    onError: (cause) =>
+      toast.add({
+        type: "error",
+        title: "Couldn't start the download",
+        description: errorMessage(cause),
+      }),
+  });
+
   if (waiting === undefined || folder === undefined || name === undefined) return null;
   const language = LANGUAGES[name].label;
   const state = waiting.state;
@@ -74,6 +88,24 @@ export function LanguageBar(input: {
           Downloading {language} code intelligence
           {state.percent === null ? "." : `: ${String(Math.round(state.percent))}%`}
         </span>
+      </div>
+    );
+  }
+
+  if (state.kind === "available") {
+    return (
+      <div role="status" {...props(text.sm, styles.bar, hairline.blockEnd)}>
+        <span {...props(styles.message)}>
+          {language} code intelligence needs a{" "}
+          {state.bytes === null ? "download." : `${formatBytes(state.bytes)} download.`}
+        </span>
+        <Button
+          size="2xs"
+          loading={install.isPending}
+          onClick={() => install.mutate({ server: waiting.server, root: waiting.root })}
+        >
+          Download
+        </Button>
       </div>
     );
   }
