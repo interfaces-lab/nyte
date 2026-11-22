@@ -120,7 +120,7 @@ export const LANGUAGES: Readonly<
   elixir: { label: "Elixir", ids: { ".ex": "elixir", ".exs": "elixir" } },
   go: {
     label: "Go",
-    ids: { ".go": "go" },
+    ids: { ".go": "go", ".tmpl": "gotmpl", ".gotmpl": "gotmpl" },
     fileNames: { "go.mod": "go.mod", "go.work": "go.work", "go.sum": "go.sum" },
   },
   html: { label: "HTML", ids: { ".html": "html", ".htm": "html" } },
