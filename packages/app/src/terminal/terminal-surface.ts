@@ -1,6 +1,6 @@
 import { createTerminal } from "@nyte-ai/vt";
 import type { CellSize, Cursor, Engine, Terminal } from "@nyte-ai/vt";
-import { preferences } from "../../preferences/index.ts";
+import { preferences } from "../preferences/index.ts";
 import { colorScheme, terminalAppearance } from "./terminal-appearance.ts";
 import type { TerminalLink } from "./terminal-links.ts";
 import { createRenderer, measureCell } from "./terminal-renderer.ts";

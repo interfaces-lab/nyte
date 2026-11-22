@@ -58,8 +58,8 @@ import { workbench } from "./store.ts";
 import { closeTab, endTerminal, launch } from "./commands.ts";
 import { readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
-import { useTerminalRuntime } from "./terminal/terminal-store.ts";
-import type { ProgramRecord } from "./terminal/terminal-program-status.ts";
+import { useTerminalRuntime } from "../terminal/terminal-store.ts";
+import type { ProgramRecord } from "../terminal/terminal-program-status.ts";
 
 const TAB_CONTENT_FADE =
   "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";

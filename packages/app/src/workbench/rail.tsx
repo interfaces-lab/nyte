@@ -35,7 +35,7 @@ import type {
 } from "./model.ts";
 import { railModel, tabPresentation } from "./selectors.ts";
 import { workbench } from "./store.ts";
-import { useTerminalRuntime } from "./terminal/terminal-store.ts";
+import { useTerminalRuntime } from "../terminal/terminal-store.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;

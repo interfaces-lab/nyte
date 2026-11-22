@@ -20,6 +20,7 @@ const ENTRIES = [
         "markdown",
         "editor",
         "changes",
+        "terminal",
         "canvas",
         "studio",
         "workbench",

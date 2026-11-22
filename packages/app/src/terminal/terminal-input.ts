@@ -1,6 +1,6 @@
 import type { KeyInput, Terminal } from "@nyte-ai/vt";
-import { addsToChat } from "../../references/add-to-chat.ts";
-import { nyte } from "../../contract/nyte.ts";
+import { addsToChat } from "../references/add-to-chat.ts";
+import { nyte } from "../contract/nyte.ts";
 
 export interface InputHost {
   readonly terminal: Terminal;

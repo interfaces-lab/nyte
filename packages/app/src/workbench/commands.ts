@@ -19,7 +19,7 @@ import type {
 import { workbenchScope, workspacePathForView } from "./paths.ts";
 import { shownWorkbenchTab } from "./selectors.ts";
 import { workbench } from "./store.ts";
-import { getTerminal, terminalActions } from "./terminal/terminal-store.ts";
+import { getTerminal, terminalActions } from "../terminal/terminal-store.ts";
 
 export function launch(view: WorkbenchViewKey, kind: LaunchKind): void {
   const descriptor = WORKBENCH_KINDS[kind];

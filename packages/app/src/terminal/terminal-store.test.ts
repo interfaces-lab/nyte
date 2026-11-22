@@ -3,15 +3,15 @@ import { asId } from "@nyte-ai/schema";
 import type { Job, JobView, OutputFrame, WorkspaceInfo } from "@nyte-ai/sdk";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { attachTerminalOutput, getTerminal, terminalActions } from "./terminal-store.ts";
-import { openJobTerminal } from "../commands.ts";
-import { workbenchViewKey } from "../paths.ts";
-import type { WorkbenchPersistence } from "../persistence.ts";
-import { createWorkbenchStore, workbench } from "../store.ts";
+import { openJobTerminal } from "../workbench/commands.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
+import type { WorkbenchPersistence } from "../workbench/persistence.ts";
+import { createWorkbenchStore, workbench } from "../workbench/store.ts";
 import type { TerminalOutput } from "./terminal-store.ts";
 import type { ClientConnection } from "@nyte-ai/sdk/client";
-import { installConnection } from "../../data/connection.ts";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
-import { sessionRow } from "../../../test/view-fixtures.ts";
+import { installConnection } from "../data/connection.ts";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { sessionRow } from "../../test/view-fixtures.ts";
 
 const workspace = asId<"workspace">("terminal-workspace");
 

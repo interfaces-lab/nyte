@@ -2,11 +2,11 @@ import type { Cursor, Mark } from "@nyte-ai/vt";
 import { serial } from "@nyte-ai/schema/serial";
 import { toast } from "@nyte-ai/ui/toast";
 import { props } from "@stylexjs/stylex";
-import { addToChat } from "../../references/add-to-chat.ts";
-import type { ExcerptReference } from "../../references/message-references.ts";
-import { errorMessage } from "../../contract/errors.ts";
-import { nyte } from "../../contract/nyte.ts";
-import { openExternal } from "../../lib/open-external.ts";
+import { addToChat } from "../references/add-to-chat.ts";
+import type { ExcerptReference } from "../references/message-references.ts";
+import { errorMessage } from "../contract/errors.ts";
+import { nyte } from "../contract/nyte.ts";
+import { openExternal } from "../lib/open-external.ts";
 import {
   attachTerminalOutput,
   getTerminal,

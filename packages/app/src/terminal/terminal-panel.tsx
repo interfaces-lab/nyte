@@ -7,15 +7,15 @@ import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { jobTaskState, taskLabel } from "@nyte-ai/plugin/client/presentation";
-import { ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
-import { errorMessage } from "../../contract/errors.ts";
+import { ADD_TO_CHAT_LABEL } from "../references/add-to-chat.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { connection } from "../../data/connection.ts";
-import { jobsWatch } from "../../data/watches.ts";
+import { connection } from "../data/connection.ts";
+import { jobsWatch } from "../data/watches.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import type { WorkbenchTabId } from "../model.ts";
-import { nyte } from "../../contract/nyte.ts";
+import type { WorkbenchTabId } from "../workbench/model.ts";
+import { nyte } from "../contract/nyte.ts";
 import {
   addTerminalToChat,
   mountTerminal,

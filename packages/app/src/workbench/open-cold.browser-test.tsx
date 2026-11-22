@@ -14,13 +14,13 @@ import { DesignTab } from "./design-tab.tsx";
 import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
 import { useWorkbenchSnapshot, workbench } from "./store.ts";
 import { EditorPanel } from "../editor/editor-panel.tsx";
-import { TerminalPanel } from "./terminal/terminal-panel.tsx";
+import { TerminalPanel } from "../terminal/terminal-panel.tsx";
 import {
   addTerminalToChat,
   clearTerminal,
   copyTerminal,
   focusTerminal,
-} from "./terminal/terminal-runtime.ts";
+} from "../terminal/terminal-runtime.ts";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

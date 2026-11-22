@@ -2,8 +2,8 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { nyte } from "../../contract/nyte.ts";
-import { loadGhostty } from "../../workbench/terminal/ghostty.ts";
-import { openTerminalSurface } from "../../workbench/terminal/terminal-surface.ts";
+import { loadGhostty } from "../../terminal/ghostty.ts";
+import { openTerminalSurface } from "../../terminal/terminal-surface.ts";
 import { terminalShell } from "../terminal.tsx";
 
 const LISTING = "README.md  package.json  \u001B[1;34msrc\u001B[0m";

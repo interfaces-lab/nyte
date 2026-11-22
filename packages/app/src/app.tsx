@@ -16,7 +16,7 @@ import { homeFolder, subscribeHomeFolder } from "./data/workspaces.ts";
 import { WORKBENCH_HOME_VIEW_KEY, workspacePathForView } from "./workbench/paths.ts";
 import { workbench } from "./workbench/store.ts";
 import { watchUnsavedEdits } from "./editor/file-store.ts";
-import { reattachShells } from "./workbench/terminal/terminal-store.ts";
+import { reattachShells } from "./terminal/terminal-store.ts";
 import { watchClientPlugins } from "./canvas/client-plugins.tsx";
 import { paceTranscripts } from "./data/chat-store.ts";
 import { releaseStartupReads } from "./data/startup.ts";
