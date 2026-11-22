@@ -5,7 +5,7 @@
   ],
   "vscode": {
     "extension": "vscode.typescript-language-features",
-    "source": "https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/package.json"
+    "source": "https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageProvider.ts"
   },
   "features": {
     "completion": {
@@ -246,16 +246,15 @@
     "linkedEditingRanges": {
       "probes": [
         {
-          "file": "src/index.ts",
-          "after": "const hub = new H"
+          "file": "src/summary.tsx",
+          "after": "return <Pan"
         }
       ],
       "servers": [
         "typescript-language-server"
       ],
-      "answers": false,
-      "vscode": true,
-      "note": "The server links JSX tag names, as VS Code does, and this fixture has no JSX to ask about."
+      "answers": true,
+      "vscode": true
     },
     "foldingRanges": {
       "probes": [
@@ -305,7 +304,8 @@
         "typescript-language-server"
       ],
       "answers": true,
-      "vscode": true
+      "vscode": true,
+      "note": "VS Code registers InlayHintsProvider by default with all js/ts.inlayHints.* toggles off; Nyte enables literal parameter names, parameter types, and enum member values."
     },
     "callHierarchy": {
       "probes": [

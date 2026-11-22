@@ -5,9 +5,16 @@ import { GOPLS } from "./servers/gopls.ts";
 import { OXLINT } from "./servers/oxlint.ts";
 import { RUFF } from "./servers/ruff.ts";
 import { TYPESCRIPT_LANGUAGE_SERVER } from "./servers/typescript-language-server.ts";
+import { VSCODE_ESLINT_LANGUAGE_SERVER } from "./servers/vscode-eslint-language-server.ts";
 import type { ServerSpec } from "./spec.ts";
 
-export const SERVERS: readonly ServerSpec[] = [GOPLS, RUFF, TYPESCRIPT_LANGUAGE_SERVER, OXLINT];
+export const SERVERS: readonly ServerSpec[] = [
+  GOPLS,
+  RUFF,
+  TYPESCRIPT_LANGUAGE_SERVER,
+  VSCODE_ESLINT_LANGUAGE_SERVER,
+  OXLINT,
+];
 
 export async function findServers(
   path: string,
