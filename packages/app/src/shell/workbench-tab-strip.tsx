@@ -90,6 +90,7 @@ const styles = create({
     alignItems: "center",
     gap: space.px,
     minWidth: 0,
+    WebkitAppRegion: "initial",
   },
   slot: { display: "flex" },
   kept: { flexShrink: 0 },
@@ -348,7 +349,7 @@ export function WorkbenchTabStrip({
   };
 
   return (
-    <div ref={attachStrip} {...props(styles.root)}>
+    <div ref={attachStrip} data-nyte-workbench="" {...props(styles.root)}>
       <Tabs.Root ref={listRef} value={activeValue} xstyle={styles.tabs} onValueChange={activateTab}>
         <Tabs.List aria-label="Workbench tabs" xstyle={styles.list}>
           {chatTab && !overflow.includes(WORKBENCH_CHAT_TAB) && (
