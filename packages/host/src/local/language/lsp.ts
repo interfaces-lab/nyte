@@ -420,7 +420,6 @@ export function readMarkdown(value: Static<typeof MarkupType> | undefined): stri
   return value.kind === "plaintext" ? value.value.replaceAll("\n", "  \n") : value.value;
 }
 
-/** Splits a completion answer into its raw items, kept to resolve them later, and its shared defaults. */
 export function readCompletionAnswer(value: unknown): {
   readonly items: readonly unknown[];
   readonly defaults: CompletionDefaults | null;
@@ -681,7 +680,6 @@ export function findWord(text: string, position: TextPosition): RenameTarget | n
       };
 }
 
-/** The edit, or why it is refused: a file it would create, rename or delete. */
 export function readWorkspaceEdit(
   value: unknown,
   place: Place,

@@ -40,16 +40,14 @@ import { answerConfiguration, initializeParams, readInitialize } from "./initial
 import type { Installer } from "./install.ts";
 import { readProgress, readWorkspaceEdit, toLspRange } from "./lsp.ts";
 import type { Place } from "./lsp.ts";
-import { openProject, runs } from "./project.ts";
+import { openProject, passesProbe } from "./project.ts";
 import { connectLsp, LspError, METHOD_NOT_FOUND, REQUEST_CANCELLED } from "./rpc.ts";
 import { findServers } from "./servers.ts";
 import type { ServerSpec } from "./spec.ts";
 import type { Document, Run, Servers, Slot, Synced, Target } from "./state.ts";
 
-/** A server that dies more than `RESTARTS` times within `RESTART_WINDOW_MS` stays failed until a client opens a file again. */
 export const RESTART_LIMIT = { restarts: 3, windowMs: 3 * 60_000 } as const;
 
-/** A server with no request and no document change for this long shuts down; the next one starts it again. */
 export const IDLE_MS = 10 * 60_000;
 
 const START_DEADLINE_MS = 30_000;
@@ -96,8 +94,15 @@ export function localLanguage(
 
   const uri = (path: string): string => pathToFileURL(absolute(path)).href;
 
-  const place: Place = (address) =>
-    address.startsWith("file:") ? within(fileURLToPath(address)) : null;
+  const place: Place = (address) => {
+    if (!address.startsWith("file:")) return null;
+
+    try {
+      return within(fileURLToPath(address));
+    } catch {
+      return null;
+    }
+  };
 
   const record = (slot: Slot, text: string): void => {
     slot.log.push(...text.split("\n").filter((line) => line.trim() !== ""));
@@ -161,7 +166,7 @@ export function localLanguage(
       completion: null,
       actions: null,
       hierarchies: { callHierarchy: null, typeHierarchy: null },
-      links: null,
+      links: new Map(),
       log: [],
     };
 
@@ -200,6 +205,8 @@ export function localLanguage(
 
   const closeIn = (slot: Slot, path: string): void => {
     const run = slot.run;
+
+    slot.links.delete(uri(path));
 
     if (run === null || !run.opened.delete(path)) return;
     run.rpc.notify("textDocument/didClose", { textDocument: { uri: uri(path) } });
@@ -347,11 +354,11 @@ export function localLanguage(
     readonly version: string | null;
   } | null> => {
     const spec = slot.spec;
-    const pinned = options.servers?.[spec.name];
-    const found = await findExecutable(pinned ?? spec.program, projectBins(slot.root));
+    const configured = options.servers?.[spec.name];
+    const found = await findExecutable(configured ?? spec.program, projectBins(slot.root));
 
     const download =
-      pinned === undefined && options.installer !== undefined && spec.install !== null
+      configured === undefined && options.installer !== undefined && spec.install !== null
         ? { installer: options.installer, source: spec.install }
         : null;
 
@@ -371,21 +378,24 @@ export function localLanguage(
 
     if (
       spec.runtime !== null &&
-      !(await runs(spec.runtime.program, spec.runtime.probe, slot.root))
+      !(await passesProbe(spec.runtime.program, spec.runtime.probe, slot.root))
     ) {
       setState(slot, { kind: "missing", hint: spec.runtime.installHint });
 
       return null;
     }
 
-    if (found !== null && (spec.probe === null || (await runs(found, spec.probe, slot.root)))) {
+    if (
+      found !== null &&
+      (spec.probe === null || (await passesProbe(found, spec.probe, slot.root)))
+    ) {
       return { command: [found], env: {}, version: null };
     }
 
     if (download === null) {
       setState(slot, {
         kind: "missing",
-        hint: `${found ?? spec.program} is there but does not run. ${spec.installHint}`,
+        hint: `${found} is there but does not run. ${spec.installHint}`,
       });
 
       return null;
@@ -404,13 +414,6 @@ export function localLanguage(
       });
 
     if (installed === null) return null;
-
-    if (!(await options.trusted())) {
-      setState(slot, { kind: "untrusted" });
-
-      return null;
-    }
-
     slot.executable = installed.path;
 
     const version = download.source.version;
@@ -426,6 +429,19 @@ export function localLanguage(
 
     if (located === null || closed) return null;
     setState(slot, { kind: "starting" });
+
+    const prepared =
+      slot.spec.prepare === undefined
+        ? {}
+        : await slot.spec.prepare(openProject(slot.root, options.installer));
+
+    if (closed) return null;
+
+    if (!(await options.trusted())) {
+      setState(slot, { kind: "untrusted" });
+
+      return null;
+    }
 
     const job = await env
       .exec([...located.command, ...slot.spec.arguments], {
@@ -458,7 +474,7 @@ export function localLanguage(
       progress: new Map(),
       registrations: new Map(),
       capabilities: NO_CAPABILITIES,
-      settings: slot.spec.settings,
+      settings: prepared.settings ?? slot.spec.settings,
       initialized: false,
       stopping: false,
       collecting: null,
@@ -470,13 +486,6 @@ export function localLanguage(
       (end) => exited(slot, run, end.kind === "exited" ? end.code : null),
       () => exited(slot, run, null),
     );
-
-    const prepared =
-      slot.spec.prepare === undefined
-        ? {}
-        : await slot.spec.prepare(openProject(slot.root, options.installer));
-
-    run.settings = prepared.settings ?? slot.spec.settings;
 
     const answer = await rpc
       .request(
@@ -507,8 +516,14 @@ export function localLanguage(
     }
 
     run.capabilities = initialized.capabilities;
+
+    const reported =
+      initialized.version === null
+        ? null
+        : (slot.spec.readVersion?.(initialized.version) ?? initialized.version);
+
     slot.version =
-      [initialized.version ?? located.version, prepared.runsOn ?? null]
+      [reported ?? located.version, prepared.runsOn ?? null]
         .filter((part) => part !== null)
         .join(", ") || null;
     rpc.notify("initialized", {});
@@ -785,7 +800,9 @@ export function localLanguage(
               provider === null
                 ? []
                 : events.flatMap((event) =>
-                    event.kind === notice.kind && operatesOn(provider, event.full)
+                    event.kind === notice.kind &&
+                    event.full.startsWith(`${root}${sep}`) &&
+                    operatesOn(provider, event.full, null)
                       ? [{ uri: uri(event.full) }]
                       : [],
                   );

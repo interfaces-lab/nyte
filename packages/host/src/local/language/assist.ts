@@ -78,7 +78,6 @@ export async function completion(
       const number = target.slot.answers;
 
       target.slot.completion = {
-        run: target.run.id,
         answer: number,
         items: read.items,
         defaults: read.defaults,
@@ -184,7 +183,7 @@ export async function codeActions(
       const plans = asking instanceof LspError ? [] : readCodeActions(asking.answer);
       target.slot.answers += 1;
       const number = target.slot.answers;
-      target.slot.actions = { run: target.run.id, answer: number, plans };
+      target.slot.actions = { answer: number, plans };
 
       return plans.map((plan, index): CodeAction => ({
         title: plan.title,
@@ -270,11 +269,7 @@ export async function documentLinks(
       const resolves = asked.provider.resolveProvider === true;
       target.slot.answers += 1;
       const number = target.slot.answers;
-      target.slot.links = {
-        run: target.run.id,
-        answer: number,
-        items: links.map((read) => read.raw),
-      };
+      target.slot.links.set(asked.uri, { answer: number, items: links.map((read) => read.raw) });
 
       return links.map((read, index): DocumentLink => ({
         ...read.link,
@@ -297,12 +292,12 @@ export async function resolveDocumentLink(
 ): Promise<DocumentLink | null> {
   const token = input.token;
   const found = servers.findRun(token.server);
-  const held = found?.slot.links ?? null;
+  const held = [...(found?.slot.links.values() ?? [])].find(
+    (links) => links.answer === token.answer,
+  );
   const raw = held?.items[token.item];
 
-  if (found === null || held === null || raw === undefined || held.answer !== token.answer) {
-    return null;
-  }
+  if (found === null || raw === undefined) return null;
 
   servers.touch(found.slot);
   const asking = await ask(servers, found, "documentLink/resolve", raw);

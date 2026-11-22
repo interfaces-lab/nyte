@@ -51,7 +51,7 @@ export function languageHierarchies(
       if (roots.length === 0) continue;
       const slot = asked.target.slot;
       slot.answers += 1;
-      const held: HeldItems = { run: asked.target.run.id, answer: slot.answers, items: [] };
+      const held: HeldItems = { answer: slot.answers, items: [] };
       slot.hierarchies[kind] = held;
 
       return roots.map((root) => mint(asked.target, held, kind, root));
@@ -75,7 +75,6 @@ export function languageHierarchies(
       held === null ||
       item === undefined ||
       token.kind !== kind ||
-      held.run !== token.server ||
       held.answer !== token.answer
     ) {
       return [];

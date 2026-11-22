@@ -5,7 +5,6 @@ import type { ActionPlan, Place, readCompletionItem } from "./lsp.ts";
 import type { LspConnection } from "./rpc.ts";
 import type { ServerSpec } from "./spec.ts";
 
-/** One process of a server, from its start to its exit. */
 export interface Run {
   readonly id: LanguageServerId;
   readonly job: Job;
@@ -14,14 +13,13 @@ export interface Run {
   readonly progress: Map<string, { readonly title: string; readonly percent: number | null }>;
   readonly registrations: Map<string, Registration>;
   capabilities: ServerCapabilities;
-  settings: Json;
+  readonly settings: Json;
   initialized: boolean;
   stopping: boolean;
   collecting: WorkspaceEdit[] | null;
 }
 
 export interface HeldItems {
-  readonly run: LanguageServerId;
   readonly answer: number;
   readonly items: Json[];
 }
@@ -38,13 +36,11 @@ export interface Slot {
   idle: ReturnType<typeof setTimeout> | null;
   answers: number;
   completion: {
-    readonly run: LanguageServerId;
     readonly answer: number;
     readonly items: readonly unknown[];
     readonly defaults: Parameters<typeof readCompletionItem>[1];
   } | null;
   actions: {
-    readonly run: LanguageServerId;
     readonly answer: number;
     readonly plans: readonly ActionPlan[];
   } | null;
@@ -52,7 +48,7 @@ export interface Slot {
     callHierarchy: HeldItems | null;
     typeHierarchy: HeldItems | null;
   };
-  links: HeldItems | null;
+  readonly links: Map<string, HeldItems>;
   readonly log: string[];
 }
 

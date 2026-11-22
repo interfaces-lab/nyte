@@ -288,7 +288,10 @@ function readLinkTarget(target: string, place: Place): LinkTarget {
     position:
       line === null
         ? null
-        : { line: Number(line[1]) - 1, utf16Column: Math.max(0, Number(line[2] ?? 1) - 1) },
+        : {
+            line: Math.max(0, Number(line[1]) - 1),
+            utf16Column: Math.max(0, Number(line[2] ?? 1) - 1),
+          },
   };
 }
 

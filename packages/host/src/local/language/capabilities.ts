@@ -213,18 +213,26 @@ const FileFilters = compile(
     filters: Type.Array(
       Type.Object({
         scheme: Type.Optional(Type.String()),
-        pattern: Type.Object({ glob: Type.String() }),
+        pattern: Type.Object({ glob: Type.String(), matches: Type.Optional(Type.String()) }),
       }),
     ),
   }),
 );
 
-export function operatesOn(provider: JsonSchema, path: string): boolean {
+/** Whether a server's file operation filters take this path; a null `kind` stands for a path that is gone, which any `matches` takes. */
+export function operatesOn(
+  provider: JsonSchema,
+  path: string,
+  kind: "file" | "folder" | null,
+): boolean {
   return (
     !FileFilters.Check(provider) ||
     provider.filters.some(
       (filter) =>
         (filter.scheme === undefined || filter.scheme === "file") &&
+        (filter.pattern.matches === undefined ||
+          kind === null ||
+          filter.pattern.matches === kind) &&
         matches(path, "/", filter.pattern.glob),
     )
   );

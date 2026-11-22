@@ -11,6 +11,8 @@ const UNUSED_VERSION_MS = 30 * 24 * 60 * 60_000;
 
 const TOOLCHAIN_DEADLINE_MS = 10 * 60_000;
 
+const DOWNLOAD_DEADLINE_MS = 30 * 60_000;
+
 const TEMPORARY = /^\.tmp-(\d+)-/;
 
 export interface Installer {
@@ -201,7 +203,9 @@ async function download(
 }
 
 async function request(url: string): Promise<Response> {
-  const response = await fetch(url).catch((error: unknown) => {
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(DOWNLOAD_DEADLINE_MS),
+  }).catch((error: unknown) => {
     const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
 
     throw new Error(

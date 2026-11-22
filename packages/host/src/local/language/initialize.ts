@@ -207,11 +207,10 @@ export function readInitialize(
             : "uri",
       declared: isJson(declared) && isJsonObject(declared) ? declared : {},
     },
-    version: version === undefined ? null : (readGoVersion(version) ?? version),
+    version: version ?? null,
   };
 }
 
-/** Answers `workspace/configuration`: each item's dotted section of the server's settings, or all of them. */
 export function answerConfiguration(settings: Json, params: unknown): Json {
   if (!ConfigurationRequest.Check(params)) return [];
 
@@ -221,19 +220,4 @@ export function answerConfiguration(settings: Json, params: unknown): Json {
       .filter((key) => key !== "")
       .reduce<Json>((found, key) => (isJsonObject(found) ? (found[key] ?? null) : null), settings),
   );
-}
-
-function readGoVersion(text: string): string | null {
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return typeof value === "object" &&
-      value !== null &&
-      "Version" in value &&
-      typeof value.Version === "string"
-      ? value.Version
-      : null;
-  } catch {
-    return null;
-  }
 }

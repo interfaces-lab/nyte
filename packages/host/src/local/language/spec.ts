@@ -90,5 +90,6 @@ export interface ServerSpec {
   readonly initializationOptions: Json;
   readonly settings: Json;
   readonly replies?: Readonly<Record<string, Json>>;
+  readVersion?(reported: string): string | null;
   prepare?(project: Project): Promise<Prepared>;
 }

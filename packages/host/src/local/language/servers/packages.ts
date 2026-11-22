@@ -18,7 +18,6 @@ export async function findPackage(
   return parent === from ? null : findPackage(parent, name);
 }
 
-/** The version a package folder's manifest states, with the folder; null when the manifest cannot be read. */
 export async function readPackage(
   folder: string,
 ): Promise<{ readonly folder: string; readonly version: string } | null> {

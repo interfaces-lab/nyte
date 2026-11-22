@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LanguageApi, LanguagePosition } from "@nyte-ai/core";
@@ -246,6 +247,17 @@ export function languageFeatures(
     async renameFiles(input) {
       await Promise.all(input.files.map((file) => servers.sync(file.from)));
 
+      const renames = await Promise.all(
+        input.files.map(async (file) => {
+          const oldUri = servers.uri(file.from);
+          const from = fileURLToPath(oldUri);
+          const found = await stat(from).catch(() => null);
+          const kind = found === null ? null : found.isDirectory() ? "folder" : "file";
+
+          return { from, kind, rename: { oldUri, newUri: servers.uri(file.to) } } as const;
+        }),
+      );
+
       const answers = await Promise.all(
         servers.running().map(async (target) => {
           const provider = findProvider(target.run, "renameFiles", null);
@@ -253,9 +265,9 @@ export function languageFeatures(
           const files =
             provider === null
               ? []
-              : input.files
-                  .map((file) => ({ oldUri: servers.uri(file.from), newUri: servers.uri(file.to) }))
-                  .filter((file) => operatesOn(provider, fileURLToPath(file.oldUri)));
+              : renames
+                  .filter((entry) => operatesOn(provider, entry.from, entry.kind))
+                  .map((entry) => entry.rename);
           if (files.length === 0) return null;
           const asking = await ask(servers, target, "workspace/willRenameFiles", { files });
 
@@ -272,7 +284,13 @@ export function languageFeatures(
 
       for (const answer of answers) {
         for (const file of answer?.kind === "edit" ? answer.edit.files : []) {
-          edits.set(file.path, [...(edits.get(file.path) ?? []), ...file.edits]);
+          const held = edits.get(file.path) ?? [];
+          const known = new Set(held.map((edit) => JSON.stringify(edit)));
+
+          edits.set(file.path, [
+            ...held,
+            ...file.edits.filter((edit) => !known.has(JSON.stringify(edit))),
+          ]);
         }
       }
 

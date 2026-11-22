@@ -4,7 +4,7 @@ import type { Project } from "./spec.ts";
 
 const PROBE_DEADLINE_MS = 10_000;
 
-export async function runs(
+export async function passesProbe(
   program: string,
   probe: readonly string[],
   folder: string,
@@ -22,7 +22,7 @@ export async function runs(
 
 export function openProject(root: string, installer: Installer | undefined): Project {
   const install: Project["install"] = async (source) =>
-    installer === undefined ? null : installer.install(source, () => undefined).catch(() => null);
+    installer === undefined ? null : installer.install(source, () => undefined);
 
   return {
     root,
@@ -30,9 +30,11 @@ export function openProject(root: string, installer: Installer | undefined): Pro
     async tool(program, probe, source) {
       const found = await findExecutable(program);
 
-      if (found !== null && (await runs(found, probe, root))) return { path: found, pinned: false };
+      if (found !== null && (await passesProbe(found, probe, root))) {
+        return { path: found, pinned: false };
+      }
 
-      const installed = await install(source);
+      const installed = await install(source).catch(() => null);
 
       return installed === null ? null : { path: installed.path, pinned: true };
     },
