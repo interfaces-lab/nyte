@@ -9,9 +9,8 @@ import { childList } from "../../data/directory.ts";
 import { useWatch } from "../../data/watch-store.ts";
 import { contentDraftText } from "../../references/message-references.ts";
 import type { ExcerptReference } from "../../references/message-references.ts";
-import { chatWindow, useChatWindow } from "../../window/index.ts";
-import { CLOSED } from "./side-chat-state.ts";
-import type { SideChatShown, SideChatWindow } from "./side-chat-state.ts";
+import { CLOSED, chatWindow, useChatWindow } from "../../window/index.ts";
+import type { SideChatShown, SideChatWindow } from "../../window/index.ts";
 
 const CONTEXT_CHARS = 24_000;
 

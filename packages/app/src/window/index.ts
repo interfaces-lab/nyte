@@ -3,8 +3,8 @@ import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-s
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { CommitId, SessionId } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
-import { CLOSED, nextSideChat } from "../chat/side-chat/side-chat-state.ts";
-import type { SideChatEvent, SideChatWindow } from "../chat/side-chat/side-chat-state.ts";
+import { CLOSED, nextSideChat } from "./side-chat-state.ts";
+import type { SideChatEvent, SideChatWindow } from "./side-chat-state.ts";
 import { chatDirectory, subscribeChats, useChat } from "../chats/index.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { reconcile } from "../data/keep.ts";
@@ -36,6 +36,10 @@ export interface WindowSnapshot {
 export { drawnTray, showTray, type TrayView } from "./tray.ts";
 
 export { unreadOnHost, viewedChat } from "./exposure.ts";
+
+export { CLOSED } from "./side-chat-state.ts";
+
+export type { SideChatShown, SideChatWindow } from "./side-chat-state.ts";
 
 interface Own {
   readonly trays: Trays;
