@@ -145,9 +145,6 @@ export type {
   GitHubApi,
   Job,
   Jobs,
-  LanguageApi,
-  LanguagePosition,
-  LanguageService,
   McpApi,
   Page,
   Resources,
@@ -161,6 +158,7 @@ export type {
   WorktreeProvider,
   WorktreeRemoval,
 } from "./contract/workspace.ts";
+export type { LanguageApi, LanguagePosition, LanguageService } from "./contract/language.ts";
 
 export { attachFile } from "./builtins/attach-file.ts";
 

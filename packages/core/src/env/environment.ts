@@ -22,10 +22,10 @@ import type {
   FileScope,
   GitApi,
   GitHubApi,
-  LanguageService,
   PageHolder,
   SnapshotsApi,
 } from "../contract/workspace.ts";
+import type { LanguageService } from "../contract/language.ts";
 import { applyBatch } from "./batches.ts";
 import { workspaceRef } from "../store/refs.ts";
 import { listSessionRecords, load, requireSession, workspaceRecords } from "../store/session.ts";
