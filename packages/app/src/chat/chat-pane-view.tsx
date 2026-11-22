@@ -8,7 +8,7 @@ import { receiveChatExcerpts } from "../references/add-to-chat.ts";
 import { usePaneLayoutStore, usePaneViewStateStore } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/layout.ts";
 import type { LayoutStore } from "../panes/layout-store.ts";
-import type { PaneTabRender, PaneView } from "../panes/pane-views.tsx";
+import type { PaneTabRender, PaneView } from "../panes/pane-view.ts";
 import { useSessionPaneDropTarget } from "../panes/session-dnd.tsx";
 import {
   clientActionAriaShortcut,

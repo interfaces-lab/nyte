@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { chatView } from "../chat/chat-pane-view.tsx";
 import type { PaneId, PaneTabId } from "./layout.ts";
-import type { PaneContent, PaneFieldsMap, PaneKindName } from "./pane-kinds.ts";
+import type { PaneContent, PaneKindName } from "./pane-kinds.ts";
 
 export interface PaneTabRender<Fields> {
   readonly tab: PaneTabId;
@@ -19,18 +18,4 @@ export interface PaneTabInput<K extends PaneKindName = PaneKindName> {
   readonly content: PaneContent<K>;
   readonly visible: boolean;
   readonly focused: boolean;
-}
-
-const PANE_VIEWS: { readonly [K in PaneKindName]: PaneView<PaneFieldsMap[K]> } = {
-  chat: chatView,
-};
-
-export function renderPaneContent<K extends PaneKindName>(input: PaneTabInput<K>): ReactNode {
-  return PANE_VIEWS[input.content.kind]({
-    tab: input.tab,
-    pane: input.pane,
-    fields: input.content.fields,
-    visible: input.visible,
-    focused: input.focused,
-  });
 }

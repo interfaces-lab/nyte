@@ -10,7 +10,7 @@ import type { Box, Geometry, PaneMetrics, Separator } from "./pane-geometry.ts";
 import { paneRules } from "./pane-kinds.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import { MIN_PANE_SIZE } from "./pane-layout.ts";
-import type { PaneTabInput } from "./pane-views.tsx";
+import type { PaneTabInput } from "./pane-view.ts";
 import { evaluate } from "./piecewise.ts";
 
 const KEY_STEP = 0.02;

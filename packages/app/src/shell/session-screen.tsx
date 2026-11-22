@@ -10,7 +10,7 @@ import { usePaneLayoutStore } from "../panes/pane-context.tsx";
 import { dropPreviewBox } from "../panes/pane-commands.ts";
 import type { SessionDropTarget } from "../panes/pane-commands.ts";
 import { boxStyle } from "../panes/pane-geometry.ts";
-import { renderPaneContent } from "../panes/pane-views.tsx";
+import { renderPaneContent } from "./pane-views.tsx";
 import { useSessionDropTarget } from "../panes/session-dnd.tsx";
 import { useHostState } from "../data/host.ts";
 import { nyte, windowApp } from "../contract/nyte.ts";

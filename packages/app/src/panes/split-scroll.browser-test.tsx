@@ -25,7 +25,7 @@ import { createAppRouter } from "../shell/routes.tsx";
 import type { SplitDirection } from "./layout.ts";
 import { LayoutView } from "./layout-view.tsx";
 import { PaneControllerProvider } from "./pane-context.tsx";
-import { renderPaneContent } from "./pane-views.tsx";
+import { renderPaneContent } from "../shell/pane-views.tsx";
 import { SessionDndProvider } from "./session-dnd.tsx";
 
 const TURNS = 12;
