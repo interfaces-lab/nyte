@@ -11,7 +11,7 @@ import { connection } from "../../data/connection.ts";
 
 const RAMP_PEAK_CHROMA = 0.1317;
 
-export interface ComposerMode {
+interface ComposerMode {
   readonly id: string;
   readonly title: string;
   readonly on: boolean;
