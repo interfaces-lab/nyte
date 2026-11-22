@@ -9,7 +9,6 @@ import { servePort, HOST_PORT_ORIGIN } from "../shared/host-port.ts";
 import type { PortEnd, DialSocket } from "../shared/host-port.ts";
 import { DesktopHost } from "../host/desktop-host.ts";
 import type { DesktopHostDependencies } from "../host/desktop-host.ts";
-import { CloudflareTunnelPlugin } from "../host/connections/cloudflare-tunnel.ts";
 import { hostAgent } from "./host-agent.ts";
 import type { AgentRegistration, HostAgent } from "./host-agent.ts";
 import type { SessionId } from "@nyte-ai/sdk";
@@ -120,9 +119,6 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     home: options.home,
     link,
     usageScan: new UsageScanWorker(options.home, options.usageWorker),
-    remoteAccessPlugins: {
-      cloudflare: new CloudflareTunnelPlugin({ home: join(options.home, ".nyte") }),
-    },
     connect: options.connect,
     mediaOrigin: options.mediaOrigin,
     emitHostEvent: options.emitHostEvent,

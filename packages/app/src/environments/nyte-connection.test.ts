@@ -13,11 +13,7 @@ test(
     setThemePreference() {},
     openExternal: async () => undefined,
     remote: {
-      state: async () => ({
-        kind: "off",
-        tailnet: { state: "unavailable" },
-        cloudflare: { kind: "unregistered" },
-      }),
+      state: async () => ({ tailnet: { state: "unavailable" } }),
     },
     connect: {
       state: () => window.connectFixture.state(),

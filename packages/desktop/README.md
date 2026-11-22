@@ -74,33 +74,11 @@ Cloud chats use the server's provider credentials and models. Local provider set
 
 ## Remote access
 
-Settings › Server lets phones and browsers reach this Mac. The [remote access guide](../../services/web/content/docs/remote-access.mdx) has the user steps. There are three ways in.
+Settings › Server lets phones and browsers reach this Mac. The [remote access guide](../../services/web/content/docs/remote-access.mdx) has the user steps. There are two ways in.
 
 ### Tailscale
 
 The host runs its own tailnet node through the bundled `nyte-tailnet`. The Server page reads and changes it with `host.tailnet.status`, `host.tailnet.configure` and `host.tailnet.logout` over the local socket. The page shows the sign-in link, any admin approval the node waits for, its `https://<name>.ts.net` address once it runs, or why it stopped.
-
-### Cloudflare Tunnel
-
-The Cloudflare Tunnel plugin is off until you set it up and start it. You need:
-
-- A Cloudflare account with a domain on it.
-- A remotely managed named tunnel whose one public hostname routes to `http://127.0.0.1:<port>`.
-- `cloudflared` installed in `/opt/homebrew/bin`, `/usr/local/bin` or `/usr/bin`. The plugin doesn't run on Windows.
-
-Settings takes the hostname, the port and the tunnel token, and stores them in `~/.nyte/cloudflare-tunnel.json`. Starting binds `127.0.0.1:<port>` and runs `cloudflared` under a small `sh` supervisor. The supervisor sets a fixed environment, a private `HOME`, its own `--config` and the token in `TUNNEL_TOKEN`. It ends `cloudflared` when Nyte stops or dies.
-
-The row shows the tunnel as connected only after routes arrive from the Cloudflare dashboard and send that hostname, and nothing else, to the listener. Any other route stops the connector. Routes that haven't arrived 20 seconds after the tunnel connects also stop it. After a restart the tunnel stays off until you start it again. Paired devices keep working without pairing again.
-
-Pair each device with **Pair…**. The desktop shows each device's token once, as a QR code and a link, and stores only its SHA-256 digest. An unused code expires after ten minutes. Anyone who holds a code can connect as that device until you remove it. **Remove** refuses that device's token at once and drops every open connection, so the other devices reconnect.
-
-This is a personal setup with no Nyte account or relay. Know what it exposes:
-
-- Cloudflare terminates TLS, so Cloudflare can read every request, device tokens included.
-- Anyone who can open the tunnel's live logs in that Cloudflare account can read the same traffic, whatever the local log level.
-- Private network routes attached to the tunnel never reach `cloudflared`'s configuration, so Nyte can't see or refuse them. Use a tunnel with none.
-
-The plugin contract is `src/host/connections/remote-access-plugin.ts`. Plugins are built in and registered statically. Nyte doesn't discover or install plugins at run time.
 
 ### Nyte account
 

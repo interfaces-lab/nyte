@@ -6,59 +6,15 @@ import { Button } from "@nyte-ai/ui/button";
 import { toast } from "@nyte-ai/ui/toast";
 import type { TailnetStatus } from "@nyte-ai/schema";
 import { errorMessage } from "../contract/errors.ts";
-import type { RemoteAccessState, RemoteReach, TailnetNode } from "../contract/bridge.ts";
+import type { TailnetNode } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { keys } from "../data/query-client.ts";
 import { useRemoteAccessState } from "../data/host.ts";
 import { SettingsRow, SettingsSection, SettingsSwitchRow } from "../settings/rows.tsx";
-import { props } from "@stylexjs/stylex";
 import { useConnectView } from "../account/connect-view.ts";
 import { FactRow } from "../components/connection-list.tsx";
 import { NyteConnection } from "./nyte-connection.tsx";
-import { CopyButton, shareStyles } from "./remote-share.tsx";
-import { CloudflareSection, TunnelPairButton } from "./remote-tunnel.tsx";
-
-type Serving = Extract<RemoteAccessState, { kind: "serving" }>;
-
-function AddressSection({
-  tailnet,
-  serving,
-}: {
-  readonly tailnet: string | undefined;
-  readonly serving: Serving | undefined;
-}): ReactElement | null {
-  if (tailnet === undefined && serving === undefined) return null;
-
-  const both = tailnet !== undefined && serving !== undefined;
-
-  return (
-    <SettingsSection>
-      {tailnet !== undefined && (
-        <SettingsRow
-          title={both ? "Tailscale address" : "Remote address"}
-          description={tailnet}
-          controlWidth="wide"
-        >
-          <CopyButton label="Address" value={tailnet} />
-        </SettingsRow>
-      )}
-      {serving !== undefined && (
-        <SettingsRow
-          title={both ? "Cloudflare Tunnel address" : "Remote address"}
-          description={serving.address}
-          controlWidth="wide"
-        >
-          <span {...props(shareStyles.actions)}>
-            <CopyButton label="Address" value={serving.address} />
-            {serving.cloudflare.kind === "configured" ? (
-              <TunnelPairButton tunnel={serving.cloudflare} />
-            ) : null}
-          </span>
-        </SettingsRow>
-      )}
-    </SettingsSection>
-  );
-}
+import { CopyButton } from "./remote-share.tsx";
 
 function tailnetName(node: TailnetNode): string | undefined {
   return node.state === "running" ? node.dnsName?.replace(/\.$/, "") : undefined;
@@ -147,6 +103,7 @@ function TailscaleSection({
   readonly onSignOut: () => void;
 }): ReactElement {
   const enabled = node.state !== "disabled" && node.state !== "unavailable";
+  const address = tailnetAddress(node);
 
   return (
     <SettingsSection
@@ -171,6 +128,11 @@ function TailscaleSection({
           </Button>
         )}
       </FactRow>
+      {address !== undefined && (
+        <SettingsRow title="Address" description={address} controlWidth="wide">
+          <CopyButton label="Address" value={address} />
+        </SettingsRow>
+      )}
       <SettingsSwitchRow
         title="Serve over Tailscale"
         description="Runs Nyte's own Tailscale node beside its host"
@@ -182,41 +144,11 @@ function TailscaleSection({
   );
 }
 
-function sharedDetail(reaches: readonly string[], state: RemoteAccessState | undefined): string {
-  const over = `Shared over ${reaches.join(" and ")}`;
-
-  return state?.kind === "serving" && state.target.kind === "project"
-    ? `${over} · Starts in ${state.target.workspace.name}`
-    : over;
-}
-
 export function RemoteAccess({ active }: { readonly active: boolean }): ReactElement {
   const client = useQueryClient();
   const remote = useRemoteAccessState(active);
   const account = useConnectView(nyte.host.connect).data;
   const [confirming, setConfirming] = useState(false);
-
-  const start = useMutation({
-    mutationFn: (reach: RemoteReach) => nyte.host.remote.start({ reach }),
-    onError: (cause) =>
-      toast.add({
-        type: "error",
-        title: `Couldn't serve over Cloudflare Tunnel: ${errorMessage(cause)}`,
-        id: "remote-access",
-      }),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
-  });
-
-  const stop = useMutation({
-    mutationFn: () => nyte.host.remote.stop(),
-    onError: (cause) =>
-      toast.add({
-        type: "error",
-        title: `Couldn't stop serving: ${errorMessage(cause)}`,
-        id: "remote-access",
-      }),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
-  });
 
   const tailnet = useMutation({
     mutationFn: (enabled: boolean) => nyte.host.remote.configureTailnet({ enabled }),
@@ -241,14 +173,12 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
   });
 
   const state = remote.data;
-  const serving = state?.kind === "serving" ? state : undefined;
   const accountShared = account?.kind === "linked" && account.enabled;
   const tailnetShared = state?.tailnet.state === "running";
 
   const stopSharing = useMutation({
     mutationFn: async () => {
       await Promise.all([
-        serving === undefined ? undefined : nyte.host.remote.stop(),
         tailnetShared ? nyte.host.remote.configureTailnet({ enabled: false }) : undefined,
         accountShared ? nyte.host.connect.setEnabled({ enabled: false }) : undefined,
       ]);
@@ -261,29 +191,12 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
       ]),
   });
 
-  const pending =
-    start.isPending ||
-    stop.isPending ||
-    stopSharing.isPending ||
-    tailnet.isPending ||
-    signOut.isPending;
+  const pending = stopSharing.isPending || tailnet.isPending || signOut.isPending;
 
   const reaches = [
     tailnetShared ? "Tailscale" : undefined,
-    serving === undefined ? undefined : "Cloudflare Tunnel",
     accountShared ? "your Nyte account" : undefined,
   ].filter((reach) => reach !== undefined);
-
-  const serve = (reach: RemoteReach) => (on: boolean) => {
-    if (on) start.mutate(reach);
-    else stop.mutate();
-  };
-
-  const servingOver = (reach: RemoteReach): boolean => {
-    if (start.isPending && start.variables === reach) return true;
-
-    return !stop.isPending && serving?.reach === reach;
-  };
 
   return (
     <>
@@ -296,7 +209,7 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
                 ? errorMessage(remote.error)
                 : "Checking…"
               : reaches.length > 0
-                ? sharedDetail(reaches, state)
+                ? `Shared over ${reaches.join(" and ")}`
                 : "Not shared"
           }
         >
@@ -308,21 +221,12 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
         </FactRow>
       </SettingsSection>
       {state !== undefined && (
-        <>
-          <AddressSection tailnet={tailnetAddress(state.tailnet)} serving={serving} />
-          <TailscaleSection
-            node={state.tailnet}
-            pending={pending}
-            onEnabled={(enabled) => tailnet.mutate(enabled)}
-            onSignOut={() => signOut.mutate()}
-          />
-          <CloudflareSection
-            tunnel={state.cloudflare}
-            serving={servingOver("cloudflare")}
-            pending={pending}
-            onServe={serve("cloudflare")}
-          />
-        </>
+        <TailscaleSection
+          node={state.tailnet}
+          pending={pending}
+          onEnabled={(enabled) => tailnet.mutate(enabled)}
+          onSignOut={() => signOut.mutate()}
+        />
       )}
       <NyteConnection connect={nyte.host.connect} />
       <ConfirmDialog

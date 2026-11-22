@@ -1,5 +1,4 @@
 import { basename, join } from "node:path";
-import { serial } from "@nyte-ai/schema/serial";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { API_REVISION, asId } from "@nyte-ai/schema";
 import { connect, createSendJournal, SdkError } from "@nyte-ai/sdk/client";
@@ -9,7 +8,6 @@ import type {
   HostEvent,
   OpenWorkspaceOutcome,
   RegisterWorkspaceOutcome,
-  RemoteAccessPluginId,
   RemoteAccessState,
   SelectedWorkspace,
   ServerConnectionProblem,
@@ -38,7 +36,6 @@ import { desktopSettings } from "./host-settings.ts";
 import { ExpectedHostError } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
 import type { HostLink } from "./host-link.ts";
-import type { RemoteAccessPlugins } from "./connections/remote-access-plugin.ts";
 import { ServerSettingsStore } from "./connections/server-settings.ts";
 import type { SavedServer } from "./connections/server-settings.ts";
 
@@ -46,7 +43,6 @@ export interface DesktopHostDependencies {
   readonly home: string;
   readonly link: Pick<HostLink, "connection" | "follow" | "attach">;
   readonly usageScan: UsageScanReader;
-  readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
   readonly keepAwake?: (awake: boolean) => void;
   readonly settingsChanged?: (settings: DesktopSettings) => void;
@@ -57,11 +53,6 @@ export interface DesktopHostDependencies {
 }
 
 type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
-
-const NOT_SERVED = {
-  code: "unavailable",
-  message: "Cloudflare Tunnel isn't served by the Nyte host yet. Use Tailscale.",
-} as const;
 
 function working(session: SessionInfo): boolean {
   return session.heads.some(
@@ -224,7 +215,6 @@ export class DesktopHost {
     string,
     { readonly signature: string; readonly timer: ReturnType<typeof setInterval> }
   >();
-  private readonly remoteOperations = serial();
   private server: Promise<ServerWatch | undefined> | undefined;
   private closing: Promise<void> | undefined;
 
@@ -374,33 +364,6 @@ export class DesktopHost {
       this.deps.emitHostEvent({ kind: "server_changed" });
     },
     "host.remote.state": () => this.remoteState(),
-    "host.remote.start": async () => {
-      throw new ExpectedHostError(NOT_SERVED);
-    },
-    "host.remote.stop": async () => undefined,
-    "host.remote.configure": async (_window, { plugin, ...settings }) => {
-      await this.remoteOperations.run(() => this.remotePlugin(plugin).configure(settings));
-      this.remoteChanged();
-    },
-    "host.remote.clear": async (_window, { plugin }) => {
-      await this.remoteOperations.run(() => this.remotePlugin(plugin).clear());
-      this.remoteChanged();
-    },
-    "host.remote.pair": async (_window, { plugin, name }) => {
-      const pairing = await this.remoteOperations.run(() =>
-        this.remotePlugin(plugin).pair({ name }),
-      );
-
-      this.remoteChanged();
-
-      return pairing;
-    },
-    "host.remote.revoke": async (_window, input) => {
-      await this.remoteOperations.run(() =>
-        this.remotePlugin(input.plugin).revoke({ deviceId: input.deviceId }),
-      );
-      this.remoteChanged();
-    },
     "host.remote.configureTailnet": async (_window, { enabled }) => {
       const node = await this.tailnetNode();
 
@@ -659,12 +622,7 @@ export class DesktopHost {
   }
 
   private async remoteState(): Promise<RemoteAccessState> {
-    const [cloudflare, tailnet] = await Promise.all([
-      this.deps.remoteAccessPlugins?.cloudflare.view() ?? { kind: "unregistered" as const },
-      this.tailnetNode(),
-    ]);
-
-    return { kind: "off", tailnet, cloudflare };
+    return { tailnet: await this.tailnetNode() };
   }
 
   private tailnetNode(): Promise<TailnetNode> {
@@ -675,18 +633,5 @@ export class DesktopHost {
 
       throw cause;
     });
-  }
-
-  private remotePlugin(id: RemoteAccessPluginId): RemoteAccessPlugins[RemoteAccessPluginId] {
-    const plugin = this.deps.remoteAccessPlugins?.[id];
-
-    if (plugin === undefined) {
-      throw new ExpectedHostError({
-        code: "unknown",
-        message: "This remote access plugin isn't available here.",
-      });
-    }
-
-    return plugin;
   }
 }
