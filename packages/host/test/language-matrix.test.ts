@@ -41,6 +41,7 @@ const Matrix = compile(
     language: LanguageNameType,
     servers: Type.Array(Type.String()),
     vscode: Type.Object({ extension: Type.String(), source: Type.String() }),
+    unproven: Type.Optional(Type.String()),
     features: Type.Object(Object.fromEntries(ROWS.map((row) => [row, RowType] as const))),
   }),
 );
@@ -83,7 +84,9 @@ describe("every matrix", () => {
   });
 });
 
-describe.each(downloads ? fixtures : [])("matrix: $folder", (fixture) => {
+const proven = fixtures.filter((fixture) => fixture.matrix.unproven === undefined);
+
+describe.each(downloads ? proven : [])("matrix: $folder", (fixture) => {
   const matrix = fixture.matrix;
   let root: string;
   let launchers: string;
