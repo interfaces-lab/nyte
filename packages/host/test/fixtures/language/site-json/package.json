@@ -1,0 +1,7 @@
+{
+  "name": "site-json",
+  "version": "1.0.0",
+  "private": "yes",
+  "license": "MIT",
+  "scripts":{"build":"echo ok"}
+}

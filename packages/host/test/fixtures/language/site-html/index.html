@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Home</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      :root {
+        --hero-accent: #2563eb;
+      }
+
+      .hero-card {
+        color: var(--hero-accent);
+        colr: #2563eb;
+      }
+
+      .hero-note {
+        border-color: var(--hero-accent);
+      }
+    </style>
+  </head>
+  <body>
+    <section class="hero-card">
+      <h1>Welcome</h1>
+      <a href="./about.html">About</a>
+<div   class="hero-note"><p>Unformatted line</p></div>
+    </section>
+    <script>
+      function formatGreeting(name, count) {
+        return name + " #" + count;
+      }
+
+      const label = formatGreeting("Nyte", 3);
+      console.log(label);
+    </script>
+  </body>
+</html>

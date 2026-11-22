@@ -8,7 +8,10 @@ import { RUFF } from "./servers/ruff.ts";
 import { RUST_ANALYZER } from "./servers/rust-analyzer.ts";
 import { TY } from "./servers/ty.ts";
 import { TYPESCRIPT_LANGUAGE_SERVER } from "./servers/typescript-language-server.ts";
+import { VSCODE_CSS_LANGUAGE_SERVER } from "./servers/vscode-css-language-server.ts";
 import { VSCODE_ESLINT_LANGUAGE_SERVER } from "./servers/vscode-eslint-language-server.ts";
+import { VSCODE_HTML_LANGUAGE_SERVER } from "./servers/vscode-html-language-server.ts";
+import { VSCODE_JSON_LANGUAGE_SERVER } from "./servers/vscode-json-language-server.ts";
 import type { ServerSpec } from "./spec.ts";
 
 export const SERVERS: readonly ServerSpec[] = [
@@ -19,6 +22,9 @@ export const SERVERS: readonly ServerSpec[] = [
   TYPESCRIPT_LANGUAGE_SERVER,
   VSCODE_ESLINT_LANGUAGE_SERVER,
   OXLINT,
+  VSCODE_JSON_LANGUAGE_SERVER,
+  VSCODE_CSS_LANGUAGE_SERVER,
+  VSCODE_HTML_LANGUAGE_SERVER,
   MARKSMAN,
 ];
 

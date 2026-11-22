@@ -1,0 +1,297 @@
+{
+  "language": "css",
+  "servers": ["vscode-css-language-server"],
+  "vscode": {
+    "extension": "vscode.css-language-features",
+    "source": "https://github.com/microsoft/vscode/blob/main/extensions/css-language-features/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "display: fl",
+          "says": "flex"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "disp",
+          "says": "display"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "var("
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "gap: var(--pan",
+          "says": "styles.css"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "gap: var(--pan"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "gap: var(--pan"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "gap: var(--pan"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "--pan",
+          "says": "styles.css"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "--pan"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "says": ".card-shell"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "query": "card-shell"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "col",
+          "says": "Rename to 'color'"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "styles.css"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": ".badge{color:#0f172a;background-color:rgb(226,232,240);padding:4px 8px;}"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "--pan",
+          "says": "styles.css"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "tokens.css"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "says": "tokens.css"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "says": "#0f172a"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": ".card-sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "styles.css"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": "disp"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "styles.css"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "styles.css"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": ".card-sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "after": ".card-sh"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "styles.css",
+          "says": "Unknown property: 'colr'"
+        }
+      ],
+      "servers": ["vscode-css-language-server"],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}

@@ -1,0 +1,298 @@
+{
+  "language": "json",
+  "servers": ["vscode-json-language-server"],
+  "vscode": {
+    "extension": "vscode.json-language-features",
+    "source": "https://github.com/microsoft/vscode/blob/main/extensions/json-language-features/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "package.json",
+          "after": "\"lic",
+          "says": "license"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Probes package.json against the SchemaStore catalog over HTTPS (requires network)."
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc",
+          "says": "Primary brand accent color"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "says": "accent"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "query": "accent"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc",
+          "says": "Sort JSON"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Server returns the Sort JSON source action, whose command json.sort is handled client-side in VS Code via the custom json/sort request rather than workspace/executeCommand."
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "package.json"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "package.json",
+          "after": "\"scripts\":{\"build\":\"echo ok\"}"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "renameFiles": {
+      "probes": [
+        {
+          "file": "theme.json"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "documentLinks": {
+      "probes": [
+        {
+          "file": "theme.schema.json",
+          "says": "theme.schema.json"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Resolves internal JSON Schema $ref pointers."
+    },
+    "documentColors": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "says": "#1d4ed8"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "linkedEditingRanges": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "theme.json"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "theme.json"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "theme.json"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "theme.json",
+          "after": "\"acc"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "package.json",
+          "says": "boolean"
+        }
+      ],
+      "servers": ["vscode-json-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Validates package.json against the SchemaStore catalog over HTTPS (requires network)."
+    }
+  }
+}

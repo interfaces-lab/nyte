@@ -1,0 +1,19 @@
+@import "./tokens.css";
+
+:root {
+  --panel-gap: 16px;
+}
+
+.card-shell {
+  display: flex;
+  gap: var(--panel-gap);
+  padding: var(--panel-gap);
+  colr: #0f172a;
+}
+
+.badge{color:#0f172a;background-color:rgb(226,232,240);padding:4px 8px;}
+
+.panel-list {
+  display: grid;
+  gap: var(--panel-gap);
+}
