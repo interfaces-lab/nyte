@@ -1,6 +1,5 @@
 import { create, keyframes } from "@stylexjs/stylex";
 import { control, glyph, layer, media, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { conversation } from "../../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const USER_PROMPT_PADDING_BLOCK = 8;
@@ -189,21 +188,5 @@ export const turnStyles = create({
     lineHeight: type.leadingXs,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-  },
-  disclosureToggle: {
-    width: "fit-content",
-    minHeight: conversation.rowMinHeight,
-  },
-  history: { display: "flex", flexDirection: "column", minWidth: 0 },
-  historyBody: {
-    boxSizing: "border-box",
-    width: "100%",
-    marginTop: space.s1,
-    paddingBlock: space.s0_5,
-    paddingInlineStart: space.s3,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.strokeTertiary,
-    color: role.contentSecondary,
   },
 });

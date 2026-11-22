@@ -14,6 +14,7 @@ import type { Message as ViewMessage, UserContent } from "@nyte-ai/sdk";
 import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../../canvas/client-plugins.tsx";
+import { disclosureStyles } from "../../canvas/disclosure.stylex.ts";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelMode, ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
@@ -406,12 +407,12 @@ function HistoryDisclosure({
   children: ReactNode;
 }): ReactElement {
   return (
-    <Collapsible.Root xstyle={turnStyles.history}>
-      <Collapsible.Trigger xstyle={turnStyles.disclosureToggle}>
+    <Collapsible.Root xstyle={disclosureStyles.root}>
+      <Collapsible.Trigger xstyle={disclosureStyles.toggle}>
         {label}
         <Collapsible.Chevron />
       </Collapsible.Trigger>
-      <Collapsible.Panel xstyle={turnStyles.historyBody}>{children}</Collapsible.Panel>
+      <Collapsible.Panel xstyle={disclosureStyles.body}>{children}</Collapsible.Panel>
     </Collapsible.Root>
   );
 }
