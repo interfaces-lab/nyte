@@ -135,6 +135,10 @@
         {
           "file": "hub/stats.go",
           "says": "Counts"
+        },
+        {
+          "file": "summary.gotmpl",
+          "says": "summary"
         }
       ],
       "servers": [
@@ -175,6 +179,9 @@
       "probes": [
         {
           "file": "main.go"
+        },
+        {
+          "file": "go.mod"
         }
       ],
       "servers": [
@@ -223,6 +230,10 @@
         {
           "file": "main.go",
           "says": "pkg.go.dev"
+        },
+        {
+          "file": "go.mod",
+          "says": "go.dev/doc/modules/gomod-ref"
         }
       ],
       "servers": [
@@ -288,7 +299,8 @@
         "gopls"
       ],
       "answers": true,
-      "vscode": true
+      "vscode": false,
+      "note": "gopls.ui.semanticTokens defaults to false in golang.go (extension/package.json), so VS Code uses its built-in TextMate grammar by default; Nyte enables semanticTokens."
     },
     "inlayHints": {
       "probes": [
@@ -300,7 +312,8 @@
         "gopls"
       ],
       "answers": true,
-      "vscode": true
+      "vscode": false,
+      "note": "All go.inlayHints.* settings default to false in golang.go (extension/package.json) and are forwarded as ui.inlayhint.hints in goLanguageServer.ts; Nyte enables parameterNames and constantValues."
     },
     "callHierarchy": {
       "probes": [
