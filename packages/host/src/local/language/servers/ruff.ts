@@ -54,6 +54,19 @@ export const RUFF: ServerSpec = {
   },
   runtime: null,
   installHint: "Install Ruff: uv tool install ruff, or pip install ruff",
-  initializationOptions: null,
+  initializationOptions: {
+    settings: {
+      configurationPreference: "editorFirst",
+      fixAll: true,
+      organizeImports: true,
+      showSyntaxErrors: true,
+      lint: { enable: true },
+      format: { backend: "internal" },
+      codeAction: {
+        disableRuleComment: { enable: true },
+        fixViolation: { enable: true },
+      },
+    },
+  },
   settings: {},
 };

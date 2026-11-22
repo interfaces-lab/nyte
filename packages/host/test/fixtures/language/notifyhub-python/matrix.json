@@ -1,0 +1,318 @@
+{
+  "language": "python",
+  "servers": [
+    "ty",
+    "ruff"
+  ],
+  "vscode": {
+    "extension": "ms-python.vscode-pylance + charliermarsh.ruff",
+    "source": "https://github.com/microsoft/pylance-release/blob/main/README.md"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py",
+          "after": "stats = hub.stats",
+          "says": "stats"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py",
+          "after": "stats = hub.st",
+          "says": "Stats"
+        },
+        {
+          "file": "notifyhub/webhook.py",
+          "after": "noqa: F40",
+          "says": "unused-import"
+        }
+      ],
+      "servers": [
+        "ty",
+        "ruff"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "ty contributes symbol types and docstrings; ruff contributes lint rule documentation on noqa comments."
+    },
+    "signatureHelp": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py",
+          "after": "hub.submit(message, ",
+          "says": "dry_run: bool"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py",
+          "after": "hub=H",
+          "says": "notifyhub/hub.py"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py",
+          "after": "for mess",
+          "says": "notifyhub/hub.py"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "implementation": {
+      "probes": [
+        {
+          "file": "notifyhub/hub.py",
+          "after": "class Chan",
+          "says": "notifyhub/email.py"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "declaration": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py",
+          "after": "hub=H",
+          "says": "notifyhub/hub.py"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "notifyhub/stats.py",
+          "after": "def bu",
+          "says": "notifyhub/stats.py"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "documentHighlights": {
+      "probes": [
+        {
+          "file": "notifyhub/stats.py",
+          "after": "def bu"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "notifyhub/stats.py",
+          "says": "Counts"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "workspaceSymbols": {
+      "probes": [
+        {
+          "file": "notifyhub/stats.py",
+          "query": "new_stats",
+          "says": "new_stats"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "notifyhub/webhook.py",
+          "after": "import js",
+          "says": "Remove unused import"
+        },
+        {
+          "file": "notifyhub/webhook.py",
+          "after": "retries: int = \"",
+          "says": "invalid-assignment"
+        }
+      ],
+      "servers": [
+        "ty",
+        "ruff"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "ty contributes quick fixes for type diagnostics (such as suppression comments); ruff contributes lint quick fixes, disable-rule comments, fix-all, and organize imports."
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py"
+        }
+      ],
+      "servers": [
+        "ruff"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "notifyhub/stats.py",
+          "after": "class Cou",
+          "says": "notifyhub/stats.py"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "foldingRanges": {
+      "probes": [
+        {
+          "file": "notifyhub/hub.py"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "selectionRanges": {
+      "probes": [
+        {
+          "file": "notifyhub/hub.py",
+          "after": "def reg"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "semanticTokens": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py",
+          "says": "function"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "inlayHints": {
+      "probes": [
+        {
+          "file": "notifyhub/__main__.py",
+          "says": "dry_run="
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "ty enables variable-type and call-argument-name inlay hints by default; Pylance offers inlay hints but defaults each category to off."
+    },
+    "callHierarchy": {
+      "probes": [
+        {
+          "file": "notifyhub/stats.py",
+          "after": "def bu",
+          "says": "add"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeHierarchy": {
+      "probes": [
+        {
+          "file": "notifyhub/hub.py",
+          "after": "class Chan",
+          "says": "Email"
+        }
+      ],
+      "servers": [
+        "ty"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "notifyhub/webhook.py",
+          "says": "not assignable to"
+        },
+        {
+          "file": "notifyhub/webhook.py",
+          "says": "imported but unused"
+        }
+      ],
+      "servers": [
+        "ty",
+        "ruff"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "ty reports type diagnostics; ruff reports lint diagnostics. Both merge into webhook.py's diagnostics list."
+    }
+  }
+}
