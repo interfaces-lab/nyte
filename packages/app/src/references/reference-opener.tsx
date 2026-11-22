@@ -2,7 +2,7 @@ import { createContext, use } from "react";
 import type { PartId, SessionId } from "@nyte-ai/sdk";
 import type { MessageReference } from "./message-references.ts";
 
-export type OpenableReference =
+type OpenableReference =
   | MessageReference
   | { readonly kind: "url"; readonly url: string }
   | { readonly kind: "changes"; readonly path: string | null }
