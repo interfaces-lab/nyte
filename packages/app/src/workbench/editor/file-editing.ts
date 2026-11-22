@@ -3,7 +3,7 @@ import type { SupportedLanguages } from "@nyte-ai/ui/diffs";
 import type { EditorSelection } from "@nyte-ai/ui/diffs/edit";
 import { selectedLines } from "./editor-selection.ts";
 
-export const INDENT_SIZES = [2, 4, 8] as const;
+const INDENT_SIZES = [2, 4, 8] as const;
 
 export interface Indentation {
   readonly kind: "spaces" | "tabs";

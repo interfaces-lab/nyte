@@ -504,8 +504,7 @@ function fileName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-/** A path inside the workspace relative to it, and one outside from its module or `src` folder, as a library reads. */
-export function shortPath(path: string, root: string | undefined): string {
+function shortPath(path: string, root: string | undefined): string {
   if (root !== undefined && path.startsWith(`${root}/`)) return path.slice(root.length + 1);
   const module = /\/pkg\/mod\/(.+)$/u.exec(path)?.[1];
 

@@ -148,8 +148,7 @@ export function revealSelection(
   }
 }
 
-/** Whether a caret's rectangle shows inside a box; a line the editor hasn't drawn has none. */
-export function inView(caret: DOMRect | undefined, box: HTMLElement | null): boolean {
+function inView(caret: DOMRect | undefined, box: HTMLElement | null): boolean {
   const bounds = box?.getBoundingClientRect();
 
   return (

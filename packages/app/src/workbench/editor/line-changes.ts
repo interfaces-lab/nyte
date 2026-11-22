@@ -56,7 +56,7 @@ export function textBefore(diff: FileDiffMetadata, after: string): string | unde
     : undefined;
 }
 
-export function revertChange(contents: string, change: LineChange): string {
+function revertChange(contents: string, change: LineChange): string {
   const carriage = contents.includes("\r\n") ? "\r" : "";
   const lines = contents.split("\n");
 

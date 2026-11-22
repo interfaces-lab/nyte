@@ -161,8 +161,7 @@ interface Lines {
   readonly end: number;
 }
 
-/** Focuses an app's window on this window's workspace, or opens one beside this window, and lands it on the subject. */
-export function openInApp(to: DesktopApp, subject: ArrivalSubject | null): void {
+function openInApp(to: DesktopApp, subject: ArrivalSubject | null): void {
   void nyte.host.switchApp?.({
     to,
     workspace: queryClient.getQueryData<HostState>(keys.host)?.workspace ?? null,

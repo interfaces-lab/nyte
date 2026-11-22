@@ -17,7 +17,7 @@ export interface ChatEdit {
   readonly patches: readonly ChatPatch[];
 }
 
-export interface ChatPatch {
+interface ChatPatch {
   readonly patch: string;
   readonly session: SessionId;
   readonly at: number;

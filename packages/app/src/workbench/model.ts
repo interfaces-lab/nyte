@@ -20,7 +20,7 @@ export type WorkbenchChangesScope =
   | { readonly kind: "turn"; readonly turnId: TurnId }
   | { readonly kind: "commit"; readonly oid: string };
 
-export type TerminalOwner =
+type TerminalOwner =
   | { readonly kind: "user" }
   | { readonly kind: "job"; readonly workspace: WorkspaceId; readonly job: JobId };
 
@@ -290,7 +290,7 @@ export function workbenchNarrow(layout: WorkbenchLayout): boolean {
   return layout.kind === "maximized" && layout.narrow;
 }
 
-export interface EditorGroup {
+interface EditorGroup {
   readonly id: EditorGroupId;
   readonly active: WorkbenchTabId | null;
 }

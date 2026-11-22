@@ -39,8 +39,7 @@ export function textChanges(changes: readonly EditorChange[]): readonly TextChan
     }));
 }
 
-/** The word a Pierre token draws, from its first identifier character. */
-export function pointedWord(token: TokenEventBase): PointedWord {
+function pointedWord(token: TokenEventBase): PointedWord {
   const offset = Math.max(0, token.tokenText.search(/[\p{L}\p{N}_$]/u));
 
   return {

@@ -10,7 +10,7 @@ const BLINK_MS = 600;
 const HELD_REDRAW_MS = 1050;
 
 /** A grid of `cols` by `rows` cells of `cell` CSS pixels. */
-export interface GridSize {
+interface GridSize {
   readonly cols: number;
   readonly rows: number;
   readonly cell: CellSize;

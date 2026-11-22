@@ -14,7 +14,7 @@ export interface CellMetrics {
   readonly strike: number;
 }
 
-export interface Scene {
+interface Scene {
   readonly cursor: "focused" | "unfocused" | "hidden";
   readonly selection: Rgb;
   readonly link: TerminalLink | null;

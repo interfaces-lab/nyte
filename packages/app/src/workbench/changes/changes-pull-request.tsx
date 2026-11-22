@@ -58,7 +58,7 @@ function pullRequestState(pullRequest: GitHubPullRequest): string {
   }
 }
 
-export function checksSummary(checks: readonly GitHubCheck[]): string {
+function checksSummary(checks: readonly GitHubCheck[]): string {
   if (checks.length === 0) return "No checks";
 
   if (checks.every((check) => check.state === "passed")) {
