@@ -40,6 +40,8 @@ Rule numbers are stable ids. A removed rule leaves a gap.
 15. **Prefer an upstream release, then npm, then a toolchain.** Use Open VSX only when it is the only prebuilt source.
 43. **Give a toolchain install the `env` it needs both to install and to run.** A gem installed into Nyte's folder needs `GEM_HOME` there both times.
 44. **`env` is for what the extension sets on the server's process.**
+45. **Only the common set downloads on first open.** It is TypeScript and JavaScript, Python, Rust, Go, C and C++, JSON, CSS, HTML, Markdown, YAML and Bash. Every other server sets `installsOnRequest: true`, so it waits as `available` until the user asks.
+46. **Record `bytes` on each release asset of a server that waits to be asked**, from what the pin script prints, so the editor shows the download's size.
 16. **Pin with the script**, from the repository root. `npm` writes the tarball list beside the spec. `schemas` writes the JSON server's schema list from SchemaStore's catalog at a commit, keeping only the schemas SchemaStore serves itself, because opening a file fetches its schema. Never edit a written list by hand.
 
     ```sh

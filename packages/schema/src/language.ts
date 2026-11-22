@@ -340,6 +340,7 @@ export const LanguageServerStateType = Type.Union([
     percent: nullable(Type.Number()),
   }),
   Type.Object({ kind: Type.Literal("missing"), hint: Type.String() }),
+  Type.Object({ kind: Type.Literal("available"), bytes: nullable(Type.Number()) }),
   Type.Object({ kind: Type.Literal("installing"), percent: nullable(Type.Number()) }),
   Type.Object({ kind: Type.Literal("untrusted") }),
   Type.Object({ kind: Type.Literal("failed"), reason: Type.String() }),
@@ -348,7 +349,7 @@ export const LanguageServerStateType = Type.Union([
 
 export type LanguageServerState = Decoded<typeof LanguageServerStateType>;
 
-/** One language server for one project root: `installing` while its pinned version downloads; `idle` after it shut down for want of use, until the next request starts it again; `untrusted` while the user has not trusted the folder, since a server runs project code. `features` lists what it answers, and is empty until it is ready; `completionTriggers` lists the characters that open its completion list. */
+/** One language server for one project root: `available` while its download waits to be asked for with `language.install`, with the download's size when known; `installing` while its pinned version downloads; `idle` after it shut down for want of use, until the next request starts it again; `untrusted` while the user has not trusted the folder, since a server runs project code. `features` lists what it answers, and is empty until it is ready; `completionTriggers` lists the characters that open its completion list. */
 export const LanguageServerViewType = Type.Object({
   languages: Type.Array(LanguageNameType),
   server: Type.String(),

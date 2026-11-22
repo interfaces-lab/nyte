@@ -571,6 +571,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "language.watchStatus": async ({ workspace: id }) => (await language(id)).watchStatus(),
     "language.open": async ({ workspace: id, path, text, version }) =>
       (await language(id)).open({ path, text, version }),
+    "language.install": async ({ workspace: id, server, root }) =>
+      (await language(id)).install({ server, root }),
     "language.change": async ({ workspace: id, path, version, changes }) =>
       (await language(id)).change({ path, version, changes }),
     "language.close": async ({ workspace: id, path }) => (await language(id)).close({ path }),

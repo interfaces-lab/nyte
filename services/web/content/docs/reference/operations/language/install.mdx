@@ -1,0 +1,79 @@
+---
+title: language.install
+description: Downloads a language server whose state is `available` and starts it; its state reports the progress.
+---
+
+Asks for the download of a language server that waits to be asked for. Some servers are large or come with their own license, so the host does not fetch them on its own: the first file of their language leaves the server in the `available` state, with the download's size in bytes when the host knows it. This operation starts that download and then the server. It answers at once. Follow `language.watchStatus` for `installing` with its percent, then `ready`, or `missing` or `failed` with the reason.
+
+The host remembers the request for as long as any version of the server is installed, so a newer pinned version later downloads without asking again. Calling it for a server in any other state does nothing.
+
+## When to call it
+
+When the user asks to install the server, for example from a prompt shown for a view whose state is `available`. Pass the view's `server` and `root` as it gave them.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. `root` is the server's project root relative to the workspace, and empty for the workspace's own folder.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "server": "kotlin-lsp",
+  "root": ""
+}
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "server", "root"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "server": {
+      "type": "string"
+    },
+    "root": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

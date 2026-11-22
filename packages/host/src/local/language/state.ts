@@ -26,6 +26,7 @@ export interface Slot {
   run: Run | null;
   starting: Promise<Run | null> | null;
   restarts: number[];
+  asked: boolean;
   version: string | null;
   executable: string | null;
   idle: ReturnType<typeof setTimeout> | null;

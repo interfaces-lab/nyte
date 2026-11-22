@@ -40,6 +40,8 @@ export interface LanguageApi {
     readonly text: string;
     readonly version: number;
   }): Promise<readonly LanguageServerView[]>;
+  /** Asks for the download of a server whose state is `available`, named as its view names it. Answers at once; the server's state follows the download and the start. Does nothing for any other server. */
+  install(input: { readonly server: string; readonly root: string }): Promise<null>;
   /** Throws `SdkError("unknown")` for a document no client opened and `SdkError("stale")` for a version no newer than the last; open the document again to start over. */
   change(input: {
     readonly path: string;

@@ -195,6 +195,26 @@ A frame:
           },
           {
             "type": "object",
+            "required": ["kind", "bytes"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "available"
+              },
+              "bytes": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": ["kind", "percent"],
             "properties": {
               "kind": {

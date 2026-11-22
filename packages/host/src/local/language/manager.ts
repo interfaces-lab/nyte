@@ -14,7 +14,7 @@ import { Type } from "typebox";
 import { within } from "../files/files.ts";
 import { feed } from "../feed.ts";
 import type { FeedSink } from "../feed.ts";
-import { findExecutable, hostNode, projectBins, run } from "../process/command.ts";
+import { findExecutable, hostNode, projectBins } from "../process/command.ts";
 import { codeActions, completion, resolveCodeAction, resolveCompletion } from "./assist.ts";
 import {
   findProvider,
@@ -29,21 +29,27 @@ import {
 import { diagnosticReports } from "./diagnostics.ts";
 import { languageFeatures } from "./features.ts";
 import { answerConfiguration, initializeParams, readInitialize } from "./initialize.ts";
+import { downloadBytes, openProject, passesProbe } from "./install.ts";
 import type { Installer } from "./install.ts";
 import { readProgress, readWorkspaceEdit, toLspRange } from "./lsp.ts";
 import type { Place } from "./lsp.ts";
 import { connectLsp, LspError, METHOD_NOT_FOUND, REQUEST_CANCELLED } from "./rpc.ts";
 import { findServers } from "./servers.ts";
-import type { CompleteSpec, Project } from "./spec.ts";
+import type { CompleteSpec } from "./spec.ts";
 import type { Document, Run, Servers, Slot, Synced, Target } from "./state.ts";
+
+const STOPPED = new Set<LanguageServerState["kind"]>([
+  "missing",
+  "failed",
+  "untrusted",
+  "available",
+]);
 
 export const RESTART_LIMIT = { restarts: 3, windowMs: 3 * 60_000 } as const;
 
 export const IDLE_MS = 10 * 60_000;
 
 const START_DEADLINE_MS = 30_000;
-
-const PROBE_DEADLINE_MS = 10_000;
 
 const STOP_GRACE_MS = 2000;
 
@@ -151,6 +157,7 @@ export function localLanguage(
       run: null,
       starting: null,
       restarts: [],
+      asked: false,
       version: null,
       executable: null,
       idle: null,
@@ -378,6 +385,16 @@ export function localLanguage(
       return null;
     }
 
+    if (
+      spec.installsOnRequest === true &&
+      !slot.asked &&
+      !(await download.installer.holds(download.source.package))
+    ) {
+      setState(slot, { kind: "available", bytes: downloadBytes(download.source) });
+
+      return null;
+    }
+
     setState(slot, { kind: "installing", percent: null });
 
     const installed = await download.installer
@@ -586,13 +603,7 @@ export function localLanguage(
 
     if (slot.run !== null && slot.starting === null) return slot.run.initialized ? slot.run : null;
 
-    if (
-      slot.state.kind === "missing" ||
-      slot.state.kind === "failed" ||
-      slot.state.kind === "untrusted"
-    ) {
-      return null;
-    }
+    if (STOPPED.has(slot.state.kind)) return null;
 
     return start(slot);
   };
@@ -850,11 +861,7 @@ export function localLanguage(
       documents.set(full, document);
 
       for (const slot of found.slots) {
-        if (
-          slot.state.kind === "missing" ||
-          slot.state.kind === "failed" ||
-          slot.state.kind === "untrusted"
-        ) {
+        if (STOPPED.has(slot.state.kind)) {
           slot.restarts = [];
           setState(slot, { kind: "idle" });
         }
@@ -863,6 +870,16 @@ export function localLanguage(
       await Promise.all(found.slots.map((slot) => attach(slot, document)));
 
       return found.slots.map(view);
+    },
+    async install(input) {
+      const slot = slots.get(`${input.server}\u0000${absolute(input.root)}`);
+
+      if (slot?.state.kind !== "available") return null;
+      slot.asked = true;
+      setState(slot, { kind: "idle" });
+      void start(slot);
+
+      return null;
     },
     async change(input) {
       const document = documents.get(absolute(input.path));
@@ -960,37 +977,4 @@ function tail(slot: Slot): string {
   const last = slot.log.slice(-3).join(" ");
 
   return last === "" ? "" : ` Its log ends: ${last}`;
-}
-
-async function passesProbe(
-  program: string,
-  probe: readonly string[],
-  folder: string,
-): Promise<boolean> {
-  const ran = await run(program, probe, { cwd: folder, timeoutMs: PROBE_DEADLINE_MS }).catch(
-    () => null,
-  );
-
-  return ran?.code === 0;
-}
-
-function openProject(root: string, installer: Installer | undefined): Project {
-  const install: Project["install"] = async (source) =>
-    installer === undefined ? null : installer.install(source, () => undefined);
-
-  return {
-    root,
-    install,
-    async tool(program, probe, source) {
-      const found = await findExecutable(program);
-
-      if (found !== null && (await passesProbe(found, probe, root))) {
-        return { path: found, pinned: false };
-      }
-
-      const installed = await install(source).catch(() => null);
-
-      return installed === null ? null : { path: installed.path, pinned: true };
-    },
-  };
 }

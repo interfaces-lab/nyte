@@ -6,7 +6,7 @@ import { findExecutable, run } from "../process/command.ts";
 import { processExists } from "../process/machine.ts";
 import { unpack, untar } from "./archive.ts";
 import { INSTALL_FOLDER, PLATFORMS } from "./spec.ts";
-import type { Install, Installed, NpmPackage } from "./spec.ts";
+import type { Install, Installed, NpmPackage, Project } from "./spec.ts";
 
 const UNUSED_VERSION_MS = 30 * 24 * 60 * 60_000;
 
@@ -16,9 +16,13 @@ const DOWNLOAD_DEADLINE_MS = 30 * 60_000;
 
 const TEMPORARY = /^\.tmp-(\d+)-/;
 
+const PROBE_DEADLINE_MS = 10_000;
+
 export interface Installer {
   /** The pinned version of what `source` names, downloaded and verified unless its folder is there already; concurrent calls share one download. `report` hears the percent downloaded, null when the size is unknown. Rejects with the reason nothing was installed. */
   install(source: Install, report: (percent: number | null) => void): Promise<Installed>;
+  /** Whether any version of the package is installed, which is how a user's earlier request for it is remembered. */
+  holds(name: string): Promise<boolean>;
 }
 
 /** Installs pinned language servers under `cache`, one folder per package, version and platform, which exists only once complete. A version no launch has used for 30 days is removed when another version of its package installs. */
@@ -39,6 +43,49 @@ export function languageInstaller(cache: string): Installer {
       await started;
 
       return installed;
+    },
+    async holds(name) {
+      const versions = await readdir(join(cache, name)).catch(() => []);
+
+      return versions.some((version) => !TEMPORARY.test(version));
+    },
+  };
+}
+
+/** The size of the download for this platform, where the pin recorded it. */
+export function downloadBytes(source: Install): number | null {
+  return source.kind === "release" ? (platformAsset(source)?.bytes ?? null) : null;
+}
+
+export async function passesProbe(
+  program: string,
+  probe: readonly string[],
+  folder: string,
+): Promise<boolean> {
+  const ran = await run(program, probe, { cwd: folder, timeoutMs: PROBE_DEADLINE_MS }).catch(
+    () => null,
+  );
+
+  return ran?.code === 0;
+}
+
+export function openProject(root: string, installer: Installer | undefined): Project {
+  const install: Project["install"] = async (source) =>
+    installer === undefined ? null : installer.install(source, () => undefined);
+
+  return {
+    root,
+    install,
+    async tool(program, probe, source) {
+      const found = await findExecutable(program);
+
+      if (found !== null && (await passesProbe(found, probe, root))) {
+        return { path: found, pinned: false };
+      }
+
+      const installed = await install(source).catch(() => null);
+
+      return installed === null ? null : { path: installed.path, pinned: true };
     },
   };
 }
@@ -90,9 +137,14 @@ function locate(source: Install, folder: string): Installed {
   return { kind: "binary", path: join(folder, findAsset(source).bin), folder, env: {} };
 }
 
-function findAsset(source: Extract<Install, { kind: "release" }>) {
+function platformAsset(source: Extract<Install, { kind: "release" }>) {
   const platform = PLATFORMS.find((name) => name === `${process.platform}-${process.arch}`);
-  const asset = platform === undefined ? undefined : source.assets[platform];
+
+  return platform === undefined ? undefined : source.assets[platform];
+}
+
+function findAsset(source: Extract<Install, { kind: "release" }>) {
+  const asset = platformAsset(source);
 
   if (asset === undefined) {
     throw new Error(`Nyte has no download of it for ${process.platform} on ${process.arch}.`);

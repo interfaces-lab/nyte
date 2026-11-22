@@ -55,6 +55,18 @@ export const languageOperations = {
         features: [],
         completionTriggers: [],
       },
+      {
+        ...server,
+        state: { kind: "available", bytes: 381_704_192 },
+        features: [],
+        completionTriggers: [],
+      },
+      {
+        ...server,
+        state: { kind: "available", bytes: null },
+        features: [],
+        completionTriggers: [],
+      },
     ],
     [{ ...server, features: ["telepathy"] }],
   ),
@@ -90,6 +102,11 @@ export const languageOperations = {
       ],
     },
     { workspace, path: "main.go", version: 2, changes: [{ text: "x" }] },
+  ),
+  "language.install input": operation(
+    OPERATIONS["language.install"].input,
+    { workspace, server: "kotlin-lsp", root: "" },
+    { workspace, server: "kotlin-lsp" },
   ),
   "language.close input": operation(
     OPERATIONS["language.close"].input,

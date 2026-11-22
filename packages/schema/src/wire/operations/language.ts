@@ -62,6 +62,14 @@ export const LANGUAGE_OPERATIONS = {
     input: wireObject({ ...DOCUMENT, text: Type.String(), version: Type.Number() }),
     output: SERVERS,
   },
+  "language.install": {
+    ...LANGUAGE,
+    summary:
+      "Downloads a language server whose state is `available` and starts it; its state reports the progress.",
+    kind: "command",
+    input: wireObject({ ...WORKSPACE, server: Type.String(), root: Type.String() }),
+    output: NOTHING,
+  },
   "language.change": {
     ...LANGUAGE,
     summary: "Applies the client's edits to an open document and moves it to a newer version.",

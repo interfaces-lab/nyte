@@ -20,6 +20,7 @@ export interface Asset {
   readonly sha256: string;
   readonly format: ArchiveFormat;
   readonly bin: string;
+  readonly bytes?: number;
 }
 
 export interface NpmPackage {
@@ -88,6 +89,7 @@ export interface ServerSpec {
   readonly arguments?: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
   readonly install?: Install | null;
+  readonly installsOnRequest?: boolean;
   readonly runtime?: {
     readonly program: string;
     readonly probe: readonly string[];
