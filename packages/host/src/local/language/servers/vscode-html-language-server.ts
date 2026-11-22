@@ -1,4 +1,5 @@
 import type { ServerSpec } from "../spec.ts";
+import { CSS_SETTINGS } from "./vscode-css-language-server.ts";
 import packages from "./vscode-langservers-extracted.lock.json" with { type: "json" };
 
 export const VSCODE_HTML_LANGUAGE_SERVER: ServerSpec = {
@@ -50,36 +51,7 @@ export const VSCODE_HTML_LANGUAGE_SERVER: ServerSpec = {
       autoClosingTags: true,
       hover: { documentation: true, references: true },
     },
-    css: {
-      validate: true,
-      completion: {
-        triggerPropertyValueCompletion: true,
-        completePropertyWithSemicolon: true,
-      },
-      hover: { documentation: true, references: true },
-      lint: {
-        compatibleVendorPrefixes: "ignore",
-        vendorPrefix: "warning",
-        duplicateProperties: "ignore",
-        emptyRules: "warning",
-        importStatement: "ignore",
-        boxModel: "ignore",
-        universalSelector: "ignore",
-        zeroUnits: "ignore",
-        fontFaceProperties: "warning",
-        hexColorLength: "error",
-        argumentsInColorFunction: "error",
-        unknownProperties: "warning",
-        validProperties: [],
-        ieHack: "ignore",
-        unknownVendorSpecificProperties: "ignore",
-        propertyIgnoredDueToDisplay: "warning",
-        important: "ignore",
-        float: "ignore",
-        idSelector: "ignore",
-        unknownAtRules: "warning",
-      },
-    },
+    css: CSS_SETTINGS,
     javascript: {
       format: {
         enable: true,

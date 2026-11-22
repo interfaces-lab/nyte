@@ -1,7 +1,7 @@
 import type { ServerSpec } from "../spec.ts";
 import packages from "./vscode-langservers-extracted.lock.json" with { type: "json" };
 
-const STYLE_DEFAULTS = {
+export const CSS_SETTINGS = {
   validate: true,
   completion: {
     triggerPropertyValueCompletion: true,
@@ -67,8 +67,8 @@ export const VSCODE_CSS_LANGUAGE_SERVER: ServerSpec = {
     customCapabilities: { rangeFormatting: { editLimit: 10_000 } },
   },
   settings: {
-    css: { customData: [], ...STYLE_DEFAULTS },
-    scss: STYLE_DEFAULTS,
-    less: STYLE_DEFAULTS,
+    css: { customData: [], ...CSS_SETTINGS },
+    scss: CSS_SETTINGS,
+    less: CSS_SETTINGS,
   },
 };
