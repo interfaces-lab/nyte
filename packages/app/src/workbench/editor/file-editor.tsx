@@ -60,7 +60,7 @@ import { useAppearance } from "../../theme/appearance-store.ts";
 import { watchFamily } from "../../data/watch-store.ts";
 import { EditorFind } from "./editor-find.tsx";
 import { formatDocument } from "./format-document.ts";
-import { TrustBar } from "./trust-bar.tsx";
+import { LanguageBar } from "./language-bar.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -776,7 +776,11 @@ export function TextFileEditor({
         />
       ) : (
         <>
-          <TrustBar path={file.path} folder={project} onTrusted={() => currentEditor()?.focus()} />
+          <LanguageBar
+            path={file.path}
+            folder={project}
+            onTrusted={() => currentEditor()?.focus()}
+          />
           {visible && (
             <FileCodeView
               onViewer={setViewer}

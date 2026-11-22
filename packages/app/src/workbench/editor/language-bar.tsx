@@ -14,6 +14,8 @@ import { languageStatusWatch } from "../../data/watches.ts";
 import { trustWorkspace, useHomeWorkspace } from "../../data/workspaces.ts";
 import { workspaceFile } from "../paths.ts";
 
+const WAITING = ["untrusted", "installing"] as const;
+
 const styles = create({
   bar: {
     display: "flex",
@@ -27,7 +29,7 @@ const styles = create({
   message: { flex: 1, minWidth: 0, textWrap: "pretty" },
 });
 
-export function TrustBar(input: {
+export function LanguageBar(input: {
   readonly path: string;
   readonly folder: { readonly id: WorkspaceId; readonly path: string } | undefined;
   readonly onTrusted: () => void;
@@ -40,18 +42,21 @@ export function TrustBar(input: {
       ? undefined
       : workspaceFile(input.path, [input.folder.path])?.relative;
 
-  const untrusted = useWatchSelect(
+  const waiting = useWatchSelect(
     input.folder === undefined || name === undefined
       ? undefined
       : languageStatusWatch(input.folder.id),
     (state) =>
-      state.value?.some(
-        (view) =>
-          view.state.kind === "untrusted" &&
-          view.languages.some((language) => language === name) &&
-          relative !== undefined &&
-          (view.root === "" || relative.startsWith(`${view.root}/`)),
-      ) === true,
+      WAITING.flatMap(
+        (kind) =>
+          state.value?.find(
+            (view) =>
+              view.state.kind === kind &&
+              view.languages.some((language) => language === name) &&
+              relative !== undefined &&
+              (view.root === "" || relative.startsWith(`${view.root}/`)),
+          ) ?? [],
+      ).at(0),
   );
 
   const trust = useMutation({
@@ -67,10 +72,22 @@ export function TrustBar(input: {
 
   const folder = input.folder;
 
-  if (!untrusted || folder === undefined || name === undefined) return null;
+  if (waiting === undefined || folder === undefined || name === undefined) return null;
   const language = LANGUAGES[name].label;
+  const state = waiting.state;
 
-  if (folder.id === home)
+  if (state.kind === "installing") {
+    return (
+      <div role="status" {...props(text.sm, styles.bar, hairline.blockEnd)}>
+        <span {...props(styles.message)}>
+          Downloading {language} code intelligence
+          {state.percent === null ? "." : `: ${String(Math.round(state.percent))}%`}
+        </span>
+      </div>
+    );
+  }
+
+  if (folder.id === home) {
     return (
       <div role="status" {...props(text.sm, styles.bar, hairline.blockEnd)}>
         <span {...props(styles.message)}>
@@ -79,6 +96,7 @@ export function TrustBar(input: {
         </span>
       </div>
     );
+  }
 
   return (
     <div role="status" {...props(text.sm, styles.bar, hairline.blockEnd)}>
