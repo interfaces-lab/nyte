@@ -10,7 +10,7 @@ import type { DeviceCode } from "../contract/bridge.ts";
 import { answerLogin } from "./login-attempts.ts";
 import type { BrowserSignIn } from "./login-attempts.ts";
 import { openExternal } from "../lib/open-external.ts";
-import { modelsSettingsStyles as styles } from "../settings/models-settings.stylex.ts";
+import { signInStyles as styles } from "./sign-in.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 
 function linkHost(url: string): string | undefined {

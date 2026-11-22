@@ -35,6 +35,7 @@ import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionMenu, ConnectionRow, ConnectionStatus } from "../components/connection-list.tsx";
 import { cancelLogin, startLogin, useLoginAttempt } from "../account/login-attempts.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
+import { signInStyles } from "../account/sign-in.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { BrowserSignInPanel, DeviceCodePanel } from "../account/sign-in-panels.tsx";
@@ -191,7 +192,7 @@ function ApiKeyForm({
         if (!pending && key.trim() !== "") onSubmit(key.trim());
       }}
     >
-      <div {...props(styles.keyRow)}>
+      <div {...props(signInStyles.keyRow)}>
         <Input
           ref={field}
           variant="code"
@@ -202,7 +203,7 @@ function ApiKeyForm({
           placeholder={`Paste your ${label}`}
           value={key}
           disabled={pending}
-          xstyle={styles.keyInput}
+          xstyle={signInStyles.keyInput}
           onValueChange={setKey}
         />
         <Button
@@ -259,7 +260,7 @@ function AccountNameForm({
         if (!pending && label !== "" && label !== current) onSubmit(label);
       }}
     >
-      <div {...props(styles.keyRow)}>
+      <div {...props(signInStyles.keyRow)}>
         <Input
           ref={field}
           aria-label={`${provider} account name`}
@@ -268,7 +269,7 @@ function AccountNameForm({
           placeholder="Account name"
           value={name}
           disabled={pending}
-          xstyle={styles.keyInput}
+          xstyle={signInStyles.keyInput}
           onValueChange={setName}
         />
         <Button
