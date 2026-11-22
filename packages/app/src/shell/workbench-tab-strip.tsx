@@ -54,13 +54,13 @@ import type {
 } from "../workbench/model.ts";
 import { activeWorkbenchTab, tabPresentation, workbenchStripTabs } from "../workbench/selectors.ts";
 import { workbench } from "../workbench/store.ts";
+import { launch } from "../workbench/commands.ts";
 import {
   closeTab,
   confirmTerminalClose,
   dismissTerminalClose,
-  launch,
   pendingTerminalClose,
-} from "../workbench/commands.ts";
+} from "../commands/close-tab.ts";
 import { readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
 import { useTerminalRuntime } from "../terminal/terminal-store.ts";

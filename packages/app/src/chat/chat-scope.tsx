@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { ReferenceOpenerContext } from "../references/reference-opener.tsx";
-import { workbenchReferenceOpener } from "../workbench/commands.ts";
+import { workbenchReferenceOpener } from "../editor/reference-opener.ts";
 import { useWorkbenchViewKey } from "../workbench/paths.ts";
 import { ChatFolderContext } from "../chats/index.ts";
 import { AgentCitationContext } from "../markdown/prose.tsx";

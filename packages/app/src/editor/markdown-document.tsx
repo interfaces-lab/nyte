@@ -30,7 +30,7 @@ import { useBlobUrl } from "../lib/use-blob-url.ts";
 import { droppedWorkbenchFiles } from "../references/composer-file-drop.ts";
 import { fileFromUrl } from "../references/message-references.ts";
 import { conversation } from "../theme/schema.stylex.ts";
-import { workbenchReferenceOpener } from "../workbench/commands.ts";
+import { workbenchReferenceOpener } from "./reference-opener.ts";
 import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { parseMarkdown, readFrontmatter } from "./markdown-parse.ts";
 import {
