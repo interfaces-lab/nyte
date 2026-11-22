@@ -3,7 +3,7 @@ import { control, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex"
 import { conversation } from "../../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-export const FADE_MS = 150;
+const FADE_MS = 150;
 
 const chunkFadeIn = keyframes({ from: { opacity: 0 }, to: { opacity: 1 } });
 
