@@ -39,7 +39,8 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { closeSettings } from "../settings/index.ts";
 import { settingsRoute } from "./routes.tsx";
-import { BrowserGuestHost } from "../workbench/browser/browser-guests.tsx";
+import { BrowserGuestHost } from "../browser/browser-guests.tsx";
+import { noteFocusRegion } from "../workbench/focus-region.ts";
 
 const styles = create({
   shell: {
@@ -213,11 +214,12 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
     return () => window.removeEventListener("keydown", listener);
   });
 
-  const onSwitchKey = useEffectEvent((event: KeyboardEvent): void => {
+  const onEarlyKey = useEffectEvent((event: KeyboardEvent): void => {
     const action = resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host));
 
     if (
-      action?.action !== "app.open" ||
+      action?.early !== true ||
+      action.action === undefined ||
       !runAction(shellRouter, action.action, action.input ?? {})
     ) {
       return;
@@ -227,10 +229,21 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   });
 
   useMountEffect(() => {
-    const listener = (event: KeyboardEvent): void => onSwitchKey(event);
+    const listener = (event: KeyboardEvent): void => onEarlyKey(event);
     window.addEventListener("keydown", listener, true);
 
     return () => window.removeEventListener("keydown", listener, true);
+  });
+
+  useMountEffect(() => {
+    const listener = (event: Event): void => noteFocusRegion(event.target);
+    window.addEventListener("focusin", listener, true);
+    window.addEventListener("pointerdown", listener, true);
+
+    return () => {
+      window.removeEventListener("focusin", listener, true);
+      window.removeEventListener("pointerdown", listener, true);
+    };
   });
 
   useMountEffect(() => {

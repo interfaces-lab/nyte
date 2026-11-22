@@ -3,8 +3,8 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { preferences, useSetting } from "../../preferences/index.ts";
-import { ChangesStack } from "../../workbench/changes/changes-stack.tsx";
-import type { ChangesStackItem } from "../../workbench/changes/changes-stack-code-view.ts";
+import { ChangesStack } from "../../changes/changes-stack.tsx";
+import type { ChangesStackItem } from "../../changes/changes-stack-code-view.ts";
 import { patchDigest } from "../../diff/changes-viewed.ts";
 
 const PATH = "src/label.ts";

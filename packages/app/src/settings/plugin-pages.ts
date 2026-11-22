@@ -17,18 +17,6 @@ export interface PlacedSettings {
   readonly custom: ReadonlyMap<string, readonly PluginGroup[]>;
 }
 
-/** Whether the app has a field for the setting: a menu, a masked secret, a switch, a text field or a number field. */
-export function drawsField(setting: SettingInfo): boolean {
-  return (
-    (setting.choices ?? []).length > 0 ||
-    setting.secret === true ||
-    setting.schema.type === "boolean" ||
-    setting.schema.type === "string" ||
-    setting.schema.type === "number" ||
-    setting.schema.type === "integer"
-  );
-}
-
 /**
  * Where each plugin setting shows in Settings, read from the setting's `page`:
  *
@@ -67,7 +55,15 @@ export function placePluginSettings(
   };
 
   for (const setting of settings) {
-    if (setting.scope !== "host" || !drawsField(setting)) continue;
+    const drawsField =
+      (setting.choices ?? []).length > 0 ||
+      setting.secret === true ||
+      setting.schema.type === "boolean" ||
+      setting.schema.type === "string" ||
+      setting.schema.type === "number" ||
+      setting.schema.type === "integer";
+
+    if (setting.scope !== "host" || !drawsField) continue;
 
     if (setting.page === undefined) {
       if (installed.has(setting.owner)) place(preset, "general", setting);

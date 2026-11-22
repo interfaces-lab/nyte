@@ -1,7 +1,7 @@
 import { selectSession, tabPanes } from "../../test/panes.ts";
 import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
-import "./panels.deferred.tsx";
+import "../shell/panels.deferred.tsx";
 import { CodeView } from "@nyte-ai/ui/diffs/react";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -26,20 +26,20 @@ import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
 import { installConnection } from "../data/connection.ts";
-import { SessionScreen } from "../panes/session-screen.tsx";
+import { SessionScreen } from "../shell/session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
-import { ChangesPanel } from "./changes/changes-panel.tsx";
-import { ChangesToolbar } from "./changes/changes-toolbar.tsx";
+import { ChangesPanel } from "../changes/changes-panel.tsx";
+import { ChangesToolbar } from "../changes/changes-toolbar.tsx";
 import { workbenchViewKey } from "./paths.ts";
 import { workbench } from "./store.ts";
-import { TextFileEditor } from "./editor/file-editor.tsx";
-import { fileActions } from "./editor/file-store.ts";
-import { EditorPanel } from "./editor/editor-panel.tsx";
-import { Workbench } from "./workbench.tsx";
+import { TextFileEditor } from "../editor/file-editor.tsx";
+import { fileActions } from "../editor/file-store.ts";
+import { EditorPanel } from "../editor/editor-panel.tsx";
+import { Workbench } from "../shell/workbench.tsx";
 
 const NAMES = ["alpha", "bravo", "charlie"] as const;
 

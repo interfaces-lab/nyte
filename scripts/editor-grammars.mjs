@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { format } from "oxfmt";
 
-const editor = new URL("../packages/app/src/workbench/editor/", import.meta.url);
+const editor = new URL("../packages/app/src/editor/", import.meta.url);
 
 const directory = new URL("grammars/", editor);
 

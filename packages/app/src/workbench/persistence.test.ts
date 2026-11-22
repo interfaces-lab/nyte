@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { StorageArea } from "../lib/storage.ts";
 import { FIRST_GROUP, FOLLOW_BROWSE } from "./model.ts";
-import { createFileTabStore } from "./editor/file-store.ts";
+import { createFileTabStore } from "../editor/file-store.ts";
 import { persistable, workbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
 

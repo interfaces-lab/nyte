@@ -35,7 +35,7 @@ export type UsageMeasure = "cost" | "tokens";
 
 export type ListPrice = ModelInfo["cost"];
 
-export interface CacheUse {
+interface CacheUse {
   readonly ratio: number | undefined;
   readonly cached: number;
   readonly uncached: number;
@@ -75,12 +75,12 @@ export interface UsageBucket {
   readonly values: readonly number[];
 }
 
-export interface PacePoint {
+interface PacePoint {
   readonly day: string;
   readonly value: number;
 }
 
-export interface UsagePace {
+interface UsagePace {
   readonly points: readonly PacePoint[];
   readonly forecast: PacePoint | undefined;
   readonly days: readonly string[];

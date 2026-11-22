@@ -10,7 +10,7 @@ import type { HostState } from "../../contract/nyte.ts";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import { tabPlace } from "../../tabs/model.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";

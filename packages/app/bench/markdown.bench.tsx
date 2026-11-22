@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { Markdown } from "@nyte-ai/ui/words/react";
 import { Streamdown } from "streamdown";
-import { Prose } from "../src/chat/markdown/prose.tsx";
+import { Prose } from "../src/markdown/prose.tsx";
 import { MarkdownCase } from "./gates.ts";
 import type { MarkdownResult } from "./gates.ts";
 import { FIXTURES, measure, nextFrame, Page, readCase, STEP_CHARS } from "./page.tsx";

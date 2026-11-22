@@ -1,6 +1,6 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import type { ChatDirectory } from "../chats/index.ts";
-import type { SideChatWindow } from "../chat/side-chat/side-chat-state.ts";
+import type { SideChatWindow } from "./side-chat-state.ts";
 import { tabShown } from "../panes/layout.ts";
 import { chatPanes } from "../panes/pane-layout.ts";
 import { activeTab, tabPlace } from "../tabs/model.ts";

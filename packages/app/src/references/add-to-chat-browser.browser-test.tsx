@@ -11,8 +11,8 @@ import { ComposerEditor } from "../chat/composer/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
 import type { BrowserDesignChange, BrowserSurfaceState } from "../contract/bridge.ts";
-import { BrowserPanel } from "../workbench/browser/browser-panel.tsx";
-import { applyBrowserEvent, applyBrowserPick } from "../workbench/browser/browser-surfaces.ts";
+import { BrowserPanel } from "../browser/browser-panel.tsx";
+import { applyBrowserEvent, applyBrowserPick } from "../browser/browser-surfaces.ts";
 
 declare global {
   interface Window {

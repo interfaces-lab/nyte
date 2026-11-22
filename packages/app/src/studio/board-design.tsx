@@ -5,9 +5,9 @@ import { NO_DESIGN } from "../contract/bridge.ts";
 import type { BrowserDesignChange } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { nyte } from "../contract/nyte.ts";
-import { DesignBar } from "../workbench/browser/browser-design-bar.tsx";
-import { focusGuest } from "../workbench/browser/browser-guests.tsx";
-import { useBrowserSurface } from "../workbench/browser/browser-surfaces.ts";
+import { DesignBar } from "../browser/browser-design-bar.tsx";
+import { focusGuest } from "../browser/browser-guests.tsx";
+import { useBrowserSurface } from "../browser/browser-surfaces.ts";
 import type { ActivePage } from "./board-pages.ts";
 
 function changeDesign(surface: string, change: BrowserDesignChange): void {

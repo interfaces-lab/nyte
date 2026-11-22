@@ -31,7 +31,7 @@ export interface SplitChild<Content extends TabContent> {
   readonly size: PaneSize;
 }
 
-export type SplitChildren<Content extends TabContent> = readonly [
+type SplitChildren<Content extends TabContent> = readonly [
   SplitChild<Content>,
   SplitChild<Content>,
   ...SplitChild<Content>[],
@@ -51,7 +51,7 @@ export interface Layout<Content extends TabContent> {
   readonly focus: readonly [PaneId, ...PaneId[]];
 }
 
-export type TabPlace =
+type TabPlace =
   | { readonly kind: "focused" }
   | {
       readonly kind: "edge";
@@ -95,7 +95,7 @@ export function layoutPanes<Content extends TabContent>(
   return node.kind === "pane" ? [node] : node.children.flatMap((child) => layoutPanes(child.node));
 }
 
-export function findPane<Content extends TabContent>(
+function findPane<Content extends TabContent>(
   layout: Layout<Content>,
   id: PaneId,
 ): Pane<Content> | undefined {
@@ -106,7 +106,7 @@ export function focusedPane<Content extends TabContent>(layout: Layout<Content>)
   return findPane(layout, layout.focus[0]) ?? firstPane(layout.root);
 }
 
-export function paneOfTab<Content extends TabContent>(
+function paneOfTab<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTabId,
 ): Pane<Content> | undefined {

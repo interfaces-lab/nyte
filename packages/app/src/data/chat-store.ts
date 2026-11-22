@@ -207,7 +207,7 @@ onInstall((replaced) => {
   if (replaced) hold({ kind: "replaced" });
 });
 
-export function chatGone(state: WatchState<ChatView>): boolean {
+function chatGone(state: WatchState<ChatView>): boolean {
   const freshness = state.value?.freshness;
   const error = state.error ?? (freshness?.kind === "stale" ? freshness.error : null);
 

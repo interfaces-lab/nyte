@@ -8,7 +8,7 @@ import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.style
 import { layer, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation, tray } from "../../theme/schema.stylex.ts";
 
-export type Corner = `${"top" | "bottom"}-${"start" | "end"}`;
+type Corner = `${"top" | "bottom"}-${"start" | "end"}`;
 
 export interface Size {
   readonly width: number;

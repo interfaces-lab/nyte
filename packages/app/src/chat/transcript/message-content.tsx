@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import type { UserContent } from "@nyte-ai/sdk";
 import { ComposerReadOnly } from "../composer/composer-surface.tsx";
-import { ImagePlaceholder, ImagePreview } from "../markdown/image-preview.tsx";
+import { ImagePlaceholder, ImagePreview } from "../../markdown/image-preview.tsx";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
 import { connection } from "../../data/connection.ts";
 

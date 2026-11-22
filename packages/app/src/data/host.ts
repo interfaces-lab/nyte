@@ -27,7 +27,7 @@ export function useUpdateState() {
   });
 }
 
-export const hostProcessQuery = {
+const hostProcessQuery = {
   queryKey: keys.hostProcess,
   queryFn: async (): Promise<HostProcess> =>
     (await nyte.host.hostProcess?.state()) ?? { kind: "offline" },

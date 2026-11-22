@@ -18,7 +18,7 @@ import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { useSessionView } from "../../data/sessions.ts";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../../theme/tokens.stylex.ts";

@@ -22,7 +22,7 @@ import {
   composerReferencesPlugin,
 } from "./composer-document.ts";
 import type { MentionFile } from "../../data/files.ts";
-import { openConversationLink } from "../markdown/external-link.ts";
+import { openConversationLink } from "../../markdown/external-link.ts";
 import { messageParts } from "../../references/message-references.ts";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../../references/reference-opener.tsx";

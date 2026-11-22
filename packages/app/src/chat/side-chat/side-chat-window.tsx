@@ -35,7 +35,7 @@ import {
   useSideChats,
   useSideChatWindow,
 } from "./side-chats.ts";
-import type { SideChatShown } from "./side-chat-state.ts";
+import type { SideChatShown } from "../../window/index.ts";
 import type { PaneId } from "../../panes/layout.ts";
 
 const SIZE = { width: 380, height: 520 };

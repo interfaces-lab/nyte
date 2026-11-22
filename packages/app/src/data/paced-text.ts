@@ -25,7 +25,7 @@ export interface Pace {
   readonly drainFrames: number | undefined;
 }
 
-export interface Revealed {
+interface Revealed {
   readonly message: TextMessage;
   readonly status: TextMessage["status"];
 }

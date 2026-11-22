@@ -21,7 +21,7 @@ import { SURFACE } from "./designs.ts";
 import type { DesignStore, Designs } from "./designs.ts";
 import { studioStyles } from "./studio.stylex.ts";
 
-export type BoardCamera = Extract<AppMessage, { kind: "camera" }>["to"];
+type BoardCamera = Extract<AppMessage, { kind: "camera" }>["to"];
 
 export interface BoardHandle {
   /** Flies the camera to a file's frames. */

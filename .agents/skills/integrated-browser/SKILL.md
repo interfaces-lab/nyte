@@ -14,7 +14,7 @@ paths:
   - "packages/desktop/src/preload/browser-page.ts"
   - "packages/desktop/e2e/browser.spec.ts"
   - "packages/desktop/e2e/design.spec.ts"
-  - "packages/app/src/workbench/browser/**"
+  - "packages/app/src/browser/**"
   - "packages/app/src/studio/board-pages.ts"
   - "packages/app/src/studio/board-design.tsx"
   - "packages/canvas/src/board/page-frames.ts"
@@ -31,7 +31,7 @@ Follow these rules when you change the Browser tab, a live page on the Design bo
 ## Boundaries
 
 1. **Main owns the page. The renderer owns the element.** Main (`packages/desktop/src/main/browser/`) owns the list of pages and each one's hosting window. It never creates web contents. The renderer mounts one `<webview>` per page its window hosts. Main binds a guest only after the attach checks (rule 42).
-2. **The renderer reaches main only through `BrowserBridge`.** The guest host (`browser-guests.tsx`) uses `guests`, `attach` and `setShown`. The Browser tab (`packages/app/src/workbench/browser/`) and the board's pages (`packages/app/src/studio/board-pages.ts`) use the same bridge for everything else.
+2. **The renderer reaches main only through `BrowserBridge`.** The guest host (`browser-guests.tsx`) uses `guests`, `attach` and `setShown`. The Browser tab (`packages/app/src/browser/`) and the board's pages (`packages/app/src/studio/board-pages.ts`) use the same bridge for everything else.
 3. **New page state lives on the main surface.** The surface publishes it as `browser_changed`, and `applyBrowserEvent` applies it. A new capability is a surface method plus an event, then a tool in `browser-tools.ts`.
 4. **`BrowserAgent` is the contract between main and the tools.** `browser-client.ts` maps its failures to tool outcomes. Keep `browser-tools.ts` and `browser-policy.ts` free of `electron`.
 

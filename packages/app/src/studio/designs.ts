@@ -6,11 +6,11 @@ import { writeDocument } from "../data/documents.ts";
 import { filesFor } from "../data/files.ts";
 import { carryLight, shine } from "../light/light.ts";
 import type { Lights, Subject } from "../light/light.ts";
-import { useChatChanges } from "../workbench/editor/chat-changes.ts";
-import { shareDocument } from "../workbench/editor/document-channel.ts";
-import { createFileDocument } from "../workbench/editor/file-document.ts";
-import type { FileBuffer, FileDocumentSnapshot } from "../workbench/editor/file-document.ts";
-import { holdDocument, scheduleSave } from "../workbench/editor/file-store.ts";
+import { useChatChanges } from "../editor/chat-changes.ts";
+import { shareDocument } from "../editor/document-channel.ts";
+import { createFileDocument } from "../editor/file-document.ts";
+import type { FileBuffer, FileDocumentSnapshot } from "../editor/file-document.ts";
+import { holdDocument, scheduleSave } from "../editor/file-store.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
 import { followAgentLights, designFile } from "./agent-lights.ts";
 import { smallestChange } from "./design-source.ts";
@@ -81,7 +81,7 @@ function watchStores(watcher: () => void): () => void {
   return () => watchers.delete(watcher);
 }
 
-export function openDesignStore(workspace: SelectedWorkspace): DesignStore {
+function openDesignStore(workspace: SelectedWorkspace): DesignStore {
   const open = stores.get(workspace.id);
 
   if (open !== undefined) {

@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { Static } from "typebox";
 import { createRoot } from "react-dom/client";
-import { Prose } from "../src/chat/markdown/prose.tsx";
+import { Prose } from "../src/markdown/prose.tsx";
 import { StreamingCase } from "./gates.ts";
 import type { StreamingResult } from "./gates.ts";
 import { nextFrame, Page, readCase, SIMD, STEP_CHARS } from "./page.tsx";

@@ -17,6 +17,11 @@ const ENTRIES = [
       ["diff", "references"],
       [
         "chat",
+        "markdown",
+        "editor",
+        "changes",
+        "terminal",
+        "browser",
         "canvas",
         "studio",
         "workbench",

@@ -21,7 +21,7 @@ import { composerMessageContent } from "../chat/composer/composer-plan.ts";
 import { endedDraft } from "../chat/composer/composer-draft.ts";
 import { deliver } from "../chat/composer/composer-send.ts";
 import type { ChatDirectory, ChildTask } from "../chats/index.ts";
-import { Prose } from "../chat/markdown/prose.tsx";
+import { Prose } from "../markdown/prose.tsx";
 import { answerQuestion } from "../chat/trays/questions-state.ts";
 import { ChangeStats } from "../components/change-stats.tsx";
 import { TaskMark } from "../components/task-mark.tsx";

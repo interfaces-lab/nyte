@@ -46,7 +46,7 @@ export interface SessionDraft {
   readonly omitted: number;
 }
 
-export const UNSENT_NOTICE = "Nyte closed before this message was sent.";
+const UNSENT_NOTICE = "Nyte closed before this message was sent.";
 
 export function restorable(draft: SessionDraft): ComposerNotice | null {
   const notice = draft.notice;

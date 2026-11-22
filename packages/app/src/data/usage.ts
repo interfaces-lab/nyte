@@ -66,4 +66,4 @@ export function useAccountLimits() {
   return useQuery(accountLimitsOptions(useCatalogGeneration()));
 }
 
-export const USAGE_STALE_AFTER_MS = 60_000;
+const USAGE_STALE_AFTER_MS = 60_000;

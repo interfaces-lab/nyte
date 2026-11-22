@@ -41,7 +41,7 @@ import { useChatWindow } from "../../window/index.ts";
 import { modelDisplayName, modelIcon, THINKING_LABELS } from "../composer/model-picker-state.ts";
 import { activityStyles } from "../transcript/activity.stylex.ts";
 import { useTranscriptScope } from "../transcript/transcript.tsx";
-import { proseStyles } from "../markdown/prose.stylex.ts";
+import { proseStyles } from "../../markdown/prose.stylex.ts";
 import { openJobOutput } from "./job-output.ts";
 import { subagentCallStyles } from "./subagent-call.stylex.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";

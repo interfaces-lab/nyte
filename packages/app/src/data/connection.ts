@@ -1,13 +1,7 @@
 import { API_REVISION } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/sdk";
 import { connect, mediaLink, ticketSocket } from "@nyte-ai/sdk/client";
-import type {
-  ClientConnection,
-  ClientConnectOptions,
-  Health,
-  Live,
-  OpenSocket,
-} from "@nyte-ai/sdk/client";
+import type { ClientConnection, ClientConnectOptions, Live, OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "../contract/connection.ts";
 import type { StoreSource } from "./derived-store.ts";
 import { queryClient, readsHost } from "./query-client.ts";
@@ -191,10 +185,6 @@ export function connectionProblem(cause: unknown): ConnectionProblem {
   }
 }
 
-export function linkReopened(previous: Health | undefined, next: Health | undefined): boolean {
-  return next?.kind === "open" && (previous?.kind !== "open" || previous.since !== next.since);
-}
-
 const health = installedLive((current) => current.health);
 
 let lastHealth = health.read();
@@ -210,7 +200,7 @@ export function onLinkReopened(listener: () => void): () => void {
 health.subscribe(() => {
   const next = health.read();
 
-  if (linkReopened(lastHealth, next)) {
+  if (next?.kind === "open" && (lastHealth?.kind !== "open" || lastHealth.since !== next.since)) {
     void queryClient.refetchQueries({
       type: "active",
       predicate: (query) => readsHost(query) && query.state.status === "error",

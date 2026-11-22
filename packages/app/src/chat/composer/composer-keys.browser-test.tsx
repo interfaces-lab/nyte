@@ -13,7 +13,7 @@ import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { chatStore } from "../../data/chat-store.ts";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import "../../theme/tokens.stylex.ts";
 import {

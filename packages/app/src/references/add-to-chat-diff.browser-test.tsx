@@ -10,7 +10,7 @@ import { receiveChatExcerpts } from "./add-to-chat.ts";
 import { ComposerEditor } from "../chat/composer/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
-import { ChangesStack } from "../workbench/changes/changes-stack.tsx";
+import { ChangesStack } from "../changes/changes-stack.tsx";
 import { patchDigest } from "../diff/changes-viewed.ts";
 
 const PATCH = [

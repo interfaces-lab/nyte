@@ -16,7 +16,7 @@ import { queryClient } from "../data/query-client.ts";
 import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { installConnection } from "../data/connection.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
-import { TerminalPanel } from "../workbench/terminal/terminal-panel.tsx";
+import { TerminalPanel } from "../terminal/terminal-panel.tsx";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

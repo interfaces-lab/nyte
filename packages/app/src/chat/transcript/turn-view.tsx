@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { usePluginCatalog } from "../../data/plugins.ts";
-import { Prose } from "../markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { SubagentGroupView, SubagentReportLine } from "../tools/subagent-call.tsx";
 import { ResponseView } from "./reply-view.tsx";
 import { AnswerLine } from "./answer-line.tsx";

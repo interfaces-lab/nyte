@@ -33,7 +33,7 @@ interface Submission {
 
 const BLOCKED = { kind: "blocked" } as const;
 
-export type QuestionOutcome =
+type QuestionOutcome =
   | { readonly kind: "blocked" }
   | { readonly kind: "next" }
   | { readonly kind: "sent" }

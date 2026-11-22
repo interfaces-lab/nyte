@@ -20,7 +20,7 @@ import type { HostState } from "../contract/nyte.ts";
 import { PaneControllerProvider } from "./pane-context.tsx";
 import { SessionDndProvider } from "./session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { SessionScreen } from "./session-screen.tsx";
+import { SessionScreen } from "../shell/session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import "../theme/tokens.stylex.ts";
 import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";

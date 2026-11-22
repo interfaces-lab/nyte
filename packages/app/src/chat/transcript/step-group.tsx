@@ -10,7 +10,7 @@ import { activityStyles } from "./activity.stylex.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
 import { BrowserCallsView } from "../tools/browser-call.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
-import { Prose } from "../markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { thoughtProse } from "./transcript-row-views.ts";
 import type { StepMessage } from "./transcript-presentation.ts";

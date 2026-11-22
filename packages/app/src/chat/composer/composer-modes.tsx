@@ -12,7 +12,7 @@ import { useConfigureSession, useSessionChoice } from "../../data/sessions.ts";
 
 const RAMP_PEAK_CHROMA = 0.1317;
 
-export interface ComposerMode {
+interface ComposerMode {
   readonly id: string;
   readonly title: string;
   readonly on: boolean;

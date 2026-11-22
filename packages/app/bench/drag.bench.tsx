@@ -3,7 +3,7 @@ import { asId } from "@nyte-ai/schema";
 import type { Static } from "typebox";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { Prose } from "../src/chat/markdown/prose.tsx";
+import { Prose } from "../src/markdown/prose.tsx";
 import { messageScrollerStyles } from "../src/chat/transcript/transcript.stylex.ts";
 import { reduceLayout } from "../src/panes/layout.ts";
 import type { Layout, PaneId, SplitChild } from "../src/panes/layout.ts";
