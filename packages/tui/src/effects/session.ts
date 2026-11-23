@@ -19,8 +19,6 @@ import type { BlankChat, Selection, State, WorkspaceFacts } from "../model/state
 import { SessionConfigurator } from "../services/session-config.ts";
 import type { ConfigPatch, RunChoice } from "../services/session-config.ts";
 import { readWorkspaceStatus } from "../services/workspace.ts";
-import { supersedes } from "../releases.ts";
-import { VERSION } from "../version.ts";
 import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 
 const HISTORY_PAGE = 200;
@@ -237,19 +235,9 @@ export async function watchHost(context: HandlerContext): Promise<void> {
   const { ports, dispatch, read, scope } = context;
   let seen = read().facts.catalog.catalog?.generation ?? null;
   let settings = JSON.stringify(read().facts.hostSettings);
-  let newer = false;
 
   const catalogs = each(ports.host.catalog(), context.signal, (entry) => {
     const listed = JSON.stringify(entry.settings);
-
-    if (!newer && supersedes(entry.version, VERSION)) {
-      newer = true;
-      dispatch({
-        kind: "inform",
-        tone: "info",
-        text: `This host is newer (nyte ${entry.version}); update to see everything · /update`,
-      });
-    }
 
     if (listed !== settings) {
       settings = listed;
@@ -292,9 +280,9 @@ export function watchRefused(context: HandlerContext): Promise<void> {
   });
 }
 
-export function watchHealth(context: HandlerContext): Promise<void> {
-  return each(context.ports.host.health(), context.signal, (health) => {
-    context.dispatch({ kind: "health", health });
+export function watchLink(context: HandlerContext): Promise<void> {
+  return each(context.ports.host.link(), context.signal, (link) => {
+    context.dispatch({ kind: "link", link });
   });
 }
 

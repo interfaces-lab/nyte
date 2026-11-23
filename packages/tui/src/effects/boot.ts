@@ -14,7 +14,7 @@ import {
   PLACEHOLDER_SELECTION,
   sameSelection,
   settleFolder,
-  watchHealth,
+  watchLink,
   watchHost,
   watchRefused,
 } from "./session.ts";
@@ -46,13 +46,13 @@ export function launchChat(options: BootOptions): BlankChat | null {
 export async function boot(options: BootOptions, context: HandlerContext): Promise<void> {
   const { dispatch, ports, scope } = context;
 
-  const health: Promise<void> = watchHealth(context)
+  const link: Promise<void> = watchLink(context)
     .catch((cause: unknown) => {
       ports.log.write("watch", cause);
     })
-    .finally(() => scope.watches.delete(health));
+    .finally(() => scope.watches.delete(link));
 
-  scope.watches.add(health);
+  scope.watches.add(link);
 
   const refused: Promise<void> = watchRefused(context)
     .catch((cause: unknown) => {

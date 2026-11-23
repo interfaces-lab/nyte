@@ -37,7 +37,8 @@ The boundaries test enforces these:
 Every command is a client of the machine's one host.
 
 - `connectHost` attaches to the host that `~/.nyte/host.json` names (`findRunningHost`).
-- With no host, it starts `nyte host --log --supervised` detached in the home folder. It waits up to 20 s for that file to name a live host, then fails naming `hostLogPath()`.
+- With no host, it starts `nyte host --log --supervised` detached in the home folder. It waits up to 20 s for that file to name a live host, and longer while the host lock is held, then fails naming `hostLogPath()`.
+- A local command dials `host.sock` when the host file names one, so a host that moves port keeps its clients.
 - That host keeps running after the command exits. Quitting the TUI leaves its jobs and runs going.
 - Requests go through `sdk.connect`. Chats, the session list, streamed text and health go through one `openHost` connection.
 - The SDK's supervisor is the only reconnect. The TUI keeps none of its own.
@@ -59,6 +60,7 @@ Retiring an old host:
 - The host decides. A newer client of its own supervisor kind gets `when-idle` in its welcome (`matchBuild`), and the host retires once no run or job is busy.
 - A `nyte` client never retires the desktop app's launchd host.
 - A client never stops a host to replace it.
+- The TUI starts its own build only after its host answered `when-idle` and then went away replacing (`followRetire`). Nothing restarts a plain `nyte host`.
 
 `nyte host`:
 

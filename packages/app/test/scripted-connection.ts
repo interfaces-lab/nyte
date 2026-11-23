@@ -29,7 +29,6 @@ import type {
   HeadSnapshot,
   HeadStore,
   HeadView,
-  Health,
   LinkState,
   PartSnapshot,
   PartStore,
@@ -127,8 +126,6 @@ export interface LiveSource<T> {
   readonly latest: () => T | undefined;
   readonly subscribe: (listener: () => void) => () => void;
 }
-
-const OPEN = { kind: "open", since: 0 } as const;
 
 const OPEN_LINK = {
   kind: "open",
@@ -358,7 +355,6 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     host: { activity: refuse },
     github: { account: refuse, signIn: refuse, signOut: refuse, ...script.github },
     documents: { read: refuse, bytes: refuse, write: refuse, watch: refused, ...script.documents },
-    health: { subscribe: () => () => undefined, snapshot: (): Health => OPEN },
     link: { subscribe: link.subscribe, snapshot: () => link.latest() ?? OPEN_LINK },
     refused: {
       subscribe: (listener) => script.refused?.subscribe(listener) ?? (() => undefined),

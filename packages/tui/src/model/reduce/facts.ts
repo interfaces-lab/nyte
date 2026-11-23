@@ -77,7 +77,7 @@ export const factHandlers = {
 
     return stay(withFacts(state, { chat: { ...session, freshness: msg.freshness } }));
   }),
-  health: (state, msg) => stay(withFacts(state, { health: msg.health })),
+  link: (state, msg) => stay(withFacts(state, { link: msg.link })),
   "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) => {
     const next = withFacts(state, { chat: { ...session, info: msg.info } });
 

@@ -16,7 +16,7 @@ export function initialState(bootstrap: Bootstrap): State {
   return indexSlash({
     facts: {
       host: "opening",
-      health: { kind: "connecting" },
+      link: { kind: "connecting" },
       chat: bootstrap.chat,
       catalog: { generation: -1, catalog: null },
       hostSettings: [],

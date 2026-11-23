@@ -7,7 +7,7 @@ import type {
   ClientConnection,
   Freshness,
   HeadView,
-  Health,
+  LinkState,
   OpenSocket,
   SessionsWindow,
 } from "@nyte-ai/sdk/client";
@@ -50,9 +50,9 @@ const TAIL = 200;
 
 const NONE: Shared<ChatRead> = { subscribe: () => () => undefined, snapshot: () => undefined };
 
-const healths = new WeakMap<
+const links = new WeakMap<
   ClientConnection,
-  { readonly subscribe: (listener: () => void) => () => void; readonly snapshot: () => Health }
+  { readonly subscribe: (listener: () => void) => () => void; readonly snapshot: () => LinkState }
 >();
 
 const chats = new WeakMap<ClientConnection, Map<string, Shared<ChatRead>>>();
@@ -64,17 +64,17 @@ const lists = new WeakMap<ClientConnection, Map<string, Shared<ListSnapshot>>>()
 export const nativeSocket: OpenSocket = (request) =>
   new NativeWebSocket(request.url, undefined, { headers: request.headers });
 
-export function useHealth(client: ClientConnection): Health {
-  const known = healths.get(client);
+export function useLink(client: ClientConnection): LinkState {
+  const known = links.get(client);
 
-  const health = known ?? {
-    subscribe: (listener: () => void) => client.health.subscribe(listener),
-    snapshot: () => client.health.snapshot(),
+  const link = known ?? {
+    subscribe: (listener: () => void) => client.link.subscribe(listener),
+    snapshot: () => client.link.snapshot(),
   };
 
-  healths.set(client, health);
+  links.set(client, link);
 
-  return useSyncExternalStore(health.subscribe, health.snapshot);
+  return useSyncExternalStore(link.subscribe, link.snapshot);
 }
 
 export function useChat(
@@ -186,35 +186,37 @@ export function useSessions(
   return useSyncExternalStore(list.subscribe, list.snapshot);
 }
 
-export function healthMessage(health: Health): string | undefined {
-  switch (health.kind) {
+export function linkMessage(link: LinkState): string | undefined {
+  switch (link.kind) {
     case "connecting":
     case "open":
+    case "closed":
       return undefined;
-    case "retrying":
-      return "Reconnecting to your Mac…";
-    case "blocked":
-      switch (health.reason) {
-        case "offline":
-          return "Can't reach your Mac. Nyte reconnects when you're back online.";
-        case "auth":
-          return `Your Mac refused this iPhone. Scan a new code from ${SHARE_LOCATION}.`;
-        case "version":
-          return "Nyte on this iPhone and on your Mac can't talk to each other. Update Nyte.";
-        default: {
-          const exhaustive: never = health.reason;
-
-          return exhaustive;
-        }
-      }
-
+    case "away":
+      return AWAY[link.reason];
+    case "refused":
+      return REFUSED[link.reason];
     default: {
-      const exhaustive: never = health;
+      const exhaustive: never = link;
 
       return exhaustive;
     }
   }
 }
+
+const AWAY = {
+  replacing: "Nyte is updating on your Mac…",
+  restarting: "Nyte is restarting on your Mac…",
+  stopping: "Nyte stopped on your Mac.",
+  lost: "Reconnecting to your Mac…",
+} as const satisfies Record<Extract<LinkState, { readonly kind: "away" }>["reason"], string>;
+
+const REFUSED = {
+  "other-host": "Another Nyte answered at your Mac's address. Scan a new code to reach it.",
+  auth: `Your Mac refused this iPhone. Scan a new code from ${SHARE_LOCATION}.`,
+  "update-host": "Your Mac runs an older Nyte. Update Nyte on your Mac.",
+  "update-client": "Your Mac runs a newer Nyte. Update Nyte on this iPhone.",
+} as const satisfies Record<Extract<LinkState, { readonly kind: "refused" }>["reason"], string>;
 
 export function updatedLabel(freshness: Freshness | undefined): string | undefined {
   if (freshness?.kind !== "stale") return undefined;

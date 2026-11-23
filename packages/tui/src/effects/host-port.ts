@@ -11,14 +11,7 @@ import { follow } from "../lib/view-helpers.ts";
 import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
-import {
-  chatViews,
-  healthUpdates,
-  readPart,
-  refusedSends,
-  sessionLists,
-  whenOpen,
-} from "../live-host.ts";
+import { chatViews, linkUpdates, readPart, refusedSends, sessionLists } from "../live-host.ts";
 import { errorMessage } from "../lib/format.ts";
 import type {
   ChatUpdate,
@@ -38,13 +31,12 @@ export function hostPort(
   starts: { readonly contextFiles?: false } = {},
 ): HostPort {
   const workspaces = {
-    inspect: (target) => whenOpen(host, () => host.call("workspaces.inspect", { target })),
-    add: (target, options) =>
-      whenOpen(host, () => host.call("workspaces.add", { target, options })),
+    inspect: (target) => host.call("workspaces.inspect", { target }),
+    add: (target, options) => host.call("workspaces.add", { target, options }),
   } satisfies Pick<Connection["workspaces"], "inspect" | "add">;
 
   const sessions = {
-    list: (input) => whenOpen(host, () => host.call("sessions.list", input ?? {})),
+    list: (input) => host.call("sessions.list", input ?? {}),
   } satisfies Pick<Connection["sessions"], "list">;
 
   return {
@@ -96,9 +88,9 @@ export function hostPort(
     rootSessions: () => rootSessions({ sessions }),
     catalog: () => host.watch(),
     sessionInfos: () => sessionLists(host, { parents: { kind: "all" } }),
-    health: () => healthUpdates(host),
+    link: () => linkUpdates(host),
     refusedSends: () => refusedSends(host),
-    listModels: () => whenOpen(host, () => host.call("models.list", {})),
+    listModels: () => host.call("models.list", {}),
     accounts: (provider) => host.models.accounts(provider ?? undefined),
     selectAccount: (provider, account) => host.models.selectAccount(provider, account),
     renameAccount: (provider, account, label) =>
@@ -134,7 +126,7 @@ export function hostPort(
       return { account, folder: state };
     },
     async trustInfo(workspace) {
-      const info = await whenOpen(host, () => host.call("workspace.info", { workspace }));
+      const info = await host.call("workspace.info", { workspace });
       const inspected = await workspaces.inspect(info.target).catch(() => null);
 
       const path = "path" in info.target ? info.target.path : info.id;
@@ -268,7 +260,7 @@ function workspacePort(host: ClientConnection, id: WorkspaceId): WorkspacePort {
     command: (name, text) => host.workspace(id).command(name, text),
     completeCommand: (name, prefix) => host.workspace(id).completeCommand(name, prefix),
     async cwd() {
-      const workspace = await whenOpen(host, () => host.call("workspace.info", { workspace: id }));
+      const workspace = await host.call("workspace.info", { workspace: id });
 
       return workspace.target.kind === "local" && "path" in workspace.target
         ? workspace.target.path
@@ -285,7 +277,7 @@ function workspacePort(host: ClientConnection, id: WorkspaceId): WorkspacePort {
         })(),
       );
     },
-    mentions: (signal) => whenOpen(host, () => scanMentions(host, id, signal)),
+    mentions: (signal) => scanMentions(host, id, signal),
   };
 }
 
@@ -319,7 +311,7 @@ function sessionPort(
   painted: () => Promise<void>,
 ): SessionPort {
   const readReceipt = (message: MessageId) => session.receipt(asId(message));
-  const readInfo = () => whenOpen(host, () => host.call("session.info", { session: session.id }));
+  const readInfo = () => host.call("session.info", { session: session.id });
 
   const readWorkspace = async (): Promise<WorkspacePort> =>
     workspacePort(host, (await readInfo()).workspace);

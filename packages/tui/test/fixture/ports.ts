@@ -14,7 +14,7 @@ import type {
   WorkspaceCatalogView,
   WorkspaceCommandOutcome,
 } from "@nyte-ai/sdk";
-import type { Health } from "@nyte-ai/sdk/client";
+import type { LinkState } from "@nyte-ai/sdk/client";
 import { createHandle } from "../../src/effects/local-ports.ts";
 import type {
   FilesPort,
@@ -321,7 +321,7 @@ export function fakeHost(): FakeHost {
     },
     catalog: () => catalogs,
     sessionInfos: () => directory,
-    health: () => queue<Health>(),
+    link: () => queue<LinkState>(),
     publishSessions: (list) => directory.push(list),
     refuseReplays: (sends) => refusals.push(sends),
     refusedSends: () => refusals,

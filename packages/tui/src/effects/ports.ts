@@ -33,7 +33,7 @@ import type {
   WorkspaceCommandOutcome,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
+import type { Freshness, HeadView, LinkState } from "@nyte-ai/sdk/client";
 import type { ApprovalDecision } from "@nyte-ai/plugin/approvals/schema";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { Clock } from "@opentui/core";
@@ -75,7 +75,7 @@ export interface HostPort {
   rootSessions(): AsyncIterable<SessionInfo>;
   catalog(): AsyncIterable<Pick<HostView, "catalog" | "settings" | "version">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
-  health(): AsyncIterable<Health>;
+  link(): AsyncIterable<LinkState>;
   listModels(): Promise<ModelCatalogView>;
   accounts(provider: string | null): Promise<readonly ModelAccount[]>;
   selectAccount(provider: string, account: string): Promise<void>;

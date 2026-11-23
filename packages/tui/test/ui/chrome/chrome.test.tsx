@@ -53,8 +53,8 @@ describe("notice line", () => {
         failure: { origin: "effect", message: "boom", logPath: "/home/.nyte/logs/tui.log" },
       },
       {
-        kind: "health",
-        health: { kind: "blocked", reason: "auth", error: new SdkError("unauthenticated", "no") },
+        kind: "link",
+        link: { kind: "refused", reason: "auth", error: new SdkError("unauthenticated", "no") },
       },
       {
         kind: "view",

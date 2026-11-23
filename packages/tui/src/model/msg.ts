@@ -15,7 +15,7 @@ import type {
   WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
+import type { Freshness, HeadView, LinkState } from "@nyte-ai/sdk/client";
 import type { ChatCommand } from "../lib/constants.ts";
 import type { McpAction, TrustAsk } from "./effect.ts";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
@@ -180,7 +180,7 @@ export type Fact =
       readonly view: HeadView;
       readonly freshness: Freshness;
     }
-  | { readonly kind: "health"; readonly health: Health }
+  | { readonly kind: "link"; readonly link: LinkState }
   | { readonly kind: "session-info"; readonly session: SessionId; readonly info: SessionInfo }
   | { readonly kind: "selection"; readonly session: SessionId; readonly selection: Selection }
   | { readonly kind: "catalog"; readonly generation: number; readonly catalog: ModelCatalogView }

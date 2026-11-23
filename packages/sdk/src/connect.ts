@@ -1,4 +1,4 @@
-import { asId, SdkError } from "@nyte-ai/schema";
+import { asId } from "@nyte-ai/schema";
 import type {
   ActionDeclaration,
   ClientInfo,
@@ -27,22 +27,6 @@ import type { SessionsStore, SessionsWindow } from "./live/sessions.ts";
 import { retryDelay } from "./live/store.ts";
 import type { Live } from "./live/store.ts";
 
-/** The socket's state as clients drew it before `link`, read from `link` until the last of them moves over. */
-export type Health =
-  | { readonly kind: "connecting" }
-  | { readonly kind: "open"; readonly since: number }
-  | {
-      readonly kind: "retrying";
-      readonly attempt: number;
-      readonly at: number;
-      readonly error: SdkError;
-    }
-  | {
-      readonly kind: "blocked";
-      readonly reason: "auth" | "version" | "other-host";
-      readonly error: SdkError;
-    };
-
 export interface ClientConnectOptions {
   readonly url: string;
   /** A token, custom headers, or a pairing code, which the first request trades for a device token that becomes `credential`. */
@@ -68,7 +52,6 @@ export interface ClientConnection extends Connection {
   };
   /** The connection's state, from the socket and from what HTTP answers. Reading it dials the socket, as does the first use of anything below, so a connection that only makes requests opens none. */
   readonly link: Live<LinkState>;
-  readonly health: Live<Health>;
   /** Call it when the link may have come back: the app came forward, the window got focus, the network returned. A link that is away or refused dials now; an open one checks the host answers. */
   retry(): void;
   /** The chat of `session`'s `options.head` (main by default): its view, kept current, and the actions a chat screen takes. Each call returns its own chat. */
@@ -129,7 +112,6 @@ export async function connect(options: ClientConnectOptions): Promise<ClientConn
   return {
     ...http,
     ...link,
-    health: healthLink(link.link),
     credential: dialed.credential,
     refused: dialed.journal.refused,
     sessions: { ...http.sessions, open: (window) => link.sessions(window) },
@@ -187,51 +169,4 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
     const timer = setTimeout(done, ms);
     signal.addEventListener("abort", done, { once: true });
   });
-}
-
-function healthLink(link: Live<LinkState>): Live<Health> {
-  let read: LinkState | null = null;
-  let health: Health = { kind: "connecting" };
-
-  return {
-    subscribe: (listener) => link.subscribe(listener),
-    snapshot() {
-      const state = link.snapshot();
-
-      if (state !== read) {
-        read = state;
-        health = readHealth(state);
-      }
-
-      return health;
-    },
-  };
-}
-
-function readHealth(state: LinkState): Health {
-  switch (state.kind) {
-    case "connecting":
-    case "closed":
-      return { kind: "connecting" };
-    case "open":
-      return { kind: "open", since: state.since };
-    case "away":
-      return {
-        kind: "retrying",
-        attempt: 1,
-        at: state.retryAt,
-        error: new SdkError("unavailable", "The host is away."),
-      };
-    case "refused":
-      return {
-        kind: "blocked",
-        reason: state.reason === "auth" || state.reason === "other-host" ? state.reason : "version",
-        error: state.error,
-      };
-    default: {
-      const _exhaustive: never = state;
-
-      return _exhaustive;
-    }
-  }
 }
