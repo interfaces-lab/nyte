@@ -121,6 +121,8 @@ async function measureChanges(
   if (snapshots === null) return NO_CHANGES;
   const path = await editedPath(kernel, session, toolClass);
   const to = await snapshots.capture(captureScope(toolClass, path));
+
+  if (!snapshots.comparable(before.snapshot, to)) return { ...NO_CHANGES, snapshot: to };
   const changed = fileChanges(await snapshots.diff(before.snapshot, to));
 
   const unattributed =

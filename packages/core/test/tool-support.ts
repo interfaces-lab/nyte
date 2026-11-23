@@ -115,6 +115,7 @@ export function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[
 
       return asId(taken.length === 1 ? "s0" : "s1");
     },
+    comparable: () => true,
     diff: async (from, to) => ({
       revision: to,
       files:

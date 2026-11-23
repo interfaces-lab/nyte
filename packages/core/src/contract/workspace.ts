@@ -262,6 +262,8 @@ export type SnapshotScope =
 
 export interface SnapshotsApi {
   capture(scope: SnapshotScope): Promise<SnapshotId>;
+  /** Whether `diff` and `patches` can compare the two: both empty or taken by this folder's history. A snapshot from another folder, another kind of history, or an older id format never compares. */
+  comparable(from: SnapshotId, to: SnapshotId): boolean;
   diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>;
   patches(
     from: SnapshotId,

@@ -63,7 +63,7 @@ export async function ownedChanges(
   extra: readonly string[] = [],
 ): Promise<ChangeSet> {
   const [from, attributed] = await Promise.all([
-    threadStart(store, session),
+    threadStart(store, session, (snapshot) => snapshots.comparable(snapshot, to)),
     readAttributedPaths(store, session),
   ]);
 

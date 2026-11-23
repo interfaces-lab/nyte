@@ -687,21 +687,16 @@ async function changeRange(
       }
 
       const paths = await readRunPaths(kernel, range.session, source.run);
+      const to = range.to ?? (await snapshots.capture({ kind: "paths", paths: [...paths] }));
 
-      return {
-        from: range.from,
-        to: range.to ?? (await snapshots.capture({ kind: "paths", paths: [...paths] })),
-        paths,
-      };
+      return { from: snapshots.comparable(range.from, to) ? range.from : to, to, paths };
     }
 
     case "session": {
       const paths = await readAttributedPaths(kernel.store, source.session);
 
       return {
-        ...(await sessionSnapshots(kernel.store, source.session, () =>
-          snapshots.capture({ kind: "paths", paths: [...paths] }),
-        )),
+        ...(await sessionSnapshots(kernel.store, source.session, snapshots, paths)),
         paths,
       };
     }
@@ -717,39 +712,42 @@ async function changeRange(
 async function sessionSnapshots(
   store: StoreConnection,
   session: SessionId,
-  capture: () => Promise<SnapshotId>,
+  snapshots: SnapshotsApi,
+  paths: ReadonlySet<string>,
 ): Promise<{ readonly from: SnapshotId; readonly to: SnapshotId }> {
-  const [found, from] = await Promise.all([
-    readSession(store, session),
-    threadStart(store, session),
-  ]);
+  const found = await readSession(store, session);
 
-  if (found === null || from === null)
+  if (found === null) {
     throw new SdkError(
       "unavailable",
       `No run of session ${session} has snapshotted its workspace.`,
     );
+  }
 
+  const capture = () => snapshots.capture({ kind: "paths", paths: [...paths] });
   const [live] = await liveRuns(store, session);
-
-  if (live !== undefined) return { from, to: await capture() };
 
   const [last] = found.record.heads
     .flatMap((head) => (head.lastRun === null ? [] : [head.lastRun]))
     .toSorted((left, right) => right.endedAt - left.endedAt);
 
-  if (last === undefined) return { from, to: from };
+  const ended =
+    live !== undefined || last === undefined
+      ? null
+      : await load(store, await store.refs.get(endedRunRef(session, last.id)), decodeRunRecord);
 
-  const ended = await load(
-    store,
-    await store.refs.get(endedRunRef(session, last.id)),
-    decodeRunRecord,
-  );
+  const kept = ended?.record.lastSnapshot ?? ended?.record.snapshot ?? null;
+  const to = kept === null || !snapshots.comparable(kept, kept) ? await capture() : kept;
+  const from = await threadStart(store, session, (snapshot) => snapshots.comparable(snapshot, to));
 
-  return {
-    from,
-    to: ended?.record.lastSnapshot ?? ended?.record.snapshot ?? (await capture()),
-  };
+  if (from === null) {
+    throw new SdkError(
+      "unavailable",
+      `No run of session ${session} has snapshotted its workspace.`,
+    );
+  }
+
+  return { from, to };
 }
 
 async function runSnapshots(
@@ -775,48 +773,39 @@ async function runSnapshots(
       decodeRunRecord,
     );
 
-    if (ended !== null && ended.record.snapshot !== null)
+    if (ended !== null && ended.record.snapshot !== null) {
       return {
         session,
         from: ended.record.snapshot,
         to: ended.record.lastSnapshot ?? ended.record.snapshot,
       };
+    }
   }
 
   return null;
 }
 
-export type TrustSnapshot = ReadonlyMap<
-  WorkspaceId,
-  Pick<WorkspaceInfo, "projectResources" | "trusted">
->;
+export type TrustSnapshot = ReadonlyMap<WorkspaceId, FolderTrust>;
 
 export async function readTrust(kernel: Kernel): Promise<TrustSnapshot> {
-  const [records, trust] = await Promise.all([
+  const [records, decisions] = await Promise.all([
     workspaceRecords(kernel.store),
-    readFolderTrust(kernel),
+    readTrustDecisions(kernel),
   ]);
 
-  return new Map(
-    records.map((record) => [
-      record.id,
-      { projectResources: trust.decided(record), trusted: trust.trusted(record) },
-    ]),
-  );
+  return new Map(records.map((record) => [record.id, decisions.explain(record, [])]));
 }
 
 export async function trustChanged(kernel: Kernel, before: TrustSnapshot): Promise<void> {
-  const moved = [...(await readTrust(kernel))].filter(([id, trust]) => {
-    const was = before.get(id);
-
-    return was?.trusted !== trust.trusted || was.projectResources !== trust.projectResources;
-  });
+  const moved = [...(await readTrust(kernel))].filter(
+    ([id, trust]) => JSON.stringify(before.get(id)) !== JSON.stringify(trust),
+  );
 
   for (const [id] of moved) changed(kernel, id);
 
   const flipped = new Set(
     moved.flatMap(([id, trust]) =>
-      (before.get(id)?.trusted === true) === (trust.trusted === true) ? [] : [id],
+      (before.get(id)?.state === "trusted") === (trust.state === "trusted") ? [] : [id],
     ),
   );
 

@@ -219,6 +219,7 @@ export function fakeProvider(
     },
     snapshots: (attached) => ({
       capture: async () => take(attached.cwd),
+      comparable: () => true,
       async diff(from, to): Promise<ChangeSet> {
         return {
           revision: to,

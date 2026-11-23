@@ -58,7 +58,7 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     const snapshots = localSnapshots(root, { store });
     const before = await snapshots.capture(WORKSPACE);
 
-    expect(before).toMatch(/^git:[0-9a-f]{40}$/);
+    expect(before).toMatch(/^git:[0-9a-f]{16}:[0-9a-f]{40}$/);
     expect(await snapshots.capture(WORKSPACE)).toBe(before);
 
     await writeFile(join(root, "a.txt"), "one\nTWO\n");
@@ -75,7 +75,7 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     expect(sh(root, "status", "--porcelain")).toBe(statusBefore);
     await vi.waitFor(
       () =>
-        expect(sh(root, "ls-tree", "refs/nyte/kept:g000000")).toContain(`tree ${after.slice(4)}\t`),
+        expect(sh(root, "ls-tree", "refs/nyte/kept:g000000")).toContain(`tree ${after.split(":").at(-1) ?? ""}\t`),
       { timeout: 20_000 },
     );
     expect(sh(root, "ls-tree", "refs/nyte/kept:g000000")).toContain(`tree ${committed}\t`);
@@ -297,20 +297,38 @@ describe("localSnapshots outside a repository", () => {
     expect(await snapshots.capture({ kind: "paths", paths: ["../outside.txt"] })).toBe(after);
   });
 
-  it("refuses to compare snapshots of two kinds", async () => {
-    const root = await folder();
+  it.each([
+    { name: "two captures of one folder", pick: "own", comparable: true },
+    { name: "the empty snapshot and a capture", pick: "empty", comparable: true },
+    { name: "a capture of another folder", pick: "other", comparable: false },
+    {
+      name: "a journal id from before ids named their folder",
+      pick: "unqualified",
+      comparable: false,
+    },
+    { name: "a git id of another history", pick: "git", comparable: false },
+  ] as const)("compares only one folder's history: $name", async ({ pick, comparable }) => {
+    const store = await folder();
+    const [root, other] = await Promise.all([folder(), folder()]);
+    const options = { store, git: join(root, "no-git") };
+    const snapshots = localSnapshots(root, options);
+    const first = await snapshots.capture(WORKSPACE);
+    await writeFile(join(root, "note.txt"), "changed\n");
 
-    const snapshots = localSnapshots(root, {
-      store: await folder(),
-      git: join(root, "no-git"),
-    });
+    const candidates = {
+      own: await snapshots.capture(WORKSPACE),
+      empty: asId<"snapshot">(""),
+      other: await localSnapshots(other, options).capture(WORKSPACE),
+      unqualified: asId<"snapshot">(`journal:${first.split(":").at(-1) ?? ""}`),
+      git: asId<"snapshot">("git:4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
+    };
 
-    const journaled = await snapshots.capture(WORKSPACE);
+    const to = candidates[pick];
 
-    await expect(
-      snapshots.diff(journaled, asId("git:4b825dc642cb6eb9a060e54bf8d69288fbee4904")),
-    ).rejects.toMatchObject({
-      code: "invalid",
-    });
+    expect(snapshots.comparable(first, to)).toBe(comparable);
+
+    if (!comparable) {
+      await expect(snapshots.diff(first, to)).rejects.toMatchObject({ code: "invalid" });
+    }
   });
 });

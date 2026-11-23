@@ -226,6 +226,7 @@ export async function liveRunsOn(
 export async function threadStart(
   store: StoreConnection,
   session: SessionId,
+  comparable: (snapshot: SnapshotId) => boolean,
 ): Promise<SnapshotId | null> {
   const refs = await Promise.all([
     store.refs.list(`${sessionRef(session)}/runs/`),
@@ -235,7 +236,11 @@ export async function threadStart(
   const runs = await Promise.all(refs.flat().map((ref) => load(store, ref, decodeRunRecord)));
 
   const [first] = runs
-    .flatMap((run) => (run === null || run.record.snapshot === null ? [] : [run.record]))
+    .flatMap((run) =>
+      run === null || run.record.snapshot === null || !comparable(run.record.snapshot)
+        ? []
+        : [run.record],
+    )
     .toSorted((left, right) => left.view.startedAt - right.view.startedAt);
 
   return first?.snapshot ?? null;
