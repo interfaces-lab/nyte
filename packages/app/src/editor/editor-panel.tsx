@@ -27,7 +27,7 @@ import {
   clientActionKeys,
   clientActions,
 } from "../contract/client-actions.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import type { Preference } from "../preferences/index.ts";
 import { useVcsSnapshot } from "../data/vcs.ts";
@@ -140,6 +140,7 @@ export function EditorPanel({
   visible,
   workspaceActive,
   sidebarVisible,
+  explorerDocked,
   onToggleSidebar,
 }: {
   readonly viewKey: WorkbenchViewKey;
@@ -147,6 +148,8 @@ export function EditorPanel({
   readonly visible: boolean;
   readonly workspaceActive: boolean;
   readonly sidebarVisible: boolean;
+  /** The explorer is the window's navigator: it sits at the start, shows however narrow the panel is, and the title bar toggles it. */
+  readonly explorerDocked: boolean;
   readonly onToggleSidebar: () => void;
 }): ReactElement {
   const treeStatusTheme = useTreeStatusTheme();
@@ -172,9 +175,8 @@ export function EditorPanel({
 
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
-  const code = windowApp() === "code";
   const chosenSide = useSetting(preferences.editorSidePanel);
-  const sidePanel = code ? "start" : chosenSide;
+  const sidePanel = explorerDocked ? "start" : chosenSide;
 
   const [sidebarSelection, setSidebarSelection] = useState<{
     readonly revision: number;
@@ -200,7 +202,7 @@ export function EditorPanel({
   const cramped = useCramped(bodyRef);
   const [choice, setChoice] = useState({ shown: false, revision: tabs.revealRevision });
   const insisted = choice.shown || choice.revision !== tabs.revealRevision;
-  const explorerShown = sidebarVisible && (code || !cramped || insisted);
+  const explorerShown = sidebarVisible && (explorerDocked || !cramped || insisted);
   const closeOrigin = useRef<WorkbenchTabId | undefined>(undefined);
   const activeDocument = useDocument(activeFile?.path).data;
 
@@ -496,7 +498,7 @@ export function EditorPanel({
               }
             />
           ))}
-          {!code && (
+          {!explorerDocked && (
             <MenuItem
               layout="plain"
               onClick={() =>
@@ -532,7 +534,7 @@ export function EditorPanel({
             : setSidebarSelection({ revision: tabs.revealRevision, tab: "explorer" })
         }
       />
-      {!code && (
+      {!explorerDocked && (
         <Toggle
           size="sm"
           iconOnly

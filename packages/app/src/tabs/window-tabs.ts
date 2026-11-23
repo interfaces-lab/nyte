@@ -10,7 +10,6 @@ import type { TabPanes } from "./window-store.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import type { DraftStart } from "../panes/session-view-state.ts";
 import { preferences } from "../preferences/index.ts";
-import { windowApp } from "../contract/nyte.ts";
 import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 
 const WINDOW_KEY_PREFIX = "nyte.window.v1:";
@@ -42,6 +41,7 @@ function forgetWindows(windowIds: readonly string[]): void {
 
 class WindowTabs {
   private stored = false;
+  private stripped = false;
   private windowKey = `${WINDOW_KEY_PREFIX}web`;
   private wantsStartupDestination = true;
   private drafts: WindowDrafts | undefined;
@@ -53,15 +53,16 @@ class WindowTabs {
   }
 
   get strip(): boolean {
-    return this.stored && windowApp() !== "code";
+    return this.stored && !this.stripped;
   }
 
   get startupDestination(): boolean {
     return this.wantsStartupDestination;
   }
 
-  start(desktopWindow: Pick<DesktopWindow, "id" | "launch">): void {
+  start(desktopWindow: Pick<DesktopWindow, "id" | "launch">, { strip = true } = {}): void {
     this.stored = true;
+    this.stripped = !strip;
     this.windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
 
     if (desktopWindow.launch !== undefined) forgetWindows(desktopWindow.launch.windowIds);

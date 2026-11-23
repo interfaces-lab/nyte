@@ -1,8 +1,6 @@
 import type { JobId, PartId, SessionId, TurnId, WorkspaceId } from "@nyte-ai/sdk";
 import type { IconName } from "@nyte-ai/ui/icon";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import type { DesktopApp } from "../contract/desktop-app.ts";
-import { windowApp } from "../contract/nyte.ts";
 import { DEFAULT_WIDTH } from "./width.ts";
 import type { WorkbenchWidth } from "./width.ts";
 
@@ -169,31 +167,6 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
     identity: (tab) => `${tab.sessionId}:${tab.part}`,
   },
 };
-
-const LAUNCH_ORDER = Object.freeze([
-  "editor",
-  "changes",
-  "design",
-  "browser",
-  "terminal",
-] satisfies LaunchKind[]);
-
-const APP_LAUNCHERS = {
-  nyte: LAUNCH_ORDER,
-  code: ["editor", "changes", "browser", "terminal"],
-  studio: ["design"],
-} as const satisfies Readonly<Record<DesktopApp, readonly LaunchKind[]>>;
-
-export function workbenchLaunchers(
-  scope: WorkbenchScope,
-  capabilities: ClientCapabilities,
-): readonly LaunchKind[] {
-  const offered: readonly LaunchKind[] = APP_LAUNCHERS[windowApp()];
-
-  return LAUNCH_ORDER.filter(
-    (kind) => offered.includes(kind) && WORKBENCH_KINDS[kind].available(scope, capabilities),
-  );
-}
 
 export function workbenchTabAvailable(
   scope: WorkbenchScope,

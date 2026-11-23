@@ -4,7 +4,7 @@ import { Matches, useRouter } from "@tanstack/react-router";
 import { useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { AboutDialog } from "./about-dialog.tsx";
 import type { ReactElement } from "react";
-import { followLight, keepCodeWorkbench } from "../commands/apps.ts";
+import { followLight } from "../commands/apps.ts";
 import { WorkspaceDialogHost } from "../panes/open-workspace.tsx";
 import { ProjectDialogHost } from "../projects/project-dialog.tsx";
 import { performAction } from "../commands/offered-actions.ts";
@@ -28,7 +28,8 @@ import type { StartupProblem } from "../data/startup.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar } from "../theme/schema.stylex.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import {
   clientCapabilities,
   resolveClientAction,
@@ -168,8 +169,8 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const page = useStagePage();
   const { about } = useOverlays();
   const root = useRef<HTMLDivElement | null>(null);
-  const pushing = useSidebarSwipe(root);
-  const code = windowApp() === "code";
+  const chatSidebar = appShape().navigator === "chats";
+  const pushing = useSidebarSwipe(root, chatSidebar);
   const sidebarCollapsed = useSidebar().state === "collapsed";
   const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
@@ -253,16 +254,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
     };
   });
 
-  useMountEffect(() => {
-    if (windowApp() !== "code") return undefined;
-    const leaveLight = followLight();
-    const leaveWorkbench = keepCodeWorkbench();
-
-    return () => {
-      leaveLight();
-      leaveWorkbench();
-    };
-  });
+  useMountEffect(() => (appShape().arrival === "file" ? followLight() : undefined));
 
   useMountEffect(() => appActions.serve((name, input) => performAction(shellRouter, name, input)));
 
@@ -283,7 +275,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       <Titlebar />
       <div {...props(styles.stage)}>
         <SessionDndProvider>
-          {!code && (
+          {chatSidebar && (
             <SidebarPane>
               <Sidebar
                 renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}

@@ -13,7 +13,8 @@ import { boxStyle } from "../panes/pane-geometry.ts";
 import { renderPaneContent } from "./pane-views.tsx";
 import { useSessionDropTarget } from "../panes/session-dnd.tsx";
 import { useHostState } from "../data/host.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import { useNoDesigns } from "../studio/designs.ts";
 
 import { WORKBENCH_CHAT_TAB } from "../workbench/model.ts";
@@ -52,7 +53,7 @@ export function SessionScreen(): ReactElement {
   const viewKey = workbench.key;
   const view = workbench.view;
   const maximized = view.expanded && view.layout.kind === "maximized";
-  const code = windowApp() === "code";
+  const chatPanel = appShape().panel === "chat";
 
   const covered = useChatWindow((snapshot) => snapshot.covered);
   const store = usePaneLayoutStore();
@@ -73,7 +74,7 @@ export function SessionScreen(): ReactElement {
         {...props(
           sessionScreenStyles.panes,
           covered && sessionScreenStyles.panesCovered,
-          code && sessionScreenStyles.panesTrailing,
+          chatPanel && sessionScreenStyles.panesTrailing,
         )}
       >
         <PaneFloatingMount value={paneFloatingMount}>
@@ -83,7 +84,7 @@ export function SessionScreen(): ReactElement {
         </PaneFloatingMount>
       </div>
       <Workbench folder={folder} />
-      {!code && <div ref={setFloatingMount} {...props(sessionScreenStyles.floatingMount)} />}
+      {!chatPanel && <div ref={setFloatingMount} {...props(sessionScreenStyles.floatingMount)} />}
     </div>
   );
 }

@@ -1,11 +1,11 @@
 import type { IconName } from "@nyte-ai/ui/icon";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
+import { workbenchLaunchers } from "./app-shape.ts";
 import {
   activeEditorFile,
   EDITOR_SLOT,
   tabSlot,
   WORKBENCH_KINDS,
-  workbenchLaunchers,
   workbenchShowsChat,
   workbenchTabAvailable,
   workbenchTabLabel,

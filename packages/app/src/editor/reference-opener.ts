@@ -1,7 +1,8 @@
 import type { HostState } from "../contract/bridge.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
 import type { ArrivalSubject } from "../contract/desktop-window.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import { documentsApi } from "../data/documents.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
@@ -25,20 +26,20 @@ function openInApp(to: DesktopApp, subject: ArrivalSubject | null): void {
   });
 }
 
-/** Opens what a reference in a chat names. A Studio window has no editor, so it opens files in Code. */
+/** Opens what a reference in a chat names. A window whose app offers no Editor opens files in Code. */
 export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpener {
   const workspacePath = workspacePathForView(view);
-  const studio = windowApp() === "studio";
+  const here = appShape().launchers.includes("editor");
 
   const openFile = (path: string, lines: Lines | undefined): (() => void) =>
-    studio
-      ? () => void linkSubject(path, lines).then((subject) => openInApp("code", subject))
-      : () =>
+    here
+      ? () =>
           fileActions.open(view, {
             path,
             target: lines === undefined ? undefined : lineTarget(lines),
             preview: true,
-          });
+          })
+      : () => void linkSubject(path, lines).then((subject) => openInApp("code", subject));
 
   return (reference) => {
     if (reference.kind === "url") return () => openUrl(view, reference.url);
@@ -66,7 +67,7 @@ export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpene
       case "file": {
         const file = reference.file;
 
-        if (file.kind === "folder" && studio) return () => openInApp("code", null);
+        if (file.kind === "folder" && !here) return () => openInApp("code", null);
 
         if (file.kind === "folder") {
           return () => {

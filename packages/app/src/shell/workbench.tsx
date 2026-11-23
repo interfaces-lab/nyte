@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -20,23 +21,16 @@ import {
   workbenchSeparatorValue,
   workbenchWidthBounds,
 } from "../workbench/width.ts";
-import {
-  browserSurface,
-  DEFAULT_VIEW,
-  EDITOR_SLOT,
-  tabSlot,
-  workbenchShowsChat,
-} from "../workbench/model.ts";
+import { browserSurface, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "../workbench/model.ts";
 import type {
   WorkbenchBrowse,
   WorkbenchScope,
   WorkbenchTab,
   WorkbenchViewKey,
-  WorkbenchViewState,
 } from "../workbench/model.ts";
 import { workbenchScope, workbenchViewKey, workspacePathForView } from "../workbench/paths.ts";
 import { railModel, shownWorkbenchTab, visibleTabs } from "../workbench/selectors.ts";
-import { useWorkbenchSnapshot, workbench } from "../workbench/store.ts";
+import { useWorkbenchViewState, workbench } from "../workbench/store.ts";
 import type { ChangesTabPatch } from "../workbench/view-reducer.ts";
 import { launch } from "../commands/launch.ts";
 import { openUrl } from "../workbench/commands.ts";
@@ -119,6 +113,7 @@ function PanelContent({
               visible={visible}
               workspaceActive={workspaceActive}
               sidebarVisible={sidebarVisible}
+              explorerDocked={appShape().navigator === "files"}
               onToggleSidebar={toggleSidebar}
             />
           )}
@@ -221,7 +216,6 @@ function PanelContent({
 
 function WorkbenchViewHost({
   viewKey,
-  view,
   chatFolder,
   current,
   scope,
@@ -229,13 +223,13 @@ function WorkbenchViewHost({
   capabilities,
 }: {
   readonly viewKey: WorkbenchViewKey;
-  readonly view: WorkbenchViewState;
   readonly chatFolder: SelectedWorkspace | undefined;
   readonly current: boolean;
   readonly scope: WorkbenchScope;
   readonly stageWidth: number;
   readonly capabilities: ClientCapabilities;
 }): ReactElement {
+  const view = useWorkbenchViewState(viewKey);
   const workspace = browsedWorkspace(view.browse, chatFolder, useWorkspaces().data);
 
   const workspacePath = workspacePathForView(viewKey) ?? null;
@@ -320,7 +314,7 @@ function WorkbenchViewHost({
     setWidth(clampWorkbenchWidthToBounds(width, bounds));
   };
 
-  const code = windowApp() === "code";
+  const chatPanel = appShape().panel === "chat";
   const panelVisible = current && view.expanded;
   const panelShown = panelVisible && !chatShowing;
   const panelHidden = !current || (panelVisible && chatShowing);
@@ -391,14 +385,14 @@ function WorkbenchViewHost({
         inert={panelHidden ? true : undefined}
         {...props(
           workbenchStyles.panel,
-          panelVisible && (code ? workbenchStyles.panelEndRule : hairline.inlineStartAfter),
+          panelVisible && (chatPanel ? workbenchStyles.panelEndRule : hairline.inlineStartAfter),
           panelVisible && [
-            code ? workbenchStyles.panelOpenCode : workbenchStyles.panelOpen,
+            chatPanel ? workbenchStyles.panelOpenCode : workbenchStyles.panelOpen,
             workbenchStyles.panelWidth(view.width.pixels),
           ],
           !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
           panelVisible && maximized && workbenchStyles.panelOverlay,
-          panelVisible && maximized && code && workbenchStyles.panelOverlayStart,
+          panelVisible && maximized && chatPanel && workbenchStyles.panelOverlayStart,
           panelHidden && workbenchStyles.panelHidden,
         )}
       >
@@ -423,7 +417,7 @@ function WorkbenchViewHost({
             <div
               role="separator"
               tabIndex={0}
-              aria-label={code ? "Resize chat panel" : "Resize workbench"}
+              aria-label={chatPanel ? "Resize chat panel" : "Resize workbench"}
               aria-orientation="vertical"
               aria-valuemin={separator.min}
               aria-valuemax={separator.max}
@@ -432,7 +426,7 @@ function WorkbenchViewHost({
               title="Drag to resize. Double-click to reset."
               {...props(
                 workbenchStyles.sash,
-                code && workbenchStyles.sashEnd,
+                chatPanel && workbenchStyles.sashEnd,
                 resizing && workbenchStyles.sashActive,
               )}
               onKeyDown={resizeWithKeyboard}
@@ -496,7 +490,6 @@ export function Workbench({
   const capabilities = clientCapabilities(nyte.host);
   const [stageWidth, setStageWidth] = useState(2 * WORKBENCH_CENTER_WIDTH_MIN);
   const viewKey = workbenchViewKey(folder?.path);
-  const snapshot = useWorkbenchSnapshot();
   const [visited, setVisited] = useState<readonly WorkbenchViewKey[]>([viewKey]);
 
   if (visited.at(-1) !== viewKey) {
@@ -538,7 +531,6 @@ export function Workbench({
           <WorkbenchViewHost
             key={key}
             viewKey={key}
-            view={snapshot.views.get(key) ?? DEFAULT_VIEW}
             chatFolder={current ? folder : undefined}
             current={current}
             scope={current ? workbenchScope(key) : { kind: "pathless" }}

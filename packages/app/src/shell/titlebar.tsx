@@ -20,6 +20,7 @@ import { useCanSplitPane, usePaneActions, usePaneLayout } from "../panes/pane-co
 import { hideFromPanes } from "../tabs/window-panes.tsx";
 import { activeSelection, chatPanes, sameSelection } from "../panes/pane-layout.ts";
 import { nyte, offeredApps, windowApp } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import { chatDirectory, chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
 import { sessionActions } from "../data/session-rows.ts";
@@ -189,21 +190,22 @@ export function Titlebar(): ReactElement {
   const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
   const focused = useSyncExternalStore(watchWindowFocus, () => document.hasFocus());
-  const code = windowApp() === "code";
+  const shape = appShape();
+  const files = shape.navigator === "files";
   const shownTab = shownWorkbenchTab(view, scope, capabilities);
 
   const explorerOpen =
     shownTab !== null && tabSlot(shownTab) === EDITOR_SLOT && view.sidebars.includes(EDITOR_SLOT);
 
-  const leftOpen = code ? explorerOpen : sidebarVisible;
-  const leftLabel = code ? "Explorer" : "Sidebar";
+  const leftOpen = files ? explorerOpen : sidebarVisible;
+  const leftLabel = files ? "Explorer" : "Sidebar";
 
   const sidebarSlot = (
     <span
       ref={attachSidebarWidth}
       {...props(
         titlebarStyles.sidebarSlot,
-        (code || !sidebarVisible) && titlebarStyles.sidebarSlotHidden,
+        (files || !sidebarVisible) && titlebarStyles.sidebarSlotHidden,
       )}
     >
       <span {...props(titlebarStyles.actionTrack)}>
@@ -217,7 +219,7 @@ export function Titlebar(): ReactElement {
                 pressed={leftOpen}
                 aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
                 onPressedChange={
-                  code ? () => toggleExplorer(viewKey) : sidebarControl.toggleSidebar
+                  files ? () => toggleExplorer(viewKey) : sidebarControl.toggleSidebar
                 }
                 title={undefined}
               >
@@ -234,7 +236,7 @@ export function Titlebar(): ReactElement {
         <span
           {...props(
             titlebarStyles.appSlot,
-            sidebarVisible && !code && titlebarStyles.appSlotDocked,
+            sidebarVisible && !files && titlebarStyles.appSlotDocked,
           )}
         >
           <AppSwitcher mac={mac} />
@@ -309,7 +311,7 @@ export function Titlebar(): ReactElement {
     </>
   );
 
-  if (code) {
+  if (shape.panel === "chat") {
     const chatOpen = view.layout.kind === "split" || workbenchShowsChat(view.layout);
 
     return (

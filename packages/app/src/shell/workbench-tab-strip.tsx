@@ -29,7 +29,7 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { chatTitle, NEW_CHAT_TITLE, useChat } from "../chats/index.ts";
 import { fittingTabs, pixels, useTabRoom } from "../components/tab-fit.ts";
 import type { TabRoom } from "../components/tab-fit.ts";
-import { windowApp } from "../contract/nyte.ts";
+import { appShape, workbenchLaunchers } from "../workbench/app-shape.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
 import { tab as tabSize } from "../theme/schema.stylex.ts";
@@ -40,7 +40,6 @@ import {
   tabSlot,
   WORKBENCH_CHAT_TAB,
   WORKBENCH_KINDS,
-  workbenchLaunchers,
   workbenchNarrow,
   workbenchShowsChat,
 } from "../workbench/model.ts";
@@ -285,10 +284,10 @@ export function WorkbenchTabStrip({
   const pending = useSyncExternalStore(pendingTerminalClose.subscribe, pendingTerminalClose.read);
   const terminalClose = pending.kind !== "closed" && pending.view === viewKey ? pending : undefined;
 
+  const chatPanel = appShape().panel === "chat";
   const listed = workbenchStripTabs(view, scope, capabilities);
 
-  const tabs =
-    windowApp() === "code" && listed.length === 1 && listed[0]?.kind === "editor" ? [] : listed;
+  const tabs = chatPanel && listed.length === 1 && listed[0]?.kind === "editor" ? [] : listed;
 
   const chatShowing = workbenchShowsChat(view.layout);
 
@@ -300,8 +299,7 @@ export function WorkbenchTabStrip({
       ? null
       : tabSlot(active);
 
-  const chatTab =
-    view.layout.kind === "maximized" && (windowApp() !== "code" || workbenchNarrow(view.layout));
+  const chatTab = view.layout.kind === "maximized" && (!chatPanel || workbenchNarrow(view.layout));
 
   const inactive = [...(chatTab ? [WORKBENCH_CHAT_TAB] : []), ...tabs.map((tab) => tab.id)].filter(
     (id) => id !== activeValue,
@@ -612,7 +610,7 @@ export function WorkbenchTabStrip({
           </Menu>
         </span>
       )}
-      {(chatTab || tabs.length > 0 || windowApp() === "code") && (
+      {(chatTab || tabs.length > 0 || chatPanel) && (
         <span data-strip-plus="" {...props(styles.control)}>
           <Menu>
             <Tooltip>

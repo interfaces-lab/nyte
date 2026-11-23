@@ -7,6 +7,7 @@ import { createFileTabStore } from "../editor/file-store.ts";
 import type { WorkbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
 import { reduceView } from "./view-reducer.ts";
+import type { WorkbenchViewAction } from "./view-reducer.ts";
 import { DEFAULT_WIDTH, workbenchPanelWidth, workbenchSeparatorValue } from "./width.ts";
 
 test("reopening Changes applies the requested scope and path to the open tab in one step", () => {
@@ -238,4 +239,53 @@ test.each([
   expect(next.browse).toEqual(row.expected);
   expect(next === start).toBe(row.same);
   expect({ ...next, browse: start.browse }).toEqual(start);
+});
+
+test.each([
+  { name: "a project it hasn't shown", actions: [], active: "editor" },
+  { name: "the workbench is toggled shut", actions: [{ kind: "toggle" }], active: "editor" },
+  {
+    name: "the terminal in front is toggled away",
+    actions: [
+      { kind: "add", tab: { id: "terminal", kind: "terminal", owner: { kind: "user" } } },
+      { kind: "toggle" },
+    ],
+    active: "editor",
+  },
+  {
+    name: "its last other tab closes",
+    actions: [
+      { kind: "add", tab: { id: "terminal", kind: "terminal", owner: { kind: "user" } } },
+      { kind: "close", id: "terminal" },
+    ],
+    active: "editor",
+  },
+  { name: "the Editor tab closes", actions: [{ kind: "close", id: "editor" }], active: undefined },
+] satisfies {
+  name: string;
+  actions: WorkbenchViewAction[];
+  active: string | undefined;
+}[])("a workbench that is the window's main area stays open on its Editor: $name", (row) => {
+  const initial = reduceView(DEFAULT_VIEW, {
+    kind: "open",
+    tab: { id: "editor", kind: "editor" },
+    activate: true,
+  });
+
+  const store = createWorkbenchStore(
+    () => ({ browser: true }),
+    undefined,
+    () => ({
+      initial,
+      main: true,
+    }),
+  );
+
+  for (const action of row.actions) store.dispatch("/workspace", action);
+  const view = store.getView("/workspace");
+  const editors = view.tabs.filter((tab) => tab.kind === "editor");
+
+  expect(view.expanded).toBe(true);
+  expect(editors).toHaveLength(1);
+  expect(view.active).toBe(row.active ?? editors[0]?.id);
 });

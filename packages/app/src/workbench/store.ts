@@ -4,6 +4,7 @@ import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { nyte, windowApp } from "../contract/nyte.ts";
 import { localArea } from "../lib/storage.ts";
+import { appShape } from "./app-shape.ts";
 import { DEFAULT_VIEW } from "./model.ts";
 import type {
   WorkbenchSnapshot,
@@ -33,18 +34,52 @@ function freezeView(view: WorkbenchViewState): WorkbenchViewState {
   });
 }
 
+/** How a window's workbench starts and whether it can close. */
+export interface WorkbenchArrangement {
+  /** The view of a project the window hasn't shown yet. */
+  readonly initial: WorkbenchViewState;
+  /** The workbench is the window's main area, so it stays open and always has its Editor. */
+  readonly main: boolean;
+}
+
+const SIDE_PANEL: WorkbenchArrangement = { initial: DEFAULT_VIEW, main: false };
+
+function holdEditor(view: WorkbenchViewState): WorkbenchViewState {
+  const editor = view.tabs.find((tab) => tab.kind === "editor");
+
+  if (editor !== undefined && view.expanded) return view;
+
+  return reduceView(
+    view,
+    editor === undefined
+      ? { kind: "open", tab: { id: crypto.randomUUID(), kind: "editor" }, activate: true }
+      : { kind: "activate", id: editor.id },
+  );
+}
+
 export function createWorkbenchStore(
   capabilities: () => ClientCapabilities,
   persistence?: WorkbenchPersistence,
+  arrangement: () => WorkbenchArrangement = () => SIDE_PANEL,
 ): WorkbenchStore {
   const listeners = new Set<() => void>();
   let snapshot: WorkbenchSnapshot | undefined;
 
-  const read = (): WorkbenchSnapshot =>
-    (snapshot ??= restoreSnapshot(persistence?.get(), capabilities));
+  const held = (view: WorkbenchViewState): WorkbenchViewState =>
+    arrangement().main ? holdEditor(view) : view;
+
+  const restore = (): WorkbenchSnapshot => {
+    const restored = restoreSnapshot(persistence?.get(), capabilities);
+
+    return Object.freeze({
+      views: new Map([...restored.views].map((entry) => [entry[0], held(entry[1])])),
+    });
+  };
+
+  const read = (): WorkbenchSnapshot => (snapshot ??= restore());
 
   const getView = (key: WorkbenchViewKey): WorkbenchViewState =>
-    read().views.get(key) ?? DEFAULT_VIEW;
+    read().views.get(key) ?? arrangement().initial;
 
   const write = (views: ReadonlyMap<WorkbenchViewKey, WorkbenchViewState>): void => {
     const written = Object.freeze({ views });
@@ -64,7 +99,7 @@ export function createWorkbenchStore(
     getView,
     dispatch(key: WorkbenchViewKey, action: WorkbenchViewAction) {
       const current = getView(key);
-      const next = reduceView(current, action);
+      const next = held(reduceView(current, action));
 
       if (next === current) return;
       write(new Map(read().views).set(key, freezeView(next)));
@@ -103,24 +138,29 @@ function appPersistence(): WorkbenchPersistence {
   return windowPersistence;
 }
 
-export const workbench = createWorkbenchStore(() => clientCapabilities(nyte.host), {
-  get: () => appPersistence().get(),
-  set: (value) => appPersistence().set(value),
-});
+export const workbench = createWorkbenchStore(
+  () => clientCapabilities(nyte.host),
+  {
+    get: () => appPersistence().get(),
+    set: (value) => appPersistence().set(value),
+  },
+  () => {
+    const shape = appShape();
 
-export function useWorkbenchSnapshot(): WorkbenchSnapshot {
-  return useSyncExternalStore(workbench.subscribe, workbench.getSnapshot, workbench.getSnapshot);
+    return { initial: shape.initial, main: shape.panel === "chat" };
+  },
+);
+
+export function useWorkbenchViewState(key: WorkbenchViewKey): WorkbenchViewState {
+  const read = (): WorkbenchViewState => workbench.getView(key);
+
+  return useSyncExternalStore(workbench.subscribe, read, read);
 }
 
 export function useWorkbenchView(workspacePath: string | undefined) {
   const key = useWorkbenchViewKey(workspacePath);
-  const read = (): WorkbenchViewState => workbench.getView(key);
 
-  return {
-    key,
-    view: useSyncExternalStore(workbench.subscribe, read, read),
-    scope: workbenchScope(key),
-  };
+  return { key, view: useWorkbenchViewState(key), scope: workbenchScope(key) };
 }
 
 export function useVisibleCanvasTab(

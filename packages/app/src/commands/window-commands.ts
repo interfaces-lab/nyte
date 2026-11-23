@@ -12,7 +12,8 @@ import { APP_ACTIONS, clientCapabilities } from "../contract/client-actions.ts";
 import type { AppAction } from "../contract/client-actions.ts";
 import { focusNextPane, splitPanes } from "../panes/pane-context.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import {
@@ -138,7 +139,7 @@ export function arriveInWindow(
   router: RegisteredRouter,
   subject: ArrivalSubject | undefined,
 ): void {
-  if (subject === undefined || windowApp() === "nyte") return;
+  if (subject === undefined || appShape().arrival === "ignore") return;
   uncoverPanes(router);
   void landAt(subject);
 }
@@ -196,14 +197,15 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
 
       return true;
     case "sidebar.toggle":
-      if (windowApp() === "code") toggleExplorer(workbenchViewKey(currentWorkspacePath()));
-      else shellActions.toggleSidebar();
+      if (appShape().navigator === "files") {
+        toggleExplorer(workbenchViewKey(currentWorkspacePath()));
+      } else shellActions.toggleSidebar();
 
       return true;
     case "workbench.toggle":
       uncoverPanes(router);
       workbench.dispatch(workbenchViewKey(currentWorkspacePath()), {
-        kind: windowApp() === "code" ? "toggle-maximized" : "toggle",
+        kind: appShape().panel === "chat" ? "toggle-maximized" : "toggle",
       });
 
       return true;

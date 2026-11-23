@@ -12,7 +12,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { ChangesPanel } from "../changes/changes-panel.tsx";
 import { DesignTab } from "../shell/design-tab.tsx";
 import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
-import { useWorkbenchSnapshot, workbench } from "./store.ts";
+import { useWorkbenchViewState, workbench } from "./store.ts";
 import { EditorPanel } from "../editor/editor-panel.tsx";
 import { TerminalPanel } from "../terminal/terminal-panel.tsx";
 import {
@@ -41,11 +41,11 @@ function Fallback(): null {
 }
 
 function TerminalSlots(): ReactElement {
-  const view = useWorkbenchSnapshot().views.get(WORKBENCH_HOME_VIEW_KEY);
+  const view = useWorkbenchViewState(WORKBENCH_HOME_VIEW_KEY);
 
   return (
     <>
-      {view?.tabs
+      {view.tabs
         .filter((tab) => tab.kind === "terminal")
         .map((tab) => (
           <Deferred key={tab.id} entry="workbench" fallback={<Fallback />}>

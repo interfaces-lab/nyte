@@ -10,16 +10,19 @@ Stability first, then simplicity, then performance. A faster path loses to the p
 
 ## The three apps
 
-The desktop app opens three kinds of window. Main names a window's app when it opens it, and the app never changes. Read it with `windowApp()`.
+The desktop app opens three kinds of window. Main names a window's app when it opens it, and the app never changes. `AppShape` holds everything that differs between the apps, one row per app. Read the window's row with `appShape()`.
 
 - **Nyte** is chat first. It has the chat sidebar and window tabs. The workbench is a side panel that offers every tab.
-- **Code** is the IDE. The workbench is the main area and always holds an Editor (`keepCodeWorkbench`). Chat is the side panel. Code has no chat sidebar, no window tabs and no Design tab. Its sidebar toggle opens the explorer.
+- **Code** is the IDE. The workbench is the main area and always holds an Editor. Chat is the side panel. Code has no chat sidebar, no window tabs and no Design tab. Its sidebar toggle opens the explorer.
 - **Studio** is the design board. It opens maximized on Design, its only tab. A file reference opens in Code.
 
 Rules that follow from this:
 
-- All three share one renderer build, one host and one project. Branch on `windowApp()`. Never fork a component per app.
-- `APP_LAUNCHERS` lists the tabs each app offers. A new tab kind goes there.
+- All three share one renderer build, one host and one project. Never fork a component per app.
+- A new difference between the apps is a new `AppShape` field. Lint rejects a comparison of `windowApp()`.
+- A view below the shell never reads `appShape()`. It takes the fact it needs as a prop, as `EditorPanel` takes `explorerDocked`.
+- The workbench store keeps the workbench open on its Editor where it is the main area (`WorkbenchArrangement`). Never restore that from a subscriber.
+- `AppShape.launchers` lists the tabs each app offers. A new tab kind goes there.
 - `switchApp` focuses or opens another app's window on the same project. It carries the selection as an `ArrivalSubject`.
 - A Code window follows the light (`followLight`). A selection made in another window, or an agent's change, opens in its editor. An agent's change waits while the person is in the window, so it never moves the caret they type at.
 - Each app keeps its own workbench arrangement per project.

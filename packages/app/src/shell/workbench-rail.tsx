@@ -27,7 +27,8 @@ import { useChangesViewOptions } from "../changes/changes-view-options.ts";
 import { launch } from "../commands/launch.ts";
 import { openChanges } from "../workbench/commands.ts";
 import { useFileTabs } from "../editor/file-store.ts";
-import { WORKBENCH_KINDS, workbenchLaunchers } from "../workbench/model.ts";
+import { workbenchLaunchers } from "../workbench/app-shape.ts";
+import { WORKBENCH_KINDS } from "../workbench/model.ts";
 import type {
   WorkbenchChangesScope,
   WorkbenchScope,
