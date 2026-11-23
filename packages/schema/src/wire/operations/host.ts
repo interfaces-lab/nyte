@@ -3,6 +3,7 @@ import { ConfigurationPatchType, ConfigurationType } from "../../configuration.t
 import { HostViewWireSchema, SettingOutcomeSchema } from "../../connection.ts";
 import {
   AuthorityType,
+  HostActivitySchema,
   McpAccessType,
   McpGrantViewType,
   OperationDescriptionType,
@@ -391,6 +392,14 @@ export const HOST_OPERATIONS = {
     kind: "command",
     input: NO_INPUT,
     output: wireSchema(TailnetStatusType),
+  },
+  "host.activity": {
+    ...OWNER,
+    summary:
+      "Counts what a close would cut off: the runs the host is driving and the jobs still working.",
+    kind: "query",
+    input: NO_INPUT,
+    output: HostActivitySchema,
   },
   "host.execution.pause": {
     ...LOCAL_OWNER,

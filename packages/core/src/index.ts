@@ -9,6 +9,7 @@ export type {
   ConnectionContext,
   DocumentsApi,
   Host,
+  HostApi,
   ImageLimits,
   ImageProcessor,
   ListenOptions,

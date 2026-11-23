@@ -175,6 +175,7 @@ export function createClient(transport: Transport, context: ClientContext): Clie
     operations: {
       describe: (names) => rows.call("operations.describe", names === undefined ? {} : { names }),
     },
+    host: { activity: () => rows.call("host.activity", {}) },
     principals: {
       list: async () =>
         (await rows.call("principals.list", {})).map((view) => ({

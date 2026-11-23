@@ -1,0 +1,80 @@
+---
+title: host.activity
+description: "Counts what a close would cut off: the runs the host is driving and the jobs still working."
+---
+
+Counts the work a close of this host would cut off. `runs` is the runs this host process is
+driving, live or waiting to retry. A run waiting on a question or a child doesn't count, since it
+survives a restart. `jobs` is the jobs still working: every running command job, and a terminal
+only while a command runs in it. A terminal at its prompt doesn't count.
+
+The host reads the same numbers before it retires itself for a newer build, so a client shows
+what it would wait for.
+
+## When to call it
+
+Before offering Restart Host or Stop Host, to say what stopping ends, as in "Restarting stops 1
+running task".
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+{ "runs": 1, "jobs": 0 }
+```
+
+## Errors
+
+`denied` without owner authority.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["runs", "jobs"],
+  "properties": {
+    "runs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "jobs": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}
+```
+
+{/* generated:end */}

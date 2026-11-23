@@ -346,6 +346,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     plugins: { replace: refuse, check: refuse },
     principals: { list: refuse, pair: refuse, revoke: refuse },
     operations: { describe: refuse },
+    host: { activity: refuse },
     github: { account: refuse, signIn: refuse, signOut: refuse, ...script.github },
     documents: { read: refuse, bytes: refuse, write: refuse, watch: refused, ...script.documents },
     health: { subscribe: health.subscribe, snapshot: () => health.latest() ?? OPEN },

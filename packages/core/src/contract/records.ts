@@ -153,6 +153,7 @@ const RunRecordType = record({
 
   parked: list(idSchema<"call">()),
   interrupted: Type.Optional(record({ count: Type.Number(), mark: Type.String() })),
+  released: Type.Optional(Type.Literal(true)),
   requires: Type.Optional(list(Type.String())),
 });
 

@@ -1,6 +1,7 @@
 import type { Kernel } from "../contract/kernel.ts";
 import type { ServerHost } from "../contract/server.ts";
 import { driveInProcess } from "../drive/execution.ts";
+import { onActivity, retireHost } from "../engine/activity.ts";
 import { applyBatch, heldReceipt } from "../env/batches.ts";
 import { attachSession } from "./session-attachment.ts";
 import { sessionChanges } from "./sessions-feed.ts";
@@ -30,6 +31,8 @@ export function createServerHost(kernel: Kernel): ServerHost {
       };
     },
     drive: (coverage) => driveInProcess(kernel, coverage),
+    retire: () => retireHost(kernel),
+    onActivity: (listener) => onActivity(kernel, listener),
     tick: (now) => kernel.waits.tick(now),
     onWake: (listener) => kernel.wakes.subscribe(listener),
     report: (row) => kernel.host.report(row),

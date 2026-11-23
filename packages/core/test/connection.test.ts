@@ -73,6 +73,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "principals.list": () => sdk.principals.list(),
     "principals.pair": () => sdk.principals.pair({ authority: new Set(["participant"]) }),
     "principals.revoke": () => sdk.principals.revoke(asId("nobody")),
+    "host.activity": () => sdk.host.activity(),
   };
 
   const answered = await Promise.all(

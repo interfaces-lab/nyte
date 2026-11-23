@@ -13,6 +13,7 @@ import type {
 import type { Kernel } from "../contract/kernel.ts";
 import type { GitHubAccountApi, Workspace } from "../contract/workspace.ts";
 import { advance, cover, repair } from "../drive/execution.ts";
+import { hostActivity } from "../engine/activity.ts";
 import { pause, resume } from "../engine/pause.ts";
 import { createPrincipals, gate, gated } from "./principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
@@ -228,6 +229,7 @@ export function createConnection(
     ),
     principals: gated("principals", createPrincipals(kernel), authority),
     operations: { describe: async (names) => describeOperations(names) },
+    host: gated("host", { activity: () => hostActivity(kernel) }, authority),
     github: gated("github", kernel.github ?? NO_GITHUB, authority),
     documents: gated("documents", documents, authority, {
       watch: (paths) =>

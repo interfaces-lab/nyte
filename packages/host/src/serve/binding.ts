@@ -296,6 +296,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "host.tailnet.status": async () => tailnet().status(),
     "host.tailnet.configure": (input) => tailnet().configure(input),
     "host.tailnet.logout": () => tailnet().logout(),
+    "host.activity": () => connection.host.activity(),
     "host.execution.pause": async () => {
       execution().pause();
 

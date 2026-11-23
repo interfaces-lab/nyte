@@ -25,6 +25,7 @@ import { clipText } from "../util/clip.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import { closable } from "../util/iterable.ts";
 import { followedTrace, traceparent } from "../util/trace.ts";
+import { activitySettled } from "./activity.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";
 import { deliverReport } from "./reports.ts";
 import { LOST, readJob, waitFor } from "./waits.ts";
@@ -95,6 +96,7 @@ export function createJobTable(kernel: Kernel): JobTable {
 
     if (previous.view.state.kind === "running" && next.view.state.kind !== "running") {
       forgetEnded(next.workspace);
+      activitySettled(kernel);
     }
   };
 

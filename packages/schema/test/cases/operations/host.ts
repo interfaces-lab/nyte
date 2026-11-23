@@ -234,6 +234,12 @@ export const hostOperations = {
     { seq: 42, ids: [session], rows: [sessionInfo] },
     { seq: 42, ids: [session] },
   ),
+  "host.activity input": operation(OPERATIONS["host.activity"].input, {}, 1),
+  "host.activity output": operation(
+    OPERATIONS["host.activity"].output,
+    { runs: 1, jobs: 0 },
+    { runs: -1, jobs: 0 },
+  ),
   "host.tailnet.status input": operation(OPERATIONS["host.tailnet.status"].input, {}, 1),
   "host.tailnet.status output": operation(
     OPERATIONS["host.tailnet.status"].output,

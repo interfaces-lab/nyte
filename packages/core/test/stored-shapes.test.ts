@@ -34,7 +34,7 @@ it("keeps every stored shape until a store change is decided", () => {
     project: "43d15ff3e2d118f1",
     prompt: "415e40695f4ad3f6",
     receipt: "f3eb06f1a16b8288",
-    run: "25538d8260f53c9f",
+    run: "13ba5f76f2b6a01f",
     seen: "d56e60a18cd524d4",
     session: "eb34f6599591f4ca",
     trust: "3134382ffff2bad2",

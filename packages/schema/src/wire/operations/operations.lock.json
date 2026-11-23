@@ -1,5 +1,5 @@
 {
-  "revision": 42,
+  "revision": 44,
   "operations": {
     "connection.watch": "f87f695ede7b7a95",
     "connection.blob": "d661f9695af8afc2",
@@ -35,6 +35,7 @@
     "host.tailnet.status": "d8512fd7aefbd768",
     "host.tailnet.configure": "90695a6d242db10d",
     "host.tailnet.logout": "0041b560c3ca6a08",
+    "host.activity": "a8a43e628a7e49ba",
     "host.execution.pause": "d662fe4fe2018933",
     "host.execution.resume": "6b60c8bcc1812efa",
     "mcp.approve": "e71e9810430d586e",

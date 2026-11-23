@@ -32,7 +32,8 @@ import { reapJobs } from "../engine/jobs.ts";
 import { recoverReports } from "../engine/reports.ts";
 import { BEAT_MS } from "../engine/presence.ts";
 import { recoverStarts } from "../engine/start.ts";
-import { crashLooping, interruption, parkedFailure } from "../engine/interruptions.ts";
+import { activitySettled, RETIRING_MS } from "../engine/activity.ts";
+import { crashLooping, interruption, parkedFailure, releaseRun } from "../engine/interruptions.ts";
 import { earliestWake, loadWaits } from "../engine/waits.ts";
 import { commit } from "../watch/commit.ts";
 import { withFold } from "../watch/reads.ts";
@@ -76,6 +77,8 @@ export function createExecutionState(): ExecutionState {
     closing: new AbortController(),
     streams: new AbortController(),
     paused: null,
+    retiring: false,
+    settles: new Set(),
   };
 }
 
@@ -217,6 +220,8 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   if (due === null) return { kind: "idle" };
 
   if (due.kind === "held") return { kind: "retry", until: due.until };
+
+  if (kernel.executionState.retiring) return { kind: "retry", until: Date.now() + RETIRING_MS };
 
   const run = await newRun(
     kernel.store,
@@ -824,6 +829,7 @@ async function drive(
       closing.removeEventListener("abort", unrenew);
       closing.removeEventListener("abort", resolveClosed);
       kernel.executionState.driving.delete(run.id);
+      activitySettled(kernel);
     });
 
   const ended = await outlasting(
@@ -852,7 +858,7 @@ async function drive(
     return endOverdue(kernel, session, head, run.id);
   }
 
-  if (ended === null || (closing.aborted && !stopping)) return null;
+  if (ended === null || (closing.aborted && !stopping)) return releaseRun(kernel, session, run.id);
 
   if (ended.end.kind === "parked" && !stopping) return null;
 

@@ -19,6 +19,7 @@ import type {
   FileVersion,
   HeadName,
   HostDescription,
+  HostActivity,
   HostId,
   HostView,
   IdentityChallenge,
@@ -291,6 +292,7 @@ export interface Connection {
   readonly plugins: PluginsApi<PluginFile>;
   readonly principals: PrincipalsApi;
   readonly operations: OperationsApi;
+  readonly host: HostApi;
   /** The serving machine's GitHub CLI login, shared by every workspace; signing in and out needs owner authority, and a host without one throws `SdkError("unavailable")`. */
   readonly github: GitHubAccountApi;
   /** Files on the serving machine by absolute path; owner authority only, and a host without a local provider throws `SdkError("not_supported")`. */
@@ -317,6 +319,10 @@ export interface Project {
 
 export interface CatalogsApi {
   read(id: CatalogId): Promise<SessionCatalogView>;
+}
+
+export interface HostApi {
+  activity(): Promise<HostActivity>;
 }
 
 export interface OperationsApi {

@@ -567,4 +567,6 @@ export interface ExecutionState {
   closing: AbortController;
   streams: AbortController;
   paused: PromiseWithResolvers<void> | null;
+  retiring: boolean;
+  readonly settles: Set<() => void>;
 }

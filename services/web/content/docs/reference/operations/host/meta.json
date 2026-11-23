@@ -4,6 +4,7 @@
     "tailnet.status",
     "tailnet.configure",
     "tailnet.logout",
+    "activity",
     "execution.pause",
     "execution.resume"
   ]

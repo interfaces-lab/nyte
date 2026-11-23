@@ -34,6 +34,7 @@ import {
   RemoveHeadOutcomeSchema,
   RemoveSessionOutcomeSchema,
   RepairPageSchema,
+  HostActivitySchema,
   SendOptionsSchema,
   SessionCatalogViewSchema,
   SessionEventSchema,
@@ -284,6 +285,7 @@ export const sessionCases = {
     { kind: "waiting", until: null },
     { kind: "retry" },
   ),
+  HostActivitySchema: sample(HostActivitySchema, { runs: 0, jobs: 2 }, { runs: 0 }),
   RepairPageSchema: sample(
     RepairPageSchema,
     { runnable: [{ session, head }], next: cursor },
