@@ -6,10 +6,9 @@ import type {
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
-export type DialectName = "antigravity" | "claude" | "copilot" | "devin";
-
 export interface SubagentReport {
   readonly child: string;
+  readonly milestone?: "launched";
   readonly title?: string;
   readonly status: "running" | "completed" | "failed";
   readonly result?: string;
@@ -21,8 +20,6 @@ export interface SessionSubagentReport extends SubagentReport {
 
 export interface Dialect {
   readonly capabilityMeta?: Readonly<Record<string, unknown>>;
-  /** The agent also replies with no prompt open, as its background work finishes, and ends each such reply with `usage_update`. */
-  readonly repliesUnprompted: boolean;
   readonly notifications: ReadonlyMap<
     string,
     (params: unknown) => SessionSubagentReport | undefined
@@ -83,14 +80,20 @@ const COPILOT_META = "github.com/copilot";
 
 const copilotToolMeta = Type.Object({ agentId: Type.String() });
 
-const antigravityLaunch = Type.Object({ Prompt: Type.String(), Role: Type.String() });
+const antigravityChild = Type.Object({ Prompt: Type.String(), Role: Type.String() });
+
+const antigravityLaunch = Type.Union([
+  antigravityChild,
+  Type.Object({ Subagents: Type.Array(antigravityChild, { minItems: 1 }) }),
+]);
+
+const ANTIGRAVITY_LAUNCH_TITLE = /^Run(?:ning)? invoke_subagent\??$/u;
 
 const ANTIGRAVITY_LAUNCHED = "Running in the background. It reports back on its own.";
 
 const DEVIN_SPAWN_TITLE = /^Ran \S+ subagent (?<title>.+)$/u;
 
-const STANDARD: Dialect = {
-  repliesUnprompted: false,
+export const standardCodec: Dialect = {
   notifications: new Map(),
   findSubagent: () => undefined,
   readSubagent: () => undefined,
@@ -98,33 +101,13 @@ const STANDARD: Dialect = {
   filterPermissionOptions: (options) => options,
 };
 
-export function createDialect(name: DialectName | undefined): Dialect {
-  switch (name) {
-    case "antigravity":
-      return antigravityDialect();
-    case "claude":
-      return claudeDialect();
-    case "copilot":
-      return copilotDialect();
-    case "devin":
-      return devinDialect();
-    case undefined:
-      return STANDARD;
-    default: {
-      const exhaustive: never = name;
-
-      return exhaustive;
-    }
-  }
-}
-
-function devinDialect(): Dialect {
+export function devinCodec(): Dialect {
   const unlinkedSpawns: string[] = [];
   const spawnByAgent = new Map<string, string>();
   const childId = (agentId: string) => spawnByAgent.get(agentId) ?? agentId;
 
   return {
-    ...STANDARD,
+    ...standardCodec,
     findSubagent(update) {
       const context = readProperty(readMeta(update), "cognition.ai/subagent_context");
 
@@ -146,7 +129,7 @@ function devinDialect(): Dialect {
       const start = readProperty(readMeta(tool), "cognition.ai/subagent_started");
 
       if (Value.Check(devinSubagentStart, start)) {
-        const spawn = unlinkedSpawns.shift();
+        const spawn = unlinkedSpawns.length === 1 ? unlinkedSpawns.pop() : undefined;
 
         if (spawn !== undefined) spawnByAgent.set(start.agentId, spawn);
 
@@ -154,9 +137,11 @@ function devinDialect(): Dialect {
       }
 
       const finished = tool.status === "completed" || tool.status === "failed";
+
       const seen =
         unlinkedSpawns.includes(tool.toolCallId) ||
         [...spawnByAgent.values()].includes(tool.toolCallId);
+
       const spawning =
         readProperty(readMeta(tool), "cognition.ai/inferenceToolName") === "run_subagent";
 
@@ -182,34 +167,42 @@ function devinDialect(): Dialect {
   };
 }
 
-function antigravityDialect(): Dialect {
+export function antigravityCodec(): Dialect {
+  const launches = new Map<string, string>();
+
   return {
-    ...STANDARD,
-    repliesUnprompted: true,
+    ...standardCodec,
     readSubagent(tool) {
       if (
-        tool.title?.includes("invoke_subagent") !== true ||
-        !Value.Check(antigravityLaunch, tool.rawInput)
+        ANTIGRAVITY_LAUNCH_TITLE.test(tool.title ?? "") &&
+        Value.Check(antigravityLaunch, tool.rawInput)
       ) {
-        return undefined;
+        const children = "Subagents" in tool.rawInput ? tool.rawInput.Subagents : [tool.rawInput];
+        launches.set(tool.toolCallId, children.map((child) => child.Role).join(", "));
       }
 
-      const status =
-        tool.status === "failed" ? "failed" : tool.status === "completed" ? "completed" : "running";
+      const title = launches.get(tool.toolCallId);
 
-      return {
-        child: tool.toolCallId,
-        title: tool.rawInput.Role,
-        status,
-        result: status === "completed" ? ANTIGRAVITY_LAUNCHED : undefined,
-      };
+      if (title === undefined) return undefined;
+
+      if (tool.status === "failed") return { child: tool.toolCallId, title, status: "failed" };
+
+      return tool.status === "completed"
+        ? {
+            child: tool.toolCallId,
+            title,
+            status: "running",
+            milestone: "launched",
+            result: ANTIGRAVITY_LAUNCHED,
+          }
+        : { child: tool.toolCallId, title, status: "running" };
     },
   };
 }
 
-function claudeDialect(): Dialect {
+export function claudeCodec(): Dialect {
   return {
-    ...STANDARD,
+    ...standardCodec,
     readSubagent(tool) {
       const meta = readMeta(tool);
       const name = Value.Check(claudeToolMeta, meta) ? meta.claudeCode.toolName : undefined;
@@ -227,7 +220,7 @@ function claudeDialect(): Dialect {
   };
 }
 
-function copilotDialect(): Dialect {
+export function copilotCodec(): Dialect {
   const taskByAgent = new Map<string, string>();
   let lastDelta: { readonly text: string; readonly task: string | undefined } | undefined;
 
@@ -273,7 +266,7 @@ function copilotDialect(): Dialect {
   };
 
   return {
-    ...STANDARD,
+    ...standardCodec,
     capabilityMeta: {
       [COPILOT_META]: {
         events: [
@@ -309,9 +302,11 @@ function copilotDialect(): Dialect {
     },
     readSubagent(tool) {
       if (!Value.Check(copilotTaskInput, tool.rawInput)) return undefined;
+
       const output = Value.Check(copilotTaskOutput, tool.rawOutput)
         ? tool.rawOutput.content
         : undefined;
+
       const status = subagentStatus(tool, tool.rawInput.mode === "background");
 
       return {
@@ -328,7 +323,7 @@ function readProperty(source: unknown, key: string): unknown {
   return Value.Check(anyRecord, source) ? source[key] : undefined;
 }
 
-function readMeta(source: unknown): unknown {
+export function readMeta(source: unknown): unknown {
   return readProperty(source, "_meta");
 }
 

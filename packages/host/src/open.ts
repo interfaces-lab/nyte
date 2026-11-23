@@ -15,7 +15,13 @@ import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import approvals from "@nyte-ai/plugin/core/approvals";
 import modes from "@nyte-ai/plugin/core/modes";
-import { acpAgents } from "@nyte-ai/plugin/core/acp";
+import {
+  acpAgents,
+  antigravityProfile,
+  claudeProfile,
+  copilotProfile,
+  devinProfile,
+} from "@nyte-ai/plugin/core/acp";
 import type { AcpAgent } from "@nyte-ai/plugin/core/acp";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import type { ClientActions } from "@nyte-ai/plugin/core/browser-client";
@@ -52,6 +58,7 @@ import type { Retirement } from "./serve/retire.ts";
 import { nodeImages } from "./images/node.ts";
 import { createMcpHub } from "./mcp-client/hub.ts";
 import type { ClientMetadataFetch } from "./mcp-server/client-metadata.ts";
+import { agentToolServices } from "./mcp-server/agent-tools.ts";
 import { openMcpServer } from "./mcp-server/server.ts";
 import { createViewCompiler } from "./plugins/views.ts";
 import { findOffering, performFor, performOffered, sharedClients } from "./serve/clients.ts";
@@ -72,7 +79,7 @@ const ACP_AGENTS: readonly AcpAgent[] = [
     name: "Google Antigravity",
     command: "agy",
     env: {},
-    dialect: "antigravity",
+    behavior: antigravityProfile,
     launch: { args: ["acp"] },
     unattended: { args: ["--dangerously-skip-permissions", "acp"] },
   },
@@ -82,7 +89,7 @@ const ACP_AGENTS: readonly AcpAgent[] = [
     command: "grok",
     env: {},
     auth: "grok.com",
-    launch: { args: ["agent", "stdio"] },
+    launch: { args: ["--permission-mode", "default", "agent", "stdio"] },
     unattended: { args: ["agent", "--always-approve", "stdio"] },
   },
   {
@@ -105,7 +112,7 @@ const ACP_AGENTS: readonly AcpAgent[] = [
     name: "Devin",
     command: "devin",
     env: {},
-    dialect: "devin",
+    behavior: devinProfile,
     launch: { args: ["acp"] },
     unattended: { args: ["acp"], mode: "bypass" },
   },
@@ -114,7 +121,7 @@ const ACP_AGENTS: readonly AcpAgent[] = [
     name: "Copilot CLI",
     command: "copilot",
     env: {},
-    dialect: "copilot",
+    behavior: copilotProfile,
     launch: { args: ["--acp"] },
   },
   { id: "kimi-code", name: "Kimi Code", command: "kimi", env: {}, launch: { args: ["acp"] } },
@@ -137,7 +144,7 @@ const ACP_AGENTS: readonly AcpAgent[] = [
     name: "Claude Agent",
     command: "claude-agent-acp",
     env: {},
-    dialect: "claude",
+    behavior: claudeProfile,
     launch: { args: [] },
     unattended: { args: [], mode: "bypassPermissions" },
   },
@@ -235,7 +242,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     languageTools,
     modes,
     claudeCodeSdk().plugin,
-    ...acpAgents(ACP_AGENTS),
+    ...acpAgents(ACP_AGENTS, agentToolServices),
   ];
 
   const plugins = [

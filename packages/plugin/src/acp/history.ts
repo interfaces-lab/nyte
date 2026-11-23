@@ -1,22 +1,12 @@
 import type { ContentBlock } from "@agentclientprotocol/sdk/unstable";
 import type { ImageContent, Message, TextContent, UserMessage } from "@nyte-ai/ai";
 import { excerptText } from "@nyte-ai/core";
-import { MIRROR_TOOL } from "./translate.ts";
+import { MIRROR_TOOL } from "./projection.ts";
 
 function text(content: string | readonly (TextContent | ImageContent)[]): string {
   return typeof content === "string"
     ? content
     : content.map((block) => (block.type === "text" ? block.text : `[${block.mimeType}]`)).join("");
-}
-
-export function messageKey(message: Message): string {
-  if (message.role === "user") return `u:${text(message.content)}`;
-
-  if (message.role === "toolResult") return `t:${message.toolCallId}`;
-
-  if (message.role === "system") return "s";
-
-  return `a:${message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : [])).join(",")}`;
 }
 
 export function userBlocks(message: UserMessage, images: boolean): ContentBlock[] {

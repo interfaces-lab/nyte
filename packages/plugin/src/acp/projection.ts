@@ -17,12 +17,16 @@ export const ACP_API = "acp";
 export const MIRROR_TOOL = "acp";
 
 export const mirrorArguments = Type.Object({
-  thread: Type.String(),
+  ref: Type.String(),
   id: Type.String(),
   title: Type.String(),
   kind: Type.String(),
   input: Type.Record(Type.String(), Type.Unknown()),
   paths: Type.Array(Type.String()),
+  result: Type.Object({
+    kind: Type.Enum(["succeeded", "launched", "failed", "interrupted"]),
+    text: Type.String(),
+  }),
 });
 
 export type MirrorArguments = Static<typeof mirrorArguments>;
@@ -124,115 +128,105 @@ export function toolText(content: readonly ToolCallContent[], rawOutput: unknown
 
   return (Value.Check(Type.String(), rawOutput) ? rawOutput : JSON.stringify(rawOutput)).slice(
     0,
-    8_000,
+    8000,
   );
 }
 
 export class Translator {
-  readonly #model: Model<Api>;
-  readonly #output: AssistantMessage;
-  readonly #stream: AssistantMessageEventStream;
-  #open: { readonly kind: "text" | "thinking"; readonly index: number } | undefined;
+  private readonly model: Model<Api>;
+  private readonly output: AssistantMessage;
+  private readonly stream: AssistantMessageEventStream;
+  private open: { readonly kind: "text" | "thinking"; readonly index: number } | undefined;
 
   constructor(model: Model<Api>, output: AssistantMessage, stream: AssistantMessageEventStream) {
-    this.#model = model;
-    this.#output = output;
-    this.#stream = stream;
+    this.model = model;
+    this.output = output;
+    this.stream = stream;
   }
 
   text(delta: string): void {
-    const index = this.#start("text");
-    const block = this.#output.content[index];
+    const index = this.start("text");
+    const block = this.output.content[index];
 
     if (block?.type !== "text") return;
     block.text += delta;
-    this.#stream.push({ type: "text_delta", contentIndex: index, delta, partial: this.#output });
+    this.stream.push({ type: "text_delta", contentIndex: index, delta, partial: this.output });
   }
 
   thinking(delta: string): void {
-    const index = this.#start("thinking");
-    const block = this.#output.content[index];
+    const index = this.start("thinking");
+    const block = this.output.content[index];
 
     if (block?.type !== "thinking") return;
     block.thinking += delta;
-    this.#stream.push({
+    this.stream.push({
       type: "thinking_delta",
       contentIndex: index,
       delta,
-      partial: this.#output,
+      partial: this.output,
     });
   }
 
   call(call: ToolCall): void {
     this.end();
-    const contentIndex = this.#output.content.push(call) - 1;
-    this.#stream.push({ type: "toolcall_start", contentIndex, partial: this.#output });
-    this.#stream.push({
+    const contentIndex = this.output.content.push(call) - 1;
+    this.stream.push({ type: "toolcall_start", contentIndex, partial: this.output });
+    this.stream.push({
       type: "toolcall_end",
       contentIndex,
       toolCall: call,
-      partial: this.#output,
+      partial: this.output,
     });
   }
 
   usage(usage: Static<typeof agentUsage>): void {
-    const target = this.#output.usage;
+    const target = this.output.usage;
     target.input = usage.inputTokens;
     target.output = usage.outputTokens;
     target.cacheRead = usage.cachedReadTokens ?? 0;
     target.cacheWrite = usage.cachedWriteTokens ?? 0;
     target.totalTokens = usage.totalTokens;
-    calculateCost(this.#model, target);
-  }
-
-  /** Reports the agent's own count of its context; its prompt usage sums every model call in the turn. */
-  context(tokens: number): void {
-    const target = this.#output.usage;
-    target.input = tokens;
-    target.output = 0;
-    target.cacheRead = 0;
-    target.cacheWrite = 0;
-    target.totalTokens = tokens;
-    calculateCost(this.#model, target);
+    calculateCost(this.model, target);
   }
 
   end(): void {
-    const open = this.#open;
-    this.#open = undefined;
+    const open = this.open;
+    this.open = undefined;
 
     if (open === undefined) return;
-    const block = this.#output.content[open.index];
+    const block = this.output.content[open.index];
 
-    if (block?.type === "text")
-      this.#stream.push({
+    if (block?.type === "text") {
+      this.stream.push({
         type: "text_end",
         contentIndex: open.index,
         content: block.text,
-        partial: this.#output,
+        partial: this.output,
       });
-    else if (block?.type === "thinking")
-      this.#stream.push({
+    } else if (block?.type === "thinking") {
+      this.stream.push({
         type: "thinking_end",
         contentIndex: open.index,
         content: block.thinking,
-        partial: this.#output,
+        partial: this.output,
       });
+    }
   }
 
-  #start(kind: "text" | "thinking"): number {
-    if (this.#open?.kind === kind) return this.#open.index;
+  private start(kind: "text" | "thinking"): number {
+    if (this.open?.kind === kind) return this.open.index;
     this.end();
 
     const index =
-      this.#output.content.push(
+      this.output.content.push(
         kind === "text" ? { type: "text", text: "" } : { type: "thinking", thinking: "" },
       ) - 1;
 
-    this.#open = { kind, index };
-    this.#stream.push({
+    this.open = { kind, index };
+    this.stream.push({
       type: kind === "text" ? "text_start" : "thinking_start",
       contentIndex: index,
-      partial: this.#output,
+      partial: this.output,
     });
 
     return index;

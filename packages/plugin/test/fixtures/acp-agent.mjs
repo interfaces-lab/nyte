@@ -1,4 +1,4 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, watch } from "node:fs";
 import { createInterface } from "node:readline";
 
 const log = (entry) => {
@@ -42,6 +42,7 @@ async function ask(sessionId, toolCall, choices = options) {
     toolCall,
     options: choices,
   });
+
   const outcome = response.outcome.outcome === "selected" ? response.outcome.optionId : "cancelled";
   log({ permission: toolCall.toolCallId, outcome });
 
@@ -129,8 +130,111 @@ async function hold(sessionId) {
 }
 
 async function prompt(params) {
-  const text = params.prompt.map((block) => (block.type === "text" ? block.text : "")).join("");
+  const text = params.prompt.findLast((block) => block.type === "text")?.text ?? "";
 
+  log({ prompt: text, session: params.sessionId, pid: process.pid });
+
+  if (text === "charge-once") {
+    const countFile = `${cwds.get(params.sessionId)}/effect`;
+    const prior = existsSync(countFile);
+    appendFileSync(countFile, "charged\n");
+
+    if (!prior) await new Promise(() => {});
+  }
+
+  if (text === "child-first") {
+    say("child", "RESULT-EARLY");
+    update(params.sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: "child",
+      title: "Reader",
+      state: { state: "running" },
+    });
+    update(params.sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: "child",
+      state: { state: "idle", stopReason: "end_turn" },
+    });
+  }
+
+  if (text === "child-fail") {
+    update(params.sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: "child",
+      title: "Reader",
+      state: { state: "running" },
+    });
+    update(params.sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: "child",
+      state: { state: "idle", stopReason: "refusal" },
+    });
+    update(params.sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: "child",
+      title: "Renamed",
+    });
+  }
+
+  if (text === "block-policy") {
+    await new Promise((resolve) => {
+      const watcher = watch(cwds.get(params.sessionId), (_, file) => {
+        if (file === "release") {
+          watcher.close();
+          resolve();
+        }
+      });
+
+      log({ gate: "policy" });
+    });
+    log({ acted: process.argv.at(-1) });
+  }
+
+  if (text.startsWith("repeat")) {
+    update(params.sessionId, {
+      sessionUpdate: "tool_call",
+      toolCallId: "same",
+      title: `Lookup ${text}`,
+      kind: "read",
+      status: "completed",
+      rawOutput: text,
+    });
+  }
+
+  if (text === "parallel") {
+    update(params.sessionId, {
+      sessionUpdate: "tool_call",
+      toolCallId: "a",
+      title: "First",
+      kind: "read",
+      status: "pending",
+    });
+    await ask(params.sessionId, {
+      toolCallId: "b",
+      title: "Second",
+      kind: "read",
+      status: "pending",
+    });
+
+    for (const id of ["a", "b"]) {
+      update(params.sessionId, {
+        sessionUpdate: "tool_call_update",
+        toolCallId: id,
+        status: "completed",
+        rawOutput: `final-${id}`,
+      });
+    }
+  }
+
+  if (text === "incomplete") {
+    update(params.sessionId, {
+      sessionUpdate: "tool_call",
+      toolCallId: "a",
+      title: "First",
+      kind: "read",
+      status: "pending",
+    });
+  }
   if (text.includes("tools")) return tools(params.sessionId);
 
   if (text.includes("move")) return move(params.sessionId, text.includes("always"));
@@ -160,7 +264,10 @@ async function receive(line) {
         id: message.id,
         result: {
           protocolVersion: 1,
-          agentCapabilities: { promptCapabilities: { image: false } },
+          agentCapabilities: {
+            promptCapabilities: { image: false },
+            sessionCapabilities: { resume: {} },
+          },
           authMethods: [],
         },
       });
@@ -170,8 +277,54 @@ async function receive(line) {
       cwds.set(`s${String(sessions)}`, message.params.cwd);
       send({ id: message.id, result: { sessionId: `s${String(sessions)}` } });
       break;
+    case "session/resume":
+      cwds.set(message.params.sessionId, message.params.cwd);
+
+      if (process.env.ASTRA_RESUME === "report") {
+        say(message.params.sessionId, "PRE-REGISTER-REPORT");
+        update(message.params.sessionId, { sessionUpdate: "usage_update", used: 23, size: 1000 });
+      }
+
+      send({ id: message.id, result: {} });
+      break;
     case "session/prompt":
+      if (message.params.prompt.some((b) => b.text === "expired")) {
+        send({ id: message.id, error: { code: -32_000, message: "expired" } });
+        break;
+      }
+
       send({ id: message.id, result: await prompt(message.params) });
+
+      if (message.params.prompt.some((block) => block.text === "detach")) {
+        say(message.params.sessionId, "REPORT-ONE");
+        update(message.params.sessionId, {
+          sessionUpdate: "usage_update",
+          used: 12_000,
+          size: 1_000_000,
+        });
+        say(message.params.sessionId, "REPORT-TWO");
+        update(message.params.sessionId, {
+          sessionUpdate: "usage_update",
+          used: 12_000,
+          size: 1_000_000,
+        });
+      }
+
+      if (message.params.prompt.some((b) => b.text === "idle-ask")) {
+        void ask(message.params.sessionId, {
+          toolCallId: "orphan",
+          title: "Idle command",
+          kind: "execute",
+          rawInput: { command: "pwd" },
+        });
+        await ask("unregistered", { toolCallId: "barrier" });
+      }
+
+      if (message.params.prompt.some((b) => b.text === "late")) {
+        say(message.params.sessionId, "LATE-OLD");
+        await ask("unregistered", { toolCallId: "barrier" });
+      }
+
       break;
     case "session/cancel":
       cancels.get(message.params.sessionId)?.();
