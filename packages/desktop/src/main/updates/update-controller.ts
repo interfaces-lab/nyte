@@ -2,7 +2,7 @@ import type { UpdateState } from "@nyte-ai/app/contract/bridge.ts";
 import type { MessageBoxOptions } from "electron";
 import type { AppUpdater } from "electron-updater";
 import { runningWork } from "../../shared/update-activity.ts";
-import type { DesktopUpdateActivity } from "../../shared/update-activity.ts";
+import type { HostActivity } from "@nyte-ai/schema";
 
 const RELAUNCH_CLEANUP_TIMEOUT_MS = 10_000;
 
@@ -11,7 +11,7 @@ export type UpdateLogDetails = Readonly<Record<string, boolean | number | string
 interface UpdateDependencies {
   updater: Pick<AppUpdater, "checkForUpdates" | "downloadUpdate" | "quitAndInstall">;
   currentVersion: string;
-  activity: () => Promise<DesktopUpdateActivity>;
+  activity: () => Promise<HostActivity>;
   confirmQuit: () => boolean;
   beforeInstall: () => Promise<void>;
   cleanupTimeoutMs?: number;
@@ -88,7 +88,7 @@ export function createUpdateController({
 
   const restart = async (version: string): Promise<void> => {
     const current = await activity();
-    const running = current.kind === "busy" ? runningWork(current) : undefined;
+    const running = runningWork(current);
 
     const { response } = await message({
       type: "info",

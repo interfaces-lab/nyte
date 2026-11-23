@@ -1,86 +1,116 @@
-import assert from "node:assert/strict";
-import { test } from "vitest";
-import { readHostStatus, readHostUpdate } from "./host-status.ts";
-import type { HostLinkState } from "../host/host-link.ts";
-import type { HostProbe, HostReading, HostUpdate } from "./host-status.ts";
+import { expect, test } from "vitest";
+import { SdkError } from "@nyte-ai/schema";
+import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
+import type { LinkState } from "@nyte-ai/sdk/client";
+import { readHostProcess, readHostStatus } from "./host-status.ts";
+import type { HostProbe, HostReading } from "./host-status.ts";
 
-const rows: readonly (readonly [string, HostProbe, HostReading])[] = [
-  [
-    "no pid from launchd",
-    { pid: null, alive: false, registration: "enabled", link: "unreachable" },
-    { status: "stopped", issues: [] },
-  ],
-  [
-    "a pid that is not alive",
-    { pid: 41, alive: false, registration: "enabled", link: "connected" },
-    { status: "stopped", issues: [] },
-  ],
-  [
-    "stopped while waiting for approval",
-    { pid: null, alive: false, registration: "requires-approval", link: "unreachable" },
-    { status: "stopped", issues: ["approval"] },
-  ],
-  [
-    "alive and connected",
-    { pid: 41, alive: true, registration: "enabled", link: "connected" },
-    { status: "running", issues: [] },
-  ],
-  [
-    "alive while the first connection is still opening",
-    { pid: 41, alive: true, registration: "enabled", link: "connecting" },
-    { status: "running", issues: [] },
-  ],
-  [
-    "alive but the app cannot connect",
-    { pid: 41, alive: true, registration: "enabled", link: "unreachable" },
-    { status: "issues", issues: ["unreachable"] },
-  ],
-  [
-    "alive and the agent requires approval",
-    { pid: 41, alive: true, registration: "requires-approval", link: "connected" },
-    { status: "issues", issues: ["approval"] },
-  ],
-  [
-    "alive, unapproved and unreachable",
-    { pid: 41, alive: true, registration: "requires-approval", link: "unreachable" },
-    { status: "issues", issues: ["approval", "unreachable"] },
-  ],
+function open(match: Extract<LinkState, { readonly kind: "open" }>["match"]): LinkState {
+  return { kind: "open", since: 1, version: "0.0.29", startedAt: 5, match };
+}
+
+function away(reason: Extract<LinkState, { readonly kind: "away" }>["reason"]): LinkState {
+  return { kind: "away", since: 1, retryAt: 2, reason };
+}
+
+function refused(reason: Extract<LinkState, { readonly kind: "refused" }>["reason"]): LinkState {
+  return { kind: "refused", reason, error: new SdkError("not_supported", "No.") };
+}
+
+const ALIVE = { pid: 41, alive: true, registration: "enabled" } as const;
+
+const rows: readonly {
+  readonly name: string;
+  readonly probe: HostProbe;
+  readonly tray: HostReading;
+  readonly settings: HostProcess;
+}[] = [
+  {
+    name: "the app's own build, running",
+    probe: { ...ALIVE, link: open({ kind: "current" }) },
+    tray: { status: "running", issues: [] },
+    settings: { kind: "current", version: "0.0.29", startedAt: 5 },
+  },
+  {
+    name: "an older host that replaces itself once idle",
+    probe: { ...ALIVE, link: open({ kind: "host-older", replace: "when-idle" }) },
+    tray: { status: "running", issues: [] },
+    settings: { kind: "current", version: "0.0.29", startedAt: 5 },
+  },
+  {
+    name: "an older host only a restart replaces",
+    probe: { ...ALIVE, link: open({ kind: "host-older", replace: "manual" }) },
+    tray: { status: "running", issues: [] },
+    settings: { kind: "stale", version: "0.0.29", startedAt: 5 },
+  },
+  {
+    name: "a newer host",
+    probe: { ...ALIVE, link: open({ kind: "host-newer" }) },
+    tray: { status: "running", issues: [] },
+    settings: { kind: "current", version: "0.0.29", startedAt: 5 },
+  },
+  {
+    name: "a host replacing itself, its process gone for now",
+    probe: { pid: null, alive: false, registration: "enabled", link: away("replacing") },
+    tray: { status: "restarting", issues: [] },
+    settings: { kind: "restarting" },
+  },
+  {
+    name: "a host restarting its worker",
+    probe: { ...ALIVE, link: away("restarting") },
+    tray: { status: "restarting", issues: [] },
+    settings: { kind: "restarting" },
+  },
+  {
+    name: "a host that stopped",
+    probe: { pid: null, alive: false, registration: "enabled", link: away("stopping") },
+    tray: { status: "stopped", issues: [] },
+    settings: { kind: "offline" },
+  },
+  {
+    name: "a running host the app lost",
+    probe: { ...ALIVE, link: away("lost") },
+    tray: { status: "issues", issues: ["unreachable"] },
+    settings: { kind: "offline" },
+  },
+  {
+    name: "a host too old for this app",
+    probe: { ...ALIVE, link: refused("update-host") },
+    tray: { status: "issues", issues: ["update-host"] },
+    settings: { kind: "offline" },
+  },
+  {
+    name: "a host too new for this app",
+    probe: { ...ALIVE, link: refused("update-client") },
+    tray: { status: "issues", issues: ["update-app"] },
+    settings: { kind: "offline" },
+  },
+  {
+    name: "a host still answering its first dial",
+    probe: { ...ALIVE, link: { kind: "connecting" } },
+    tray: { status: "running", issues: [] },
+    settings: { kind: "offline" },
+  },
+  {
+    name: "a stopped host waiting for approval",
+    probe: { pid: null, alive: false, registration: "requires-approval", link: away("lost") },
+    tray: { status: "stopped", issues: ["approval"] },
+    settings: { kind: "offline" },
+  },
+  {
+    name: "a running host waiting for approval",
+    probe: { ...ALIVE, registration: "requires-approval", link: open({ kind: "current" }) },
+    tray: { status: "issues", issues: ["approval"] },
+    settings: { kind: "current", version: "0.0.29", startedAt: 5 },
+  },
 ];
 
-test("the host status comes from the process, the registration and the connection", () => {
-  for (const [name, probe, reading] of rows) assert.deepEqual(readHostStatus(probe), reading, name);
-});
-
-const APP = "0.0.29";
-
-const updates: readonly (readonly [string, HostLinkState, HostUpdate])[] = [
-  ["a host on the app's build", { kind: "connected", version: APP, compatible: true }, "current"],
-  [
-    "a host still on the build before an update",
-    { kind: "connected", version: "0.0.28", compatible: false },
-    "stale",
-  ],
-  [
-    "an older version whose operations happen to match",
-    { kind: "connected", version: "0.0.28", compatible: true },
-    "stale",
-  ],
-  [
-    "the same version with other operations",
-    { kind: "connected", version: APP, compatible: false },
-    "stale",
-  ],
-  [
-    "a newer host, which a restart would replace with this app's older build",
-    { kind: "connected", version: "0.0.30", compatible: false },
-    "current",
-  ],
-  ["a host still connecting", { kind: "connecting" }, "offline"],
-  ["a host that stopped answering", { kind: "unreachable", message: "gone" }, "offline"],
-];
-
-test("a host older than the app's build, or the same version built apart, reads as stale", () => {
-  for (const [name, link, update] of updates) {
-    assert.equal(readHostUpdate({ link, appVersion: APP }), update, name);
-  }
+test("the tray and Settings read the host from its link, its process and its registration", () => {
+  expect(
+    rows.map((row) => ({
+      name: row.name,
+      tray: readHostStatus(row.probe),
+      settings: readHostProcess(row.probe.link),
+    })),
+  ).toEqual(rows.map((row) => ({ name: row.name, tray: row.tray, settings: row.settings })));
 });

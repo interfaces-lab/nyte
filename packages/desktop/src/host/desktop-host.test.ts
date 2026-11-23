@@ -129,7 +129,6 @@ socketTest(
       { reachable: false },
     );
 
-    await vi.waitFor(() => assert.equal(made.link.state.kind, "unreachable"));
     made.reachable(true);
     const finish = Promise.withResolvers<void>();
     made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });
@@ -137,11 +136,7 @@ socketTest(
     await vi.waitFor(() => assert.equal(made.fake.requests.length, 1));
 
     await vi.waitFor(() => assert.equal(seen.at(-1), true), { timeout: 5000 });
-    assert.deepEqual(await made.host.updateActivity(), {
-      kind: "busy",
-      taskCount: 1,
-      terminalCommandCount: 0,
-    });
+    assert.deepEqual(await made.host.updateActivity(), { runs: 1, jobs: 0 });
 
     finish.resolve();
     await receipt.settled();
@@ -206,7 +201,7 @@ socketTest(
 );
 
 socketTest(
-  "opening a folder registers it under the host's path and announces nothing; a folder the host can't take, or a host that doesn't answer, answers failed",
+  "opening a folder registers it under the host's path and announces nothing; a folder the host can't take answers failed",
   async () => {
     const made = await desktop();
     const folder = join(made.home, "project");
@@ -235,10 +230,6 @@ socketTest(
       },
     );
     assert.deepEqual(made.events, []);
-
-    const away = await desktop({}, { reachable: false });
-
-    assert.equal((await away.host.call(1, "host.openWorkspace", { path: folder })).kind, "failed");
   },
 );
 

@@ -5,7 +5,7 @@ import { app, clipboard, Menu, nativeImage, shell, Tray } from "electron";
 import type { MenuItemConstructorOptions, NativeImage } from "electron";
 import { processAlive } from "@nyte-ai/service/host-endpoint";
 import type { HostAgent } from "./host-agent.ts";
-import type { HostLink } from "../host/host-link.ts";
+import type { Live, LinkState } from "@nyte-ai/sdk/client";
 import { readHostStatus } from "./host-status.ts";
 import type { HostIssue, HostReading, HostStatus } from "./host-status.ts";
 
@@ -13,12 +13,14 @@ const HEADER_ICON_POINTS = 32;
 
 const STATUS_LABELS = {
   running: "Running",
+  restarting: "Restarting",
   issues: "Running with Issues",
   stopped: "Stopped",
 } as const satisfies Readonly<Record<HostStatus, string>>;
 
 const STATUS_COLORS = {
   running: [52, 199, 89],
+  restarting: [255, 159, 10],
   issues: [255, 159, 10],
   stopped: [255, 59, 48],
 } as const satisfies Readonly<Record<HostStatus, readonly [number, number, number]>>;
@@ -31,11 +33,13 @@ const SUBLABELS =
 const ISSUE_LABELS = {
   approval: "Approve Nyte Host in System Settings > Login Items",
   unreachable: "Nyte can't connect to the host",
+  "update-host": "Restart Nyte Host to update it",
+  "update-app": "Update Nyte to use this host",
 } as const satisfies Readonly<Record<HostIssue, string>>;
 
 export interface HostTrayOptions {
   readonly agent: HostAgent;
-  readonly link: HostLink;
+  readonly link: Live<LinkState>;
   checkForUpdates(): void;
   openApp(): void;
   openSettings(): void;
@@ -101,7 +105,7 @@ async function probe(
     pid,
     alive: pid !== null && processAlive(pid),
     registration,
-    link: options.link.state.kind,
+    link: options.link.snapshot(),
   });
 
   return { reading, pid };
@@ -112,11 +116,11 @@ function items(
   reading: HostReading,
   headerIcon: NativeImage,
 ): MenuItemConstructorOptions[] {
-  const state = options.link.state;
+  const state = options.link.snapshot();
 
   const versions = [
     `Nyte ${app.getVersion()}`,
-    ...(state.kind === "connected" ? [`Nyte Host ${state.version}`] : []),
+    ...(state.kind === "open" ? [`Nyte Host ${state.version}`] : []),
   ];
 
   return [
@@ -135,7 +139,7 @@ function items(
                 "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
               ),
           }
-        : { label: ISSUE_LABELS.unreachable, enabled: false },
+        : { label: ISSUE_LABELS[issue], enabled: false },
     ),
     { type: "separator" },
     ...versions.map((label): MenuItemConstructorOptions => ({

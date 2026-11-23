@@ -53,8 +53,8 @@ export interface ClientConnectOptions {
   readonly journal: RequestJournal;
   /** The global `fetch` and `WebSocket` when absent: a desktop bridge or React Native passes its own. */
   readonly transport?: { readonly fetch?: Fetch; readonly socket?: OpenSocket };
-  /** Dial again on the retry curve until the host answers, for a client that lives as long as its host may be away. Without it, a host that doesn't answer rejects. */
-  readonly wait?: boolean;
+  /** Dial again on the retry curve until the host answers or this aborts, for a client that lives as long as its host may be away. Without it, a host that doesn't answer rejects. */
+  readonly wait?: AbortSignal;
 }
 
 export interface ClientConnection extends Connection {
@@ -103,7 +103,7 @@ export async function connect(options: ClientConnectOptions): Promise<ClientConn
       link: cell,
     });
 
-  const dialed = options.wait === true ? await answered(dialing) : await dialing();
+  const dialed = options.wait === undefined ? await dialing() : await answered(dialing, options.wait);
 
   const http = dialed.connection;
 
@@ -150,15 +150,30 @@ export async function connect(options: ClientConnectOptions): Promise<ClientConn
   };
 }
 
-async function answered<T>(dialing: () => Promise<T>): Promise<T> {
+async function answered<T>(dialing: () => Promise<T>, signal: AbortSignal): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
+    signal.throwIfAborted();
+
     try {
       return await dialing();
     } catch (error) {
       if (!linkLost(error)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt)));
+      await sleep(retryDelay(attempt), signal);
     }
   }
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
 }
 
 function healthLink(link: Live<LinkState>): Live<Health> {

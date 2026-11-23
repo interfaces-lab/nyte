@@ -16,12 +16,11 @@ import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { appSocket } from "../../shared/host-client.ts";
 import { HOST_PORT_ORIGIN, messagePortEnd, portFetch, servePort } from "../../shared/host-port.ts";
 import { DesktopHost } from "../desktop-host.ts";
-import { HostLink } from "../host-link.ts";
 import type { DesktopHostDependencies } from "../desktop-host.ts";
 
 export interface TestDesktop {
   readonly host: DesktopHost;
-  readonly link: HostLink;
+  readonly connection: Promise<ClientConnection>;
   readonly served: Host;
   readonly client: ClientConnection;
   readonly home: string;
@@ -71,17 +70,21 @@ export async function testDesktop(
     await served.models.setDefault({ provider: fake.provider.id, id: model.id });
   }
 
-  const dial = () =>
-    connect({
-      url: HOST_PORT_ORIGIN,
-      credentials: { kind: "custom", headers: () => ({}) },
-      client: { kind: "app", name: "Nyte", version: "test" },
-      journal: createSendJournal(),
-      transport: {
-        fetch: (url, init) => mainFetch(new Request(url, init)),
-        socket: appSocket(socket),
-      },
-    });
+  const stop = new AbortController();
+
+  const connection = connect({
+    url: HOST_PORT_ORIGIN,
+    credentials: { kind: "custom", headers: () => ({}) },
+    client: { kind: "app", name: "Nyte", version: "test" },
+    journal: createSendJournal(),
+    transport: {
+      fetch: (url, init) => mainFetch(new Request(url, init)),
+      socket: appSocket(socket),
+    },
+    wait: stop.signal,
+  });
+
+  connection.catch(() => undefined);
 
   const client = await connect({
     url: HOST_PORT_ORIGIN,
@@ -94,12 +97,10 @@ export async function testDesktop(
     },
   });
 
-  const link = new HostLink(dial, () => undefined);
-  link.start();
-
   const host = new DesktopHost({
     home,
-    link,
+    connection,
+    appVersion: "test",
     usageScan: new UsageScanner(home),
     emitHostEvent: (event) => events.push(event),
     ...overrides,
@@ -109,7 +110,7 @@ export async function testDesktop(
 
   return {
     host,
-    link,
+    connection,
     served,
     client,
     home,
@@ -136,7 +137,11 @@ export async function testDesktop(
     close: async () => {
       for (const port of ports) port.close();
       await host.close();
-      link.close();
+      stop.abort();
+      await connection.then(
+        (opened) => opened.close(),
+        () => undefined,
+      );
       await client.close();
       await listener.close();
       await served.close();

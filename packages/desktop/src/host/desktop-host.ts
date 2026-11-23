@@ -1,14 +1,9 @@
 import { basename, join } from "node:path";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
-import { API_REVISION, asId } from "@nyte-ai/schema";
+import { asId } from "@nyte-ai/schema";
+import type { HostActivity } from "@nyte-ai/schema";
 import { connect, createSendJournal, SdkError } from "@nyte-ai/sdk/client";
-import type {
-  ClientConnection,
-  Connection,
-  HostView,
-  LinkState,
-  SessionInfo,
-} from "@nyte-ai/sdk/client";
+import type { ClientConnection, LinkState, SessionInfo } from "@nyte-ai/sdk/client";
 import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type {
   HostEvent,
@@ -34,20 +29,19 @@ import { planAttention, reconcileReminders } from "../shared/attention.ts";
 import type { AttentionDelivery, AttentionReminder, AttentionSeen } from "../shared/attention.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
-import { busyTaskCount } from "../shared/update-activity.ts";
-import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
 import { restorableFolder } from "../shared/window-workspace.ts";
 import { registerFolder } from "@nyte-ai/app/contract/register-folder.ts";
 import { desktopSettings } from "./host-settings.ts";
 import { ExpectedHostError } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
-import type { HostLink } from "./host-link.ts";
 import { ServerSettingsStore } from "./connections/server-settings.ts";
 import type { SavedServer } from "./connections/server-settings.ts";
 
 export interface DesktopHostDependencies {
   readonly home: string;
-  readonly link: Pick<HostLink, "connection" | "follow" | "attach">;
+  /** Resolves once the host first answers; the SDK redials it after that. */
+  readonly connection: Promise<ClientConnection>;
+  readonly appVersion: string;
   readonly usageScan: UsageScanReader;
   readonly connect?: ConnectRuntime;
   readonly keepAwake?: (awake: boolean) => void;
@@ -64,36 +58,6 @@ function working(session: SessionInfo): boolean {
   return session.heads.some(
     (head) => head.execution.kind === "live" || head.execution.kind === "retrying",
   );
-}
-
-async function listSessions(host: Connection): Promise<readonly SessionInfo[]> {
-  let page = await host.sessions.list({ parents: { kind: "all" } });
-  const rows = [...page.items];
-
-  while (page.next !== null) {
-    page = await host.sessions.list({ parents: { kind: "all" }, cursor: page.next });
-    rows.push(...page.items);
-  }
-
-  return rows;
-}
-
-async function busyTerminals(host: Connection): Promise<number> {
-  const busy = await Promise.all(
-    (await host.workspaces.list()).map(async ({ id }) => {
-      const workspace = host.workspace(id);
-
-      const running = (await workspace.jobs.list()).filter(
-        (job) => job.pty !== null && job.state.kind === "running",
-      );
-
-      const idle = await Promise.all(running.map((job) => workspace.job(job.id).idle()));
-
-      return idle.filter((at) => !at).length;
-    }),
-  );
-
-  return busy.reduce((total, count) => total + count, 0);
 }
 
 const WATCH_RETRY_MS = 250;
@@ -184,17 +148,15 @@ interface ServerWatch {
   state: ServerState | undefined;
 }
 
-const SERVER_CLIENT = {
-  kind: "app",
-  name: "Nyte",
-  version: `api-${String(API_REVISION)}`,
-} as const;
+function serverClient(version: string) {
+  return { kind: "app", name: "Nyte", version } as const;
+}
 
-async function probeServer(url: string, token: string) {
+async function probeServer(url: string, token: string, version: string) {
   const connection = await connect({
     url,
     credentials: { kind: "token", token },
-    client: SERVER_CLIENT,
+    client: serverClient(version),
     journal: createSendJournal(),
   });
 
@@ -221,7 +183,6 @@ export class DesktopHost {
   private tailnet: string | undefined;
   private rows: readonly SessionInfo[] = [];
   private readonly watching = new AbortController();
-  private rowsFollowed = false;
   private awake = false;
   private readonly since = Date.now();
   private seen: AttentionSeen | undefined;
@@ -251,53 +212,55 @@ export class DesktopHost {
   }
 
   private followView(): void {
-    const stop = this.deps.link.follow((view) => {
-      const tailnet = JSON.stringify(view.tailnet ?? null);
+    void this.deps.connection.then(
+      async (connection) => {
+        this.followRows(connection);
 
-      if (this.tailnet !== undefined && this.tailnet !== tailnet) this.remoteChanged();
-      this.tailnet = tailnet;
-      this.settings = desktopSettings(view);
-      this.deps.settingsChanged?.(this.settings);
-      this.followRows();
-      this.holdAwake();
+        for await (const view of connection.watch()) {
+          if (this.watching.signal.aborted) return;
+          const tailnet = JSON.stringify(view.tailnet ?? null);
 
-      if (this.seen !== undefined) this.attend();
-    });
+          if (this.tailnet !== undefined && this.tailnet !== tailnet) this.remoteChanged();
+          this.tailnet = tailnet;
+          this.settings = desktopSettings(view);
+          this.deps.settingsChanged?.(this.settings);
+          this.holdAwake();
 
-    this.watching.signal.addEventListener("abort", stop, { once: true });
+          if (this.seen !== undefined) this.attend();
+        }
+      },
+      () => undefined,
+    );
   }
 
-  private followRows(): void {
-    if (this.rowsFollowed || this.watching.signal.aborted) return;
-    this.rowsFollowed = true;
+  private followRows(connection: ClientConnection): void {
+    const directory = connection.sessions.open({ parents: { kind: "all" } });
 
-    const detach = this.deps.link.attach((connection) => {
-      const directory = connection.sessions.open({ parents: { kind: "all" } });
+    const stop = directory.subscribe(() => {
+      const snapshot = directory.snapshot();
 
-      const stop = directory.subscribe(() => {
-        const snapshot = directory.snapshot();
+      if (snapshot === null) return;
+      this.rows = snapshot.ids.flatMap((id) => {
+        const row = snapshot.rows.get(id);
 
-        if (snapshot === null) return;
-        this.rows = snapshot.ids.flatMap((id) => {
-          const row = snapshot.rows.get(id);
-
-          return row === undefined ? [] : [row];
-        });
-        this.holdAwake();
-        this.attend();
+        return row === undefined ? [] : [row];
       });
-
-      return () => {
-        stop();
-        directory.close();
-      };
+      this.holdAwake();
+      this.attend();
     });
 
-    this.watching.signal.addEventListener("abort", detach, { once: true });
+    this.watching.signal.addEventListener(
+      "abort",
+      () => {
+        stop();
+        directory.close();
+      },
+      { once: true },
+    );
   }
 
   private readonly callHost: ClientConnection["call"] = async (name, input) =>
-    (await this.deps.link.connection()).call(name, input);
+    (await this.deps.connection).call(name, input);
 
   private attend(): void {
     if (this.closing !== undefined) return;
@@ -354,7 +317,7 @@ export class DesktopHost {
 
   private readonly handlers: CallTable = {
     "host.endpoint": async () => {
-      const connection = await this.deps.link.connection();
+      const connection = await this.deps.connection;
 
       return {
         url: HOST_PORT_ORIGIN,
@@ -413,11 +376,11 @@ export class DesktopHost {
   } satisfies HostCalls;
 
   registerWorkspace(path: string): Promise<RegisterWorkspaceOutcome> {
-    return registerFolder(() => this.deps.link.connection(), path, false, "local");
+    return registerFolder(() => this.deps.connection, path, false, "local");
   }
 
   async localWorkspaces(): Promise<readonly SelectedWorkspace[]> {
-    const host = await this.deps.link.connection();
+    const host = await this.deps.connection;
 
     return (await host.workspaces.list()).flatMap((workspace) =>
       workspace.availability.kind === "available" &&
@@ -458,20 +421,12 @@ export class DesktopHost {
     return this.closing;
   }
 
-  async updateActivity(): Promise<DesktopUpdateActivity> {
-    const opened = await this.deps.link.connection().catch(() => undefined);
-    const rows = opened === undefined ? [] : await listSessions(opened);
-    const terminalCommandCount = opened === undefined ? 0 : await busyTerminals(opened);
-
-    const taskCount = busyTaskCount(rows);
-
-    return taskCount === 0 && terminalCommandCount === 0
-      ? { kind: "idle" }
-      : { kind: "busy", taskCount, terminalCommandCount };
+  async updateActivity(): Promise<HostActivity> {
+    return (await this.deps.connection).host.activity();
   }
 
   private async chatFolder(session: string): Promise<SelectedWorkspace | undefined> {
-    const host = await this.deps.link.connection();
+    const host = await this.deps.connection;
 
     const info = await host
       .session(asId<"session">(session))
@@ -489,12 +444,7 @@ export class DesktopHost {
   }
 
   private async openWorkspace(path: string, trust: boolean): Promise<OpenWorkspaceOutcome> {
-    const registered = await registerFolder(
-      () => this.deps.link.connection(),
-      path,
-      trust,
-      "local",
-    );
+    const registered = await registerFolder(() => this.deps.connection, path, trust, "local");
 
     return registered.kind === "failed"
       ? registered
@@ -512,8 +462,8 @@ export class DesktopHost {
   }
 
   private async connectServer(input: { readonly baseUrl: string; readonly token: string }) {
-    const answered = await probeServer(input.baseUrl, input.token).catch((cause: unknown) =>
-      serverProblem(cause),
+    const answered = await probeServer(input.baseUrl, input.token, this.deps.appVersion).catch(
+      (cause: unknown) => serverProblem(cause),
     );
 
     if ("kind" in answered) return { kind: "failed" as const, message: answered.message };
@@ -559,7 +509,7 @@ export class DesktopHost {
     const connection = await connect({
       url: saved.url,
       credentials: { kind: "token", token: saved.token },
-      client: SERVER_CLIENT,
+      client: serverClient(this.deps.appVersion),
       journal: createSendJournal(),
       expect:
         saved.publicKey === null ? undefined : { hostId: saved.hostId, publicKey: saved.publicKey },

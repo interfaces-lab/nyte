@@ -406,7 +406,7 @@ function startHost(): DesktopHost {
     badge: (count) => alerts.badge(count),
     linkChanged: (state) => {
       hostTray?.refresh();
-      openWith.reachable(state.kind === "connected");
+      openWith.reachable(state.kind === "open");
     },
     hostProcessChanged: (state) => emitHostEvent({ kind: "host_process_changed", state }),
     registrationChanged: () => hostTray?.refresh(),
