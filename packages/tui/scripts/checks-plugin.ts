@@ -3,6 +3,7 @@ import {
   errors,
   events,
   fragments,
+  refusals,
   results,
   texts,
   welcomes,
@@ -10,6 +11,7 @@ import {
 import {
   activations,
   clientRows,
+  closings,
   performs,
   sessionChanges,
   sessionsChanges,
@@ -20,8 +22,15 @@ import { Code, Validator } from "typebox/compile";
 const RUNTIME_IMPORT = /^import \{ (\w+) \} from "(typebox\/\w+)"$/u;
 
 const CHECKS = {
-  "frame-checks.ts": { welcomes, results, errors, events, texts, fragments },
-  "event-checks.ts": { sessionChanges, sessionsChanges, activations, clientRows, performs },
+  "frame-checks.ts": { welcomes, results, refusals, errors, events, texts, fragments },
+  "event-checks.ts": {
+    sessionChanges,
+    sessionsChanges,
+    activations,
+    clientRows,
+    performs,
+    closings,
+  },
 } as const;
 
 export const checksPlugin = {

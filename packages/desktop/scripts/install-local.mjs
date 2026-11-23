@@ -22,6 +22,10 @@ const support = join(homedir(), "Library", "Application Support", "Nyte");
 
 const updateLog = join(support, "updates.log");
 
+const hostEndpoint = join(homedir(), ".nyte", "host.json");
+
+const hostJob = `gui/${process.getuid()}/ai.nyte.desktop.host`;
+
 if (!existsSync(application)) {
   throw new Error(`Install Nyte in ${application} first. This script updates it in place.`);
 }
@@ -78,7 +82,8 @@ try {
   await quit();
   await installedVersion();
   run("open", ["-a", application]);
-  console.log(`Nyte ${version} is installed and open.`);
+  await replaceHost();
+  console.log(`Nyte ${version} is installed and open, and Nyte Host runs it.`);
 } finally {
   server.close();
 }
@@ -151,10 +156,35 @@ async function installedVersion() {
   await until(`${application} to become ${version}`, 180_000, () => bundleVersion() === version);
 }
 
+async function replaceHost() {
+  if ((await hostVersion()) === version) return;
+  console.log(`Restarting Nyte Host on ${version}. Running turns continue on the new host.`);
+  run("launchctl", ["kickstart", "-k", hostJob]);
+  await until(
+    `Nyte Host to run ${version}. If a terminal's nyte host serves ~/.nyte, stop it and run this again`,
+    120_000,
+    async () => (await hostVersion()) === version,
+  );
+}
+
+async function hostVersion() {
+  try {
+    const { url, token } = JSON.parse(readFileSync(hostEndpoint, "utf8"));
+
+    const response = await fetch(new URL("/.nyte/describe", url), {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    return response.ok ? (await response.json()).version : null;
+  } catch {
+    return null;
+  }
+}
+
 async function until(label, timeout, done) {
   const deadline = Date.now() + timeout;
 
-  while (!done()) {
+  while (!(await done())) {
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
     await sleep(1000);
   }
@@ -165,7 +195,7 @@ function packageBuild() {
     "node",
     [
       "scripts/build.mjs",
-      ...process.argv.slice(2).filter((argument) => argument === "--warn-budgets"),
+      "--warn-budgets",
       "--package",
       "--publish",
       "never",

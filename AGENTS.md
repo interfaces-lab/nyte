@@ -62,7 +62,7 @@ Nyte runs agent conversations on a host, a process that stores every session. Th
 
 ## Live desktop diagnostics
 
-- Sessions run in the host. Quitting the desktop app (`pnpm install:desktop`) doesn't stop yours.
+- Sessions run in the host. `pnpm install:desktop` installs the app, then restarts the host on the new build. That cuts off your running tool call. Your turn continues on the new host.
 - Attach Playwright to a running desktop app with `chromium.connectOverCDP(endpoint, { noDefaults: true })`.
 - Without `noDefaults`, Playwright emulates light mode while attached. A window that follows the system theme flashes light until the connection closes. The option also keeps focus and the other media preferences.
 - Don't emulate a colour scheme or reduced motion on the user's live window unless asked. Use an isolated test context.
