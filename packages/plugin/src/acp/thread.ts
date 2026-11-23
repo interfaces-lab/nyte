@@ -70,7 +70,11 @@ export interface AcpChannel {
   prompt(blocks: readonly ContentBlock[]): Promise<PromptResponse>;
   cancel(): void;
   readonly approve: AcpApprove;
+  /** Asks Nyte for a run to show a reply the agent started with no prompt open. */
+  wake(): void;
 }
+
+const UNPROMPTED_END: ThreadEvent = { kind: "stop", response: { stopReason: "end_turn" } };
 
 class Inbox<T> {
   readonly #items: T[] = [];
@@ -174,6 +178,8 @@ function stopReason(
 
 export class AcpThread {
   readonly prefix: string;
+  /** The agent's id for this conversation, which `session/resume` takes back. */
+  readonly session: string;
   readonly #channel: AcpChannel;
   readonly #events = new Inbox<ThreadEvent>();
   readonly #tools = new Map<string, ToolState>();
@@ -189,15 +195,23 @@ export class AcpThread {
   readonly #changes = new Set<() => void>();
   readonly #queue: (readonly ContentBlock[])[] = [];
   #running = false;
+  private waking = false;
+  private context: number | undefined;
   #failure: Error | undefined;
 
-  constructor(prefix: string, channel: AcpChannel) {
+  constructor(prefix: string, session: string, channel: AcpChannel) {
     this.prefix = prefix;
+    this.session = session;
     this.#channel = channel;
   }
 
   get closed(): boolean {
     return this.#failure !== undefined;
+  }
+
+  /** Called by the run a wake started: it reads the unprompted reply, or ends at once when a prompt took the reply over. */
+  drainWake(): void {
+    if (!this.waking) this.#events.push(UNPROMPTED_END);
   }
 
   send(blocks: readonly ContentBlock[]): void {
@@ -263,9 +277,26 @@ export class AcpThread {
       case "tool_call_update":
         this.#see(update);
         break;
+      case "usage_update":
+        this.context = update.used;
+
+        if (this.waking && !this.#running) {
+          this.waking = false;
+          this.#events.push(UNPROMPTED_END);
+        }
+
+        return;
       default:
-        break;
+        return;
     }
+
+    if (update.sessionUpdate !== "tool_call_update") this.noticeUnprompted();
+  }
+
+  private noticeUnprompted(): void {
+    if (!this.#channel.dialect.repliesUnprompted || this.#running || this.waking) return;
+    this.waking = true;
+    this.#channel.wake();
   }
 
   async permission(
@@ -278,6 +309,7 @@ export class AcpThread {
     if (subagent !== undefined || this.#subagentCalls.has(id))
       return this.#approveSubagentCall(request, options);
     this.#see(request.toolCall);
+    this.noticeUnprompted();
 
     if (this.#failure !== undefined) return answer("cancelled", options);
     const asking = new AbortController();
@@ -385,7 +417,8 @@ export class AcpThread {
           } else {
             translator.end();
 
-            if (Value.Check(agentUsage, event.response.usage))
+            if (this.context !== undefined) translator.context(this.context);
+            else if (Value.Check(agentUsage, event.response.usage))
               translator.usage(event.response.usage);
             output.rawStopReason = event.response.stopReason;
             const mapped = stopReason(event.response);
@@ -474,6 +507,7 @@ export class AcpThread {
 
   cancel(): void {
     this.#queue.length = 0;
+    this.waking = false;
 
     for (const asking of [...this.#permissions.values(), ...this.#subagentApprovals]) {
       asking.abort();
@@ -496,6 +530,7 @@ export class AcpThread {
 
   #start(blocks: readonly ContentBlock[]): void {
     this.#running = true;
+    this.waking = false;
 
     this.#channel.prompt(blocks).then(
       (response) => {

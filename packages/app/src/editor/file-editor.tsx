@@ -16,7 +16,7 @@ import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import type { HostBridge, ThemePreference } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { addFileToChat, addsToChat } from "../references/add-to-chat.ts";
-import { selectedLines, shineSelection } from "./editor-selection.ts";
+import { selectedLines, settleAddedSelection, shineSelection } from "./editor-selection.ts";
 import { ChangePeek, useLineChanges } from "./change-peek.tsx";
 import { CompletionList } from "./completion-list.tsx";
 import { DeclarationPopups } from "./declaration-popups.tsx";
@@ -255,7 +255,12 @@ export function TextFileEditor({
   const addSelection = (selection: EditorSelection | undefined): boolean => {
     const lines = selectedLines(selection);
 
-    return lines !== undefined && addFileToChat(file, lines);
+    if (selection === undefined || lines === undefined || !addFileToChat(file, lines)) return false;
+    const editor = currentEditor();
+
+    if (editor !== undefined) settleAddedSelection(editor, selection);
+
+    return true;
   };
 
   const documentView = opensAsMarkdown(file.path) && !file.showSource;

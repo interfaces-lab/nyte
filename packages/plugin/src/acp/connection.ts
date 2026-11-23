@@ -20,7 +20,7 @@ import type {
 import { processEnvironment } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 import manifest from "../../package.json" with { type: "json" };
-import type { AcpAgent } from "./catalog.ts";
+import type { AcpAgent, AcpLaunch } from "./catalog.ts";
 import { Value } from "typebox/value";
 import { createDialect } from "./dialects.ts";
 import { formRequest } from "./forms.ts";
@@ -83,8 +83,13 @@ export function findOption(
   return options.find((option) => option.category === category && option.type === "select");
 }
 
+function signInNeeded(error: unknown): boolean {
+  return error instanceof RequestError && error.code === AUTH_REQUIRED;
+}
+
 export class AcpProcess {
   readonly agent: AcpAgent;
+  readonly launch: AcpLaunch;
   readonly #pipe: Pipe;
   readonly #connection: ClientConnection;
   readonly #dialect: Dialect;
@@ -95,8 +100,13 @@ export class AcpProcess {
   #stderr = "";
   #failure: Error | undefined;
 
-  private constructor(agent: AcpAgent, connect: (stderr: (bytes: Uint8Array) => void) => Pipe) {
+  private constructor(
+    agent: AcpAgent,
+    launch: AcpLaunch,
+    connect: (stderr: (bytes: Uint8Array) => void) => Pipe,
+  ) {
     this.agent = agent;
+    this.launch = launch;
     this.#dialect = createDialect(agent.dialect);
 
     const sessionClient = client({ name: "nyte" })
@@ -153,14 +163,15 @@ export class AcpProcess {
     );
   }
 
-  static async start(env: ExecutionEnv, agent: AcpAgent): Promise<AcpProcess> {
+  static async start(env: ExecutionEnv, agent: AcpAgent, launch: AcpLaunch): Promise<AcpProcess> {
     await processEnvironment();
-    const job = await env.exec([agent.command, ...agent.args], {
+
+    const job = await env.exec([agent.command, ...launch.args], {
       env: { ...agent.env },
       stdio: "protocol",
     });
 
-    return new AcpProcess(agent, (stderr) => ({
+    return new AcpProcess(agent, launch, (stderr) => ({
       input: new WritableStream<Uint8Array>({ write: (chunk) => job.write(chunk) }),
       output: protocolStream(job, stderr),
       stop: () => job.stop(),
@@ -168,14 +179,14 @@ export class AcpProcess {
   }
 
   /** Runs the agent on this machine, outside any session's environment, as a catalog probe does. */
-  static spawn(agent: AcpAgent, cwd: string): AcpProcess {
-    const child = spawn(agent.command, [...agent.args], {
+  static spawn(agent: AcpAgent, launch: AcpLaunch, cwd: string): AcpProcess {
+    const child = spawn(agent.command, [...launch.args], {
       cwd,
       env: { ...process.env, ...agent.env },
       stdio: "pipe",
     });
 
-    return new AcpProcess(agent, (stderr) => {
+    return new AcpProcess(agent, launch, (stderr) => {
       child.stderr.on("data", (chunk: Buffer) => stderr(chunk));
 
       let open = true;
@@ -231,31 +242,30 @@ export class AcpProcess {
     return (await this.#initialized()).agentCapabilities?.promptCapabilities?.image === true;
   }
 
-  async open(cwd: string, approve: AcpApprove): Promise<AcpThread> {
-    await this.#initialized();
+  /** Opens a conversation: the one `resume` names when the agent can take it back, else a new one. Throws when `resume` can't be taken back. */
+  async open(
+    cwd: string,
+    approve: AcpApprove,
+    wake: () => void,
+    resume?: string,
+  ): Promise<AcpThread> {
+    const initialized = await this.#initialized();
 
-    let session: Awaited<ReturnType<typeof this.newSession>>;
-
-    try {
-      session = await this.newSession(cwd);
-    } catch (error) {
-      if (error instanceof RequestError && error.code === AUTH_REQUIRED)
-        throw new Error(`Sign in to ${this.agent.name} in a terminal, then send again.`, {
-          cause: error,
-        });
-      throw error;
-    }
+    const session =
+      resume === undefined ? await this.create(cwd) : await this.reopen(initialized, cwd, resume);
 
     const { sessionId } = session;
     this.#options.set(sessionId, session.configOptions ?? []);
 
-    if (this.agent.mode !== undefined)
+    const mode = this.launch.mode;
+
+    if (mode !== undefined && session.modes?.availableModes.some((offered) => offered.id === mode))
       await this.#connection.agent.request(methods.agent.session.setMode, {
         sessionId,
-        modeId: this.agent.mode,
+        modeId: mode,
       });
 
-    const thread = new AcpThread(`acp-${randomUUID().slice(0, 8)}-`, {
+    const thread = new AcpThread(`acp-${randomUUID().slice(0, 8)}-`, sessionId, {
       cwd,
       dialect: this.#dialect,
       approve,
@@ -268,11 +278,59 @@ export class AcpProcess {
         void this.#connection.agent
           .notify(methods.agent.session.cancel, { sessionId })
           .catch(() => undefined),
+      wake,
     });
 
     this.#threads.set(sessionId, thread);
 
     return thread;
+  }
+
+  private async reopen(initialized: InitializeResponse, cwd: string, sessionId: string) {
+    const capabilities = initialized.agentCapabilities;
+
+    if (capabilities?.sessionCapabilities?.resume !== undefined) {
+      const resumed = await this.#connection.agent.request(methods.agent.session.resume, {
+        sessionId,
+        cwd,
+        mcpServers: [],
+      });
+
+      return { ...resumed, sessionId };
+    }
+
+    if (capabilities?.loadSession === true) {
+      const loaded = await this.#connection.agent.request(methods.agent.session.load, {
+        sessionId,
+        cwd,
+        mcpServers: [],
+      });
+
+      return { ...loaded, sessionId };
+    }
+
+    throw new Error(`${this.agent.name} can't take a conversation back.`);
+  }
+
+  private create(cwd: string) {
+    return this.newSession(cwd)
+      .catch(async (error: unknown) => {
+        if (!signInNeeded(error) || this.agent.auth === undefined) throw error;
+        await this.#connection.agent.request(methods.agent.authenticate, {
+          methodId: this.agent.auth,
+        });
+
+        return this.newSession(cwd);
+      })
+      .catch((error: unknown) => {
+        if (signInNeeded(error)) {
+          throw new Error(`Sign in to ${this.agent.name} in a terminal, then send again.`, {
+            cause: error,
+          });
+        }
+
+        throw error;
+      });
   }
 
   /** The session's configuration options as the agent last reported them. */

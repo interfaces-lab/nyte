@@ -433,7 +433,11 @@ export const composerStyles = create({
     overflow: "clip",
     flexWrap: "nowrap",
   },
-  editorExpanded: { paddingBlock: space.s2, paddingInline: space.s3 },
+  editorExpanded: {
+    paddingBlockStart: space.s2_5,
+    paddingBlockEnd: space.s2,
+    paddingInline: space.s3,
+  },
   editorMessageEdit: {
     minHeight: type.leadingLg,
     paddingBlock: USER_PROMPT_PADDING_BLOCK,

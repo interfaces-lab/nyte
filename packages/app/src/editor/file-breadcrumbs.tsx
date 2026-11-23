@@ -7,7 +7,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Popover } from "@nyte-ai/ui/popover";
-import { menu } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, menu, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { MentionFile } from "../data/files.ts";
 import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
@@ -26,12 +26,23 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     overflow: "clip",
+    "--nyte-content-secondary": role.contentTertiary,
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
   },
   cramped: { visibility: "hidden" },
+  ruled: {
+    "::before": {
+      content: '""',
+      flexShrink: 0,
+      width: 1,
+      height: glyph.md,
+      marginInline: space.s1,
+      backgroundColor: role.strokeQuaternary,
+    },
+  },
   crumb: { minWidth: 0 },
   label: { overflow: "hidden", textOverflow: "ellipsis" },
   separator: { display: "inline-flex", flexShrink: 0, color: role.contentQuaternary },
@@ -75,7 +86,11 @@ export function FileBreadcrumbs({
     <nav
       ref={nav}
       aria-label="File path"
-      {...props(styles.path, folders.length > 0 && hidden >= folders.length && styles.cramped)}
+      {...props(
+        styles.path,
+        (external || folders.length > 0) && styles.ruled,
+        folders.length > 0 && hidden >= folders.length && styles.cramped,
+      )}
     >
       {external && path !== undefined && (
         <span title={path} {...props(styles.label)}>
@@ -168,8 +183,7 @@ function foldFolders(folders: readonly number[], more: number, available: number
         return (
           folders
             .slice(folders.length - count)
-            .reduce((sum, width) => sum + width + SEPARATOR_WIDTH, fold - SEPARATOR_WIDTH) <=
-          available
+            .reduce((sum, width) => sum + width + SEPARATOR_WIDTH, fold) <= available
         );
       }) ?? 0;
 

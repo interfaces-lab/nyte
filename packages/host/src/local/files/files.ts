@@ -39,7 +39,7 @@ import { localTransfers } from "./transfers.ts";
 import { feed } from "../feed.ts";
 import { classifyFile } from "./file-kind.ts";
 import { decodeText } from "../text.ts";
-import { createIgnores, walkTree, watchPath, watchTree } from "./tree.ts";
+import { createIgnores, WALK_LIMIT, walkTree, watchPath, watchTree } from "./tree.ts";
 import { missing } from "../../fs-errors.ts";
 
 export type VersionedReader = ByteReader & { readonly version: FileVersion };
@@ -64,6 +64,10 @@ const SEARCH_DEFAULT = 200;
 
 const SEARCH_LINE = 500;
 
+const LIST_BYTES = 16 * 1024 * 1024;
+
+const FILE_FLAGS = ["--no-config", "--hidden", "--no-require-git", "--glob=!.git"];
+
 const WATCH_DELAY_MS = 100;
 
 const WATCH_POLL_MS = 1000;
@@ -85,20 +89,21 @@ export function within(root: string, path: string): string {
 export function localFiles(
   root: string,
   options?: {
-    readonly ripgrep?: string;
+    readonly ripgrep?: () => Promise<string | null>;
     readonly formatter?: string;
     readonly trusted?: () => Promise<boolean>;
     readonly signal?: AbortSignal;
   },
 ): LocalFiles {
   const absolute = (path: string): string => (isAbsolute(path) ? path : join(root, path));
+  const findRipgrep = options?.ripgrep ?? (() => findExecutable("rg"));
 
   let found: { readonly at: number; readonly paths: Promise<readonly FileEntryView[]> } | null =
     null;
 
   const scanned = (): Promise<readonly FileEntryView[]> => {
     if (found !== null && Date.now() - found.at < FIND_TTL_MS) return found.paths;
-    const paths = collectFiles(root);
+    const paths = collectFiles(root, findRipgrep);
     found = { at: Date.now(), paths };
     paths.catch(() => {
       if (found?.paths === paths) found = null;
@@ -202,7 +207,7 @@ export function localFiles(
         (input.drafts ?? []).map((draft) => [within(root, absolute(draft.path)), draft.contents]),
       );
 
-      return search(root, input, drafts, options?.ripgrep);
+      return search(root, input, drafts, findRipgrep);
     },
     watch(input) {
       const paths = (input?.paths ?? []).map((path) => within(root, absolute(path)));
@@ -446,7 +451,13 @@ function refusedBatch(): FileBatch {
   };
 }
 
-async function collectFiles(root: string): Promise<readonly FileEntryView[]> {
+async function collectFiles(
+  root: string,
+  findRipgrep: () => Promise<string | null>,
+): Promise<readonly FileEntryView[]> {
+  const binary = await findRipgrep();
+
+  if (binary !== null) return listFiles(binary, root);
   const entries: FileEntryView[] = [];
 
   for await (const frame of walkTree(root, { ignored: "exclude" })) {
@@ -462,6 +473,55 @@ async function collectFiles(root: string): Promise<readonly FileEntryView[]> {
   return entries;
 }
 
+async function listFiles(binary: string, root: string): Promise<readonly FileEntryView[]> {
+  const [listed, links] = await Promise.all([
+    run(binary, ["--files", "--no-messages", ...FILE_FLAGS, "."], {
+      cwd: root,
+      limit: LIST_BYTES,
+    }),
+    trackedSymlinks(root),
+  ]);
+
+  rejectFailure(listed.code, listed.stderr);
+  const lines = listed.stdout.toString("utf8").split("\n");
+
+  if (listed.truncated) lines.pop();
+
+  const files = lines
+    .filter((line) => line !== "")
+    .slice(0, WALK_LIMIT)
+    .map((line): FileEntryView => ({
+      path: ripgrepPath(line),
+      kind: "file",
+      size: null,
+      version: null,
+    }));
+
+  return [
+    ...files,
+    ...links.map((path): FileEntryView => ({ path, kind: "symlink", size: null, version: null })),
+  ].toSorted((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+}
+
+async function trackedSymlinks(root: string): Promise<readonly string[]> {
+  const ran = await run("git", ["ls-files", "-s", "-z"], { cwd: root }).catch(() => null);
+
+  if (ran?.code !== 0) return [];
+
+  const tracked = ran.stdout
+    .toString("utf8")
+    .split("\0")
+    .flatMap((line) => (line.startsWith("120000 ") ? [line.slice(line.indexOf("\t") + 1)] : []));
+
+  const present = await Promise.all(
+    tracked.map(async (path) =>
+      (await lstat(join(root, path)).catch(() => null))?.isSymbolicLink() === true ? [path] : [],
+    ),
+  );
+
+  return present.flat();
+}
+
 function rank(
   entries: readonly FileEntryView[],
   query: string,
@@ -469,7 +529,11 @@ function rank(
 ): readonly FileEntryView[] {
   const needle = query.trim().toLowerCase();
 
-  if (needle === "") return entries.slice(0, limit);
+  if (needle === "") {
+    return entries
+      .toSorted((left, right) => left.path.split("/").length - right.path.split("/").length)
+      .slice(0, limit);
+  }
 
   const scored = entries.flatMap((entry) => {
     const path = entry.path.toLowerCase();
@@ -518,7 +582,7 @@ async function* search(
   root: string,
   input: SearchInput,
   drafts: ReadonlyMap<string, string>,
-  ripgrep: string | undefined,
+  findRipgrep: () => Promise<string | null>,
 ): AsyncGenerator<SearchFrame> {
   const limit = Math.max(1, input.limit ?? SEARCH_DEFAULT);
 
@@ -528,7 +592,7 @@ async function* search(
     return;
   }
 
-  const binary = await findExecutable(ripgrep ?? "rg");
+  const binary = await findRipgrep();
 
   const matches =
     binary === null ? scanText(root, input, drafts) : grep(binary, root, input, drafts);
@@ -571,10 +635,7 @@ function matchFlags(input: SearchInput): readonly string[] {
 
 function fileFlags(input: SearchInput): readonly string[] {
   return [
-    "--no-config",
-    "--hidden",
-    "--no-require-git",
-    "--glob=!.git",
+    ...FILE_FLAGS,
     ...(input.include ?? []).map((glob) => `--glob=${glob}`),
     ...(input.exclude ?? []).map((glob) => `--glob=!${glob}`),
   ];

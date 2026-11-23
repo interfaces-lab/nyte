@@ -8,6 +8,7 @@ import type { EnvironmentProvider, ExecutionEnv, SnapshotsApi } from "@nyte-ai/c
 import { sha256 } from "../hash.ts";
 import { pluginFilesIn } from "../plugins/loader.ts";
 import { localFiles } from "./files/files.ts";
+import { ripgrepFinder } from "./files/ripgrep.ts";
 import { localGit } from "./git/git.ts";
 import { localGitHub } from "./git/github.ts";
 import { languageInstaller } from "./language/install.ts";
@@ -37,6 +38,7 @@ export function localProvider(options?: {
   let state: string | undefined;
   const github = localGitHub({ gh: options?.gh, git: options?.git });
   const installer = languageInstaller(join(home, ".nyte", "language-servers"));
+  const ripgrep = ripgrepFinder({ pinned: options?.ripgrep, installer, cwd: home });
 
   return {
     kind: "local",
@@ -79,7 +81,7 @@ export function localProvider(options?: {
         identity: await folderIdentity(real),
         cwd: real,
         files: localFiles(real, {
-          ripgrep: options?.ripgrep,
+          ripgrep,
           formatter: options?.formatter,
           trusted,
           signal: detached.signal,

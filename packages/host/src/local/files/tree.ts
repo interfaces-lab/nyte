@@ -258,8 +258,10 @@ export function watchTree(
   };
 
   try {
-    watcher = watch(root, { recursive: true }, (_event, filename) =>
-      note(filename === null ? "" : filename.split(sep).join("/")),
+    watcher = watch(
+      root,
+      { recursive: true, ignore: (path) => path.split(/[\\/]/).includes("node_modules") },
+      (_event, filename) => note(filename === null ? "" : filename.split(sep).join("/")),
     );
     watcher.on("error", fallback);
   } catch {

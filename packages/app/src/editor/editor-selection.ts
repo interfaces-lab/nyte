@@ -159,6 +159,18 @@ function inView(caret: DOMRect | undefined, box: HTMLElement | null): boolean {
   );
 }
 
+/**
+ * Keeps a selection that went to chat but takes its Add to Chat action down. Collapsing it closes the action, and a
+ * selection the app sets stays without one until the person selects again.
+ */
+export function settleAddedSelection(
+  editor: Pick<Editor, "setViewState">,
+  selection: EditorSelection,
+): void {
+  editor.setViewState({ selections: [{ ...selection, end: selection.start }] });
+  editor.setViewState({ selections: [selection] });
+}
+
 export function selectionAction(mac: boolean, add: () => void): HTMLElement {
   const button = document.createElement("button");
   button.type = "button";

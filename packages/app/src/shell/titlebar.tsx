@@ -1,5 +1,6 @@
 import { useSettingsOpen } from "../tabs/use-settings-open.ts";
 import { titlebarStyles } from "./titlebar.stylex.ts";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { createLink } from "@tanstack/react-router";
@@ -192,6 +193,14 @@ export function Titlebar(): ReactElement {
   const focused = useSyncExternalStore(watchWindowFocus, () => document.hasFocus());
   const shape = appShape();
   const files = shape.navigator === "files";
+  const solid = shape.surface === "solid";
+
+  const bar = props(
+    titlebarStyles.bar,
+    solid && hairline.blockEnd,
+    !focused && titlebarStyles.windowInactive,
+  );
+
   const shownTab = shownWorkbenchTab(view, scope, capabilities);
 
   const explorerOpen =
@@ -315,9 +324,9 @@ export function Titlebar(): ReactElement {
     const chatOpen = view.layout.kind === "split" || workbenchShowsChat(view.layout);
 
     return (
-      <header {...props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive)}>
+      <header {...bar}>
         {sidebarSlot}
-        <div {...props(titlebarStyles.contentArea)}>
+        <div {...props(titlebarStyles.contentArea, solid && titlebarStyles.contentAreaBare)}>
           <span {...props(titlebarStyles.center)}>
             {workspaceVisible && (
               <WorkbenchTabStrip
@@ -373,9 +382,11 @@ export function Titlebar(): ReactElement {
   }
 
   return (
-    <header {...props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive)}>
+    <header {...bar}>
       {sidebarSlot}
-      <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)}>
+      <div
+        {...props(titlebarStyles.contentArea, (strip || solid) && titlebarStyles.contentAreaBare)}
+      >
         <span {...props(titlebarStyles.center)}>
           {settingsOpen ? null : strip ? (
             <TitlebarTabStrip state={tabs} mac={mac} />

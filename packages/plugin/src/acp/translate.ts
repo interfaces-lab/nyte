@@ -185,6 +185,17 @@ export class Translator {
     calculateCost(this.#model, target);
   }
 
+  /** Reports the agent's own count of its context; its prompt usage sums every model call in the turn. */
+  context(tokens: number): void {
+    const target = this.#output.usage;
+    target.input = tokens;
+    target.output = 0;
+    target.cacheRead = 0;
+    target.cacheWrite = 0;
+    target.totalTokens = tokens;
+    calculateCost(this.#model, target);
+  }
+
   end(): void {
     const open = this.#open;
     this.#open = undefined;

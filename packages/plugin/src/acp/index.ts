@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   bindSession,
   getCurrentSystemPrompt,
@@ -14,13 +15,20 @@ import type {
   TranscriptContext,
 } from "@nyte-ai/ai";
 import type { CreateElicitationResponse } from "@agentclientprotocol/sdk/unstable";
-import type { ExecutionEnv, PluginApi, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
+import type {
+  ExecutionEnv,
+  PluginApi,
+  PluginStorage,
+  ToolDefinition,
+  ToolInvocation,
+} from "@nyte-ai/core";
 import type { ToolResult } from "@nyte-ai/schema";
-import { standard } from "@nyte-ai/schema";
+import { asId, standard } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Plugin } from "../core.ts";
 import { agentCatalog, agentChoice } from "./catalog.ts";
-import type { AcpAgent, AgentRoute } from "./catalog.ts";
+import type { AcpAgent, AcpLaunch, AgentRoute } from "./catalog.ts";
 import { AcpProcess } from "./connection.ts";
 import type { AgentChoice } from "./connection.ts";
 import type { AcpThread } from "./thread.ts";
@@ -35,6 +43,20 @@ export type { AcpAgent } from "./catalog.ts";
 
 const NOT_RUNNING = "The agent is no longer running this turn. Send a message to continue.";
 
+const UNATTENDED = "Run every tool without asking";
+
+const RECONNECTED =
+  "Nyte lost its connection to you and has reconnected to this conversation. Carry on where you left off.";
+
+const SAVED = "conversation";
+
+const savedConversation = Type.Object({
+  agent: Type.String(),
+  session: Type.String(),
+  seen: Type.Integer({ minimum: 0 }),
+  digest: Type.String(),
+});
+
 type Answer = (
   route: AgentRoute,
   model: Model<Api>,
@@ -45,6 +67,8 @@ type Answer = (
 interface Binding {
   readonly env: ExecutionEnv;
   readonly approve: PluginApi<"core">["approve"];
+  readonly wake: (agent: string) => void;
+  readonly storage: PluginStorage;
 }
 
 interface Live {
@@ -141,6 +165,7 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
   async function connect(
     id: string,
     agent: AcpAgent,
+    signal: AbortSignal | undefined,
   ): Promise<{ readonly entry: Live; readonly binding: Binding; readonly agent: AcpProcess }> {
     const binding = bindings.get(id);
 
@@ -152,7 +177,15 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
 
     if (entry === undefined || started === undefined || started.closed) {
       if (entry !== undefined) forget(entry);
-      entry = { key, process: AcpProcess.start(env, agent), thread: undefined, known: [] };
+
+      entry = {
+        key,
+        process: chooseLaunch(agent, binding, signal).then((launch) =>
+          AcpProcess.start(env, agent, launch),
+        ),
+        thread: undefined,
+        known: [],
+      };
       live.set(id, entry);
     }
 
@@ -163,16 +196,20 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
     const id = request?.sessionId;
 
     if (id === undefined) throw new Error("ACP agents answer inside a Nyte session.");
-    const { entry, binding, agent } = await connect(id, route.agent);
+    const { entry, binding, agent } = await connect(id, route.agent, request?.signal);
     const choice = agentChoice(route, request?.reasoning);
     const messages = context.messages.filter((message) => message.role !== "system");
     const keys = messages.map(messageKey);
     const images = await agent.images();
     const first = messages.findLastIndex((message) => message.role !== "user") + 1;
+    const note = messageKey({ role: "user", content: wakeNote(route.agent.name), timestamp: 0 });
+    const woken = keys.at(-1) === note;
 
     const prompt = messages
       .slice(first)
-      .flatMap((message) => (message.role === "user" ? userBlocks(message, images) : []));
+      .flatMap((message) =>
+        message.role === "user" && messageKey(message) !== note ? userBlocks(message, images) : [],
+      );
 
     const current = entry.thread;
 
@@ -206,30 +243,62 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
         await agent.choose(thread, choice);
         request?.signal?.throwIfAborted();
         thread.send(prompt);
-      }
+      } else if (woken) thread.drainWake();
     } else {
       if (current !== undefined) agent.forget(current);
 
-      if (prompt.length === 0) throw new Error(NOT_RUNNING);
-      thread = await ready(agent, binding, choice, request?.signal);
-      entry.thread = thread;
-      const history = transcriptText(messages.slice(0, first));
+      const reattached =
+        current === undefined
+          ? await reattach(agent, binding, choice, request?.signal, keys)
+          : undefined;
 
-      thread.send(
-        history === ""
-          ? prompt
-          : [{ type: "text", text: `Earlier in this conversation:\n\n${history}` }, ...prompt],
-      );
+      if (reattached !== undefined) {
+        thread = reattached.thread;
+
+        const missed = messages
+          .slice(reattached.seen)
+          .flatMap((message) =>
+            message.role === "user" && messageKey(message) !== note
+              ? userBlocks(message, images)
+              : [],
+          );
+
+        thread.send(missed.length > 0 ? missed : [{ type: "text", text: RECONNECTED }]);
+      } else {
+        if (prompt.length === 0) throw new Error(NOT_RUNNING);
+        thread = await ready(agent, binding, choice, request?.signal);
+        const history = transcriptText(messages.slice(0, first));
+
+        thread.send(
+          history === ""
+            ? prompt
+            : [{ type: "text", text: `Earlier in this conversation:\n\n${history}` }, ...prompt],
+        );
+      }
+
+      entry.thread = thread;
     }
 
     const stream = thread.respond(model, request?.signal);
 
     void stream.result().then((message) => {
       if (entry.thread !== thread) return;
-      entry.known =
-        message.stopReason === "error" || message.stopReason === "aborted"
-          ? []
-          : [...keys, messageKey(message)];
+
+      if (message.stopReason === "error" || message.stopReason === "aborted") {
+        entry.known = [];
+
+        return;
+      }
+
+      entry.known = [...keys, messageKey(message)];
+      void binding.storage
+        .set(SAVED, {
+          agent: agent.agent.id,
+          session: thread.session,
+          seen: entry.known.length,
+          digest: digest(entry.known),
+        })
+        .catch(() => undefined);
     });
 
     return stream;
@@ -239,7 +308,7 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
     const id = request?.sessionId;
 
     if (id === undefined) throw new Error("ACP agents answer inside a Nyte session.");
-    const { binding, agent } = await connect(id, route.agent);
+    const { binding, agent } = await connect(id, route.agent, request?.signal);
     const thread = await ready(
       agent,
       binding,
@@ -277,7 +346,19 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
       bindSession(
         bindings,
         api.session.id,
-        { env: api.env, approve: (call, signal) => api.approve(call, signal) },
+        {
+          env: api.env,
+          storage: api.storage.at("session"),
+          approve: (call, signal) => api.approve(call, signal),
+          wake: (agent) =>
+            void api.session
+              .head(asId<"head">("main"))
+              .send(wakeNote(agent), {
+                delivery: "queue",
+                source: { kind: "action", label: agent },
+              })
+              .catch(() => undefined),
+        },
         api.signal,
       );
 
@@ -291,13 +372,66 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
   ];
 }
 
+/** Takes back the agent's conversation this chat saved, when the chat still starts with what the agent saw. */
+async function reattach(
+  agent: AcpProcess,
+  binding: Binding,
+  choice: AgentChoice,
+  signal: AbortSignal | undefined,
+  keys: readonly string[],
+): Promise<{ readonly thread: AcpThread; readonly seen: number } | undefined> {
+  const saved = await binding.storage.get(SAVED);
+
+  if (
+    !Value.Check(savedConversation, saved) ||
+    saved.agent !== agent.agent.id ||
+    saved.seen > keys.length ||
+    digest(keys.slice(0, saved.seen)) !== saved.digest
+  ) {
+    return undefined;
+  }
+
+  const thread = await ready(agent, binding, choice, signal, saved.session).catch(() => undefined);
+
+  return thread === undefined ? undefined : { thread, seen: saved.seen };
+}
+
+function digest(keys: readonly string[]): string {
+  return createHash("sha256").update(JSON.stringify(keys)).digest("hex");
+}
+
+function wakeNote(agent: string): string {
+  return `${agent} continued on its own.`;
+}
+
+async function chooseLaunch(
+  agent: AcpAgent,
+  binding: Binding,
+  signal: AbortSignal | undefined,
+): Promise<AcpLaunch> {
+  if (agent.unattended === undefined) return agent.launch;
+
+  const verdict = await binding.approve(
+    { name: agent.name, class: { kind: "custom", label: UNATTENDED } },
+    signal ?? new AbortController().signal,
+  );
+
+  return verdict.kind === "allow" ? agent.unattended : agent.launch;
+}
+
 async function ready(
   agent: AcpProcess,
   binding: Binding,
   choice: AgentChoice,
   signal: AbortSignal | undefined,
+  resume?: string,
 ): Promise<AcpThread> {
-  const thread = await agent.open(binding.env.cwd, binding.approve);
+  const thread = await agent.open(
+    binding.env.cwd,
+    binding.approve,
+    () => binding.wake(agent.agent.name),
+    resume,
+  );
 
   try {
     await agent.choose(thread, choice);

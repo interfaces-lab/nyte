@@ -49,7 +49,7 @@ export const titlebarStyles = create({
     height: "100%",
     backgroundColor: role.surfaceMaterial,
   },
-  contentAreaTabbed: { backgroundColor: "transparent" },
+  contentAreaBare: { backgroundColor: "transparent" },
   center: {
     display: "flex",
     alignItems: "center",

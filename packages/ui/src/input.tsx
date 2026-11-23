@@ -30,7 +30,10 @@ const field = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderRadius: "var(--_input-radius)",
-    outlineStyle: "none",
+    outlineStyle: { default: "none", ":focus-visible": "solid" },
+    outlineWidth: 1,
+    outlineOffset: -1,
+    outlineColor: appearance.focusRing,
   },
   bare: {
     padding: 0,
@@ -48,7 +51,6 @@ const variants = create({
   raised: {
     borderColor: {
       default: role.strokeTertiary,
-      ":focus": appearance.focusColor,
       ":user-invalid": danger.border,
       "[aria-invalid=true]": role.strokeAccent,
     },
@@ -57,7 +59,6 @@ const variants = create({
   quiet: {
     borderColor: {
       default: role.strokeQuaternary,
-      ":focus": appearance.focusColor,
       ":user-invalid": danger.border,
       "[aria-invalid=true]": role.strokeAccent,
     },
@@ -66,7 +67,6 @@ const variants = create({
   code: {
     borderColor: {
       default: role.strokeQuaternary,
-      ":focus": appearance.focusColor,
       ":user-invalid": danger.border,
       "[aria-invalid=true]": role.strokeAccent,
     },
@@ -78,17 +78,11 @@ const variants = create({
 
 const groupVariants = create({
   raised: {
-    borderColor: {
-      default: role.strokeTertiary,
-      ":focus-within": appearance.focusColor,
-    },
+    borderColor: role.strokeTertiary,
     backgroundColor: role.bgElevated,
   },
   quiet: {
-    borderColor: {
-      default: role.strokeQuaternary,
-      ":focus-within": appearance.focusColor,
-    },
+    borderColor: role.strokeQuaternary,
     backgroundColor: role.bgMutedTranslucent,
   },
 });
@@ -105,6 +99,10 @@ const group = create({
     borderRadius: "var(--_input-radius)",
     paddingInlineStart: "var(--_input-inset)",
     paddingInlineEnd: "var(--_input-padding-end)",
+    outlineStyle: { default: "none", ":has(:focus-visible)": "solid" },
+    outlineWidth: 1,
+    outlineOffset: -1,
+    outlineColor: appearance.focusRing,
     color: role.contentTertiary,
   },
 });

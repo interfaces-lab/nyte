@@ -269,25 +269,31 @@ describe("localFiles", () => {
     ).toEqual([4, 4, 2, { kind: "incomplete", reason: "limit" }]);
   }, 30_000);
 
-  it("finds names fuzzily, best match first, capped", async () => {
-    const root = await folder();
-    await mkdir(join(root, "src", "parser"), { recursive: true });
-    await writeFile(join(root, "src", "parser", "index.ts"), "");
-    await writeFile(join(root, "src", "parser.ts"), "");
-    await writeFile(join(root, "src", "my-parser.test.ts"), "");
-    await writeFile(join(root, "README.md"), "");
-    const files = localFiles(root);
-    const found = await files.find({ query: "parser" });
+  for (const engine of ["ripgrep", "scan"] as const) {
+    it(`finds names fuzzily, best match first, capped, through ${engine}`, async () => {
+      const root = await folder();
+      await mkdir(join(root, "src", "parser"), { recursive: true });
+      await writeFile(join(root, "src", "parser", "index.ts"), "");
+      await writeFile(join(root, "src", "parser.ts"), "");
+      await writeFile(join(root, "src", "my-parser.test.ts"), "");
+      await writeFile(join(root, "README.md"), "");
 
-    expect(found.map((entry) => entry.path)).toEqual([
-      "src/parser.ts",
-      "src/my-parser.test.ts",
-      "src/parser/index.ts",
-    ]);
-    expect((await files.find({ query: "rdm" })).map((entry) => entry.path)).toEqual(["README.md"]);
-    expect(await files.find({ query: "parser", limit: 1 })).toHaveLength(1);
-    expect((await files.find({ query: "", limit: 500 })).length).toBeLessThanOrEqual(50);
-  });
+      const files = localFiles(root, engine === "scan" ? { ripgrep: async () => null } : undefined);
+
+      const found = await files.find({ query: "parser" });
+
+      expect(found.map((entry) => entry.path)).toEqual([
+        "src/parser.ts",
+        "src/my-parser.test.ts",
+        "src/parser/index.ts",
+      ]);
+      expect((await files.find({ query: "rdm" })).map((entry) => entry.path)).toEqual([
+        "README.md",
+      ]);
+      expect(await files.find({ query: "parser", limit: 1 })).toHaveLength(1);
+      expect((await files.find({ query: "", limit: 500 })).length).toBeLessThanOrEqual(50);
+    });
+  }
 
   for (const engine of ["ripgrep", "scan"] as const) {
     it(`searches content with smart case through ${engine}`, async () => {
@@ -297,10 +303,7 @@ describe("localFiles", () => {
       await writeFile(join(root, ".gitignore"), "skip.txt\n");
       await writeFile(join(root, "skip.txt"), "alpha hidden\n");
 
-      const files = localFiles(
-        root,
-        engine === "scan" ? { ripgrep: join(root, "no-rg") } : undefined,
-      );
+      const files = localFiles(root, engine === "scan" ? { ripgrep: async () => null } : undefined);
 
       const all = await collect(files.search({ query: "alpha" }));
 
@@ -338,10 +341,7 @@ describe("localFiles", () => {
       await writeFile(join(root, "src", "a.test.ts"), "alpha test\n");
       await writeFile(join(root, "b.txt"), "alpha two\n");
 
-      const files = localFiles(
-        root,
-        engine === "scan" ? { ripgrep: join(root, "no-rg") } : undefined,
-      );
+      const files = localFiles(root, engine === "scan" ? { ripgrep: async () => null } : undefined);
 
       const found = async (input: Omit<SearchInput, "query">, query = "alpha") =>
         (await collect(files.search({ query, ...input })))

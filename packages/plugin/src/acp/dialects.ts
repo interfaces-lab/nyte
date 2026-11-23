@@ -6,7 +6,7 @@ import type {
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
-export type DialectName = "claude" | "copilot" | "devin";
+export type DialectName = "antigravity" | "claude" | "copilot" | "devin";
 
 export interface SubagentReport {
   readonly child: string;
@@ -21,6 +21,8 @@ export interface SessionSubagentReport extends SubagentReport {
 
 export interface Dialect {
   readonly capabilityMeta?: Readonly<Record<string, unknown>>;
+  /** The agent also replies with no prompt open, as its background work finishes, and ends each such reply with `usage_update`. */
+  readonly repliesUnprompted: boolean;
   readonly notifications: ReadonlyMap<
     string,
     (params: unknown) => SessionSubagentReport | undefined
@@ -81,9 +83,14 @@ const COPILOT_META = "github.com/copilot";
 
 const copilotToolMeta = Type.Object({ agentId: Type.String() });
 
+const antigravityLaunch = Type.Object({ Prompt: Type.String(), Role: Type.String() });
+
+const ANTIGRAVITY_LAUNCHED = "Running in the background. It reports back on its own.";
+
 const DEVIN_SPAWN_TITLE = /^Ran \S+ subagent (?<title>.+)$/u;
 
 const STANDARD: Dialect = {
+  repliesUnprompted: false,
   notifications: new Map(),
   findSubagent: () => undefined,
   readSubagent: () => undefined,
@@ -93,6 +100,8 @@ const STANDARD: Dialect = {
 
 export function createDialect(name: DialectName | undefined): Dialect {
   switch (name) {
+    case "antigravity":
+      return antigravityDialect();
     case "claude":
       return claudeDialect();
     case "copilot":
@@ -170,6 +179,31 @@ function devinDialect(): Dialect {
     },
     filterPermissionOptions: (options) =>
       options.filter((option) => option.optionId.trim() !== "plan_bypass"),
+  };
+}
+
+function antigravityDialect(): Dialect {
+  return {
+    ...STANDARD,
+    repliesUnprompted: true,
+    readSubagent(tool) {
+      if (
+        tool.title?.includes("invoke_subagent") !== true ||
+        !Value.Check(antigravityLaunch, tool.rawInput)
+      ) {
+        return undefined;
+      }
+
+      const status =
+        tool.status === "failed" ? "failed" : tool.status === "completed" ? "completed" : "running";
+
+      return {
+        child: tool.toolCallId,
+        title: tool.rawInput.Role,
+        status,
+        result: status === "completed" ? ANTIGRAVITY_LAUNCHED : undefined,
+      };
+    },
   };
 }
 

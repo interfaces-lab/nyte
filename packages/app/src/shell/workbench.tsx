@@ -33,7 +33,8 @@ import { railModel, shownWorkbenchTab, visibleTabs } from "../workbench/selector
 import { useWorkbenchViewState, workbench } from "../workbench/store.ts";
 import type { ChangesTabPatch } from "../workbench/view-reducer.ts";
 import { launch } from "../commands/launch.ts";
-import { openUrl } from "../workbench/commands.ts";
+import { showChatForExcerpts } from "../references/add-to-chat.ts";
+import { openUrl, revealChatPanel } from "../workbench/commands.ts";
 import { WorkbenchWorkspaceContext } from "../workbench/workbench-workspace.tsx";
 import type { WorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
 import { CompactRail, Rail, RailRow } from "./workbench-rail.tsx";
@@ -214,6 +215,12 @@ function PanelContent({
   }
 }
 
+function ChatOpener({ viewKey }: { readonly viewKey: WorkbenchViewKey }): null {
+  useMountEffect(() => showChatForExcerpts(() => revealChatPanel(viewKey)));
+
+  return null;
+}
+
 function WorkbenchViewHost({
   viewKey,
   chatFolder,
@@ -377,6 +384,7 @@ function WorkbenchViewHost({
 
   return (
     <WorkbenchWorkspaceContext value={workspace}>
+      {current && <ChatOpener viewKey={viewKey} />}
       <section
         ref={attachPanel}
         data-nyte-workbench=""

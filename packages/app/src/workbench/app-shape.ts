@@ -20,6 +20,7 @@ export interface AppShape {
   readonly initial: WorkbenchViewState;
   /** Where a selection made in another window lands: nowhere, in the Editor at its range, or on the Design board. */
   readonly arrival: "ignore" | "file" | "design";
+  readonly surface: "glass" | "solid";
 }
 
 const LAUNCH_ORDER = Object.freeze([
@@ -44,6 +45,7 @@ const APP_SHAPES = {
     launchers: LAUNCH_ORDER,
     initial: DEFAULT_VIEW,
     arrival: "ignore",
+    surface: "glass",
   },
   code: {
     navigator: "files",
@@ -56,6 +58,7 @@ const APP_SHAPES = {
       { kind: "set-width", pixels: CODE_CHAT_WIDTH },
     ]),
     arrival: "file",
+    surface: "solid",
   },
   studio: {
     navigator: "chats",
@@ -67,6 +70,7 @@ const APP_SHAPES = {
       { kind: "maximize" },
     ]),
     arrival: "design",
+    surface: "glass",
   },
 } as const satisfies Readonly<Record<DesktopApp, AppShape>>;
 

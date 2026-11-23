@@ -25,13 +25,22 @@ const PROBE_TIMEOUT_MS = 5_000;
 
 const PROBE_TTL_MS = 86_400_000;
 
+export interface AcpLaunch {
+  readonly args: readonly string[];
+  /** The session mode Nyte sets when the agent offers it. */
+  readonly mode?: string;
+}
+
 export interface AcpAgent {
   readonly id: string;
   readonly name: string;
   readonly command: string;
-  readonly args: readonly string[];
   readonly env: Readonly<Record<string, string>>;
-  readonly mode?: string;
+  readonly launch: AcpLaunch;
+  /** How the agent runs every tool without asking, used once Nyte allows that; `launch` when absent. */
+  readonly unattended?: AcpLaunch;
+  /** The sign-in method Nyte names when the agent asks for one; it reuses the agent's saved sign-in. */
+  readonly auth?: string;
   readonly dialect?: DialectName;
 }
 
@@ -68,8 +77,8 @@ export async function agentCatalog(
   const binary = await stat(await realpath(command));
   const launch = JSON.stringify([
     command,
-    agent.args,
-    agent.mode ?? null,
+    agent.launch.args,
+    agent.launch.mode ?? null,
     binary.mtimeMs,
     binary.size,
   ]);
@@ -133,7 +142,7 @@ function agentRoutes(agent: AcpAgent, models: readonly AgentModel[]): readonly A
 async function probe(agent: AcpAgent, signal: AbortSignal): Promise<readonly AgentModel[]> {
   const stop = AbortSignal.any([signal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]);
   stop.throwIfAborted();
-  const running = AcpProcess.spawn(agent, tmpdir());
+  const running = AcpProcess.spawn(agent, agent.launch, tmpdir());
 
   const abort = () =>
     running.close(
@@ -143,10 +152,11 @@ async function probe(agent: AcpAgent, signal: AbortSignal): Promise<readonly Age
   stop.addEventListener("abort", abort, { once: true });
 
   try {
-    const thread = await running.open(tmpdir(), async () => ({
-      kind: "deny",
-      reason: "Nyte is only listing models.",
-    }));
+    const thread = await running.open(
+      tmpdir(),
+      async () => ({ kind: "deny", reason: "Nyte is only listing models." }),
+      () => undefined,
+    );
 
     const initial = running.configOptions(thread);
     const option = findOption(initial, "model");

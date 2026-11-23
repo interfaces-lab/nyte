@@ -43,7 +43,7 @@ Each store implements core's `Store` and publishes each change as one transactio
 
 ## Workspaces
 
-- `localProvider` serves a folder on this machine. It reads files over `node:fs` and versions them by content. It scans with `.gitignore` rules. It searches with ripgrep, or falls back to a scan when ripgrep is missing. It watches for changes and drives git through its CLI. It runs processes over pipes or a pty through `@lydell/node-pty`, which doesn't run under Bun.
+- `localProvider` serves a folder on this machine. It reads files over `node:fs` and versions them by content. It scans with `.gitignore` rules. It finds and searches files with the ripgrep on `PATH`, else a pinned ripgrep it downloads into `.nyte/language-servers`, and scans when neither runs. It watches for changes and drives git through its CLI. It runs processes over pipes or a pty through `@lydell/node-pty`, which doesn't run under Bun.
 - `chatOnlyProvider` serves a workspace with no files and no processes.
 - `sandboxProvider` serves a workspace in a remote sandbox through a `boot` function you supply.
 

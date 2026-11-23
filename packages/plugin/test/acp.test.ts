@@ -98,15 +98,17 @@ async function openHost(gate: Plugin<"core">) {
       id: "fake",
       name: "Fake Agent",
       command: process.execPath,
-      args: [AGENT],
       env: { ACP_LOG: join(dir, "log") },
+      launch: { args: [AGENT] },
     },
     {
       id: "crash",
       name: "Crash Agent",
       command: process.execPath,
-      args: ["-e", String.raw`process.stderr.write('no config found\n'); process.exit(3)`],
       env: {},
+      launch: {
+        args: ["-e", String.raw`process.stderr.write('no config found\n'); process.exit(3)`],
+      },
     },
   ]);
 
