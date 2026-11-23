@@ -272,14 +272,14 @@ async function bench(): Promise<void> {
 
   const drop = async () => {
     b.meter.proxy.drop();
-    await until(() => b.connection.health.snapshot().kind !== "open", "the drop");
+    await until(() => b.connection.link.snapshot().kind !== "open", "the drop");
   };
 
   await measure(
     b.meter,
     "S6",
     drop,
-    () => b.connection.health.snapshot().kind === "open" && loaded(),
+    () => b.connection.link.snapshot().kind === "open" && loaded(),
   );
   chatH.close();
   await b.close();
