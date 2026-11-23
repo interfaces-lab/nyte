@@ -434,6 +434,7 @@ const nyte = {
   "landmines-testing/no-fixed-sleep": "error",
   "landmines-testing/no-unsignaled-poll": "error",
   "nyte-code/declarative-comments": "error",
+  "nyte-code/no-app-identity": "error",
   "nyte-code/no-cross-package-relative-imports": "error",
   "nyte-code/no-direct-effect": "error",
   "nyte-code/no-hash-private": "error",

@@ -1,6 +1,7 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import { declarativeCommentsRule } from "./rules/declarative-comments.ts";
+import { noAppIdentityRule } from "./rules/no-app-identity.ts";
 import { noCrossPackageRelativeImportsRule } from "./rules/no-cross-package-relative-imports.ts";
 import { noDirectEffectRule } from "./rules/no-direct-effect.ts";
 import { noHashPrivateRule } from "./rules/no-hash-private.ts";
@@ -15,6 +16,7 @@ const nyteCodePlugin = eslintCompatPlugin({
   meta: { name: "nyte-code" },
   rules: {
     "declarative-comments": declarativeCommentsRule,
+    "no-app-identity": noAppIdentityRule,
     "no-cross-package-relative-imports": noCrossPackageRelativeImportsRule,
     "no-direct-effect": noDirectEffectRule,
     "no-hash-private": noHashPrivateRule,
