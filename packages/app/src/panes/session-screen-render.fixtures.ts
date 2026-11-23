@@ -77,13 +77,13 @@ function tool(id: string, turn: number, toolClass: ToolClass): Message {
   return { ...settledTool(id, toolClass, "ok"), turn: turnId(turn) };
 }
 
-export const sentence = "The transcript holds its place while replies stream in below the reader. ";
+export const SENTENCE = "The transcript holds its place while replies stream in below the reader. ";
 
 export function paragraphs(seed: number): string {
   return Array.from(
     { length: 1 + (seed % 3) },
     (_, index) =>
-      `Paragraph ${String(index + 1)} of turn ${String(seed)}. ${sentence.repeat(1 + ((seed + index) % 4))}`,
+      `Paragraph ${String(index + 1)} of turn ${String(seed)}. ${SENTENCE.repeat(1 + ((seed + index) % 4))}`,
   ).join("\n\n");
 }
 

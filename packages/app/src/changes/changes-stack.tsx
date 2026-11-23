@@ -126,7 +126,7 @@ const STACK_LAYOUT = { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 };
 
 const SEARCH_OPTIONS = { disableShortcuts: true };
 
-const STACK_METRICS = new Map<
+const metricsBySize = new Map<
   number,
   {
     readonly lineHeight: number;
@@ -136,7 +136,7 @@ const STACK_METRICS = new Map<
 >();
 
 function stackMetrics(codeFontSize: number) {
-  const held = STACK_METRICS.get(codeFontSize);
+  const held = metricsBySize.get(codeFontSize);
 
   if (held !== undefined) return held;
   const probe = document.createElement("div");
@@ -156,7 +156,7 @@ function stackMetrics(codeFontSize: number) {
   };
 
   probe.remove();
-  STACK_METRICS.set(codeFontSize, made);
+  metricsBySize.set(codeFontSize, made);
 
   return made;
 }

@@ -105,10 +105,10 @@ class ChangesViewedStore {
 
     if (pending.length === 0) return;
     const at = this.now();
-    const files_ = { ...this.viewed[root]?.files };
+    const marked = { ...this.viewed[root]?.files };
 
-    for (const file of pending) files_[file.path] = { digest: file.digest, at };
-    this.commit(root, files_);
+    for (const file of pending) marked[file.path] = { digest: file.digest, at };
+    this.commit(root, marked);
   }
 
   clearViewed(root: string, path: string): void {

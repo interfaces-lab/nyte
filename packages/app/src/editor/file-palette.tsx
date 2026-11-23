@@ -180,10 +180,10 @@ function paletteMode(query: string): Mode {
   return { kind: "files", needle: query.trim().toLocaleLowerCase() };
 }
 
-const ALPHABETICAL = new WeakMap<readonly MentionFile[], readonly MentionFile[]>();
+const alphabeticalOrders = new WeakMap<readonly MentionFile[], readonly MentionFile[]>();
 
 function alphabeticalFiles(files: readonly MentionFile[]): readonly MentionFile[] {
-  const held = ALPHABETICAL.get(files);
+  const held = alphabeticalOrders.get(files);
 
   if (held !== undefined) return held;
 
@@ -191,7 +191,7 @@ function alphabeticalFiles(files: readonly MentionFile[]): readonly MentionFile[
     .filter((file) => file.kind === "file")
     .toSorted((left, right) => left.displayPath.localeCompare(right.displayPath));
 
-  ALPHABETICAL.set(files, sorted);
+  alphabeticalOrders.set(files, sorted);
 
   return sorted;
 }

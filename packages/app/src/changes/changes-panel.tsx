@@ -73,11 +73,11 @@ const NO_TURN_OPTIONS: readonly TurnChangeOption[] = [];
 
 const NO_COLLAPSED_PATHS: readonly string[] = [];
 
-const WORKTREE_LOADERS = new Map<string, DiffFilesLoader>();
+const worktreeLoaders = new Map<string, DiffFilesLoader>();
 
 function worktreeLoader(workspace: WorkspaceId | undefined, root: string): DiffFilesLoader {
   const key = `${workspace ?? ""}\u0000${root}`;
-  const held = WORKTREE_LOADERS.get(key);
+  const held = worktreeLoaders.get(key);
 
   if (held !== undefined) return held;
 
@@ -87,7 +87,7 @@ function worktreeLoader(workspace: WorkspaceId | undefined, root: string): DiffF
     scope: { kind: "worktree" },
   });
 
-  WORKTREE_LOADERS.set(key, made);
+  worktreeLoaders.set(key, made);
 
   return made;
 }

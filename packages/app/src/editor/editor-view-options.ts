@@ -24,14 +24,14 @@ ${DECLARATION_LINK_CSS}
 
 const EDITOR_LAYOUT = { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 };
 
-const ITEM_METRICS = new Map<number, { readonly lineHeight: number }>();
+const metricsBySize = new Map<number, { readonly lineHeight: number }>();
 
 function codeViewMetrics(codeFontSize: number) {
-  const held = ITEM_METRICS.get(codeFontSize);
+  const held = metricsBySize.get(codeFontSize);
 
   if (held !== undefined) return held;
   const made = { lineHeight: Math.ceil((codeFontSize * 20) / 12) };
-  ITEM_METRICS.set(codeFontSize, made);
+  metricsBySize.set(codeFontSize, made);
 
   return made;
 }

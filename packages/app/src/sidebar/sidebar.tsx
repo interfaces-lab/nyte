@@ -121,7 +121,7 @@ export function Sidebar({
   readonly renderSettingsNavigation: SettingsNavigationSlot;
 }): ReactElement {
   const sessionListId = useId();
-  const workspaceCollectionID = useId();
+  const workspaceCollectionId = useId();
   const host = useHostState();
   const open = host.data.workspace;
   const home = useHomeWorkspace();
@@ -508,7 +508,7 @@ export function Sidebar({
                 <div {...props(styles.sectionHeader)}>
                   <Collapsible.Trigger
                     data-sidebar-header=""
-                    aria-controls={workspaceCollectionID}
+                    aria-controls={workspaceCollectionId}
                     xstyle={[styles.sectionToggle, focus.ringInset]}
                   >
                     <span {...props(styles.sectionLabel)}>{flat ? "Chats" : "Workspaces"}</span>
@@ -528,7 +528,7 @@ export function Sidebar({
                 </div>
 
                 <Collapsible.Panel
-                  id={workspaceCollectionID}
+                  id={workspaceCollectionId}
                   {...props(styles.workspaceCollection)}
                 >
                   {unreachable !== undefined && (
