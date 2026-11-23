@@ -396,6 +396,13 @@ export interface EnvironmentRegistry {
 }
 
 export interface FilesApi {
+  /** Reads bounded UTF-8 from a regular file through a root-confined handle; unavailable without that guarantee. */
+  readonly readConfined?: (input: {
+    readonly path: string;
+    readonly line?: number;
+    readonly limit?: number;
+    readonly signal: AbortSignal;
+  }) => Promise<{ readonly content: string }>;
   read(path: string, options?: { readonly as: "text" | "document" }): Promise<FileDocument>;
   bytes(path: string): Promise<ByteReader>;
   stat(path: string): Promise<{

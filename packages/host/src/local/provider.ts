@@ -7,6 +7,7 @@ import type { WorkspaceTarget } from "@nyte-ai/schema";
 import type { EnvironmentProvider, ExecutionEnv, SnapshotsApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { pluginFilesIn } from "../plugins/loader.ts";
+import { confinedReader } from "./files/confined.ts";
 import { localFiles } from "./files/files.ts";
 import { ripgrepFinder } from "./files/ripgrep.ts";
 import { localGit } from "./git/git.ts";
@@ -77,15 +78,17 @@ export function localProvider(options?: {
         throw new SdkError("unavailable", `${path} is not a readable directory.`);
       const detached = new AbortController();
 
+      const confined = await confinedReader(real);
+      const files = localFiles(real, {
+        ripgrep,
+        formatter: options?.formatter,
+        trusted,
+        signal: detached.signal,
+      });
       const env: ExecutionEnv = {
         identity: await folderIdentity(real),
         cwd: real,
-        files: localFiles(real, {
-          ripgrep,
-          formatter: options?.formatter,
-          trusted,
-          signal: detached.signal,
-        }),
+        files: { ...files, ...(confined === undefined ? {} : { readConfined: confined }) },
         exec: localExec(real, { shell: options?.shell, signal: detached.signal }),
         close: async () => detached.abort(),
       };
