@@ -60,40 +60,47 @@ async function focused(application: ElectronApplication, page: Page): Promise<bo
   return (await application.browserWindow(page)).evaluate((window) => window.isFocused());
 }
 
-const LightReply = Type.Object({
-  kind: Type.Literal("lights"),
-  lights: Type.Object({
-    you: Type.Union([
-      Type.Object({
-        subject: Type.Object({
-          kind: Type.String(),
-          path: Type.String(),
-          start: Type.Optional(Type.Number()),
-          end: Type.Optional(Type.Number()),
-        }),
+const YourLight = Type.Object({
+  kind: Type.Literal("you"),
+  you: Type.Union([
+    Type.Object({
+      subject: Type.Object({
+        kind: Type.String(),
+        path: Type.String(),
+        start: Type.Optional(Type.Number()),
+        end: Type.Optional(Type.Number()),
       }),
-      Type.Null(),
-    ]),
-  }),
+    }),
+    Type.Null(),
+  ]),
 });
 
-async function readLight(page: Page): Promise<Static<typeof LightReply>["lights"]> {
+async function readLight(page: Page): Promise<Pick<Static<typeof YourLight>, "you">> {
   const reply = await page.evaluate(
     () =>
       new Promise((resolve) => {
         const channel = new BroadcastChannel("nyte:light:v1");
-        const timer = setTimeout(() => resolve(null), 2000);
 
-        channel.addEventListener("message", (event: MessageEvent<unknown>) => {
+        const settle = (answer: unknown): void => {
           clearTimeout(timer);
           channel.close();
-          resolve(event.data);
+          resolve(answer);
+        };
+
+        const timer = setTimeout(() => settle({ kind: "you", you: null }), 2000);
+
+        channel.addEventListener("message", (event: MessageEvent<unknown>) => {
+          const message = event.data;
+
+          if (typeof message !== "object" || message === null || !("kind" in message)) return;
+
+          if (message.kind === "you") settle(message);
         });
         channel.postMessage({ kind: "ask" });
       }),
   );
 
-  return Value.Parse(LightReply, reply).lights;
+  return { you: Value.Parse(YourLight, reply).you };
 }
 
 async function nextWindow(application: ElectronApplication, open: () => Promise<void>) {
@@ -153,6 +160,10 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
       const application = first.application;
       const nyte = first.page;
       const problems = [collectErrors(nyte)];
+
+      await application.evaluate(({ BrowserWindow, screen }) => {
+        BrowserWindow.getAllWindows()[0]?.setBounds(screen.getPrimaryDisplay().workArea);
+      });
 
       await openChat(nyte, FIXTURES.beta);
       await expect(apps(nyte).getByRole("button", { name: "Nyte" })).toHaveAttribute(
