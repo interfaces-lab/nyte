@@ -14,6 +14,7 @@ import type {
   ToolPartState,
 } from "@nyte-ai/schema";
 import type { AlertState } from "../desktop-settings/schema.ts";
+import { formatResetsIn } from "./resets.ts";
 
 export { jobTaskState } from "@nyte-ai/schema";
 export { parseCitation } from "./citation.ts";
@@ -961,7 +962,9 @@ function danger(notice: string, recovery?: Recovery): FailureNotice {
   return { text: notice, tone: "danger", recovery };
 }
 
-export function failureNotice(failure: Failure): FailureNotice {
+export { formatResetsIn };
+
+export function failureNotice(failure: Failure, now = Date.now()): FailureNotice {
   switch (failure.class) {
     case "aborted":
       return { text: "Run stopped.", tone: "neutral", recovery: undefined };
@@ -970,7 +973,12 @@ export function failureNotice(failure: Failure): FailureNotice {
     case "context_window":
       return danger("This chat no longer fits the model's context window.", "compact");
     case "quota":
-      return danger("Provider quota reached.", "switch-model");
+      return danger(
+        failure.resetsAt !== undefined && failure.resetsAt > now
+          ? `Provider quota reached. Resets in ${formatResetsIn(failure.resetsAt, now)}.`
+          : "Provider quota reached.",
+        "switch-model",
+      );
     case "auth":
       return danger("The provider rejected the sign-in.", "sign-in");
     case "overloaded":

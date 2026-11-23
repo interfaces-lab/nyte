@@ -21,6 +21,7 @@ import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../../preferences/index.ts";
+import { useNowMinute } from "../../lib/use-now-minute.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { usePluginCatalog } from "../../data/plugins.ts";
 import { Prose } from "../../markdown/prose.tsx";
@@ -575,24 +576,8 @@ export function TurnItemView({
       return <SubagentGroupView messages={row.messages} cwd={cwd} />;
     case "response":
       return <ResponseView row={row} />;
-    case "failure": {
-      const failure = failureNotice(row.failure);
-
-      return (
-        <StatusMarker
-          role={failure.tone === "danger" ? "alert" : "status"}
-          variant={failure.tone === "danger" ? "destructive" : "default"}
-        >
-          {failure.text}
-          {failure.recovery !== undefined && (
-            <>
-              {" "}
-              <RecoveryAction recovery={failure.recovery} />
-            </>
-          )}
-        </StatusMarker>
-      );
-    }
+    case "failure":
+      return <TurnFailure row={row} />;
 
     default: {
       const _exhaustive: never = row;
@@ -600,4 +585,27 @@ export function TurnItemView({
       return _exhaustive;
     }
   }
+}
+
+function TurnFailure({
+  row,
+}: {
+  readonly row: Extract<TurnItemRow, { kind: "failure" }>;
+}): ReactElement {
+  const failure = failureNotice(row.failure, useNowMinute());
+
+  return (
+    <StatusMarker
+      role={failure.tone === "danger" ? "alert" : "status"}
+      variant={failure.tone === "danger" ? "destructive" : "default"}
+    >
+      {failure.text}
+      {failure.recovery !== undefined && (
+        <>
+          {" "}
+          <RecoveryAction recovery={failure.recovery} />
+        </>
+      )}
+    </StatusMarker>
+  );
 }
