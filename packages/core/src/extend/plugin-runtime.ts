@@ -31,9 +31,12 @@ import type {
   PluginApi,
   Registries,
   Registry,
+  RuntimeCall,
+  RuntimeVerdict,
 } from "../contract/plugin.ts";
 import type { AssignedPlugin } from "../contract/records.ts";
 import type { ExecutionEnv, Resources } from "../contract/workspace.ts";
+import { UnavailableError } from "../env/environment.ts";
 import { RESERVED_PART_KINDS } from "./part-definitions.ts";
 import { coveredHere, requireSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
@@ -184,18 +187,9 @@ export function createPluginRuntime(
     decide: (name, value, context, step) => held(() => dispatch.decide(name, value, context, step)),
   };
 
-  let serving = previous?.hooks ?? own;
-
-  const hooks: HookDispatch = {
-    register: (plugin, api, name, entry) => own.register(plugin, api, name, entry),
-    observe: (name, event, context) => serving.observe(name, event, context),
-    transform: (name, value, context, signal) => serving.transform(name, value, context, signal),
-    decide: (name, value, context, step) => serving.decide(name, value, context, step),
-  };
-
   const host: InstanceHost = {
     registries,
-    hooks,
+    hooks: own,
     report(owner, issue) {
       if (!active.has(owner)) return;
       rows.set(owner, [...(rows.get(owner) ?? []), issue]);
@@ -274,7 +268,11 @@ export function createPluginRuntime(
         return UNRESOLVED;
       }
       const [env, inputs] = await Promise.all([
-        kernel.environments.attach(session),
+        kernel.environments
+          .attach(session)
+          .catch((error: unknown) =>
+            error instanceof UnavailableError ? null : Promise.reject(error),
+          ),
         scanResources(kernel, session),
       ]);
 
@@ -388,7 +386,7 @@ export function createPluginRuntime(
 
   const runtime: PluginRuntime = {
     registries,
-    hooks,
+    hooks: own,
     ready,
     hold,
     load: (plugins, stored) => lifecycle.run(() => loadAll(plugins, stored)),
@@ -404,10 +402,22 @@ export function createPluginRuntime(
     },
     plugins: () => [...active.values()].map((entry) => entry.instance.plugin),
     instance: (id) => active.get(id)?.instance,
-    contributions: () =>
-      activating && previous !== null
-        ? previous.contributions()
-        : { agents: registries.agents.list(), settings: registries.settings.list() },
+    contributions: () => ({
+      agents: registries.agents.list(),
+      settings: registries.settings.list(),
+    }),
+    approve: (call, signal) =>
+      held(async () =>
+        (await ready.then(
+          () => true,
+          () => false,
+        ))
+          ? askApprovers(runtime, call, signal)
+          : {
+              kind: "deny",
+              reason: "This chat's plugins didn't load, so nothing could approve the call.",
+            },
+      ),
     assigned: () => assigned,
     idleSince: () => (holds > 0 || activating ? null : used),
     touch() {
@@ -431,7 +441,6 @@ export function createPluginRuntime(
   };
 
   const serve = (): void => {
-    serving = own;
     activating = false;
   };
 
@@ -453,6 +462,23 @@ export function createPluginRuntime(
   });
 
   return runtime;
+}
+
+async function askApprovers(
+  runtime: PluginRuntime,
+  call: RuntimeCall,
+  signal: AbortSignal,
+): Promise<RuntimeVerdict> {
+  for (const plugin of runtime.plugins()) {
+    const api = runtime.instance(plugin.id)?.api;
+
+    if (plugin.approve === undefined || api === undefined) continue;
+    const verdict = await plugin.approve(call, { api, signal });
+
+    if (verdict.kind === "deny") return verdict;
+  }
+
+  return signal.aborted ? { kind: "deny", reason: "The request was aborted." } : { kind: "allow" };
 }
 
 export async function activateApart(
@@ -626,11 +652,15 @@ async function reloadSession(
   kernel: Kernel,
   session: SessionId,
 ): Promise<readonly PluginLoadOutcome[]> {
-  const ready = kernel.plugins.reload(session);
-  const runtime = kernel.plugins.runtime(session);
-  await ready;
+  await kernel.plugins.reload(session);
 
-  return runtime.outcomes();
+  return kernel.plugins.runtime(session).outcomes();
+}
+
+export async function publishServed(kernel: Kernel, session: SessionId): Promise<void> {
+  publishPlugins(kernel);
+  await publishCatalog(kernel, session);
+  await publishSettings(kernel);
 }
 
 function publishPlugins(kernel: Kernel): void {

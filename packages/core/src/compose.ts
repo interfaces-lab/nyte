@@ -83,6 +83,7 @@ import {
 import { pluginSecrets } from "./extend/plugin-api.ts";
 import {
   createPluginRuntime,
+  publishServed,
   createPluginState,
   hostPluginRows,
   replacePlugins,
@@ -491,11 +492,36 @@ export function createKernel(input: KernelOptions): Kernel {
 
   const runtimes = new Map<SessionId, PluginRuntime>();
 
-  const install = (session: SessionId, previous: PluginRuntime | null): PluginRuntime => {
-    const created = createPluginRuntime(kernel, session, previous);
-    runtimes.set(session, created);
+  const loading = new Map<SessionId, PluginRuntime>();
 
-    return created;
+  const install = (
+    session: SessionId,
+    previous: PluginRuntime | null,
+  ): { readonly created: PluginRuntime; readonly settled: Promise<void> } => {
+    const created = createPluginRuntime(kernel, session, previous);
+
+    if (previous === null) {
+      runtimes.set(session, created);
+
+      return { created, settled: created.ready };
+    }
+
+    loading.set(session, created);
+
+    const takeOver = async (): Promise<void> => {
+      if (loading.get(session) === created) loading.delete(session);
+
+      if (runtimes.get(session) !== previous) return;
+      runtimes.set(session, created);
+      await publishServed(kernel, session);
+    };
+
+    const settled = created.ready.then(takeOver, async (error: unknown) => {
+      await takeOver();
+      throw error;
+    });
+
+    return { created, settled };
   };
 
   let turn = input.turn ?? null;
@@ -652,21 +678,26 @@ export function createKernel(input: KernelOptions): Kernel {
       sources: input.pluginSources ?? new Map(),
       state: createPluginState(),
       runtime(session) {
-        const found = runtimes.get(session) ?? install(session, null);
+        const found = runtimes.get(session) ?? install(session, null).created;
         found.touch();
 
         return found;
       },
-      reload: (session) => install(session, runtimes.get(session) ?? null).ready,
+      newest: (session) => loading.get(session) ?? kernel.plugins.runtime(session),
+      reload: (session) =>
+        install(session, loading.get(session) ?? runtimes.get(session) ?? null).settled,
       runtimes: () => runtimes,
       async close(session) {
         const runtime = runtimes.get(session);
+        const pending = loading.get(session);
 
-        if (runtime === undefined) return;
+        if (runtime === undefined && pending === undefined) return;
         runtimes.delete(session);
+        loading.delete(session);
         forgetScans(kernel, (key) => key === session);
         const detached = kernel.environments.detach(session);
-        await runtime.close();
+        await runtime?.close();
+        await pending?.close();
         await detached;
       },
       api: (owner, session) =>

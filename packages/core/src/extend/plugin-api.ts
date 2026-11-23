@@ -3,7 +3,7 @@ import type { SessionId, ValidationIssue } from "@nyte-ai/schema";
 import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext, PluginStorage } from "../contract/host.ts";
 import type { Attached, Kernel, RegistrySet } from "../contract/kernel.ts";
-import type { PluginApi, Registries, RuntimeCall, RuntimeVerdict } from "../contract/plugin.ts";
+import type { PluginApi, Registries } from "../contract/plugin.ts";
 import type { Session } from "../contract/session.ts";
 import type { Resources } from "../contract/workspace.ts";
 import { commit } from "../watch/commit.ts";
@@ -109,35 +109,8 @@ export function build(
       return inputs;
     },
     request: (request) => kernel.request(session, request),
-    approve: (call, signal) => approveRuntimeCall(kernel, session, call, signal),
+    approve: (call, signal) => kernel.plugins.runtime(session).approve(call, signal),
   };
-}
-
-const ALLOWED: RuntimeVerdict = { kind: "allow" };
-
-async function approveRuntimeCall(
-  kernel: Kernel,
-  session: SessionId,
-  call: RuntimeCall,
-  signal: AbortSignal,
-): Promise<RuntimeVerdict> {
-  const runtime = kernel.plugins.runtimes().get(session);
-  const release = runtime?.hold();
-
-  try {
-    for (const plugin of runtime?.plugins() ?? []) {
-      const api = runtime?.instance(plugin.id)?.api;
-
-      if (plugin.approve === undefined || api === undefined) continue;
-      const verdict = await plugin.approve(call, { api, signal });
-
-      if (verdict.kind === "deny") return verdict;
-    }
-  } finally {
-    release?.();
-  }
-
-  return signal.aborted ? { kind: "deny", reason: "The request was aborted." } : ALLOWED;
 }
 
 export function pluginSecrets(kernel: Kernel, owner: string): PluginStorage["secrets"] {

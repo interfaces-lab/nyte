@@ -52,8 +52,6 @@ async function controlled(attach: () => Promise<typeof env>) {
             id: workspace,
             target: { kind: "local", path: "/tmp/project" },
             identity: asId("identity"),
-            projectResources: true,
-            projectSources: [],
             addedBy: asId("local"),
             createdAt: 0,
             isolation: null,
@@ -279,6 +277,7 @@ describe("plugin reload (D4)", () => {
       content: "Hi.",
     });
     const old = fixture.kernel.plugins.runtime(session.id);
+    const release = old.hold();
     await fixture.kernel.plugins.reload(session.id);
 
     const result = await old.hooks.transform(
@@ -286,6 +285,7 @@ describe("plugin reload (D4)", () => {
       { kind: "ok", content: [], output: null, parts: [] },
       { session: session.id, head: main, run: null, principal: asId("local") },
     );
+    release();
 
     assert(result.kind === "ok");
     expect(result.content).toEqual([{ kind: "text", text: "OLD" }]);
@@ -583,12 +583,18 @@ describe("readers during a reload", () => {
       readonly session: Session;
       readonly part: Part<typeof marker>;
       readonly api: PluginApi<"core">;
+      readonly finishReload: () => void;
     }) => Promise<unknown>;
     readonly expected: unknown;
   }[] = [
     {
-      name: "a run resolves its pinned agent and mode",
-      read: async ({ session }) => (await (await session.send("Go.")).settled()).kind,
+      name: "a send is admitted with its pinned agent and mode, and its run waits for the reload",
+      read: async ({ session, finishReload }) => {
+        const receipt = await session.send("Go.");
+        finishReload();
+
+        return (await receipt.settled()).kind;
+      },
       expected: "completed",
     },
     {
@@ -612,7 +618,7 @@ describe("readers during a reload", () => {
     },
   ];
 
-  it.each(cases)("$name, from the live plugins", async ({ read, expected }) => {
+  it.each(cases)("$name, from the loaded plugins", async ({ read, expected }) => {
     const apis: PluginApi<"core">[] = [];
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
@@ -669,7 +675,7 @@ describe("readers during a reload", () => {
     const reloaded = host.kernel.plugins.reload(session.id);
     await entered.promise;
 
-    expect(await read({ session, part, api })).toEqual(expected);
+    expect(await read({ session, part, api, finishReload: release.resolve })).toEqual(expected);
     release.resolve();
     await reloaded;
   });

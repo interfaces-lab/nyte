@@ -71,7 +71,8 @@
 - **`PluginApi.registries` only reads.** It has no `add` and no `hook`, so nothing is added after an activation settles. `PluginInstance.add` installs on every host the instance has joined, and on each it joins later.
 - **`when`.** A tool, setting, command or prompt section with `when` is in a chat only while `when(chat)` returns `true`. A registry asks at the end of every pass, after derivations. A throw becomes a plugin issue and leaves the item out. `when` never awaits.
 - **`Chat` is a snapshot** the runtime reads before a pass: the session's parent and each drafted setting's value. A setting change reads it again and reruns the pass.
-- **Never await the runtime's `ready` during activation.** `activationSession` doesn't, because awaiting it deadlocks. Until `ready` settles, hooks go to the previous runtime's handlers.
+- **Never await the runtime's `ready` during activation.** `activationSession` doesn't, because awaiting it deadlocks.
+- **A reload swaps in once it loads.** Until then, `runtime` returns the previous one, so commands, parts, approvals and hooks keep working. Build a model request on `newest`, so it waits for what the user last changed.
 - **Hook failures.** An observe hook's failure becomes a plugin issue. A transform hook's failure fails the caller. A decide hook's throw or timeout is recorded as its call result and replays.
 
 ## Authority

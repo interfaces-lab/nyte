@@ -237,7 +237,7 @@ async function prepareRequest(
 ): Promise<Prepared<TurnRequest>> {
   const { kernel, models, session, head, signal } = context;
   await refreshPromptFiles(kernel, session);
-  const runtime = kernel.plugins.runtime(session);
+  const runtime = kernel.plugins.newest(session);
   context.holds.push({ runtime, release: runtime.hold() });
 
   const ended = startSpan("turn.start", followedTrace(session), {

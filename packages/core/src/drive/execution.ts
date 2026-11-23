@@ -171,7 +171,7 @@ export async function advance(
       return { kind: "idle" };
     }
     kernel.children.link(found.record, null, 0);
-    const runtime = kernel.plugins.runtime(session);
+    const runtime = kernel.plugins.newest(session);
     await runtime.ready;
 
     if (JSON.stringify(runtime.assigned()) !== JSON.stringify(found.record.plugins ?? null)) {

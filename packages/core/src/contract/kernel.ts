@@ -66,6 +66,8 @@ import type {
   PluginApi,
   Registries,
   Registry,
+  RuntimeCall,
+  RuntimeVerdict,
   SettingDefinition,
   SettingsRegistry,
 } from "./plugin.ts";
@@ -201,7 +203,11 @@ export interface PluginHost {
 
   readonly state: PluginState;
 
+  /** The runtime serving the session's commands, parts, approvals and catalog; while a reload loads, the one it replaces. */
   runtime(session: SessionId): PluginRuntime;
+
+  /** The runtime the session's latest reload made, loading or not. A model request waits on it, so it runs with what the user last changed. */
+  newest(session: SessionId): PluginRuntime;
 
   reload(session: SessionId): Promise<void>;
 
@@ -392,8 +398,10 @@ export interface PluginRuntime {
 
   instance(id: string): PluginInstance | undefined;
 
-  /** The agents and settings the session runs with. While a reload activates, they stay the previous runtime's, as its hooks do. */
   contributions(): Contributions;
+
+  /** Asks the plugins that declare `approve` once this runtime has loaded; one that failed to load denies. */
+  approve(call: RuntimeCall, signal: AbortSignal): Promise<RuntimeVerdict>;
 
   /** The session record's plugins as of this runtime's last load; null when the session has none assigned. */
   assigned(): readonly AssignedPlugin[] | null;
