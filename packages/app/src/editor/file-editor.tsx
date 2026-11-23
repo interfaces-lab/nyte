@@ -1,67 +1,50 @@
-import { EditStateManager, resolveSearchShortcut } from "@nyte-ai/ui/diffs/edit";
-import type { EditorSelection, Editor } from "@nyte-ai/ui/diffs/edit";
+import { resolveSearchShortcut } from "@nyte-ai/ui/diffs/edit";
+import type { EditorSelection, Marker } from "@nyte-ai/ui/diffs/edit";
 import type { CodeViewSearch } from "@nyte-ai/ui/diffs";
 import type { CodeViewHandle } from "@nyte-ai/ui/diffs/react";
 import { create, props } from "@stylexjs/stylex";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  useEffectEvent,
-  useImperativeHandle,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import type { MouseEvent, ReactElement, Ref } from "react";
-import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
-import type { Document } from "@nyte-ai/sdk";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { MouseEvent, ReactElement, Ref, RefObject } from "react";
+import type { Document, WorkspaceId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { diffStyles } from "../diff/diff.stylex.ts";
 import { applyDiffScopes } from "../diff/diff-view.tsx";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
+import type { HostBridge, ThemePreference } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { addFileToChat, addsToChat } from "../references/add-to-chat.ts";
-import {
-  selectedLines,
-  revealSelection,
-  shineSelection,
-  wholeLineSelection,
-} from "./editor-selection.ts";
+import { selectedLines, shineSelection } from "./editor-selection.ts";
 import { ChangePeek, useLineChanges } from "./change-peek.tsx";
 import { CompletionList } from "./completion-list.tsx";
 import { DeclarationPopups } from "./declaration-popups.tsx";
-import { shareDocument } from "./document-channel.ts";
-import { mirrorDraft } from "./draft-mirror.ts";
 import { languageDocuments } from "./language-documents.ts";
 import { caretPosition, editorRange, selectionRange, textChanges } from "./pierre-language.ts";
 import { useCompletion } from "./use-completion.ts";
 import { useDeclarations } from "./use-declarations.ts";
 import { diagnosed, useDiagnostics } from "./use-diagnostics.ts";
 import {
-  BlameText,
   CaretPosition,
   caretStore,
-  documentEditor,
   FileCodeView,
   itemEditorOptions,
   latestValue,
   shownCaret,
   viewerHandlers,
 } from "./file-code-view.tsx";
-import type { ItemEditor, ItemEditorCallbacks } from "./file-code-view.tsx";
+import type { ItemEditor } from "./file-code-view.tsx";
+import { FileBlame } from "./file-blame.tsx";
 import { changeBarCss, revertEdit } from "./line-changes.ts";
 import type { LineChange } from "./line-changes.ts";
 import { keys } from "../data/query-client.ts";
-import { useDocument, useSaveDocument } from "../data/documents.ts";
+import { useDocument } from "../data/documents.ts";
 import { formatBytes } from "../lib/format.ts";
-import { gitFor } from "../data/vcs.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useAppearance } from "../preferences/appearance-store.ts";
 import { watchFamily } from "../data/watch-store.ts";
 import { EditorFind } from "./editor-find.tsx";
-import { formatDocument } from "./format-document.ts";
 import { LanguageBar } from "./language-bar.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -70,26 +53,20 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { workspaceFile } from "../workbench/paths.ts";
 import { useWorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
-import {
-  bufferState,
-  createFileDocument,
-  sameBufferState,
-  settledContents,
-} from "./file-document.ts";
-import type { DocumentEditor, FileBuffer } from "./file-document.ts";
+import type { FileBuffer } from "./file-document.ts";
 import { TAB_COLUMNS, visualColumn } from "./indentation.ts";
 import { FileImage, FileMessage, FileVideo, RevealButton, viewerStyles } from "./file-viewers.tsx";
-import { fileActions, holdDocument } from "./file-store.ts";
+import { fileActions } from "./file-store.ts";
 import { MarkdownDocument } from "./markdown-document.tsx";
 import { FilePdf } from "./file-pdf.tsx";
 import { opensAsMarkdown } from "./markdown-parse.ts";
 import { opensUnwrapped } from "./long-line.ts";
 import { editorViewOptions } from "./editor-view-options.ts";
 import type { FileTab } from "./file-store.ts";
+import { useEditorSession } from "./use-editor-session.ts";
+import { useFileBuffer } from "./use-file-buffer.ts";
 
 type TextFile = Extract<Document, { readonly kind: "text" }>;
-
-const SETTLE_MS = 250;
 
 const diskEvents = watchFamily((connection, path: string) => ({
   values: connection.documents.watch([path]),
@@ -257,29 +234,6 @@ export function TextFileEditor({
 }): ReactElement {
   const { navigationRevision } = file;
 
-  const [buffer] = useState(() => {
-    const create = (): FileBuffer => createFileDocument(document);
-
-    return holdDocument({ view: viewKey, path: file.path, holder: `tab:${file.id}`, create })
-      .buffer;
-  });
-
-  const snapshot = useSyncExternalStoreWithSelector(
-    buffer.subscribe,
-    buffer.getSnapshot,
-    buffer.getSnapshot,
-    bufferState,
-    sameBufferState,
-  );
-
-  const [settled] = useState(() => settledContents(buffer, SETTLE_MS));
-
-  const settledText = useSyncExternalStore(
-    settled.subscribe,
-    settled.getSnapshot,
-    settled.getSnapshot,
-  );
-
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
 
   const [setViewer] = useState(
@@ -292,72 +246,11 @@ export function TextFileEditor({
   const [search, setSearch] = useState<CodeViewSearch>();
   const mac = nyte.platform === "darwin";
 
-  const navigation = useRef({ active, revision: navigationRevision, target: file.target });
-
-  const appliedNavigation = useRef(-1);
-
-  const [caret] = useState(caretStore);
-
-  const scrollTop = useRef(0);
-
-  const attached = useRef<{ readonly editor: ItemEditor; readonly source: DocumentEditor }>(
-    undefined,
-  );
+  const { caret, showCaret, selectionChanged } = useCaret({ path: file.path, viewer, root });
 
   const editKey = `${viewKey}\n${file.id}`;
 
-  const showCaret = (selection: EditorSelection | undefined): void => {
-    if (selection === undefined) return;
-    const focus = selection.direction === -1 ? selection.start : selection.end;
-    const lineText = viewer.current?.getEditor(file.path)?.getLineText(focus.line);
-
-    caret.set({
-      revision: navigation.current.revision,
-      line: focus.line + 1,
-      column:
-        lineText === undefined
-          ? focus.character + 1
-          : visualColumn(lineText, focus.character, TAB_COLUMNS) + 1,
-      lines: selectedLines(selection),
-    });
-  };
-
-  const selectionChanged = useRef((selections: readonly EditorSelection[]): void => {
-    showCaret(selections.at(-1));
-  });
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest selection reader for Pierre's callback, which keeps the editor's options stable
-  useLayoutEffect(() => {
-    selectionChanged.current = (selections) => {
-      const primary = selections.at(-1);
-      const text = viewer.current?.getEditor(file.path)?.getEditState()?.document;
-
-      showCaret(primary);
-
-      if (
-        primary !== undefined &&
-        text !== undefined &&
-        window.document.hasFocus() &&
-        root.current?.contains(window.document.activeElement) === true
-      ) {
-        shineSelection(file.path, text, primary);
-      }
-    };
-  });
-
   const currentEditor = () => viewer.current?.getEditor(file.path);
-
-  useMountEffect(() =>
-    fileActions.track(file.id, () => {
-      const view = currentEditor()?.getViewState();
-
-      return view?.selections === undefined ? undefined : { kind: "view", view };
-    }),
-  );
-
-  useMountEffect(() => () => {
-    if (!fileActions.holds(viewKey, file.id)) EditStateManager.clear("file", editKey);
-  });
 
   const addSelection = (selection: EditorSelection | undefined): boolean => {
     const lines = selectedLines(selection);
@@ -365,12 +258,6 @@ export function TextFileEditor({
     return lines !== undefined && addFileToChat(file, lines);
   };
 
-  const appearance = useAppearance();
-  const theme = appearance.dark ? "dark" : "light";
-  const codeFont = useSetting(preferences.codeFont);
-  const codeFontSize = useSetting(preferences.codeFontSize);
-  const lineNumbers = useSetting(preferences.fileLineNumbers);
-  const wordWrap = useSetting(preferences.fileWordWrap) && !opensUnwrapped(document.contents);
   const documentView = opensAsMarkdown(file.path) && !file.showSource;
   const browsed = useWorkbenchWorkspace();
 
@@ -381,43 +268,28 @@ export function TextFileEditor({
 
   const project = browsed.kind === "ready" ? browsed.workspace : undefined;
 
-  useMountEffect(() => () => {
-    if (project !== undefined) languageDocuments.closed(project.path, file.path);
+  const { buffer, snapshot, settledText, commands } = useFileBuffer({
+    ref,
+    viewKey,
+    file,
+    document,
+    autoSave,
+    reload,
+    workspace,
+    project,
   });
 
-  const declarations = useDeclarations({
+  const { declarations, completion, diagnostics } = useLanguageFeatures({
     viewKey,
-    path: file.path,
+    file,
     buffer,
-    workspace: project,
+    project,
     mac,
-    readOnly: file.readOnly,
-    caret: () => caretPosition(currentEditor()?.getViewState().selections?.at(-1)),
-    selection: () => selectionRange(currentEditor()?.getViewState().selections?.at(-1)),
-    rangeRect: (range) => currentEditor()?.getRangeRect(editorRange(range)),
-    fallbackRect: () => root.current?.getBoundingClientRect() ?? new DOMRect(),
-    diagnosed: (position) => diagnosed(diagnostics.markers(), position),
-    focus: () => currentEditor()?.focus(),
-  });
-
-  const completion = useCompletion({
-    viewKey,
-    path: file.path,
-    workspace: project,
-    readOnly: file.readOnly,
+    root,
     editor: currentEditor,
+    show: (markers) => session.attached.current?.editor.setMarkers(markers),
   });
 
-  const diagnostics = useDiagnostics({
-    viewKey,
-    path: file.path,
-    workspace: project,
-    show: (markers) => attached.current?.editor.setMarkers(markers),
-  });
-
-  const gitBlame = useSetting(preferences.fileGitBlame) && workspace !== undefined && !documentView;
-  const formatOnSave = useSetting(preferences.fileFormatOnSave);
-  const saveFile = useSaveDocument();
   const dirty = snapshot.dirty;
 
   const changeTracking = useLineChanges({
@@ -433,234 +305,35 @@ export function TextFileEditor({
     viewer,
   });
 
-  const [latest] = useState(() =>
-    latestValue({ peekAt: changeTracking.peekAt, pointer: declarations.pointer }),
-  );
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest peek and pointer for Pierre's callbacks, which keeps the viewer's options stable
-  useLayoutEffect(() => {
-    latest.set({ peekAt: changeTracking.peekAt, pointer: declarations.pointer });
+  const handlers = useViewerHandlers({
+    peekAt: changeTracking.peekAt,
+    pointer: declarations.pointer,
+    changes: changeTracking.changes,
   });
 
-  const [bars] = useState(() => new CSSStyleSheet());
+  const { theme, options } = useCodeLook({ root, viewer, contents: document.contents });
 
-  const [handlers] = useState(() => viewerHandlers(latest.get, bars));
+  const viewOptions = { ...options, ...handlers };
 
-  const viewOptions = {
-    ...editorViewOptions({ theme, lineNumbers, wordWrap, codeFontSize }),
-    ...handlers,
-  };
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- draws the change bars into the editor's own stylesheet, so the viewer's options never change for them
-  useLayoutEffect(() => {
-    bars.replaceSync(changeBarCss(changeTracking.changes ?? []));
-  }, [bars, changeTracking.changes]);
-
-  const blame = useQuery({
-    queryKey: ["files", "blame", file.path, snapshot.version],
-    queryFn: async () => (await gitFor(workspace)).blame(file.path),
-    enabled: gitBlame && active && !dirty,
+  const session = useEditorSession({
+    viewKey,
+    editKey,
+    file,
+    active,
+    buffer,
+    viewer,
+    root,
+    showCaret,
+    markers: diagnostics.markers,
+    select: (selections, revision) => {
+      selectionChanged.current(selections, revision);
+      completion.moved();
+    },
+    add: addSelection,
   });
-
-  const format = async (): Promise<string | null> =>
-    workspace === undefined || project === undefined
-      ? null
-      : formatDocument({ view: viewKey, workspace: project, path: file.path, buffer });
-
-  const save = async (): Promise<void> => {
-    await buffer.save({
-      write: (input) => saveFile.mutateAsync({ ...input, expect: input.version }),
-      format: formatOnSave
-        ? async () => {
-            await format();
-
-            return null;
-          }
-        : undefined,
-    });
-  };
-
-  const latestSave = useRef(save);
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest save for the autosave timer, which runs outside render
-  useLayoutEffect(() => {
-    latestSave.current = save;
-  });
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- buffer subscription that mirrors drafts into the file store
-  useLayoutEffect(
-    () =>
-      mirrorDraft({ buffer, viewKey, path: file.path, autoSave, save: () => latestSave.current() }),
-    [autoSave, buffer, file.path, viewKey],
-  );
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- shares the buffer with the other windows that have this file open
-  useLayoutEffect(() => shareDocument(file.path, buffer), [buffer, file.path]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- hands the disk document to the buffer to detect outside edits
-  useLayoutEffect(() => {
-    buffer.observeDisk(document);
-  }, [buffer, document]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- resolves the change colours once per appearance on the tab's root, which every viewer the tab mounts inherits
-  useLayoutEffect(() => {
-    if (root.current !== null) applyDiffScopes(root.current);
-  }, [appearance]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- re-renders the imperative viewer when the code font changes
-  useLayoutEffect(() => {
-    viewer.current?.getInstance()?.render(true);
-  }, [codeFont, codeFontSize]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- tells the imperative editor whether it takes typing
-  useLayoutEffect(() => {
-    viewer.current?.getEditor(file.path)?.setOptions({ readOnly: file.readOnly });
-  }, [file.path, file.readOnly]);
-
-  const showTarget = (
-    editor: Pick<
-      Editor,
-      "focus" | "getText" | "getViewState" | "setSelections" | "setViewState" | "getRangeRect"
-    >,
-  ): boolean => {
-    const request = navigation.current;
-    const shown = request.target;
-
-    if (!request.active || shown === undefined || appliedNavigation.current >= request.revision) {
-      return false;
-    }
-    appliedNavigation.current = request.revision;
-
-    if (shown.kind === "view") {
-      editor.setViewState(shown.view);
-      editor.focus({ preventScroll: true });
-      showCaret(shown.view.selections?.at(-1));
-
-      const primary = shown.view.selections?.at(-1);
-
-      if (primary !== undefined) {
-        viewer.current?.scrollTo({
-          type: "line",
-          id: file.path,
-          lineNumber: (primary.direction === -1 ? primary.start.line : primary.end.line) + 1,
-          align: "center",
-        });
-      }
-
-      return true;
-    }
-
-    const range =
-      shown.kind === "lines"
-        ? shown.lines
-        : { start: shown.line, end: shown.kind === "range" ? shown.endLine : shown.line };
-
-    const column = shown.kind === "lines" ? 0 : (shown.column ?? 1) - 1;
-    const at = { line: range.start - 1, character: column };
-
-    if (shown.kind === "lines") viewer.current?.setSelectedLines({ id: file.path, range });
-
-    const current = viewer.current;
-
-    if (current === null) return false;
-    revealSelection(current, editor, {
-      path: file.path,
-      box: root.current,
-      selection:
-        shown.kind === "lines"
-          ? wholeLineSelection(editor.getText(), shown.lines)
-          : shown.kind === "match"
-            ? {
-                start: at,
-                end: { line: at.line, character: column + shown.length },
-                direction: "forward",
-              }
-            : shown.kind === "range"
-              ? {
-                  start: at,
-                  end: { line: shown.endLine - 1, character: shown.endColumn - 1 },
-                  direction: "forward",
-                }
-              : { start: at, end: at, direction: "none" },
-    });
-    showCaret(editor.getViewState().selections?.at(-1));
-
-    return true;
-  };
-
-  const takeKeyboard = (editor: Pick<Editor, "focus" | "getViewState" | "setSelections">): void => {
-    if ((editor.getViewState().selections ?? []).length === 0) {
-      const start = { line: 0, character: 0 };
-
-      editor.setSelections([{ start, end: start, direction: "none" }]);
-    }
-    editor.focus({ preventScroll: true });
-  };
-
-  const attachEditor = (editor: ItemEditor): void => {
-    if (editor.getFile() === undefined || attached.current?.editor === editor) return;
-    const source = documentEditor(editor);
-
-    attached.current = { editor, source };
-    buffer.attach(source);
-    editor.setMarkers(diagnostics.markers());
-    showCaret(editor.getViewState().selections?.at(-1));
-
-    if (!showTarget(editor) && scrollTop.current > 0) {
-      viewer.current?.scrollTo({ type: "position", position: scrollTop.current });
-    }
-
-    if (active && fileActions.takeFocus(file.id)) takeKeyboard(editor);
-  };
-
-  const [latestEditor] = useState(() => latestValue<ItemEditorCallbacks | undefined>(undefined));
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest attach and selection action for Pierre's callbacks, which the editor reads once when it is created
-  useLayoutEffect(() => {
-    latestEditor.set({
-      select: (selections) => {
-        selectionChanged.current(selections);
-        completion.moved();
-      },
-      attach: attachEditor,
-      add: addSelection,
-    });
-  });
-
-  const showCurrentTarget = useEffectEvent(showTarget);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- applies line navigation to the imperative editor before paint
-  useLayoutEffect(() => {
-    navigation.current = { active, revision: navigationRevision, target: file.target };
-    const editor = attached.current?.editor;
-
-    if (editor !== undefined) showCurrentTarget(editor);
-  }, [active, file.path, file.target, navigationRevision]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- hands the keyboard to the imperative editor once it is attached
-  useLayoutEffect(() => {
-    const editor = attached.current?.editor;
-
-    if (active && editor !== undefined && fileActions.takeFocus(file.id)) takeKeyboard(editor);
-  }, [active, file.id, file.wantsFocus]);
-
-  const discard = async (): Promise<void> => {
-    if (buffer.getSnapshot().status.kind === "saving") {
-      throw new Error("Wait for the current save to finish.");
-    }
-    const result = await reload();
-
-    if (result.error !== null) throw result.error;
-
-    if (result.data?.kind !== "text") throw new Error("The file can no longer be read as text.");
-    buffer.discard(result.data);
-  };
-
-  const formatNow = (): Promise<void> => buffer.format(format);
-
-  useImperativeHandle(ref, () => ({ save, discard, format: formatNow }));
 
   const revert = (change: LineChange): void => {
-    const editor = attached.current?.editor;
+    const editor = session.attached.current?.editor;
     const text = editor?.getEditState()?.document;
 
     if (editor === undefined || text === undefined) return;
@@ -678,68 +351,15 @@ export function TextFileEditor({
   const openContextMenu =
     contextMenu === undefined
       ? undefined
-      : (event: MouseEvent<HTMLElement>): void => {
-          event.preventDefault();
-          const lines = shownCaret(caret.get(), navigationRevision, file.target).lines;
-
-          void showContextMenu(contextMenu, event, [
-            { kind: "role", role: "cut", label: "Cut" },
-            { kind: "role", role: "copy", label: "Copy" },
-            { kind: "role", role: "paste", label: "Paste" },
-            { kind: "role", role: "selectAll", label: "Select All" },
-            { kind: "separator" },
-            lines !== undefined && {
-              kind: "item",
-              label: "Add Selection to Chat",
-              accelerator: "CmdOrCtrl+Shift+L",
-              run: () => addFileToChat(file, lines),
-            },
-            { kind: "item", label: "Add File to Chat", run: () => addFileToChat(file) },
-            { kind: "separator" },
-            workspace !== undefined && {
-              kind: "item",
-              label: "Format Document",
-              run: () => void formatNow(),
-            },
-            {
-              kind: "item",
-              label: "Save",
-              accelerator: "CmdOrCtrl+S",
-              enabled: dirty,
-              run: () => void save(),
-            },
-            { kind: "separator" },
-            {
-              kind: "item",
-              label: "Copy Path",
-              run: () => void navigator.clipboard.writeText(file.path),
-            },
-            !file.external && {
-              kind: "item",
-              label: "Copy Relative Path",
-              run: () => void navigator.clipboard.writeText(file.displayPath),
-            },
-            revealPath !== undefined && {
-              kind: "item",
-              label: revealLabel(nyte.platform),
-              run: () => void revealPath({ path: file.path }),
-            },
-          ]);
-        };
-
-  const blameAt = (line: number): string => {
-    const blameLine = blame.data?.lines.find((entry) => entry.line === line);
-
-    return dirty
-      ? "Save the file to see up-to-date Git blame."
-      : blame.isError
-        ? blame.error.message
-        : blame.isFetching
-          ? "Loading Git blame…"
-          : blameLine === undefined
-            ? "No Git blame for this line."
-            : `${blameLine.author} · ${new Date(blameLine.at).toLocaleDateString()} · ${blameLine.commit.slice(0, 7)}`;
-  };
+      : (event: MouseEvent<HTMLElement>): void =>
+          showFileMenu(contextMenu, event, {
+            file,
+            lines: shownCaret(caret.get(), navigationRevision, file.target).lines,
+            workspace,
+            dirty,
+            commands,
+            revealPath,
+          });
 
   const saveText =
     snapshot.status.kind === "saving"
@@ -758,7 +378,7 @@ export function TextFileEditor({
         ? snapshot.status.message
         : "";
 
-  const statusVisible = !documentView || gitBlame || saveText !== "" || errorText !== "";
+  const statusVisible = !documentView || saveText !== "" || errorText !== "";
 
   return (
     <div
@@ -831,12 +451,12 @@ export function TextFileEditor({
                   text: () => buffer.text(),
                   readOnly: file.readOnly,
                   mac,
-                  latest: latestEditor.get,
+                  latest: session.callbacks,
                 })
               }
               options={viewOptions}
               onEdited={(editor, changes) => {
-                const held = attached.current;
+                const held = session.attached.current;
 
                 if (held === undefined || held.editor !== editor) return;
 
@@ -851,17 +471,16 @@ export function TextFileEditor({
                 completion.edited(changes);
               }}
               onEnded={(editor, contents) => {
-                const held = attached.current;
+                const held = session.release(editor);
 
-                if (held === undefined || held.editor !== editor) return;
-                attached.current = undefined;
+                if (held === undefined) return;
                 completion.close();
                 buffer.detach(held.source, contents);
               }}
               onScroll={(top) => {
                 declarations.dismissHover();
                 completion.scrolled();
-                scrollTop.current = top;
+                session.scrolled(top);
               }}
               renderAnnotation={() =>
                 changeTracking.peek !== undefined && (
@@ -927,12 +546,14 @@ export function TextFileEditor({
             </Button>
           </span>
         )}
-        {gitBlame && (
-          <BlameText
+        {workspace !== undefined && !documentView && (
+          <FileBlame
+            file={file}
+            workspace={workspace}
+            version={snapshot.version}
+            active={active}
+            dirty={dirty}
             caret={caret}
-            revision={navigationRevision}
-            target={file.target}
-            describe={blameAt}
           />
         )}
         <span role="status" {...props(viewerStyles.statusText, styles.saveText)}>
@@ -945,7 +566,7 @@ export function TextFileEditor({
           {errorText}
         </span>
         {snapshot.status.kind === "error" && (
-          <Button onClick={() => void save()}>Retry Save</Button>
+          <Button onClick={() => void commands.save()}>Retry Save</Button>
         )}
         {!documentView && (
           <span {...props(styles.position)}>
@@ -961,4 +582,216 @@ export function TextFileEditor({
       </div>
     </div>
   );
+}
+
+function useCaret(input: {
+  readonly path: string;
+  readonly viewer: RefObject<CodeViewHandle<undefined, undefined> | null>;
+  readonly root: RefObject<HTMLDivElement | null>;
+}) {
+  const { path, viewer, root } = input;
+  const [caret] = useState(caretStore);
+
+  const showCaret = (selection: EditorSelection | undefined, revision: number): void => {
+    if (selection === undefined) return;
+    const focus = selection.direction === -1 ? selection.start : selection.end;
+    const lineText = viewer.current?.getEditor(path)?.getLineText(focus.line);
+
+    caret.set({
+      revision,
+      line: focus.line + 1,
+      column:
+        lineText === undefined
+          ? focus.character + 1
+          : visualColumn(lineText, focus.character, TAB_COLUMNS) + 1,
+      lines: selectedLines(selection),
+    });
+  };
+
+  const selectionChanged = useRef(
+    (selections: readonly EditorSelection[], revision: number): void => {
+      showCaret(selections.at(-1), revision);
+    },
+  );
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest selection reader for Pierre's callback, which keeps the editor's options stable
+  useLayoutEffect(() => {
+    selectionChanged.current = (selections, revision) => {
+      const primary = selections.at(-1);
+      const text = viewer.current?.getEditor(path)?.getEditState()?.document;
+
+      showCaret(primary, revision);
+
+      if (
+        primary !== undefined &&
+        text !== undefined &&
+        window.document.hasFocus() &&
+        root.current?.contains(window.document.activeElement) === true
+      ) {
+        shineSelection(path, text, primary);
+      }
+    };
+  });
+
+  return { caret, showCaret, selectionChanged };
+}
+
+function useLanguageFeatures(input: {
+  readonly viewKey: WorkbenchViewKey;
+  readonly file: FileTab;
+  readonly buffer: FileBuffer;
+  readonly project: { readonly id: WorkspaceId; readonly path: string } | undefined;
+  readonly mac: boolean;
+  readonly root: RefObject<HTMLDivElement | null>;
+  readonly editor: () => ItemEditor | undefined;
+  readonly show: (markers: Marker[]) => void;
+}) {
+  const { viewKey, file, project, editor } = input;
+
+  useMountEffect(() => () => {
+    if (project !== undefined) languageDocuments.closed(project.path, file.path);
+  });
+
+  const declarations = useDeclarations({
+    viewKey,
+    path: file.path,
+    buffer: input.buffer,
+    workspace: project,
+    mac: input.mac,
+    readOnly: file.readOnly,
+    caret: () => caretPosition(editor()?.getViewState().selections?.at(-1)),
+    selection: () => selectionRange(editor()?.getViewState().selections?.at(-1)),
+    rangeRect: (range) => editor()?.getRangeRect(editorRange(range)),
+    fallbackRect: () => input.root.current?.getBoundingClientRect() ?? new DOMRect(),
+    diagnosed: (position) => diagnosed(diagnostics.markers(), position),
+    focus: () => editor()?.focus(),
+  });
+
+  const completion = useCompletion({
+    viewKey,
+    path: file.path,
+    workspace: project,
+    readOnly: file.readOnly,
+    editor,
+  });
+
+  const diagnostics = useDiagnostics({
+    viewKey,
+    path: file.path,
+    workspace: project,
+    show: input.show,
+  });
+
+  return { declarations, completion, diagnostics };
+}
+
+type ViewerLatest = ReturnType<Parameters<typeof viewerHandlers>[0]>;
+
+function useViewerHandlers(
+  input: ViewerLatest & { readonly changes: readonly LineChange[] | undefined },
+) {
+  const [latest] = useState(() => latestValue({ peekAt: input.peekAt, pointer: input.pointer }));
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest peek and pointer for Pierre's callbacks, which keeps the viewer's options stable
+  useLayoutEffect(() => {
+    latest.set({ peekAt: input.peekAt, pointer: input.pointer });
+  });
+
+  const [bars] = useState(() => new CSSStyleSheet());
+
+  const [handlers] = useState(() => viewerHandlers(latest.get, bars));
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- draws the change bars into the editor's own stylesheet, so the viewer's options never change for them
+  useLayoutEffect(() => {
+    bars.replaceSync(changeBarCss(input.changes ?? []));
+  }, [bars, input.changes]);
+
+  return handlers;
+}
+
+function useCodeLook(input: {
+  readonly root: RefObject<HTMLDivElement | null>;
+  readonly viewer: RefObject<CodeViewHandle<undefined, undefined> | null>;
+  readonly contents: string;
+}) {
+  const { root, viewer } = input;
+  const appearance = useAppearance();
+  const theme: ThemePreference = appearance.dark ? "dark" : "light";
+  const codeFont = useSetting(preferences.codeFont);
+  const codeFontSize = useSetting(preferences.codeFontSize);
+  const lineNumbers = useSetting(preferences.fileLineNumbers);
+  const wordWrap = useSetting(preferences.fileWordWrap) && !opensUnwrapped(input.contents);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- resolves the change colours once per appearance on the tab's root, which every viewer the tab mounts inherits
+  useLayoutEffect(() => {
+    if (root.current !== null) applyDiffScopes(root.current);
+  }, [appearance, root]);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- re-renders the imperative viewer when the code font changes
+  useLayoutEffect(() => {
+    viewer.current?.getInstance()?.render(true);
+  }, [codeFont, codeFontSize, viewer]);
+
+  return { theme, options: editorViewOptions({ theme, lineNumbers, wordWrap, codeFontSize }) };
+}
+
+function showFileMenu(
+  contextMenu: NonNullable<HostBridge["contextMenu"]>,
+  event: MouseEvent<HTMLElement>,
+  input: {
+    readonly file: FileTab;
+    readonly lines: ReturnType<typeof selectedLines>;
+    readonly workspace: WorkspaceId | undefined;
+    readonly dirty: boolean;
+    readonly commands: FileEditorHandle;
+    readonly revealPath: HostBridge["revealPath"];
+  },
+): void {
+  const { file, lines, commands, revealPath } = input;
+
+  event.preventDefault();
+
+  void showContextMenu(contextMenu, event, [
+    { kind: "role", role: "cut", label: "Cut" },
+    { kind: "role", role: "copy", label: "Copy" },
+    { kind: "role", role: "paste", label: "Paste" },
+    { kind: "role", role: "selectAll", label: "Select All" },
+    { kind: "separator" },
+    lines !== undefined && {
+      kind: "item",
+      label: "Add Selection to Chat",
+      accelerator: "CmdOrCtrl+Shift+L",
+      run: () => addFileToChat(file, lines),
+    },
+    { kind: "item", label: "Add File to Chat", run: () => addFileToChat(file) },
+    { kind: "separator" },
+    input.workspace !== undefined && {
+      kind: "item",
+      label: "Format Document",
+      run: () => void commands.format(),
+    },
+    {
+      kind: "item",
+      label: "Save",
+      accelerator: "CmdOrCtrl+S",
+      enabled: input.dirty,
+      run: () => void commands.save(),
+    },
+    { kind: "separator" },
+    {
+      kind: "item",
+      label: "Copy Path",
+      run: () => void navigator.clipboard.writeText(file.path),
+    },
+    !file.external && {
+      kind: "item",
+      label: "Copy Relative Path",
+      run: () => void navigator.clipboard.writeText(file.displayPath),
+    },
+    revealPath !== undefined && {
+      kind: "item",
+      label: revealLabel(nyte.platform),
+      run: () => void revealPath({ path: file.path }),
+    },
+  ]);
 }
