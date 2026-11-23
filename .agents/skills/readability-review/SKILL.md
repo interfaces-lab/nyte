@@ -27,13 +27,13 @@ The scan covers the rules below; `pnpm lint` covers the rest of the mechanical s
 | Rule | What it wants |
 | --- | --- |
 | `constant-case` | CONSTANT_CASE only for module-level `const` values nobody changes, never a function or a cache filled at runtime. A module-level literal is CONSTANT_CASE. |
-| `acronym-case` | Acronyms as words: `userId`, `loadHttpUrl`, `HtmlParser`. Brand spellings `OpenAI` and `iOS` pass. |
+| `acronym-case` | Acronyms as words: `userId`, `loadHttpUrl`, `HtmlParser`. Brand spellings `OpenAI` and `iOS` pass. So does a name another API fixes: a shorthand property, an object literal's method, a `declare global` interface. |
 | `abbreviation` | No words with letters deleted: `message`, `context`, `error`, not `msg`, `ctx`, `err`. |
 | `short-name` | One-letter names only in scopes of ten lines or fewer. |
-| `underscore` | No leading or trailing `_`. `_` alone and `_exhaustive` pass. |
+| `underscore` | No leading or trailing `_`. `_` alone and `_exhaustive` pass. So does an unused parameter that holds a position or carries a type. |
 | `type-in-name` | No type in a value's name (`itemsArray`, `nameString`) and no `I` prefix on interfaces. |
 | `assignment-in-expression` | Assign in a statement. `??=` lazy init passes. |
-| `destructuring` | Destructure several values or none: one value reads through dot notation. A destructured parameter is one level of shorthand names, with defaults on the left and `= {}` when optional. |
+| `destructuring` | Destructure several values or none: one value reads through dot notation, and one value beside `...rest` passes. A destructured parameter is one level of shorthand names, with defaults on the left and `= {}` when optional. |
 
 ## 2. Judge the names
 

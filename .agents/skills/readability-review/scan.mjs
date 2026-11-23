@@ -132,7 +132,7 @@ function scanFile(file) {
 
     if (name === "_" || name === "_exhaustive") return;
 
-    if (/^_|_$/u.test(name)) {
+    if (/^_|_$/u.test(name) && !holdsPosition(node)) {
       report(
         "underscore",
         binding.id,
@@ -140,7 +140,11 @@ function scanFile(file) {
       );
     }
 
-    if (ACRONYM.test(name.replaceAll(BRANDS, "Brand")) && !CONSTANT.test(name)) {
+    if (
+      ACRONYM.test(name.replaceAll(BRANDS, "Brand")) &&
+      !CONSTANT.test(name) &&
+      !namedElsewhere(node)
+    ) {
       report(
         "acronym-case",
         binding.id,
@@ -298,6 +302,24 @@ function readBinding(node) {
   return undefined;
 }
 
+function holdsPosition(node) {
+  if (!ts.isParameter(node) || !node.name.getText().startsWith("_")) return false;
+
+  return node.type !== undefined || node.parent.parameters.at(-1) !== node;
+}
+
+function namedElsewhere(node) {
+  if (ts.isBindingElement(node) && node.propertyName === undefined) return true;
+
+  if (ts.isMethodDeclaration(node) && ts.isObjectLiteralExpression(node.parent)) return true;
+
+  return (
+    ts.isInterfaceDeclaration(node) &&
+    ts.isModuleBlock(node.parent) &&
+    (node.parent.parent.flags & ts.NodeFlags.GlobalAugmentation) !== 0
+  );
+}
+
 function readMutations(source, startLine) {
   const mutations = new Map();
 
@@ -342,7 +364,8 @@ function readDestructuringProblem(node) {
   const elements = pattern.elements.filter((element) => ts.isBindingElement(element));
 
   if (ts.isVariableDeclaration(node)) {
-    return elements.filter((element) => element.dotDotDotToken === undefined).length === 1 &&
+    return elements.length === 1 &&
+      elements[0].dotDotDotToken === undefined &&
       !ts.isForOfStatement(node.parent.parent)
       ? "This destructures one value. Read it with dot notation where it is used."
       : undefined;
