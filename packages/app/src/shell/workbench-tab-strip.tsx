@@ -54,7 +54,7 @@ import type {
 } from "../workbench/model.ts";
 import { activeWorkbenchTab, tabPresentation, workbenchStripTabs } from "../workbench/selectors.ts";
 import { workbench } from "../workbench/store.ts";
-import { launch } from "../workbench/commands.ts";
+import { launch } from "../commands/launch.ts";
 import {
   closeTab,
   confirmTerminalClose,

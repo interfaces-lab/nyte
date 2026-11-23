@@ -23,7 +23,7 @@ import {
 } from "../settings-sections/sections.ts";
 import { closeSettings } from "../settings-sections/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { launch, toggleExplorer } from "../workbench/commands.ts";
+import { launch, toggleExplorer } from "./launch.ts";
 import { closeTab } from "./close-tab.ts";
 import { workbenchHasFocus } from "../workbench/focus-region.ts";
 import { fileActions } from "../editor/file-store.ts";

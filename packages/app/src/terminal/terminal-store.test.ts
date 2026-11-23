@@ -3,7 +3,7 @@ import { asId } from "@nyte-ai/schema";
 import type { Job, JobView, OutputFrame, WorkspaceInfo } from "@nyte-ai/sdk";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { attachTerminalOutput, getTerminal, terminalActions } from "./terminal-store.ts";
-import { openJobTerminal } from "../workbench/commands.ts";
+import { openJobTerminal } from "./job-terminal.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
 import type { WorkbenchPersistence } from "../workbench/persistence.ts";
 import { createWorkbenchStore, workbench } from "../workbench/store.ts";

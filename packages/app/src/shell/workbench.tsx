@@ -38,7 +38,8 @@ import { workbenchScope, workbenchViewKey, workspacePathForView } from "../workb
 import { railModel, shownWorkbenchTab, visibleTabs } from "../workbench/selectors.ts";
 import { useWorkbenchSnapshot, workbench } from "../workbench/store.ts";
 import type { ChangesTabPatch } from "../workbench/view-reducer.ts";
-import { launch, openUrl } from "../workbench/commands.ts";
+import { launch } from "../commands/launch.ts";
+import { openUrl } from "../workbench/commands.ts";
 import { WorkbenchWorkspaceContext } from "../workbench/workbench-workspace.tsx";
 import type { WorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
 import { CompactRail, Rail, RailRow } from "./workbench-rail.tsx";

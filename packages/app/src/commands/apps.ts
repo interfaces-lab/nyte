@@ -6,7 +6,7 @@ import { documentsApi } from "../data/documents.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import { currentLights, HERE, watchLights } from "../light/light.ts";
-import { launch } from "../workbench/commands.ts";
+import { launch } from "./launch.ts";
 import { EDITOR_SLOT } from "../workbench/model.ts";
 import { spanTarget } from "../editor/editor-selection.ts";
 import { fileActions } from "../editor/file-store.ts";

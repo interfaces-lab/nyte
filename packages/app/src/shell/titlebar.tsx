@@ -26,7 +26,7 @@ import { sessionActions } from "../data/session-rows.ts";
 import { useWorkbenchView, workbench } from "../workbench/store.ts";
 import { EDITOR_SLOT, tabSlot, workbenchNarrow, workbenchShowsChat } from "../workbench/model.ts";
 import { shownWorkbenchTab } from "../workbench/selectors.ts";
-import { toggleExplorer } from "../workbench/commands.ts";
+import { toggleExplorer } from "../commands/launch.ts";
 import { ChatHistory } from "./chat-history.tsx";
 import { attachSidebarWidth, shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { attachActiveWorkbenchWidth } from "../workbench/width.ts";

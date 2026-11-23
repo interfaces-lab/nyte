@@ -24,7 +24,8 @@ import { branchReadout, changesSummary, vcsRequestForScope } from "../changes/ch
 import { ChangeStats } from "../components/change-stats.tsx";
 import { changeTotals, workingRows } from "../changes/changes-model.ts";
 import { useChangesViewOptions } from "../changes/changes-view-options.ts";
-import { launch, openChanges } from "../workbench/commands.ts";
+import { launch } from "../commands/launch.ts";
+import { openChanges } from "../workbench/commands.ts";
 import { useFileTabs } from "../editor/file-store.ts";
 import { WORKBENCH_KINDS, workbenchLaunchers } from "../workbench/model.ts";
 import type {
