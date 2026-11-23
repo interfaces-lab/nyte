@@ -97,8 +97,6 @@ const updates: string[] = [];
 
 const host: HostView = {
   id: asId<"host">("scripted"),
-  link: { kind: "connected" },
-  operations: null,
   name: "Test",
   platform: "linux",
   version: "0.0.0",
@@ -109,6 +107,7 @@ const host: HostView = {
   defaultWorkspace: asId<"workspace">("home"),
   projects: [],
   authority: new Set(),
+  routes: [],
 };
 
 const scripted = scriptedConnection({

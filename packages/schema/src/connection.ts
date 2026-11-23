@@ -22,18 +22,6 @@ export type HostRoute = Decoded<typeof HostRouteType>;
 
 export const HostViewWireType = Type.Object({
   id: idSchema<"host">(),
-  link: Type.Union([
-    Type.Object({ kind: Type.Literal("connected") }),
-    Type.Object({
-      kind: Type.Literal("reconnecting"),
-      since: Type.Number(),
-      attempts: Type.Number(),
-    }),
-    Type.Object({
-      kind: Type.Literal("closed"),
-      reason: Type.Enum(["client", "revoked", "host-gone"]),
-    }),
-  ]),
   name: Type.String(),
   platform: Type.String(),
   version: Type.String(),
@@ -62,8 +50,8 @@ export const HostViewWireType = Type.Object({
   authority: Type.Array(AuthorityType),
   principal: idSchema<"principal">(),
   tailnet: Type.Optional(TailnetStatusType),
-  /** Other addresses that reach this host. Sent to every authority, unlike `tailnet`; hosts before API revision 22 omit it. */
-  routes: Type.Optional(Type.Array(HostRouteType)),
+  /** Other addresses that reach this host. Sent to every authority, unlike `tailnet`. */
+  routes: Type.Array(HostRouteType),
 });
 
 export type HostViewWire = Decoded<typeof HostViewWireType>;
@@ -106,7 +94,6 @@ export const SettingOutcomeSchema: Schema<SettingOutcome> = standard(SettingOutc
 
 export type HostView = Omit<HostViewWire, "authority" | "principal"> & {
   readonly authority: ReadonlySet<Authority>;
-  readonly operations: string | null;
 };
 
 export type CredentialSource =

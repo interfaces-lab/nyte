@@ -15,7 +15,7 @@ import type {
   UserContent,
 } from "@nyte-ai/sdk";
 import { SdkError } from "@nyte-ai/sdk";
-import type { Health, RefusedSend } from "@nyte-ai/sdk/client";
+import type { LinkState, RefusedSend } from "@nyte-ai/sdk/client";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { viewStream } from "../../../test/scripted-connection.ts";
 import { enterBehavior } from "./composer-keys.ts";
@@ -207,9 +207,15 @@ const saveGates: Promise<void>[] = [];
 
 let loseHold: (lost: Awaited<HeldMessage["lost"]>) => void = () => undefined;
 
-const OPEN: Health = { kind: "open", since: 0 };
+const OPEN: LinkState = {
+  kind: "open",
+  since: 0,
+  version: "0.0.0",
+  startedAt: 0,
+  match: { kind: "current" },
+};
 
-export const health = viewStream<Health>(OPEN);
+export const link = viewStream<LinkState>(OPEN);
 
 export const stops: PromiseWithResolvers<StopOutcome<never>>[] = [];
 
@@ -811,12 +817,7 @@ export async function pressStop({ region, editor, button }: Probe): Promise<read
   await painted();
   check(stops.length === sent + 1, `${String(stops.length - sent)} stops were sent, not 1`);
 
-  health.push({
-    kind: "retrying",
-    attempt: 1,
-    at: 0,
-    error: new SdkError("unavailable", "The link is lost."),
-  });
+  link.push({ kind: "away", since: 0, retryAt: 0, reason: "lost" });
   await until(() => (busy() === null ? true : null), "the pending Stop to clear with the link");
   button("Stop response")?.click();
   await until(() => (stops.length === sent + 2 ? true : null), "Stop to be sent again");
@@ -840,7 +841,7 @@ export async function pressStop({ region, editor, button }: Probe): Promise<read
         : null,
     "a failed Stop to clear and say so",
   );
-  health.push(OPEN);
+  link.push(OPEN);
 
   return failures;
 }

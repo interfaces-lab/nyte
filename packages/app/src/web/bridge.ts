@@ -38,6 +38,8 @@ const REMOTE_ACCESS = "Remote access is turned on from the desktop app.";
 
 const refuse = (message: string) => (): Promise<never> => Promise.reject(new Error(message));
 
+const WEB_VERSION = "web";
+
 function browserPlatform(): NodeJS.Platform {
   const name = `${navigator.platform} ${navigator.userAgent}`;
 
@@ -91,6 +93,7 @@ async function openDirect(
 
   const endpoint: HostEndpoint = {
     url,
+    version: WEB_VERSION,
     credentials: { kind: "custom", headers: () => ({}) },
     expect: pin,
   };
@@ -204,6 +207,7 @@ export function createWebBridge(): WebBridge {
     connect: async ({ url, token }, options) => {
       const chosen: HostEndpoint = {
         url,
+        version: WEB_VERSION,
         credentials: { kind: "token", token },
         expect: options?.expect,
       };

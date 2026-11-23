@@ -27,7 +27,8 @@ import {
   useWorkspaces,
 } from "../data/workspaces.ts";
 import type { RailWorkspace } from "../data/workspaces.ts";
-import { useHostHealth, useHostState, useServerState } from "../data/host.ts";
+import { useHostLink, useHostState, useServerState } from "../data/host.ts";
+import { readLinkNotices } from "../data/link-notices.ts";
 import { sessionActions, useRootRows } from "../data/session-rows.ts";
 import { groupByWorkspace, localSessions } from "../data/session-list.ts";
 import { useChats } from "../chats/index.ts";
@@ -141,16 +142,12 @@ export function Sidebar({
       : groupByWorkspace(roots, railWorkspaces);
 
   const server = useServerState();
-  const health = useHostHealth();
+  const link = useHostLink();
 
   const unreachable =
-    workspaceGroups !== undefined
+    workspaceGroups !== undefined || link === undefined
       ? undefined
-      : health?.kind === "retrying"
-        ? "Can't load chats. Retrying…"
-        : health?.kind === "blocked"
-          ? health.error.message
-          : undefined;
+      : (readLinkNotices(link, false).sidebar ?? undefined);
 
   const forgetWorkspace = useForgetWorkspace();
   const chats = useChats((directory) => directory);

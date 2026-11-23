@@ -327,7 +327,6 @@ export const sessionCases = {
     HostViewWireSchema,
     {
       id: host,
-      link: { kind: "reconnecting", since: 1, attempts: 2 },
       name: "mac",
       platform: "darwin",
       version: "0.1.0",
@@ -339,8 +338,9 @@ export const sessionCases = {
       projects: [project],
       authority: ["participant", "owner"],
       principal,
+      routes: [],
     },
-    { id: host, link: { kind: "connected" }, authority: [] },
+    { id: host, authority: [] },
   ),
   CredentialSourceWireSchema: sample(
     CredentialSourceWireSchema,

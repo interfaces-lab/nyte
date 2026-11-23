@@ -55,6 +55,8 @@ export interface ClientConnectOptions {
   readonly transport?: { readonly fetch?: Fetch; readonly socket?: OpenSocket };
   /** Dial again on the retry curve until the host answers or this aborts, for a client that lives as long as its host may be away. Without it, a host that doesn't answer rejects. */
   readonly wait?: AbortSignal;
+  /** With `wait`, told after each first dial that fails: when the next one is. */
+  readonly away?: (state: Extract<LinkState, { readonly kind: "away" }>) => void;
 }
 
 export interface ClientConnection extends Connection {
@@ -103,7 +105,10 @@ export async function connect(options: ClientConnectOptions): Promise<ClientConn
       link: cell,
     });
 
-  const dialed = options.wait === undefined ? await dialing() : await answered(dialing, options.wait);
+  const dialed =
+    options.wait === undefined
+      ? await dialing()
+      : await answered(dialing, options.wait, options.away ?? (() => undefined));
 
   const http = dialed.connection;
 
@@ -150,7 +155,13 @@ export async function connect(options: ClientConnectOptions): Promise<ClientConn
   };
 }
 
-async function answered<T>(dialing: () => Promise<T>, signal: AbortSignal): Promise<T> {
+async function answered<T>(
+  dialing: () => Promise<T>,
+  signal: AbortSignal,
+  away: NonNullable<ClientConnectOptions["away"]>,
+): Promise<T> {
+  const since = Date.now();
+
   for (let attempt = 0; ; attempt += 1) {
     signal.throwIfAborted();
 
@@ -158,7 +169,9 @@ async function answered<T>(dialing: () => Promise<T>, signal: AbortSignal): Prom
       return await dialing();
     } catch (error) {
       if (!linkLost(error)) throw error;
-      await sleep(retryDelay(attempt), signal);
+      const delay = retryDelay(attempt);
+      away({ kind: "away", since, retryAt: Date.now() + delay, reason: "lost" });
+      await sleep(delay, signal);
     }
   }
 }

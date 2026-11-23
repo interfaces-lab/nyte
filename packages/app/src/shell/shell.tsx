@@ -21,7 +21,8 @@ import { ToastProvider } from "@nyte-ai/ui/toast";
 import { Titlebar } from "./titlebar.tsx";
 import { WindowPanesProvider } from "../tabs/window-panes.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
-import { useHostProcess, useHostBuildMismatch } from "../data/host.ts";
+import { useHostLink, useHostProcess } from "../data/host.ts";
+import { readLinkNotices } from "../data/link-notices.ts";
 import { useHostProcessAction } from "../environments/host-process.tsx";
 import { startupConnection } from "../data/startup.ts";
 import type { StartupProblem } from "../data/startup.ts";
@@ -91,15 +92,20 @@ const styles = create({
 });
 
 const STARTUP_FAILURE = {
+  network: "Can’t reach the host.",
   authentication: "The host refused this app. Pair with it again.",
   incompatible: "This host runs another version of Nyte. Update both, then try again.",
   server: "The host hit an error while opening your workspace.",
 } as const satisfies Readonly<Record<StartupProblem, string>>;
 
-function ConnectionFailure(): ReactElement | null {
-  const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
+function HostBanner(): ReactElement | null {
+  const startup = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
+  const link = useHostLink();
+  const hostState = useHostProcess().data?.kind;
+  const act = useHostProcessAction();
+  const [dismissed, setDismissed] = useState<string>();
 
-  if (connection.kind === "unreachable") {
+  if (startup.kind === "unreachable") {
     return (
       <div role="status" {...props(styles.connectionFailure)}>
         <Loader />
@@ -108,46 +114,39 @@ function ConnectionFailure(): ReactElement | null {
     );
   }
 
-  if (connection.kind !== "failed") return null;
+  if (startup.kind === "failed") {
+    return (
+      <div role="alert" {...props(styles.connectionFailure)}>
+        <span>{STARTUP_FAILURE[startup.problem]}</span>
+        <Button variant="outline" onClick={startup.retry}>
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+
+  const banner =
+    link === undefined ? null : readLinkNotices(link, nyte.host.hostProcess !== undefined).banner;
+
+  if (banner === null || banner.text === dismissed) return null;
 
   return (
-    <div role="alert" {...props(styles.connectionFailure)}>
-      <span>{STARTUP_FAILURE[connection.problem]}</span>
-      <Button variant="outline" onClick={connection.retry}>
-        Try Again
-      </Button>
-    </div>
-  );
-}
-
-function ReleaseNotice(): ReactElement | null {
-  const mismatch = useHostBuildMismatch();
-  const hostProcess = nyte.host.hostProcess;
-  const restarting = useHostProcess().data?.kind === "restarting";
-  const act = useHostProcessAction();
-  const [dismissed, setDismissed] = useState<string>();
-
-  if (mismatch === undefined || mismatch.operations === dismissed) return null;
-
-  return (
-    <div role="status" {...props(styles.connectionFailure)}>
-      <span>
-        {hostProcess === undefined
-          ? "This host runs a different build of Nyte than this app, so some features may not work. Update Nyte on the host."
-          : "Nyte Host is running a different build than this app, so some features may not work."}
-      </span>
-      {hostProcess !== undefined && (
+    <div role={banner.role} {...props(styles.connectionFailure)}>
+      <span>{banner.text}</span>
+      {banner.restart && (
         <Button
           variant="outline"
-          loading={act.isPending || restarting}
+          loading={act.isPending || hostState === "restarting"}
           onClick={() => act.mutate("restart")}
         >
           Restart Host…
         </Button>
       )}
-      <Button variant="ghost" onClick={() => setDismissed(mismatch.operations)}>
-        Dismiss
-      </Button>
+      {banner.role === "status" && (
+        <Button variant="ghost" onClick={() => setDismissed(banner.text)}>
+          Dismiss
+        </Button>
+      )}
     </div>
   );
 }
@@ -289,8 +288,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
               strip && sidebarCollapsed && styles.cardSidebarHidden,
             )}
           >
-            <ConnectionFailure />
-            <ReleaseNotice />
+            <HostBanner />
             <Matches />
           </main>
         </SessionDndProvider>

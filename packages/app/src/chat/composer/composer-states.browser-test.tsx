@@ -38,7 +38,7 @@ import {
   editQueuedMessage,
   expiredRow,
   failRender,
-  health,
+  link,
   heldMessage,
   holdAnswers,
   inert,
@@ -304,7 +304,7 @@ installScripted(
         },
       }),
     }),
-    health,
+    link,
     refused: refusals,
   }),
 );

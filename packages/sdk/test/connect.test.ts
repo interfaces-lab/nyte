@@ -1,5 +1,4 @@
 import { asId, SdkError } from "@nyte-ai/schema";
-import type { HostView } from "@nyte-ai/schema";
 import { TOKEN, composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Connection } from "@nyte-ai/core";
@@ -31,14 +30,10 @@ function kept(connection: Connection): Connection {
   return connection;
 }
 
-async function lastLink(views: AsyncIterator<HostView>): Promise<HostView["link"] | null> {
-  let link: HostView["link"] | null = null;
+async function ended(views: AsyncIterator<unknown>): Promise<"ended"> {
+  while ((await views.next()).done !== true);
 
-  for (let next = await views.next(); next.done !== true; next = await views.next()) {
-    link = next.value.link;
-  }
-
-  return link;
+  return "ended";
 }
 
 async function failure(run: () => Promise<unknown>): Promise<SdkError> {
@@ -306,7 +301,7 @@ describe("connect", () => {
     await expect(connection.session(session.id).send("To the pinned host.")).rejects.toBeInstanceOf(
       SdkError,
     );
-    expect(await lastLink(views)).toEqual({ kind: "closed", reason: "host-gone" });
+    expect(await ended(views)).toBe("ended");
     expect((await journal.load()).map((entry) => entry.content)).toEqual(["To the pinned host."]);
     await expect(connection.sessions.list()).rejects.toBeInstanceOf(SdkError);
     expect(await two.host.sessions.list()).toMatchObject({ items: [] });
@@ -358,13 +353,7 @@ describe("connect", () => {
     await views.next();
     await a.principals.revoke(device.principal);
 
-    const ended = (async () => {
-      while ((await views.next()).done !== true);
-
-      return "ended";
-    })();
-
-    expect(await ended).toBe("ended");
-    expect(await lastLink(hostViews)).toEqual({ kind: "closed", reason: "revoked" });
+    expect(await ended(views)).toBe("ended");
+    expect(await ended(hostViews)).toBe("ended");
   });
 });

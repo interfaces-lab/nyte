@@ -10,8 +10,6 @@ interface RendererStartupOptions {
   readonly showError: (retry: () => void) => void;
 }
 
-const RETRY_MS = [250, 500, 1000, 2000] as const;
-
 function mark(name: string): void {
   if (performance.getEntriesByName(name).length === 0) performance.mark(name);
 }
@@ -19,32 +17,20 @@ function mark(name: string): void {
 export function startRendererStartup(options: RendererStartupOptions): void {
   const { connect } = options;
   let loading = false;
-  let failures = 0;
   holdStartupReads();
 
   const open = (): void => {
     connect().then(
       () => publishStartupConnection({ kind: "connected" }),
-      (cause: unknown) => {
-        const problem = connectionProblem(cause).kind;
-
-        if (problem === "network") {
-          setTimeout(open, RETRY_MS[Math.min(failures, RETRY_MS.length - 1)]);
-          failures += 1;
-          publishStartupConnection({ kind: "unreachable" });
-
-          return;
-        }
-
+      (cause: unknown) =>
         publishStartupConnection({
           kind: "failed",
-          problem,
+          problem: connectionProblem(cause).kind,
           retry: () => {
             publishStartupConnection({ kind: "connecting" });
             open();
           },
-        });
-      },
+        }),
     );
   };
 

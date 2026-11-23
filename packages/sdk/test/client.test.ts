@@ -239,12 +239,8 @@ describe("client", () => {
 
     await expect(connection.sessions.list()).rejects.toMatchObject({ code: "unauthenticated" });
 
-    const closed = await until(
-      { [Symbol.asyncIterator]: () => views },
-      (view) => view.link.kind === "closed",
-    );
+    while ((await views.next()).done !== true);
 
-    expect(closed.link).toEqual({ kind: "closed", reason: "revoked" });
     await expect(connection.workspaces.list()).rejects.toMatchObject({ code: "unauthenticated" });
   });
 

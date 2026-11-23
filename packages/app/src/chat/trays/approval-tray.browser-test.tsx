@@ -130,8 +130,6 @@ let refusal: string | null = null;
 
 const host: HostView = {
   id: asId<"host">("scripted"),
-  link: { kind: "connected" },
-  operations: null,
   name: "Test",
   platform: "linux",
   version: "0.0.0",
@@ -142,6 +140,7 @@ const host: HostView = {
   defaultWorkspace: null,
   projects: [],
   authority: new Set(),
+  routes: [],
 };
 
 installScripted(

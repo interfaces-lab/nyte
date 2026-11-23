@@ -15,9 +15,9 @@ import { LANGUAGE_OPERATIONS } from "./language.ts";
 import { SESSION_OPERATIONS } from "./session.ts";
 import { WORKSPACE_OPERATIONS } from "./workspace.ts";
 
-export const API_REVISION = 44;
+export const API_REVISION = 45;
 
-export const API_MIN_REVISION = 44;
+export const API_MIN_REVISION = 45;
 
 export const OPERATIONS = {
   ...HOST_OPERATIONS,

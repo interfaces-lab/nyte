@@ -30,6 +30,7 @@ import type {
   HeadStore,
   HeadView,
   Health,
+  LinkState,
   PartSnapshot,
   PartStore,
   RefusedSend,
@@ -46,7 +47,7 @@ export interface ConnectionScript {
   readonly session?: (id: SessionId) => Partial<Session>;
   readonly send?: (id: SessionId) => Chat["send"];
   readonly host?: ViewStream<HostView>;
-  readonly health?: ViewStream<Health>;
+  readonly link?: ViewStream<LinkState>;
   readonly refused?: ViewStream<readonly RefusedSend[]>;
   readonly models?: Partial<ModelsApi>;
   readonly github?: Partial<GitHubAccountApi>;
@@ -298,9 +299,9 @@ export function scriptedConnection(script: ConnectionScript = {}): {
 
   const sessions = "watch" in listed ? listed : constant(rows);
 
-  const health: LiveSource<Health> = {
-    latest: () => script.health?.latest() ?? OPEN,
-    subscribe: (listener) => script.health?.subscribe(listener) ?? (() => undefined),
+  const link: LiveSource<LinkState> = {
+    latest: () => script.link?.latest() ?? OPEN_LINK,
+    subscribe: (listener) => script.link?.subscribe(listener) ?? (() => undefined),
   };
 
   const connection: ClientConnection = {
@@ -357,8 +358,8 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     host: { activity: refuse },
     github: { account: refuse, signIn: refuse, signOut: refuse, ...script.github },
     documents: { read: refuse, bytes: refuse, write: refuse, watch: refused, ...script.documents },
-    health: { subscribe: health.subscribe, snapshot: () => health.latest() ?? OPEN },
-    link: { subscribe: () => () => undefined, snapshot: () => OPEN_LINK },
+    health: { subscribe: () => () => undefined, snapshot: (): Health => OPEN },
+    link: { subscribe: link.subscribe, snapshot: () => link.latest() ?? OPEN_LINK },
     refused: {
       subscribe: (listener) => script.refused?.subscribe(listener) ?? (() => undefined),
       snapshot: () => script.refused?.latest() ?? NO_REFUSALS,
@@ -373,7 +374,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     call: refuse,
     head: (id, head) => headStore(views(id), head),
     chat: (id, options) => {
-      const chat = scriptedChat(headStore(views(id), options?.head ?? MAIN), session(id), health);
+      const chat = scriptedChat(headStore(views(id), options?.head ?? MAIN), session(id), link);
 
       return script.send === undefined ? chat : { ...chat, send: script.send(id) };
     },
@@ -400,8 +401,8 @@ export function installScripted(scripted: { readonly connection: ClientConnectio
   installConnection(scripted.connection);
 }
 
-function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Health>): Chat {
-  let asked: { readonly run: RunId; readonly health: Health | undefined } | null = null;
+function scriptedChat(store: HeadStore, handle: Session, link: LiveSource<LinkState>): Chat {
+  let asked: { readonly run: RunId; readonly link: LinkState | undefined } | null = null;
   let older: Paged = NO_PAGES;
 
   let paged: { readonly base: HeadView; readonly older: Paged; readonly view: HeadView } | null =
@@ -434,7 +435,7 @@ function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Heal
         ? "no"
         : execution.kind === "live" && execution.stopping
           ? "host"
-          : asked?.run === execution.run.id && asked.health === health.latest()
+          : asked?.run === execution.run.id && asked.link === link.latest()
             ? "asked"
             : "no";
 
@@ -454,7 +455,7 @@ function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Heal
   return {
     subscribe(listener) {
       listeners.add(listener);
-      const stops = [store.subscribe(listener), health.subscribe(listener)];
+      const stops = [store.subscribe(listener), link.subscribe(listener)];
 
       return () => {
         listeners.delete(listener);
@@ -485,7 +486,7 @@ function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Heal
 
       if (execution === undefined || execution.kind === "idle" || current.stopping !== "no")
         return Promise.resolve();
-      const ask = { run: execution.run.id, health: health.latest() };
+      const ask = { run: execution.run.id, link: link.latest() };
       asked = ask;
       notify();
 

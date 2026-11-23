@@ -11,7 +11,6 @@ import type { OperationName } from "../operations/declarations.ts";
 import { parseJson } from "../wire/json.ts";
 import {
   HOST_HEADER,
-  OPERATIONS_HEADER,
   decodeError,
   parseOutputFrames,
   parseSse,
@@ -42,7 +41,6 @@ export interface Transport {
   ): Promise<Json>;
   credential(): string | null;
   host(): HostId | null;
-  operations(): string | null;
 }
 
 const DONE = { done: true, value: undefined } as const;
@@ -55,7 +53,6 @@ export function createTransport(options: TransportOptions): Transport {
   const send = options.fetch ?? fetch;
   let credential: string | null = null;
   let host: HostId | null = null;
-  let operations: string | null = null;
 
   const post = async (
     name: string,
@@ -84,7 +81,6 @@ export function createTransport(options: TransportOptions): Transport {
     }
 
     if (answered !== null) host = asId<"host">(answered);
-    operations = response.headers.get(OPERATIONS_HEADER) ?? operations;
     credential = response.headers.get("X-Nyte-Credential") ?? credential;
 
     if (response.ok) return response;
@@ -172,7 +168,6 @@ export function createTransport(options: TransportOptions): Transport {
     },
     credential: () => credential,
     host: () => host,
-    operations: () => operations,
   };
 }
 

@@ -11,7 +11,8 @@ import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { useCatalog } from "../../data/catalog.ts";
-import { useHostHealth, useHostProcess } from "../../data/host.ts";
+import { useHostLink } from "../../data/host.ts";
+import { readLinkNotices } from "../../data/link-notices.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { SIDECHAT_COMMAND, usePluginCatalog } from "../../data/plugins.ts";
 import { sessionActions } from "../../data/session-rows.ts";
@@ -149,7 +150,7 @@ export function Composer({
   const folder = useChatFolder();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const mac = nyte.platform === "darwin";
-  const health = useHostHealth();
+  const link = useHostLink();
 
   const asked = useChatStopping(sessionId) === "asked";
   const stopping = (status.kind === "working" && status.stopping) || asked;
@@ -158,11 +159,9 @@ export function Composer({
     store.value?.freshness.kind === "stale" ? store.value.freshness.since : undefined,
   );
 
-  const restarting = useHostProcess().data?.kind === "restarting";
-  const lost = !restarting && health !== undefined && health.kind !== "open";
-  const lostAWhile = useDebouncedValue(lost, OUTAGE_GRACE_MS);
-  const stale = !restarting && staleSince !== undefined;
-  const staleAWhile = useDebouncedValue(stale, OUTAGE_GRACE_MS);
+  const away = link === undefined ? null : readLinkNotices(link, false).composer;
+  const lostAWhile = useDebouncedValue(away !== null, OUTAGE_GRACE_MS);
+  const staleAWhile = useDebouncedValue(staleSince !== undefined, OUTAGE_GRACE_MS);
 
   const questions = useQuestionDock(sessionId);
   const pluginCatalog = usePluginCatalog(sessionId);
@@ -469,29 +468,24 @@ export function Composer({
                   />
                 </div>
               )}
-              {lost && lostAWhile && (
-                <div
-                  role={health.kind === "blocked" ? "alert" : "status"}
-                  {...props(composerStyles.queued)}
-                >
-                  <Icon name={health.kind === "blocked" ? "warning" : "refresh"} />
-                  <span {...props(composerStyles.queuedText)}>
-                    {health.kind === "blocked"
-                      ? "Disconnected from the host."
-                      : "Reconnecting to the host…"}
-                  </span>
+              {away !== null && lostAWhile ? (
+                <div role={away.role} {...props(composerStyles.queued)}>
+                  <Icon name="refresh" />
+                  <span {...props(composerStyles.queuedText)}>{away.text}</span>
                 </div>
-              )}
-              {stale && staleAWhile && (
-                <div role="status" {...props(composerStyles.queued)}>
-                  <Icon name="clock" />
-                  <span {...props(composerStyles.queuedText)}>
-                    {`Chat last updated at ${new Date(staleSince).toLocaleTimeString(undefined, {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}.`}
-                  </span>
-                </div>
+              ) : (
+                staleSince !== undefined &&
+                staleAWhile && (
+                  <div role="status" {...props(composerStyles.queued)}>
+                    <Icon name="clock" />
+                    <span {...props(composerStyles.queuedText)}>
+                      {`Chat last updated at ${new Date(staleSince).toLocaleTimeString(undefined, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}.`}
+                    </span>
+                  </div>
+                )
               )}
               <ComposerQueue
                 pending={pending}

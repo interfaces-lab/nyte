@@ -1,10 +1,11 @@
 import type { Connection } from "@nyte-ai/sdk";
-import type { Health, Live } from "@nyte-ai/sdk/client";
+import type { Live, LinkState } from "@nyte-ai/sdk/client";
 import { keys, queryClient } from "./query-client.ts";
 import { nyte } from "../contract/nyte.ts";
 import { hostWatch } from "./watches.ts";
 import { sessionList } from "./directory.ts";
 import { connectHost, currentConnection } from "./connection.ts";
+import { publishStartupConnection } from "./startup.ts";
 import { workspacesQuery } from "./workspaces.ts";
 import { readModelCatalog } from "./catalog.ts";
 
@@ -21,11 +22,13 @@ export function connectLocalHost(): Promise<Connection> {
       connectHost(endpoint, {
         fetch: nyte.host.fetch,
         socket: nyte.host.socket,
+        wait: new AbortController().signal,
+        away: () => publishStartupConnection({ kind: "unreachable" }),
       }),
     )
     .then((opened) => {
       performance.mark("nyte:sdk-connected");
-      markSocketOpen(opened.health);
+      markSocketOpen(opened.link);
 
       return opened;
     })
@@ -37,14 +40,14 @@ export function connectLocalHost(): Promise<Connection> {
   return connecting;
 }
 
-function markSocketOpen(health: Live<Health>): void {
+function markSocketOpen(link: Live<LinkState>): void {
   const check = (): void => {
-    if (health.snapshot().kind !== "open") return;
+    if (link.snapshot().kind !== "open") return;
     leave();
     performance.mark("nyte:socket-connected");
   };
 
-  const leave = health.subscribe(check);
+  const leave = link.subscribe(check);
   check();
 }
 

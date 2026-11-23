@@ -4,7 +4,6 @@ import type { ChangeSource, GitCommitId, GitScope, SessionId, WorkspaceId } from
 
 export const keys = {
   host: ["host"] as const,
-  clientOperations: ["client-operations"] as const,
   updates: ["updates"] as const,
   updateChannel: ["updates", "channel"] as const,
   hostProcess: ["host-process"] as const,

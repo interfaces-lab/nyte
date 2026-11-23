@@ -1,9 +1,6 @@
-import { QueryObserver } from "@tanstack/react-query";
-import type { QueryKey } from "@tanstack/react-query";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/sdk";
-import type { ClientConnection, Health } from "@nyte-ai/sdk/client";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import {
   connected,
   connection,
@@ -13,8 +10,7 @@ import {
   onInstall,
 } from "./connection.ts";
 import { keys, queryClient } from "./query-client.ts";
-import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
-import type { ViewStream } from "../../test/scripted-connection.ts";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
 
 const closed: string[] = [];
 
@@ -46,11 +42,11 @@ const heard: boolean[] = [];
 
 onInstall((replaced) => heard.push(replaced));
 
-const health = installedLive((current) => current.health);
+const link = installedLive((current) => current.link);
 
 let follows = 0;
 
-health.subscribe(() => {
+link.subscribe(() => {
   follows += 1;
 });
 
@@ -119,7 +115,7 @@ test.each<{
     waiterAfter: await settled(connected()),
     heard,
     follows,
-    health: health.read()?.kind,
+    link: link.read()?.kind,
     closed,
   }).toEqual({
     current: row.current,
@@ -128,13 +124,13 @@ test.each<{
     waiterAfter: row.waiterAfter,
     heard: row.heard,
     follows: row.follows,
-    health: row.current === undefined ? undefined : "open",
+    link: row.current === undefined ? undefined : "open",
     closed: row.closed,
   });
 });
 
-function onHost(hostId: string, health?: ViewStream<Health>): ClientConnection {
-  return { ...scriptedConnection({ health }).connection, hostId: asId<"host">(hostId) };
+function onHost(hostId: string): ClientConnection {
+  return { ...scriptedConnection().connection, hostId: asId<"host">(hostId) };
 }
 
 test.each<{
@@ -168,62 +164,6 @@ test.each<{
   queryClient.clear();
 });
 
-const RETRYING: Health = {
-  kind: "retrying",
-  attempt: 1,
-  at: 0,
-  error: new SdkError("unavailable", "Link down."),
-};
-
-test.each<{
-  readonly name: string;
-  readonly key: QueryKey;
-  readonly next: Health;
-  readonly reads: number;
-}>([
-  {
-    name: "a host read that failed while the link was down reads again when it opens",
-    key: keys.document("notes.md"),
-    next: { kind: "open", since: 1 },
-    reads: 2,
-  },
-  {
-    name: "a host read that failed waits while the link is still down",
-    key: keys.document("notes.md"),
-    next: { ...RETRYING, attempt: 2 },
-    reads: 1,
-  },
-  {
-    name: "a read the host doesn't answer is left failed when the link opens",
-    key: keys.server,
-    next: { kind: "open", since: 1 },
-    reads: 1,
-  },
-])("$name", async (row) => {
-  const health = viewStream<Health>(RETRYING);
-  installConnection(onHost("scripted", health));
-  let reads = 0;
-
-  const observer = new QueryObserver(queryClient, {
-    queryKey: row.key,
-    queryFn: async () => {
-      reads += 1;
-
-      if (reads === 1) throw new Error("Link down.");
-
-      return "read";
-    },
-  });
-
-  const leave = observer.subscribe(() => undefined);
-  await vi.waitFor(() => expect(observer.getCurrentResult().status).toBe("error"));
-  health.push(row.next);
-
-  expect(reads).toBe(row.reads);
-  leave();
-  queryClient.clear();
-});
-
 test("a store read through installedLive follows each connection and closes what it opened", () => {
   const log: string[] = [];
   const a = onHost("scripted");
@@ -235,7 +175,7 @@ test("a store read through installedLive follows each connection and closes what
       const name = current === a ? "a" : "b";
       log.push(`open ${name}`);
 
-      return { ...current.health, name };
+      return { ...current.link, name };
     },
     (opened) => log.push(`close ${opened.name}`),
   );

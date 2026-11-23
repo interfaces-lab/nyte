@@ -1,4 +1,3 @@
-import { API_REVISION } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/sdk";
 import { connect, mediaLink, ticketSocket } from "@nyte-ai/sdk/client";
 import type { ClientConnection, ClientConnectOptions, Live, OpenSocket } from "@nyte-ai/sdk/client";
@@ -19,18 +18,23 @@ const installs = new Set<(replaced: boolean, sameHost: boolean) => void>();
 
 export async function connectHost(
   endpoint: HostEndpoint,
-  options: { readonly fetch?: Fetch; readonly socket?: OpenSocket } = {},
+  options: Pick<ClientConnectOptions, "wait" | "away"> & {
+    readonly fetch?: Fetch;
+    readonly socket?: OpenSocket;
+  } = {},
 ): Promise<ClientConnection> {
   const connection = await connect({
     url: endpoint.url,
     credentials: endpoint.credentials,
     expect: endpoint.expect,
-    client: { kind: "app", name: "Nyte", version: `api-${String(API_REVISION)}` },
+    client: { kind: "app", name: "Nyte", version: endpoint.version },
     journal: localJournal(),
     transport: {
       fetch: options.fetch,
       socket: options.socket ?? ticketSocket({ fetch: options.fetch }),
     },
+    wait: options.wait,
+    away: options.away,
   });
 
   installConnection(connection);
@@ -184,30 +188,3 @@ export function connectionProblem(cause: unknown): ConnectionProblem {
     }
   }
 }
-
-const health = installedLive((current) => current.health);
-
-let lastHealth = health.read();
-
-const reopenListeners = new Set<() => void>();
-
-export function onLinkReopened(listener: () => void): () => void {
-  reopenListeners.add(listener);
-
-  return () => reopenListeners.delete(listener);
-}
-
-health.subscribe(() => {
-  const next = health.read();
-
-  if (next?.kind === "open" && (lastHealth?.kind !== "open" || lastHealth.since !== next.since)) {
-    void queryClient.refetchQueries({
-      type: "active",
-      predicate: (query) => readsHost(query) && query.state.status === "error",
-    });
-
-    for (const listener of reopenListeners) listener();
-  }
-
-  lastHealth = next;
-});

@@ -15,7 +15,7 @@ import { useSyncExternalStore } from "react";
 import { TERMINAL_NOTICE_LIMITS } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { nyte } from "../contract/nyte.ts";
-import { connected, onLinkReopened } from "../data/connection.ts";
+import { connected, installedLive } from "../data/connection.ts";
 import { hostWatch } from "../data/watches.ts";
 import { workspacePath as pathOfWorkspace } from "../data/workspaces.ts";
 import type { WorkbenchTabId } from "../workbench/model.ts";
@@ -281,7 +281,16 @@ function resume(id: WorkbenchTabId): void {
   );
 }
 
-onLinkReopened(() => {
+const link = installedLive((current) => current.link);
+
+let openSince = link.read()?.kind === "open" ? link.read() : undefined;
+
+link.subscribe(() => {
+  const state = link.read();
+
+  if (state?.kind !== "open" || state === openSince) return;
+  openSince = state;
+
   for (const tab of snapshot.tabs.values()) {
     if (tab.kind === "shell" && tab.state.kind === "lost") resume(tab.id);
   }

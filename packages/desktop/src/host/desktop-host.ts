@@ -321,6 +321,7 @@ export class DesktopHost {
 
       return {
         url: HOST_PORT_ORIGIN,
+        version: this.deps.appVersion,
         credentials: { kind: "token", token: "" },
         expect:
           connection.publicKey === undefined

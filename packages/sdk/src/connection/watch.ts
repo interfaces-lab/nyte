@@ -1,6 +1,5 @@
 import type { HostView, HostViewWire, Json, QueuedMessage, SessionView } from "@nyte-ai/schema";
 import { closable, coalesce } from "@nyte-ai/core/client";
-import type { LinkState } from "../live/link.ts";
 import type { Rows } from "./rows.ts";
 
 export interface Sink<T> {
@@ -23,7 +22,7 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
             const next = await frames.next();
 
             if (next.done === true) break;
-            view = hostView(next.value, rows.operations());
+            view = hostView(next.value);
             sink.next(view);
           }
 
@@ -36,14 +35,7 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
       const unsubscribe = rows.link.subscribe(() => {
         const state = rows.link.snapshot();
 
-        if (state.kind !== "refused" && state.kind !== "closed") return;
-
-        if (view !== null) {
-          view = { ...view, link: { kind: "closed", reason: closedReason(state) } };
-          sink.next(view);
-        }
-
-        sink.end();
+        if (state.kind === "refused" || state.kind === "closed") sink.end();
       });
 
       return () => {
@@ -88,17 +80,9 @@ export function withUnsent<
   };
 }
 
-function closedReason(state: LinkState): "client" | "revoked" | "host-gone" {
-  if (state.kind !== "refused") return "client";
-
-  return state.reason === "auth" ? "revoked" : "host-gone";
-}
-
-function hostView(wire: HostViewWire, operations: string | null): HostView {
+function hostView(wire: HostViewWire): HostView {
   return {
     id: wire.id,
-    link: { kind: "connected" },
-    operations,
     name: wire.name,
     platform: wire.platform,
     version: wire.version,
@@ -109,7 +93,7 @@ function hostView(wire: HostViewWire, operations: string | null): HostView {
     defaultWorkspace: wire.defaultWorkspace,
     projects: wire.projects,
     authority: new Set(wire.authority),
-    routes: wire.routes ?? [],
+    routes: wire.routes,
   };
 }
 

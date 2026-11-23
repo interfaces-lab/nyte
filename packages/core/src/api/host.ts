@@ -71,8 +71,6 @@ export function watchHost(
           done: false,
           value: {
             id: kernel.hostId,
-            link: { kind: "connected" },
-            operations: null,
             name: kernel.description.name,
             platform: kernel.description.platform,
             version: kernel.description.version,

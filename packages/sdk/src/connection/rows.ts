@@ -1,7 +1,7 @@
-import { SdkError } from "@nyte-ai/schema";
+import { OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type { ByteReader, Json, OutputFrame, RequestOptions } from "@nyte-ai/schema";
 import { closable, dev } from "@nyte-ai/core/client";
-import { decodeOutput, encodeInput, linkLost } from "@nyte-ai/protocol";
+import { decodeOutput, encodeInput, linkLost, namesOperation } from "@nyte-ai/protocol";
 import type {
   ByteName,
   CallName,
@@ -28,7 +28,6 @@ type RetryName = {
 
 export interface Rows {
   readonly link: LinkCell;
-  operations(): string | null;
   call<N extends CallName>(
     name: N,
     input: OperationInput<N>,
@@ -82,18 +81,35 @@ export function createRows(transport: Transport, link: LinkCell): Rows {
     }
   };
 
-  const call: Rows["call"] = async (name, input, options) =>
-    decodeOutput(
-      name,
-      await request(
-        (signal) => transport.invoke(name, encodeInput(name, input), { signal }),
-        options?.signal,
-      ),
-    );
+  const call: Rows["call"] = async (name, input, options) => {
+    for (let attempts = 0; ; attempts += 1) {
+      try {
+        return decodeOutput(
+          name,
+          await request(
+            (signal) => transport.invoke(name, encodeInput(name, input), { signal }),
+            options?.signal,
+          ),
+        );
+      } catch (error) {
+        const query = namesOperation(name) && OPERATIONS[name].kind === "query";
+
+        if (!linkLost(error) || !query || link.snapshot().kind !== "away") throw error;
+        dev("sdk", "query waiting", { name, attempts });
+        await untilOpen(
+          link,
+          retryDelay(attempts),
+          options?.signal === undefined
+            ? link.closed
+            : AbortSignal.any([link.closed, options.signal]),
+        );
+        options?.signal?.throwIfAborted();
+      }
+    }
+  };
 
   return {
     link,
-    operations: () => transport.operations(),
     call,
     async wait(name, input, options) {
       for (let attempts = 1; ; attempts += 1) {
