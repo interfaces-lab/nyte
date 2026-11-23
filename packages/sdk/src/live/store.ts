@@ -31,7 +31,6 @@ const RETRY_BASE_MS = 250;
 
 const RETRY_MAX_MS = 30_000;
 
-/** The one retry curve: a dial, a resumed watch and a held send each wait this long before attempt `attempt + 1`. */
 export function retryDelay(attempt: number): number {
   return jittered(Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt));
 }

@@ -54,7 +54,6 @@ export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface LinkOptions {
   readonly link: LinkCell;
-  /** The host the connection's requests reach. A socket another host answers is refused, since its rows would come from another store. */
   readonly host: HostId;
   readonly credentials: HostCredentials;
   readonly client: Omit<ClientInfo, "actions">;
@@ -78,7 +77,6 @@ export type Requester = PerformEvent["requester"];
 export type ActionHandler = (input: Json, requester: Requester) => Awaitable<Json>;
 
 export interface SocketLink {
-  /** The connection's link state. Reading it dials the socket. */
   readonly link: Live<LinkState>;
   retry(): void;
   close(): void;

@@ -46,7 +46,6 @@ function linkIssue(link: Extract<LinkState, { readonly kind: "away" | "refused" 
   return link.reason === "update-client" ? "update-app" : "unreachable";
 }
 
-/** What Settings shows for the host. A host that will replace itself, or that this app can't replace, offers no restart. */
 export function readHostProcess(link: LinkState): HostProcess {
   switch (link.kind) {
     case "open": {

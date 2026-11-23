@@ -39,7 +39,6 @@ import type { SavedServer } from "./connections/server-settings.ts";
 
 export interface DesktopHostDependencies {
   readonly home: string;
-  /** Resolves once the host first answers; the SDK redials it after that. */
   readonly connection: Promise<ClientConnection>;
   readonly appVersion: string;
   readonly usageScan: UsageScanReader;

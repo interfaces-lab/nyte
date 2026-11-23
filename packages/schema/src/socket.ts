@@ -94,7 +94,6 @@ export const WelcomeFrameType = Type.Object({
 
 export type WelcomeFrame = Decoded<typeof WelcomeFrameType>;
 
-/** The host's answer to a hello outside the revisions it serves, before it closes the socket: which side must update. */
 export const RefusedFrameType = Type.Object({
   c: Type.Literal("e"),
   type: Type.Literal("refused"),
@@ -108,7 +107,6 @@ export const ClosingReasonType = Type.Enum(["replacing", "restarting", "stopping
 
 export type ClosingReason = Decoded<typeof ClosingReasonType>;
 
-/** What the host pushes to every socket before it closes them with 1001. */
 export const ClosingEventType = Type.Object({
   c: Type.Literal("e"),
   type: Type.Literal("event"),

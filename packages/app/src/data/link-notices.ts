@@ -7,17 +7,13 @@ export interface LinkNotice {
 }
 
 export interface LinkNotices {
-  /** The shell's one banner: what about the host needs the person. */
   readonly banner: LinkNotice | null;
-  /** The composer's one status row: why the host isn't answering now. */
   readonly composer: LinkNotice | null;
-  /** Why the chat list is empty, while it has no rows to show. */
   readonly sidebar: string | null;
 }
 
 const NONE: LinkNotices = { banner: null, composer: null, sidebar: null };
 
-/** `restartable` when this app can restart the host, as the desktop app can its own. */
 export function readLinkNotices(link: LinkState, restartable: boolean): LinkNotices {
   switch (link.kind) {
     case "connecting":

@@ -3,11 +3,6 @@ import type { BuildMatch, ClosingReason } from "@nyte-ai/schema";
 import { listenerSet } from "./store.ts";
 import type { Live } from "./store.ts";
 
-/**
- * The connection's one state, fed by the socket and by HTTP answers. `open` carries the host's
- * build and how it matches this client's. `away` says why the host went and when the next dial
- * is. `refused` waits for `retry()`, since dialing again can't fix it.
- */
 export type LinkState =
   | { readonly kind: "connecting" }
   | {
@@ -36,11 +31,8 @@ export type HttpRefusal = Extract<LinkState, { readonly kind: "refused" }> & {
 
 export interface LinkCell extends Live<LinkState> {
   readonly closed: AbortSignal;
-  /** The socket supervisor's half. */
   socket(next: LinkState): void;
-  /** The HTTP half: an answer from another host, or a credential the host no longer takes. */
   refuse(refusal: Omit<HttpRefusal, "kind">): void;
-  /** Clears what HTTP refused, so the socket dials again. */
   retry(): void;
   close(): void;
 }
@@ -85,7 +77,6 @@ export function linkCell(): LinkCell {
   };
 }
 
-/** Resolves once the link opens, `ms` passes, or `signal` aborts, whichever is first. */
 export function untilOpen(link: Live<LinkState>, ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) {

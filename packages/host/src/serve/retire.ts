@@ -7,9 +7,7 @@ export type ClosingSocket = (reason: ClosingReason) => Promise<void>;
 
 export interface Retirement {
   readonly supervisor: Supervisor | null;
-  /** A client this host should make way for said hello: retire once no run or job is busy. */
   ask(): void;
-  /** Tells every socket why the host is closing and closes each with 1001, once. */
   announce(reason: ClosingReason): Promise<void>;
   observe(socket: ClosingSocket): Disposer;
   close(): void;

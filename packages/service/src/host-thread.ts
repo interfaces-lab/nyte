@@ -51,7 +51,6 @@ const hostReports = Compile(HostReportType);
 
 export type HostWorkerEntry = string | URL;
 
-/** The host thread refused a store a newer build migrated. */
 export class NewerStoreFailure extends Error {}
 
 interface HostThread {

@@ -39,7 +39,6 @@ export interface ClientConnectOptions {
   readonly transport?: { readonly fetch?: Fetch; readonly socket?: OpenSocket };
   /** Dial again on the retry curve until the host answers or this aborts, for a client that lives as long as its host may be away. Without it, a host that doesn't answer rejects. */
   readonly wait?: AbortSignal;
-  /** With `wait`, told after each first dial that fails: when the next one is. */
   readonly away?: (state: Extract<LinkState, { readonly kind: "away" }>) => void;
 }
 
@@ -52,7 +51,6 @@ export interface ClientConnection extends Connection {
   };
   /** The connection's state, from the socket and from what HTTP answers. Reading it dials the socket, as does the first use of anything below, so a connection that only makes requests opens none. */
   readonly link: Live<LinkState>;
-  /** Call it when the link may have come back: the app came forward, the window got focus, the network returned. A link that is away or refused dials now; an open one checks the host answers. */
   retry(): void;
   /** The chat of `session`'s `options.head` (main by default): its view, kept current, and the actions a chat screen takes. Each call returns its own chat. */
   chat(session: SessionId, options?: ChatOptions): Chat;

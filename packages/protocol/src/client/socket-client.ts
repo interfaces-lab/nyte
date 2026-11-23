@@ -42,7 +42,6 @@ export interface SocketLike {
 export interface SocketClosed {
   readonly code: number;
   readonly reason: string;
-  /** Which side must update, when the host answered the hello with a refusal before it closed. */
   readonly refused: Pick<RefusedFrame, "reason" | "message"> | null;
 }
 

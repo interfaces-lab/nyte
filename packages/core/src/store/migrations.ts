@@ -795,7 +795,6 @@ const STORE_STEPS: readonly StoreStep[] = [
 
 export const STORE_VERSION: number = STORE_STEPS.length;
 
-/** A store a newer build migrated: this build refuses to open it, and its supervisor must not start it again until Nyte is updated. */
 export class NewerStoreError extends SdkError {
   constructor(version: number) {
     super(

@@ -118,9 +118,7 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly shell?: () => string | null;
   readonly label?: string;
   readonly onRevoked?: () => void;
-  /** What restarts this host once it retires for a newer build: launchd, the `nyte` command that started it, or nothing. */
   readonly supervisor?: Supervisor | null;
-  /** Called once the host has retired for a newer client of its supervisor and told its sockets. */
   readonly onReplaced?: () => void;
   /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
   readonly pluginImport?: PluginImport;

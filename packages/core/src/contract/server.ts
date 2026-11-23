@@ -75,7 +75,6 @@ export interface ServerHost {
   /** Stops starting runs, then answers whether nothing is busy. When something is, it starts runs again and answers false. */
   retire(): Promise<boolean>;
 
-  /** Tells `listener` each time a run this host drove ends or a job exits. */
   onActivity(listener: () => void): Disposer;
 
   tick(now: number): Promise<void>;
