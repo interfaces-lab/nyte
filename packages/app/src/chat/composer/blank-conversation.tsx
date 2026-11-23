@@ -4,7 +4,7 @@ import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { useReducer, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
+import type { Delivery } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { ComposerFrame } from "./composer-frame.tsx";
@@ -18,6 +18,13 @@ import { composerSendPlan } from "./composer-plan.ts";
 import { omittedMessage } from "../../panes/composer-draft.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
+import {
+  cycleModes,
+  modeControl,
+  modeTriggers,
+  readModes,
+  runModeTrigger,
+} from "./composer-modes.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
 import {
   usePaneActions,
@@ -37,8 +44,6 @@ import { useWorkspaceCatalog } from "../../data/plugins.ts";
 import { draftModel, modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 import { useChatFolder } from "../../chats/index.ts";
 import { ChatScope } from "../chat-scope.tsx";
-
-const NO_COMMANDS: readonly CommandInfo[] = [];
 
 type BlankViewUpdate = (current: BlankViewState) => BlankViewState;
 
@@ -88,7 +93,8 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   const home = useHomeWorkspace();
   const scansFiles = workspace !== undefined && workspace.id !== home;
   const mentions = useMentionFiles(workspace, scansFiles);
-  const workspaceCatalog = useWorkspaceCatalog(workspace?.id);
+  const catalogWorkspace = workspace?.id ?? home ?? undefined;
+  const workspaceCatalog = useWorkspaceCatalog(catalogWorkspace);
   const actions = usePaneActions();
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
@@ -100,6 +106,11 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
 
   const held = status.kind === "waiting" || status.kind === "starting";
   const [pickerOpen, setPickerOpen] = useState(false);
+  const modes = {
+    modes: readModes(workspaceCatalog.data?.modes, viewState.modes),
+    set: (values: Readonly<Record<string, boolean>>) =>
+      updateViewState((state) => ({ ...state, modes: values })),
+  };
 
   const attachments = viewState.composer.attachments;
   const [intake, setIntake] = useState(NO_INTAKE);
@@ -119,6 +130,8 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
 
   const current = selected?.option;
 
+  const triggers = modeTriggers(modes, []);
+
   const start = (
     submission: ComposerSubmission,
     delivery: Delivery,
@@ -126,9 +139,18 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   ): void | Promise<void> => {
     if (intake.reads !== 0) return;
 
+    if (runModeTrigger({ modes, triggers, editor: editorRef.current, text: document.text })) return;
+
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
     if (plan.kind !== "message") return;
+    updateViewState((state) => ({
+      ...state,
+      modes:
+        workspaceCatalog.data !== undefined
+          ? Object.fromEntries(modes.modes.filter((mode) => mode.on).map((mode) => [mode.id, true]))
+          : Object.fromEntries(Object.entries(state.modes ?? {}).filter(([, on]) => on)),
+    }));
     const draft = viewStore.readBlank(paneId);
 
     const waiting = viewStore.beginSend(paneId, {
@@ -215,9 +237,12 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
             placeholder="Ask Nyte, or type / for skills and @ for context"
             disabled={held}
             suggestionCatalog={
-              workspace === undefined
-                ? { status: "ready", data: { commands: NO_COMMANDS, skills: [] } }
-                : composerSource(workspaceCatalog.data, workspaceCatalog.isError)
+              catalogWorkspace === undefined
+                ? { status: "ready", data: { commands: triggers, skills: [] } }
+                : composerSource(
+                    workspaceCatalog.data && { ...workspaceCatalog.data, commands: triggers },
+                    workspaceCatalog.isError,
+                  )
             }
             mentionFiles={
               scansFiles
@@ -244,6 +269,8 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
               setIntake((current) => nextIntake(current, { kind: "cleared" }));
             }}
             inputRef={attachInput}
+            onCycleMode={cycleModes(modes)}
+            modes={modeControl(modes)}
             model={
               <ModelPicker
                 catalog={catalog.data}

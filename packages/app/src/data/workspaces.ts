@@ -205,7 +205,10 @@ export async function trustWorkspace(
   const outcome = await (await connected()).workspace(id).update({ trusted: true, at });
 
   if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
-  await queryClient.invalidateQueries({ queryKey: keys.workspaces });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: keys.workspaces }),
+    queryClient.invalidateQueries({ queryKey: keys.workspaceCatalog(id) }),
+  ]);
 }
 
 export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {

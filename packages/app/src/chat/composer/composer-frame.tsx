@@ -150,8 +150,7 @@ export function ComposerFrame({
 
   const attached = attachments.length > 0 || keptFiles.length > 0;
 
-  const commandsEnabled =
-    !answering && surface !== "new-chat" && editing === undefined && !attached;
+  const commandsEnabled = !answering && editing === undefined && !attached;
 
   const suggestionMenu = useComposerSuggestions({
     editorRef: areaRef,

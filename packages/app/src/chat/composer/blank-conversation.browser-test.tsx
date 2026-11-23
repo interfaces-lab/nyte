@@ -6,7 +6,14 @@ import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-rout
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import type { ModelCatalogView, ModelInfo, SessionId } from "@nyte-ai/sdk";
+import type {
+  Json,
+  ModelCatalogView,
+  ModelInfo,
+  SessionId,
+  SettingInfo,
+  WorkspaceCatalogView,
+} from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { activeSelection } from "../../panes/pane-layout.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
@@ -67,6 +74,41 @@ const refuse = async (): Promise<never> => {
 };
 
 const starts: SessionId[] = [];
+
+const startSettings: (Readonly<Record<string, Json>> | undefined)[] = [];
+
+const WORKSPACE_MODES: readonly SettingInfo[] = [
+  {
+    id: "mode.debug",
+    owner: "modes",
+    scope: "chat",
+    title: "Debug",
+    schema: { type: "boolean" },
+    choices: null,
+    value: false,
+    from: "default",
+    mode: { icon: "bug" },
+  },
+  {
+    id: "mode.autoresearch",
+    owner: "modes",
+    scope: "chat",
+    title: "Autoresearch",
+    schema: { type: "boolean" },
+    choices: null,
+    value: false,
+    from: "default",
+    mode: { icon: "flask" },
+  },
+];
+
+const WORKSPACE_CATALOG: WorkspaceCatalogView = {
+  commands: [],
+  skills: [],
+  modes: WORKSPACE_MODES,
+  docs: [],
+  contextFiles: [],
+};
 
 function expectRule(passed: boolean, message: string): void {
   if (!passed) failures.push(message);
@@ -151,11 +193,16 @@ function connect(ids: readonly SessionId[]): void {
 
   installConnection({
     ...scripted.connection,
+    workspace: (id) => ({
+      ...scripted.connection.workspace(id),
+      catalog: async () => WORKSPACE_CATALOG,
+    }),
     sessions: {
       ...scripted.connection.sessions,
       start: async (input) => {
         const id = input.id ?? asId<"session">("unnamed");
         starts.push(id);
+        startSettings.push(input.configuration?.settings);
 
         return {
           session: scripted.connection.session(id),
@@ -245,6 +292,43 @@ async function checkSends(): Promise<string> {
     await until(
       () => document.querySelector("[role='dialog'][aria-label='Model']"),
       "the model picker",
+    );
+
+    const workspace = asId<"workspace">("w1");
+    hostCatalog = catalog("configured");
+    queryClient.setQueryData(keys.host, {
+      workspace: { id: workspace, path: "/work/project", name: "project" },
+    });
+    queryClient.setQueryData(keys.modelCatalog("initial"), hostCatalog);
+    queryClient.setQueryData(keys.mentionFiles(workspace), []);
+    panes.window.newChat(panes.tabId);
+    const modeDraft = panes.viewState.readBlank(PRIMARY).id;
+    connect([asId<"session">(modeDraft)]);
+    flushSync(() => root.unmount());
+    root = mount(container);
+    await until(
+      () => queryClient.getQueryData(keys.workspaceCatalog(workspace)) !== undefined,
+      "the folder's mode catalog",
+    );
+    expectRule(
+      container.querySelector("button[title='Turn off Debug']") === null,
+      "no mode chip shows before a mode is on",
+    );
+    await send(container, "/debug");
+    await until(
+      () =>
+        container.querySelector("button[title='Turn off Debug']") !== null &&
+        container.querySelector<HTMLButtonElement>("button[aria-label='Send message']")
+          ?.disabled === true,
+      "the Debug mode chip and cleared composer",
+    );
+    expectRule(starts.length === 2, "toggling /debug in a new chat started a chat");
+
+    await send(container, "Check the logs.");
+    await until(() => starts.length === 3, "the new chat with Debug mode to start");
+    expectRule(
+      JSON.stringify(startSettings.at(-1)) === JSON.stringify({ "mode.debug": true }),
+      `the toggled mode reaches start configuration: ${JSON.stringify(startSettings.at(-1))}`,
     );
 
     return failures.length === 0 ? "passed" : failures.join("\n");

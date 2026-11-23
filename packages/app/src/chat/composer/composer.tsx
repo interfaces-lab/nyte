@@ -29,7 +29,13 @@ import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerSurface } from "./composer-frame.tsx";
 import { sessionModel } from "./model-picker-state.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
-import { cycleModes, modeControl, useSessionModes } from "./composer-modes.tsx";
+import {
+  cycleModes,
+  modeControl,
+  modeTriggers,
+  runModeTrigger,
+  useSessionModes,
+} from "./composer-modes.tsx";
 import { ComposerQueue } from "./composer-queue.tsx";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
@@ -199,6 +205,8 @@ export function Composer({
     composer.editor()?.focus({ preventScroll: true });
   }, [composer, floatingMount, portal]);
 
+  const triggers = showsModes ? modeTriggers(modes, pluginCatalog.data?.commands ?? []) : [];
+
   const suggestionCatalog = composerSource(
     surface === "side-chat" && pluginCatalog.data !== undefined
       ? {
@@ -207,7 +215,10 @@ export function Composer({
             (command) => command.name !== SIDECHAT_COMMAND.name,
           ),
         }
-      : pluginCatalog.data,
+      : pluginCatalog.data && {
+          ...pluginCatalog.data,
+          commands: [...pluginCatalog.data.commands, ...triggers],
+        },
     pluginCatalog.isError,
   );
 
@@ -264,6 +275,8 @@ export function Composer({
     delivery: Delivery,
     document: ComposerDocumentState,
   ): Promise<void> => {
+    if (runModeTrigger({ modes, triggers, editor: composer.editor(), text: document.text })) return;
+
     if (!dispatch({ kind: "submit" })) return;
     const sentAttachments = attachments;
     const submittingTab = windowTabs.paneTabId();

@@ -5,19 +5,6 @@ const ASK = "mode.ask";
 export default {
   id: "ask-mode",
   contribute: {
-    commands: [
-      {
-        name: "ask",
-        title: "Ask",
-        description: "Turn Ask mode on or off",
-        async run(text, { api }) {
-          const turnsOn = (await api.registries.settings.value(ASK)) !== true;
-          await api.registries.settings.set(ASK, turnsOn);
-
-          return turnsOn && text !== "" ? { prompt: text } : undefined;
-        },
-      },
-    ],
     settings: [
       {
         id: ASK,

@@ -19,13 +19,22 @@ export async function settingInfos(
 
   if (runtime === undefined) return [];
 
-  const defined =
+  return describeSettings(
+    kernel,
     runtime === null
       ? await shownOnHost(kernel, hostDefinitions(kernel))
       : runtime.registries.settings
           .entries()
-          .map((entry) => ({ definition: resolveSetting(entry.item), owner: entry.owner }));
+          .map((entry) => ({ definition: resolveSetting(entry.item), owner: entry.owner })),
+    session,
+  );
+}
 
+export async function describeSettings(
+  kernel: Kernel,
+  defined: readonly Defined[],
+  session: SessionId | null,
+): Promise<readonly SettingInfo[]> {
   const infos = await Promise.all(
     defined.map(async ({ definition, owner }): Promise<SettingInfo | null> => {
       let schema: SettingInfo["schema"];

@@ -402,19 +402,6 @@ async function readPlanTodos(env: ExecutionEnv, path: string): Promise<PlanState
 export default {
   id: "plan-mode",
   contribute: {
-    commands: [
-      {
-        name: "plan",
-        title: "Plan",
-        description: "Turn Plan mode on or off",
-        async run(text, { api }) {
-          const turnsOn = (await api.registries.settings.value(PLAN_MODE)) !== true;
-          await api.registries.settings.set(PLAN_MODE, turnsOn);
-
-          return turnsOn && text !== "" ? { prompt: text } : undefined;
-        },
-      },
-    ],
     parts: [planCard, planTray],
     prompt: [instructions],
     settings: [mode],

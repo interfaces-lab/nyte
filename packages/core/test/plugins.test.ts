@@ -850,13 +850,22 @@ describe("commands", () => {
     ).toEqual(["Suggesting text for /broken failed: No list."]);
   });
 
-  it("lists and runs a new chat's commands before any chat, the folder's own only while it is trusted", async () => {
+  it("lists and runs a new chat's commands and modes before any chat, the folder's own only while it is trusted", async () => {
     const imported: string[] = [];
 
     const folder: Plugin<"core"> = {
       id: "folder",
       activate: () => ({
         contribute: {
+          settings: [
+            {
+              id: "mode.folder",
+              title: "Folder",
+              type: "switch",
+              scope: "chat",
+              mode: { icon: "bug" },
+            },
+          ],
           commands: [
             {
               name: "probe",
@@ -896,7 +905,24 @@ describe("commands", () => {
     };
 
     const { host, workspace } = await world({
-      plugins: [{ id: "host", contribute: { commands: [says("hello", "hi")] } }, chatOnly],
+      plugins: [
+        {
+          id: "host",
+          contribute: {
+            commands: [says("hello", "hi")],
+            settings: [
+              {
+                id: "mode.host",
+                title: "Host",
+                type: "switch",
+                scope: "chat",
+                mode: { icon: "atom" },
+              },
+            ],
+          },
+        },
+        chatOnly,
+      ],
       loadPluginDirectory: async (dir) => {
         imported.push(dir);
 
@@ -905,11 +931,10 @@ describe("commands", () => {
     });
     const at = host.workspace(workspace);
 
-    expect((await at.catalog()).commands.map((command) => command.name)).toEqual([
-      "hello",
-      "probe",
-      "ask",
-    ]);
+    const listed = await at.catalog();
+
+    expect(listed.commands.map((command) => command.name)).toEqual(["hello", "probe", "ask"]);
+    expect(listed.modes.map((mode) => mode.id)).toEqual(["mode.host", "mode.folder"]);
     expect(imported).toEqual(["/work/project/.nyte/plugins"]);
     expect(await at.command("probe", "")).toEqual({ kind: "ran", output: "answered" });
     expect(await at.command("ask", "")).toEqual({ kind: "prompt", content: "Review this." });
@@ -918,6 +943,7 @@ describe("commands", () => {
 
     expect(await at.update({ trusted: false })).toEqual({ kind: "updated" });
     expect((await at.catalog()).commands.map((command) => command.name)).toEqual(["hello"]);
+    expect((await at.catalog()).modes.map((mode) => mode.id)).toEqual(["mode.host"]);
     await expect(host.workspace(asId("missing")).catalog()).rejects.toMatchObject({
       code: "unknown",
     });

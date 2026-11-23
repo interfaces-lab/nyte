@@ -21,7 +21,8 @@ import {
   skillInfos,
 } from "./registry.ts";
 import { scanWorkspaceResources } from "./resources.ts";
-import { readSettingValues } from "./setting-definitions.ts";
+import { resolveSetting } from "../contract/plugin.ts";
+import { describeSettings, readSettingValues } from "./setting-definitions.ts";
 import { settingHandle } from "./settings.ts";
 
 export function readWorkspaceCatalog(
@@ -31,6 +32,14 @@ export function readWorkspaceCatalog(
   return withNewChatPlugins(kernel, workspace, false, async ({ registries, inputs }) => ({
     commands: commandInfos(registries),
     skills: skillInfos(registries),
+    modes: await describeSettings(
+      kernel,
+      registries.settings
+        .entries()
+        .map((entry) => ({ definition: resolveSetting(entry.item), owner: entry.owner }))
+        .filter((entry) => entry.definition.mode !== undefined),
+      null,
+    ),
     docs: inputs.docs,
     contextFiles: inputs.contextFiles.map((file) => ({
       id: file.id,

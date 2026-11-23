@@ -1,4 +1,4 @@
-import type { CommandInfo, SkillInfo, WorkspaceCatalogView } from "@nyte-ai/sdk";
+import type { CommandInfo, SettingInfo, SkillInfo, WorkspaceCatalogView } from "@nyte-ai/sdk";
 import {
   availableSlashCommands,
   hasInlineSkills,
@@ -10,6 +10,7 @@ import type { BuiltinSlashName, SlashCommand } from "../lib/slash.ts";
 import type { Intent } from "./msg.ts";
 import { applyChoice, busyRefusal, matchChoice, settingRows } from "./settings.ts";
 import type { SettingRow } from "./settings.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 interface CommandEntry {
@@ -162,11 +163,30 @@ function readChatCatalog(state: State): ChatCatalog {
     : NO_CATALOG;
 }
 
+function modeTriggers(state: State): ReadonlyMap<string, SettingInfo> {
+  const commands = pluginCommands(state);
+
+  return new Map(
+    (followedSession(state)?.view?.catalog.settings ?? []).flatMap((info) => {
+      const name = info.title.toLocaleLowerCase().replaceAll(/\s+/gu, "-");
+
+      return info.mode === undefined || commands.some((command) => command.name === name)
+        ? []
+        : [[name, info] as const];
+    }),
+  );
+}
+
 export function slashNamespace(state: State): readonly SlashCommand[] {
   return availableSlashCommands(
-    new Map(
-      pluginCommands(state).map((command) => [command.name, { description: command.description }]),
-    ),
+    new Map([
+      ...pluginCommands(state).map(
+        (command) => [command.name, { description: command.description }] as const,
+      ),
+      ...[...modeTriggers(state)].map(
+        ([name, info]) => [name, { description: `Turn ${info.title} mode on or off` }] as const,
+      ),
+    ]),
     settingRows(state).map((row) => ({ id: row.id, label: row.label })),
     indexSkills(state),
   );
@@ -179,6 +199,7 @@ export function indexSlash(state: State): State {
 export function commandRegistry(state: State): readonly CommandEntry[] {
   const rows = new Map(settingRows(state).map((row) => [row.id, row]));
   const plugins = new Map(pluginCommands(state).map((command) => [command.name, command]));
+  const triggers = modeTriggers(state);
 
   const builtins = new Map<string, BuiltinSlashName>(
     SLASH_COMMANDS.map((command) => [command.name, command.name]),
@@ -207,6 +228,25 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
         prompt: false,
         takesText: false,
         run: (argument) => setting(state, row, argument),
+      };
+    }
+
+    const trigger = triggers.get(command.name);
+
+    if (trigger !== undefined) {
+      return {
+        ...base,
+        source: "setting",
+        prompt: false,
+        takesText: false,
+        run: (argument) =>
+          noArgument(command.name, argument, {
+            kind: "apply-setting",
+            id: trigger.id,
+            label: trigger.title,
+            scope: "chat",
+            value: trigger.value !== true,
+          }),
       };
     }
 

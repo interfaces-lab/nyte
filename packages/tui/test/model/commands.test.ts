@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { CommandInfo, SessionView } from "@nyte-ai/sdk";
-import { SLASH_COMMANDS } from "../../src/lib/slash.ts";
+import type { CommandInfo, SessionView, SettingInfo } from "@nyte-ai/sdk";
+import { SLASH_COMMANDS, slashCompletion } from "../../src/lib/slash.ts";
 import { liveChoices } from "../../src/model/choices.ts";
 import { commandRegistry, resolveCommand, slashNamespace } from "../../src/model/commands.ts";
+import type { Effect } from "../../src/model/effect.ts";
 import type { Intent } from "../../src/model/msg.ts";
 import { buildView } from "../fixture/view.ts";
 import { play, ready, S1, typed } from "./support.ts";
@@ -258,5 +259,98 @@ describe("command text suggestions", () => {
     );
 
     expect(filled.state.local.draft.text).toBe("/websearch-key tavily ");
+  });
+});
+
+function modeView(input: {
+  readonly debugOn?: boolean;
+  readonly commands?: readonly CommandInfo[];
+}): SessionView {
+  const debug: SettingInfo = {
+    id: "mode.debug",
+    owner: "modes",
+    scope: "chat",
+    title: "Debug",
+    schema: { type: "boolean" },
+    choices: null,
+    value: input.debugOn === true,
+    from: input.debugOn === true ? "chat" : "default",
+    mode: { icon: "bug" },
+  };
+
+  return {
+    ...base,
+    catalog: {
+      ...base.catalog,
+      commands: input.commands ?? [],
+      settings: [debug],
+    },
+  };
+}
+
+describe("mode triggers", () => {
+  interface ModeRow {
+    readonly name: string;
+    readonly debugOn?: boolean;
+    readonly commands?: readonly CommandInfo[];
+    readonly suggestionDescription: string;
+    readonly effect: Effect;
+  }
+
+  const ROWS: readonly ModeRow[] = [
+    {
+      name: "/debug appears in the suggestions and turns Debug on through the configure effect",
+      suggestionDescription: "Turn Debug mode on or off",
+      effect: {
+        kind: "apply-setting",
+        session: S1,
+        id: "mode.debug",
+        label: "Debug",
+        scope: "chat",
+        value: true,
+      },
+    },
+    {
+      name: "running /debug while Debug is on turns it off through the configure effect",
+      debugOn: true,
+      suggestionDescription: "Turn Debug mode on or off",
+      effect: {
+        kind: "apply-setting",
+        session: S1,
+        id: "mode.debug",
+        label: "Debug",
+        scope: "chat",
+        value: false,
+      },
+    },
+    {
+      name: "a plugin command with the same name keeps the word",
+      commands: [command("debug", "core")],
+      suggestionDescription: "debug command",
+      effect: {
+        kind: "run-command",
+        session: S1,
+        name: "debug",
+        argument: "",
+        delivery: "queue",
+      },
+    },
+  ];
+
+  test.each(ROWS)("$name", (row) => {
+    const state = ready(modeView({ debugOn: row.debugOn, commands: row.commands }));
+
+    const suggested = slashCompletion("/deb", state.facts.slash)?.commands.find(
+      (entry) => entry.name === "debug",
+    );
+
+    expect(suggested).toMatchObject({
+      name: "debug",
+      description: row.suggestionDescription,
+    });
+
+    const ran = play(state, typed("/debug"), { kind: "send", delivery: "queue" });
+
+    expect(ran.effects).toContainEqual(row.effect);
   });
 });

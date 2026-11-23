@@ -16,6 +16,7 @@ import type { Case } from "../fixtures.ts";
 const beforeContextFiles = {
   commands: catalog.commands,
   skills: catalog.skills,
+  modes: catalog.settings,
   docs: [sharedDoc],
 };
 

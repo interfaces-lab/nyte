@@ -5,19 +5,6 @@ const MULTITASK = "mode.multitask";
 export default {
   id: "multitask-mode",
   contribute: {
-    commands: [
-      {
-        name: "multitask",
-        title: "Multitask",
-        description: "Turn Multitask mode on or off",
-        async run(text, { api }) {
-          const turnsOn = (await api.registries.settings.value(MULTITASK)) !== true;
-          await api.registries.settings.set(MULTITASK, turnsOn);
-
-          return turnsOn && text !== "" ? { prompt: text } : undefined;
-        },
-      },
-    ],
     settings: [
       {
         id: MULTITASK,

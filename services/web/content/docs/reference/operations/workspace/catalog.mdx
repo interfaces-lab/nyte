@@ -64,7 +64,7 @@ Response, with each list shortened to empty:
 ```json
 {
   "type": "object",
-  "required": ["commands", "skills", "docs", "contextFiles"],
+  "required": ["commands", "skills", "modes", "docs", "contextFiles"],
   "properties": {
     "commands": {
       "type": "array",
@@ -126,6 +126,100 @@ Response, with each list shortened to empty:
         }
       }
     },
+    "modes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "owner", "scope", "title", "schema", "choices", "value", "from"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": ["host", "chat"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "page": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "boolean",
+            "const": true
+          },
+          "mode": {
+            "type": "object",
+            "required": ["icon"],
+            "properties": {
+              "icon": {
+                "type": "string"
+              },
+              "tint": {
+                "type": "object",
+                "required": ["hue", "chroma"],
+                "properties": {
+                  "hue": {
+                    "type": "number"
+                  },
+                  "chroma": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "schema": {
+            "type": "object",
+            "patternProperties": {
+              "^.*$": {
+                "$ref": "Json"
+              }
+            }
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["value", "title"],
+                  "properties": {
+                    "value": {
+                      "$ref": "Json"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "$ref": "Json"
+          },
+          "from": {
+            "enum": ["default", "host", "chat"]
+          }
+        }
+      }
+    },
     "docs": {
       "type": "array",
       "items": {
@@ -170,6 +264,39 @@ Response, with each list shortened to empty:
           }
         }
       }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
     }
   }
 }

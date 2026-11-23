@@ -1,5 +1,5 @@
 {
-  "revision": 45,
+  "revision": 46,
   "operations": {
     "connection.watch": "3273055e02673f36",
     "connection.blob": "d661f9695af8afc2",
@@ -85,7 +85,7 @@
     "part.close": "3bea393b101cda0a",
     "workspace.info": "aba9e30a4c210a94",
     "workspace.watch": "8f11bf2014969198",
-    "workspace.catalog": "3b6711054c0d3acf",
+    "workspace.catalog": "4f5151294e414072",
     "workspace.command": "4589d941f90c7814",
     "workspace.completeCommand": "24c4e6030ff47775",
     "mcp.watch": "704d9c364624279a",

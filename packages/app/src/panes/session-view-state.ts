@@ -42,6 +42,8 @@ export interface DraftChoice {
 export interface BlankViewState {
   readonly composer: ComposerViewState;
   readonly choice: DraftChoice | undefined;
+  /** The modes picked on this draft, on or off, by setting id. The new chat starts with them. */
+  readonly modes?: Readonly<Record<string, boolean>>;
   readonly project?: ProjectId;
   /** The folder picked for this draft, or null for Home. */
   readonly folder?: string | null;
@@ -282,6 +284,7 @@ export class SessionViewStateStore {
     if (
       storedChanged(current.composer, next.composer) ||
       current.choice !== next.choice ||
+      current.modes !== next.modes ||
       current.project !== next.project ||
       current.folder !== next.folder
     ) {

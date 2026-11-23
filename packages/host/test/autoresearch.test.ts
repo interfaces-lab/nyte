@@ -17,7 +17,7 @@ const hasGit = (await findExecutable("git")) !== null;
 const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" };
 
 const OUTSIDE_WORKTREE =
-  "Autoresearch commits and reverts code, so it runs only in a chat with its own worktree. Run /autoresearch with a goal to start one.";
+  "Autoresearch commits and reverts code, so it runs only in a chat with its own worktree. Start the chat in a worktree, then turn Autoresearch on.";
 
 const folders: string[] = [];
 
@@ -64,7 +64,6 @@ describe.skipIf(!hasGit)("autoresearch", () => {
   it.each<{
     readonly name: string;
     readonly isolated: boolean;
-    readonly off?: true;
     readonly run: (input: {
       readonly host: Connection;
       readonly fake: FakeModels;
@@ -72,41 +71,11 @@ describe.skipIf(!hasGit)("autoresearch", () => {
     }) => Promise<void>;
   }>([
     {
-      name: "/autoresearch with a goal outside a worktree starts its own worktree chat with the mode on",
+      name: "the plugin has no /autoresearch command, so the composer's toggle owns the name and nothing starts",
       isolated: false,
-      async run({ host, fake, chat }) {
-        fake.reply(say("Setting up."));
-
-        expect(await host.session(asId(chat)).command("autoresearch", "make it faster")).toEqual({
-          kind: "ran",
-          output:
-            'Started "Autoresearch: make it faster" in a new chat with its own worktree. It commits and reverts code there and leaves this checkout alone.',
-        });
-
-        const started = (await sessionIds(host)).find((id) => id !== chat);
-        assert(started !== undefined);
-        await host.session(asId(started)).receipt(asId(started)).settled();
-        const info = await host.session(asId(started)).info();
-
-        expect((await host.workspace(info.workspace).info()).isolation?.session).toBe(started);
-        expect(
-          (fake.requests.at(-1)?.context.messages ?? []).some(
-            (message) =>
-              message.role === "user" &&
-              typeof message.content === "string" &&
-              message.content.startsWith("<system-reminder>\nAutoresearch mode is on."),
-          ),
-        ).toBe(true);
-      },
-    },
-    {
-      name: "/autoresearch without a goal outside a worktree asks for one and starts nothing",
-      isolated: false,
-      off: true,
       async run({ host, chat }) {
-        expect(await host.session(asId(chat)).command("autoresearch", "")).toEqual({
-          kind: "ran",
-          output: "Name what to optimize, for example /autoresearch make the test suite faster.",
+        expect(await host.session(asId(chat)).command("autoresearch", "make it faster")).toEqual({
+          kind: "unknown",
         });
         expect(await sessionIds(host)).toEqual([chat]);
       },
@@ -133,7 +102,7 @@ describe.skipIf(!hasGit)("autoresearch", () => {
     },
   ])(
     "$name",
-    async ({ isolated, off, run }) => {
+    async ({ isolated, run }) => {
       const home = await mkdtemp(join(tmpdir(), "nyte-autoresearch-"));
       folders.push(home);
       const repo = join(home, "repo");
@@ -165,7 +134,7 @@ describe.skipIf(!hasGit)("autoresearch", () => {
         workspace: workspace.id,
         content: "Hi.",
         ...(isolated && { isolation: "worktree" as const }),
-        configuration: { settings: { "mode.autoresearch": off !== true } },
+        configuration: { settings: { "mode.autoresearch": true } },
       });
       await receipt.settled();
 

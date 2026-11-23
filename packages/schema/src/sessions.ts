@@ -248,6 +248,8 @@ export type SessionCatalogView = Decoded<typeof SessionCatalogViewType>;
 export const WorkspaceCatalogViewType = Type.Object({
   commands: Type.Array(CommandInfoType),
   skills: Type.Array(SkillInfoType),
+  /** The composer modes a new chat in this folder can start with, from the host's plugins and the folder's. */
+  modes: Type.Array(SettingInfoType),
   docs: Type.Array(SharedDocType),
   contextFiles: Type.Array(ContextFileType),
 });

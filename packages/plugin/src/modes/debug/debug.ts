@@ -2,7 +2,6 @@ import type { Mode } from "../mode.ts";
 
 export default {
   id: "mode.debug",
-  name: "debug",
   title: "Debug",
   description:
     "Finds a bug's cause from evidence before changing code, then makes the smallest fix.",

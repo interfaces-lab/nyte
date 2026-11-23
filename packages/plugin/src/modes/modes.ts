@@ -1,5 +1,5 @@
 import type { PromptSection, SettingDefinition, When } from "@nyte-ai/core";
-import type { Command, Plugin } from "@nyte-ai/plugin/core";
+import type { Plugin } from "@nyte-ai/plugin/core";
 import autoresearch from "./autoresearch/autoresearch.ts";
 import debug from "./debug/debug.ts";
 import type { Mode } from "./mode.ts";
@@ -41,7 +41,7 @@ export default {
       })),
     ),
     parts: MODES.flatMap((mode) => mode.parts ?? []),
-    commands: MODES.flatMap((mode) => [mode.toggle ?? toggle(mode), ...(mode.commands ?? [])]),
+    commands: MODES.flatMap((mode) => mode.commands ?? []),
   },
   hooks: {
     async run_ended(end, context) {
@@ -49,17 +49,3 @@ export default {
     },
   },
 } satisfies Plugin;
-
-function toggle(mode: Mode): Command<"core"> {
-  return {
-    name: mode.name,
-    title: mode.title,
-    description: `Turn ${mode.title} mode on or off`,
-    async run(text, { api }) {
-      const turnsOn = (await api.registries.settings.value(mode.id)) !== true;
-      await api.registries.settings.set(mode.id, turnsOn);
-
-      return turnsOn && text !== "" ? { prompt: text } : undefined;
-    },
-  };
-}

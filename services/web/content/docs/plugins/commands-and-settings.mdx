@@ -168,8 +168,9 @@ The preset pages are `server`, `profile`, `general`, `notifications`, `appearanc
 
 ### Composer modes [#modes]
 
-A per-chat switch with `mode` is a composer mode. A chat starts with no mode on. Turn one on with its
-slash command or with Shift+Tab, and it shows as a chip beside the model until it's off again.
+A per-chat switch with `mode` is a composer mode. A chat starts with no mode on, and the composer
+shows nothing for modes. Turn one on with its trigger word, such as `/plan`, or with Shift+Tab. It
+shows as a chip beside the model until it's off again.
 
 ```ts title="plan-mode.ts"
 import type { Plugin } from "@nyte-ai/plugin/core";
@@ -197,19 +198,6 @@ export default {
         gone: "Plan mode is off. Its instructions no longer apply.",
       },
     ],
-    commands: [
-      {
-        name: "plan",
-        title: "Plan",
-        description: "Turn Plan mode on or off",
-        async run(text, { api }) {
-          const turnsOn = (await api.registries.settings.value(PLAN)) !== true;
-          await api.registries.settings.set(PLAN, turnsOn);
-
-          return turnsOn && text !== "" ? { prompt: text } : undefined;
-        },
-      },
-    ],
   },
 } satisfies Plugin;
 ```
@@ -228,9 +216,12 @@ export default {
 - Modes are exclusive. Turning one on, from the composer, a command or `settings.set`, turns the
   chat's other modes off. Shift+Tab steps off, then each mode in turn. Clicking the chip turns its
   mode off.
-- Give the mode a command that toggles its switch, as above: `/plan` turns it on, `/plan` again turns
-  it off, and `/plan` with text turns it on and sends the text. A new chat's composer shows no modes,
-  so a mode starts once the chat has.
+- Every mode gets a trigger word, its title in lower case: `/plan` for Plan. The composer runs it
+  itself, as it runs `/compact`: `/plan` turns Plan on, and `/plan` again turns it off. Nothing is
+  sent, and text typed after the word stays in the composer. It works in a new chat too, which then
+  starts in that mode.
+- A plugin command with the same name keeps the word. Autoresearch does this so `/autoresearch`
+  can take a goal.
 - A change takes effect at once, in a running turn too: the turn's next request is told, and a tool
   gated on the mode comes or goes with it.
 - Gate the mode's tools with the same `when` as its reminder section.

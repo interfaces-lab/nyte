@@ -1,10 +1,9 @@
-import type { Command, HookHandler, Plugin } from "@nyte-ai/plugin/core";
+import type { HookHandler, Plugin } from "@nyte-ai/plugin/core";
 
 type Contributions = NonNullable<Plugin["contribute"]>;
 
 export interface Mode {
   readonly id: string;
-  readonly name: string;
   readonly title: string;
   readonly description: string;
   readonly icon: string;
@@ -13,6 +12,5 @@ export interface Mode {
   readonly tools?: Contributions["tools"];
   readonly parts?: Contributions["parts"];
   readonly commands?: Contributions["commands"];
-  readonly toggle?: Command<"core">;
   readonly onRunEnded?: HookHandler<"run_ended">;
 }

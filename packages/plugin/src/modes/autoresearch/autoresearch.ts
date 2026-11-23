@@ -3,7 +3,7 @@ import { definePart } from "@nyte-ai/core";
 import type { ExecutionEnv, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { asId, standard } from "@nyte-ai/schema";
 import type { FileVersion, Infer, PartId, ToolContent } from "@nyte-ai/schema";
-import type { Command, HookHandler } from "@nyte-ai/plugin/core";
+import type { HookHandler } from "@nyte-ai/plugin/core";
 import type { Mode } from "../mode.ts";
 import { Type } from "typebox";
 import {
@@ -73,8 +73,6 @@ const dashboard = definePart({
 
 const CONTINUE = "Continue the autoresearch loop with the next experiment.";
 
-const USAGE = "Name what to optimize, for example /autoresearch make the test suite faster.";
-
 const DIRTY =
   "The working tree has changes outside .auto/. Commit them first, so a discarded experiment reverts only its own changes.";
 
@@ -82,7 +80,7 @@ const DETACHED_HEAD =
   "HEAD is detached. Check out this chat's branch again, then call init_experiment.";
 
 const OUTSIDE_WORKTREE =
-  "Autoresearch commits and reverts code, so it runs only in a chat with its own worktree. Run /autoresearch with a goal to start one.";
+  "Autoresearch commits and reverts code, so it runs only in a chat with its own worktree. Start the chat in a worktree, then turn Autoresearch on.";
 
 const NO_SESSION = "This workspace has no autoresearch session. Call init_experiment first.";
 
@@ -272,58 +270,10 @@ const logExperiment: ToolDefinition<Infer<typeof logParameters>> = {
   },
 };
 
-const autoresearchCommand: Command<"core"> = {
-  name: AUTORESEARCH,
-  title: "Autoresearch",
-  description: "Run an experiment loop on a goal, or turn it off",
-  takesText: true,
-  async run(text, context) {
-    const api = context.api;
-
-    if (text === "" && (await api.registries.settings.value(MODE)) === true) {
-      await api.registries.settings.set(MODE, false);
-
-      return `Autoresearch is off. ${LOG_PATH} is kept, so /autoresearch resumes it.`;
-    }
-
-    const { workspace } = await api.session.info();
-
-    if ((await api.host.workspace(workspace).info()).isolation?.session !== api.session.id) {
-      if (text === "") return USAGE;
-
-      const name = `Autoresearch: ${text}`;
-
-      await api.host.sessions.start({
-        workspace,
-        isolation: "worktree",
-        name,
-        configuration: { settings: { [MODE]: true } },
-        content: `Start an autoresearch session: ${text}`,
-      });
-
-      return `Started "${name}" in a new chat with its own worktree. It commits and reverts code there and leaves this checkout alone.`;
-    }
-
-    const resuming = (await api.env.files.stat(posix.join(api.env.cwd, PROMPT_PATH))) !== null;
-
-    if (!resuming && text === "") return USAGE;
-
-    await api.registries.settings.set(MODE, true);
-
-    return { prompt: resuming ? resume(text) : `Start an autoresearch session: ${text}` };
-  },
-};
-
 async function requireOwnWorktree(invocation: ToolInvocation): Promise<void> {
   if ((await invocation.workspace.info()).isolation?.session !== invocation.session.id) {
     throw new Error(OUTSIDE_WORKTREE);
   }
-}
-
-function resume(note: string): string {
-  const added = note === "" ? "" : `\n\nThe user adds: ${note}`;
-
-  return `Resume the autoresearch session in .auto/. Read ${PROMPT_PATH}, the end of ${LOG_PATH} and \`git log --oneline -20\`, then continue the loop.${added}`;
 }
 
 const continueLoop: HookHandler<"run_ended"> = async (end, context) => {
@@ -345,7 +295,7 @@ const continueLoop: HookHandler<"run_ended"> = async (end, context) => {
 
   await api.session.head(context.head).send(CONTINUE, {
     delivery: "queue",
-    source: { kind: "action", label: "Autoresearch", command: AUTORESEARCH },
+    source: { kind: "action", label: "Autoresearch" },
     id: asId(`${AUTORESEARCH}-${context.run}`),
   });
 };
@@ -658,7 +608,6 @@ function reply(value: string) {
 
 export default {
   id: MODE,
-  name: AUTORESEARCH,
   title: "Autoresearch",
   description:
     "Runs an experiment loop in this chat: try an idea, measure it, keep or revert it, and repeat until you stop it.",
@@ -667,6 +616,5 @@ export default {
   prompt: PROMPT,
   tools: [initExperiment, runExperiment, logExperiment],
   parts: [dashboard],
-  toggle: autoresearchCommand,
   onRunEnded: continueLoop,
 } satisfies Mode;
