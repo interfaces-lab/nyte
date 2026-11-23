@@ -1,7 +1,8 @@
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
-import type { ExecutionEnv } from "@nyte-ai/core";
+import { isAbsolute, resolve } from "node:path";
+import type { ExecutionEnv, PluginApi } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import type { Command, Plugin } from "@nyte-ai/plugin/core";
 
 const SHELL_TIMEOUT_MS = 10_000;
@@ -17,7 +18,10 @@ const cdCommand: Command<"core"> = {
   description: "Change this chat's working directory with your shell's cd",
   takesText: true,
   async complete(prefix, { api }) {
-    const folders = await directorySuggestions({ path: prefix, cwd: api.env.cwd });
+    const folders = await directorySuggestions({
+      path: prefix,
+      cwd: attachedEnv(api)?.cwd ?? homedir(),
+    });
 
     return folders.map((folder) => ({ value: folder.value, label: folder.label }));
   },
@@ -27,9 +31,11 @@ const cdCommand: Command<"core"> = {
     if (process.platform === "win32") {
       throw new Error("/cd runs your shell's cd, and Windows hosts don't have one yet.");
     }
-    const path = await shellCd(api.env, text, signal);
+    const env = attachedEnv(api);
+    const present = env !== null && (await stat(env.cwd).catch(() => null)) !== null;
+    const path = present ? await shellCd(env, text, signal) : fullPath(text);
 
-    if (path === api.env.cwd) return `Already in ${path}`;
+    if (path === env?.cwd) return `Already in ${path}`;
     const seen = await api.host.workspaces.inspect({ kind: "local", path });
 
     const added = await api.host.workspaces.add(seen.target, {
@@ -45,6 +51,27 @@ const cdCommand: Command<"core"> = {
     return { workspace: added.workspace, output: `Working directory: ${path}` };
   },
 };
+
+function attachedEnv(api: PluginApi<"core">): ExecutionEnv | null {
+  try {
+    return api.env;
+  } catch (error) {
+    if (error instanceof SdkError && error.code === "unavailable") return null;
+    throw error;
+  }
+}
+
+function fullPath(text: string): string {
+  const path = text.trim();
+
+  if (path === "~" || path.startsWith("~/")) return resolve(homedir(), path.slice(2));
+
+  if (isAbsolute(path)) return resolve(path);
+
+  throw new Error(
+    "This chat's folder is gone, so /cd needs a full path, such as ~/project or /Users/you/project.",
+  );
+}
 
 async function shellCd(env: ExecutionEnv, text: string, signal: AbortSignal): Promise<string> {
   const marker = `nyte-cd-${crypto.randomUUID()}:`;

@@ -130,8 +130,11 @@ export interface Session extends Head {
 
   remove(): Promise<RemoveSessionOutcome>;
 
-  /** Starts a new chat in the same folder with this chat's history through `from`, by default main's tip. The new chat shares the history's stored objects and grows on its own; this chat doesn't change. */
-  fork(input?: { readonly from?: CommitId }): Promise<ForkOutcome>;
+  /** Starts a new chat with this chat's history through `from`, by default main's tip, in `workspace`, by default this chat's folder. The new chat shares the history's stored objects and grows on its own; this chat doesn't change. */
+  fork(input?: {
+    readonly from?: CommitId;
+    readonly workspace?: WorkspaceId;
+  }): Promise<ForkOutcome>;
 
   stop(): Promise<{ readonly stopped: readonly RunId[]; readonly withdrawn: readonly MessageId[] }>;
 

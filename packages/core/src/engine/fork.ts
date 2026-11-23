@@ -1,4 +1,4 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, SdkError } from "@nyte-ai/schema";
 import type {
   CommitId,
   DurableEvent,
@@ -9,6 +9,7 @@ import type {
   Seq,
   SessionEvent,
   SessionId,
+  WorkspaceId,
 } from "@nyte-ai/schema";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
@@ -16,7 +17,7 @@ import type { HeadRecord, SeenRecord, SessionRecord } from "../contract/records.
 import type { StoreConnection } from "../contract/store.ts";
 import { commit } from "../watch/commit.ts";
 import { walkCommitPath } from "../fold/paths.ts";
-import { headRef, partRef, promptRef, seenRef, sessionRef } from "../store/refs.ts";
+import { headRef, partRef, promptRef, seenRef, sessionRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,
   MAIN,
@@ -50,8 +51,16 @@ export async function forkSession(
   kernel: Kernel,
   context: ConnectionContext,
   source: SessionId,
-  from: CommitId | undefined,
+  input: { readonly from?: CommitId; readonly workspace?: WorkspaceId },
 ): Promise<ForkOutcome> {
+  const { from } = input;
+
+  if (
+    input.workspace !== undefined &&
+    (await kernel.store.refs.get(workspaceRef(input.workspace))) === null
+  ) {
+    throw new SdkError("unknown", `Workspace ${input.workspace} is not registered.`);
+  }
   const id = asId<"session">(crypto.randomUUID());
 
   return attempt(`Forking ${source}`, async () => {
@@ -88,7 +97,7 @@ export async function forkSession(
       name: found.record.name,
       parent: null,
       origin: null,
-      workspace: found.record.workspace,
+      workspace: input.workspace ?? found.record.workspace,
       pinned: false,
       archived: false,
       createdAt: at,

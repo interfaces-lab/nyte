@@ -83,7 +83,7 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
     },
     update: (patch) => update(kernel, id, patch),
     remove: () => remove(kernel, context, id),
-    fork: (input) => forkSession(kernel, context, id, input?.from),
+    fork: (input) => forkSession(kernel, context, id, input ?? {}),
     stop: () => stop(kernel, id),
     async command(name, text) {
       await kernel.plugins.runtime(id).ready;
