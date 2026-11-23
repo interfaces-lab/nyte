@@ -4,6 +4,7 @@ import type {
   DiagnosticSeverity,
   LanguageDiagnostic,
   TextPosition,
+  TextRange,
   WorkspaceId,
 } from "@nyte-ai/schema";
 import type { Marker, MarkerSeverity } from "@nyte-ai/ui/diffs/edit";
@@ -13,6 +14,8 @@ import { workspaceFile } from "../workbench/paths.ts";
 import { fileActions } from "./file-store.ts";
 import { languageDocuments } from "./language-documents.ts";
 import { editorRange } from "./pierre-language.ts";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 const SEVERITIES = {
   error: "error",
@@ -25,14 +28,29 @@ interface DiagnosticsInput {
   readonly viewKey: WorkbenchViewKey;
   readonly path: string;
   readonly workspace: { readonly id: WorkspaceId; readonly path: string } | undefined;
+  readonly mac: boolean;
+  readonly readOnly: boolean;
   readonly show: (markers: Marker[]) => void;
+  readonly onQuickFix: (range: TextRange) => void;
 }
 
 export function useDiagnostics(input: DiagnosticsInput) {
   const held = useRef<Marker[]>([]);
+  const heldKey = useRef("[]");
 
-  const show = useEffectEvent((markers: Marker[]) => {
-    if (JSON.stringify(markers) === JSON.stringify(held.current)) return;
+  const show = useEffectEvent((diagnostics: readonly LanguageDiagnostic[]) => {
+    const key = JSON.stringify(diagnostics);
+
+    if (key === heldKey.current) return;
+    heldKey.current = key;
+
+    const markers = diagnostics.map((diagnostic) =>
+      marker(diagnostic, {
+        mac: input.mac,
+        onQuickFix: input.readOnly ? undefined : input.onQuickFix,
+      }),
+    );
+
     held.current = markers;
     input.show(markers);
   });
@@ -68,7 +86,7 @@ async function follow(
     readonly relative: string;
   },
   signal: AbortSignal,
-  show: (markers: Marker[]) => void,
+  show: (diagnostics: readonly LanguageDiagnostic[]) => void,
 ): Promise<void> {
   const api = await languageFor(file.id);
 
@@ -83,20 +101,164 @@ async function follow(
   for (let next = await stream.next(); next.done !== true; next = await stream.next()) {
     const frame = next.value.find((entry) => entry.path === file.relative);
 
-    if (frame !== undefined && !signal.aborted) show(frame.diagnostics.map(marker));
+    if (frame !== undefined && !signal.aborted) show(frame.diagnostics);
   }
 }
 
-function marker(diagnostic: LanguageDiagnostic): Marker {
+function marker(
+  diagnostic: LanguageDiagnostic,
+  options: {
+    readonly mac: boolean;
+    readonly onQuickFix: ((range: TextRange) => void) | undefined;
+  },
+): Marker {
   const shown: Marker = {
     ...editorRange(diagnostic.range),
     severity: SEVERITIES[diagnostic.severity],
-    message: diagnostic.message,
+    message: diagnosticContent(diagnostic, options),
   };
 
   if (diagnostic.source !== null) shown.source = diagnostic.source;
 
   return shown;
+}
+
+function diagnosticContent(
+  diagnostic: LanguageDiagnostic,
+  options: {
+    readonly mac: boolean;
+    readonly onQuickFix: ((range: TextRange) => void) | undefined;
+  },
+): HTMLElement {
+  const root = document.createElement("div");
+  root.dataset.diagnostic = "";
+
+  const body = document.createElement("div");
+  body.dataset.diagnosticBody = "";
+
+  const icon = document.createElement("span");
+  icon.dataset.diagnosticIcon = "";
+  icon.setAttribute("aria-hidden", "true");
+  icon.append(severityIcon(diagnostic.severity));
+
+  const text = document.createElement("p");
+  text.dataset.diagnosticText = "";
+  text.textContent = diagnostic.message;
+
+  body.append(icon, text);
+  root.append(body);
+
+  const hasMeta = diagnostic.source !== null || diagnostic.code !== null;
+  const onQuickFix = options.onQuickFix;
+
+  if (!hasMeta && onQuickFix === undefined) return root;
+
+  const footer = document.createElement("div");
+  footer.dataset.diagnosticFooter = "";
+
+  if (!hasMeta) footer.dataset.diagnosticActionOnly = "";
+
+  if (hasMeta) {
+    const meta = document.createElement("span");
+    meta.dataset.diagnosticMeta = "";
+
+    if (diagnostic.source !== null) {
+      const source = document.createElement("span");
+      source.dataset.diagnosticSource = "";
+      source.textContent = diagnostic.source;
+      meta.append(source);
+    }
+
+    if (diagnostic.source !== null && diagnostic.code !== null) meta.append("·");
+
+    if (diagnostic.code !== null) {
+      const code = document.createElement("span");
+      code.dataset.diagnosticCode = "";
+      code.textContent = diagnostic.code;
+      code.title = diagnostic.code;
+      meta.append(code);
+    }
+
+    footer.append(meta);
+  }
+
+  if (onQuickFix !== undefined) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.diagnosticAction = "";
+    button.append("Quick Fix");
+
+    const keys = document.createElement("kbd");
+    keys.textContent = options.mac ? "⌘." : "Ctrl+.";
+    button.append(keys);
+
+    button.addEventListener("pointerdown", (event) => event.preventDefault());
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onQuickFix(diagnostic.range);
+    });
+    footer.append(button);
+  }
+
+  root.append(footer);
+
+  return root;
+}
+
+function severityIcon(severity: DiagnosticSeverity): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("fill", "none");
+
+  const stroke = (tag: "path" | "circle", attrs: Readonly<Record<string, string>>): void => {
+    const node = document.createElementNS(SVG_NS, tag);
+
+    for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+    svg.append(node);
+  };
+
+  switch (severity) {
+    case "error":
+      stroke("circle", { cx: "8", cy: "8", r: "6", stroke: "currentColor", "stroke-width": "1.4" });
+      stroke("path", {
+        d: "M5.75 5.75L10.25 10.25M10.25 5.75L5.75 10.25",
+        stroke: "currentColor",
+        "stroke-width": "1.4",
+        "stroke-linecap": "round",
+      });
+      break;
+    case "warning":
+      stroke("path", {
+        d: "M7.14 2.74a1 1 0 0 1 1.72 0l5.02 8.75A1 1 0 0 1 13.02 13H2.98a1 1 0 0 1-.86-1.51l5.02-8.75Z",
+        stroke: "currentColor",
+        "stroke-width": "1.4",
+        "stroke-linejoin": "round",
+      });
+      stroke("path", {
+        d: "M8 6v3",
+        stroke: "currentColor",
+        "stroke-width": "1.4",
+        "stroke-linecap": "round",
+      });
+      stroke("circle", { cx: "8", cy: "11", r: "0.75", fill: "currentColor" });
+      break;
+    case "information":
+      stroke("circle", { cx: "8", cy: "8", r: "6", stroke: "currentColor", "stroke-width": "1.4" });
+      stroke("path", {
+        d: "M8 7.5v3.25",
+        stroke: "currentColor",
+        "stroke-width": "1.4",
+        "stroke-linecap": "round",
+      });
+      stroke("circle", { cx: "8", cy: "5.25", r: "0.75", fill: "currentColor" });
+      break;
+    case "hint":
+      stroke("circle", { cx: "8", cy: "8", r: "2.5", fill: "currentColor" });
+      break;
+  }
+
+  return svg;
 }
 
 export function diagnosed(markers: readonly Marker[], position: TextPosition): boolean {

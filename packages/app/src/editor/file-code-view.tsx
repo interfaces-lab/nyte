@@ -14,6 +14,7 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { selectionAction } from "./editor-selection.ts";
 import { EDITOR_KEYMAP } from "./editor-keymap.ts";
+import { editorWidgetSheet } from "./editor-view-options.ts";
 import type { DocumentEditor, FileBuffer } from "./file-document.ts";
 import type { FileTab } from "./file-store.ts";
 import { viewerStyles } from "./file-viewers.tsx";
@@ -122,7 +123,9 @@ export function viewerHandlers(
     onLineNumberClick: (event: { readonly lineNumber: number }) =>
       latest().peekAt(event.lineNumber),
     onPostRender: (...[node, , phase]: [HTMLElement, unknown, PostRenderPhase]): void => {
-      if (phase !== "unmount") adoptSheet(node, bars);
+      if (phase === "unmount") return;
+      adoptSheet(node, editorWidgetSheet());
+      adoptSheet(node, bars);
     },
     ...tokenHooks({
       enter: (word, event) => latest().pointer.enter(word, event),

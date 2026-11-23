@@ -684,7 +684,10 @@ function useLanguageFeatures(input: {
     viewKey,
     path: file.path,
     workspace: project,
+    mac: input.mac,
+    readOnly: file.readOnly,
     show: input.show,
+    onQuickFix: declarations.showActions,
   });
 
   return { declarations, completion, diagnostics };

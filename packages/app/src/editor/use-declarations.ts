@@ -44,11 +44,6 @@ export interface PointedWord {
   readonly element: HTMLElement;
 }
 
-/**
- * Go to Declaration, Go to Type Declaration, Quick Definition, Rename (F2 as in VS Code, ⇧F6 as in
- * GoLand) and Show Context Actions (⌥Enter, as in GoLand) for one open file: the keys, the
- * modifier-click and the modifier-hover link, and what the editor shows while and after it resolves.
- */
 export function useDeclarations(input: {
   readonly viewKey: WorkbenchViewKey;
   readonly path: string;
@@ -299,15 +294,15 @@ export function useDeclarations(input: {
     });
   };
 
-  const showActions = async (): Promise<void> => {
-    const caret = input.caret();
-    const range = input.selection();
+  const showActions = async (target?: TextRange): Promise<void> => {
+    const range = target ?? input.selection();
+    const caret = target?.start ?? input.caret();
 
     if (caret === undefined || range === undefined) return;
     ticket.current += 1;
     const mine = ticket.current;
     const revision = input.buffer.getSnapshot().revision;
-    const place = input.rangeRect({ start: caret, end: caret }) ?? input.fallbackRect();
+    const place = input.rangeRect(target ?? { start: caret, end: caret }) ?? input.fallbackRect();
     const slow = resolving(place, "Finding actions…", mine);
 
     const listed = await connect()
@@ -512,6 +507,9 @@ export function useDeclarations(input: {
       cancel: dismiss,
     },
     action: { pick: runAction, close: dismiss },
+    showActions: (range: TextRange): void => {
+      if (!input.readOnly) void showActions(range);
+    },
     pointer: {
       enter(
         word: PointedWord,
@@ -612,18 +610,11 @@ export function useDeclarations(input: {
         return true;
       }
 
-      if (
-        event.key === "Enter" &&
-        event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey &&
-        !event.nativeEvent.isComposing &&
-        !input.readOnly
-      ) {
+      if (actionsKey(event, input.mac)) {
         event.preventDefault();
         event.stopPropagation();
-        void showActions();
+
+        if (!input.readOnly) void showActions();
 
         return true;
       }
@@ -665,6 +656,18 @@ function declarationKey(
   }
 
   return primary && event.shiftKey && !event.altKey && key === "KeyI" ? "definition" : undefined;
+}
+
+function actionsKey(event: KeyboardEvent<HTMLElement>, mac: boolean): boolean {
+  if (event.nativeEvent.isComposing) return false;
+
+  const altEnter =
+    event.key === "Enter" && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+
+  const primary = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  const quickFix = primary && !event.altKey && !event.shiftKey && event.code === "Period";
+
+  return altEnter || quickFix;
 }
 
 function renameKey(event: KeyboardEvent<HTMLElement>): boolean {

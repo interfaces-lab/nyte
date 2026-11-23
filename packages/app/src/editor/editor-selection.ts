@@ -1,6 +1,7 @@
 import type { Editor, EditorSelection, Range } from "@nyte-ai/ui/diffs/edit";
 import type { CodeViewHandle } from "@nyte-ai/ui/diffs/react";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { Value } from "typebox/value";
 import { currentLights, shine } from "../light/light.ts";
 import type { Subject } from "../light/light.ts";
@@ -19,21 +20,29 @@ export const SELECTION_ACTION_CSS = `
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: ${space.s1_5};
   margin: 0;
-  padding: 2px 8px;
+  padding-block: ${space.s0_5};
+  padding-inline: ${space.s2};
   border: 0;
-  border-radius: 5px;
-  background: none;
+  border-radius: ${button.radius2xs};
+  background-color: transparent;
   color: ${role.contentPrimary};
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+  font-family: ${type.fontSans};
+  font-size: ${type.fontSm};
+  line-height: ${type.leadingSm};
+  cursor: ${appearance.cursorInteractive};
+  transition-property: background-color;
+  transition-duration: ${motion.durationFast};
+  transition-timing-function: ${motion.easeOut};
 }
 @media (hover: hover) and (pointer: fine) {
   [data-add-selection]:hover {
     background-color: ${role.fillTertiary};
   }
+}
+[data-add-selection]:active {
+  background-color: ${role.fillSecondary};
 }
 [data-add-selection] kbd {
   font: inherit;

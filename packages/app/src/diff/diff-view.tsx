@@ -177,11 +177,22 @@ const DIFF_SCOPES = [
     properties: [
       ["--diffs-deletion-color-override", role.strokeAccent],
       ["--diffs-fg-number-deletion-override", role.contentAccent],
+      ["--nyte-diagnostic-error", role.contentAccent],
+    ],
+  },
+  {
+    scope: surfaceTheme.yellow,
+    properties: [
+      ["--diffs-editor-warning-fg", role.strokeAccent],
+      ["--nyte-diagnostic-warning", role.contentAccent],
     ],
   },
   {
     scope: surfaceTheme.blue,
-    properties: [["--diffs-modified-color-override", role.strokeAccent]],
+    properties: [
+      ["--diffs-modified-color-override", role.strokeAccent],
+      ["--nyte-diagnostic-info", role.contentAccent],
+    ],
   },
 ] as const;
 
