@@ -17,7 +17,7 @@ import { WORKSPACE_OPERATIONS } from "./workspace.ts";
 
 export const API_REVISION = 44;
 
-export const API_MIN_REVISION = 17;
+export const API_MIN_REVISION = 44;
 
 export const OPERATIONS = {
   ...HOST_OPERATIONS,

@@ -61,6 +61,8 @@ export * from "./text-encoding.ts";
 
 export * from "./tools.ts";
 
+export * from "./versions.ts";
+
 export * from "./views.ts";
 
 export * from "./workspaces.ts";

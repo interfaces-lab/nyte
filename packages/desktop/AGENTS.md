@@ -13,7 +13,7 @@ Fonts and loading indicators follow the Fonts and Loading indicators sections of
 
 - Ask for workspace trust once. Child tasks inherit it. Extra approval checks belong in plugins.
 - Background agents get no ask-question tool.
-- Replacing the app leaves the launchd host running. A newer app asks it to retire once no run or job is active.
+- Replacing the app leaves the launchd host running. It retires itself for the newer app once no run or job is busy, and launchd starts the new build.
 - A changed operations digest offers Restart Host, which stops running agents.
 
 ## Browser pages

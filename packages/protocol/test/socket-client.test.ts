@@ -47,6 +47,9 @@ function farEnd(answering: Answering) {
           api_server_revision: API_REVISION,
           host_id: "host",
           client_id: "client",
+          version: "1",
+          startedAt: 0,
+          match: { kind: "current" },
           limits: SOCKET_LIMITS,
         }),
       });
@@ -152,7 +155,11 @@ describe("a host socket", () => {
       await vi.advanceTimersByTimeAsync(row.lost - row.alive);
 
       expect(ended).toBe(true);
-      expect(await socket.closed).toEqual({ code: 1006, reason: "The host stopped answering." });
+      expect(await socket.closed).toEqual({
+        code: 1006,
+        reason: "The host stopped answering.",
+        refused: null,
+      });
       expect(far.closed()).toBe(true);
       expect(far.calls.filter((op) => op === "events.unsubscribe")).toHaveLength(1);
 

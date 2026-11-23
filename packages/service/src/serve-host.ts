@@ -19,7 +19,7 @@ import {
   withdrawHost,
 } from "./host-endpoint.ts";
 import type { RunningHost } from "./host-endpoint.ts";
-import { OWN_TOKEN_AUTHORITY, startHostThread } from "./host-thread.ts";
+import { NewerStoreFailure, OWN_TOKEN_AUTHORITY, startHostThread } from "./host-thread.ts";
 import type { HostWorkerEntry, Supervisor } from "./host-thread.ts";
 import { portConflict, probePort } from "./port.ts";
 
@@ -47,6 +47,8 @@ export interface ServeHostOptions {
 
 export type Served =
   | { readonly kind: "stopped" }
+  | { readonly kind: "replaced" }
+  | { readonly kind: "store-newer"; readonly message: string }
   | { readonly kind: "taken"; readonly by: RunningHost | null };
 
 type Claim = Served | { readonly kind: "claimed"; readonly release: () => void };
@@ -140,7 +142,22 @@ async function serveClaimed(
     tailnet: options.tailnet,
     workspace: homedir(),
     supervisor: options.supervisor,
+  }).catch((cause: unknown) => {
+    if (!(cause instanceof NewerStoreFailure)) throw cause;
+
+    return cause;
   });
+
+  if (thread instanceof NewerStoreFailure) {
+    openFaultLog(hostFaultsPath())({
+      at: Date.now(),
+      area: "host",
+      message: "store-newer",
+      data: JSON.stringify({ error: thread.message }),
+    });
+
+    return { kind: "store-newer", message: thread.message };
+  }
 
   const port = Number(new URL(thread.address).port);
 
@@ -161,14 +178,14 @@ async function serveClaimed(
       );
 
       const stopped = await Promise.race([
-        aborted(options.signal).then(() => null),
+        aborted(options.signal).then(() => "stopped" as const),
         thread.ended.then(
-          () => null,
+          () => "replaced" as const,
           (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause))),
         ),
       ]);
 
-      if (stopped !== null) {
+      if (stopped instanceof Error) {
         openFaultLog(hostFaultsPath())({
           at: Date.now(),
           area: "host",
@@ -179,7 +196,7 @@ async function serveClaimed(
         throw new Error(`The host stopped: ${stopped.message}`);
       }
 
-      return { kind: "stopped" };
+      return { kind: stopped };
     } finally {
       await withdrawHost(path, process.pid);
     }

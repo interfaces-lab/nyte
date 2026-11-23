@@ -107,7 +107,7 @@ export interface SocketLink {
 interface Attempt {
   opened: boolean;
   refusal: number | null;
-  closed: SocketClosed | null;
+  closed: Pick<SocketClosed, "code" | "reason"> | null;
 }
 
 interface Joined {

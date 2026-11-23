@@ -46,9 +46,10 @@ import { createMediaLinks } from "./serve/media.ts";
 import { localGitHubAccount } from "./local/git/github.ts";
 import { localMachine } from "./local/process/machine.ts";
 import { localProvider } from "./local/provider.ts";
-import { importLegacyTrust } from "./local/migrations/legacy-trust.ts";
-import { migrateLocalWorkspaceIdentities } from "./local/migrations/workspace-identities.ts";
 import { listen } from "./serve/listen.ts";
+import type { Supervisor } from "./serve/build-match.ts";
+import { openRetirement } from "./serve/retire.ts";
+import type { Retirement } from "./serve/retire.ts";
 import { nodeImages } from "./images/node.ts";
 import { createMcpHub } from "./mcp-client/hub.ts";
 import type { ClientMetadataFetch } from "./mcp-server/client-metadata.ts";
@@ -117,8 +118,10 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly shell?: () => string | null;
   readonly label?: string;
   readonly onRevoked?: () => void;
-  /** Called before the default store migrates existing data, which blocks this thread until it ends. */
-  readonly onStoreMigration?: () => void;
+  /** What restarts this host once it retires for a newer build: launchd, the `nyte` command that started it, or nothing. */
+  readonly supervisor?: Supervisor | null;
+  /** Called once the host has retired for a newer client of its supervisor and told its sockets. */
+  readonly onReplaced?: () => void;
   /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
   readonly pluginImport?: PluginImport;
   readonly tailnet?: { readonly binary: string };
@@ -139,27 +142,26 @@ export async function openHost(options: OpenHostOptions = {}): Promise<Host> {
   }
 }
 
-async function defaultStore(home: string, onMigrate?: () => void): Promise<Store> {
+async function defaultStore(home: string): Promise<Store> {
   const path = storePath(home);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await (await open(path, "a", 0o600)).close();
 
   for (const file of [path, `${path}-wal`, `${path}-shm`]) await chmod(file, 0o600).catch(missing);
 
-  return sqliteStore({ path, onMigrate });
+  return sqliteStore({ path });
 }
 
 async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStack): Promise<Host> {
   const home = options.home ?? homedir();
   const workspace = options.workspace ?? { kind: "local", path: process.cwd() };
 
-  const store =
-    options.store ??
-    opened.adopt(await defaultStore(home, options.onStoreMigration), (owned) => owned.close());
+  const store = options.store ?? opened.adopt(await defaultStore(home), (owned) => owned.close());
 
   const secrets = options.secrets ?? defaultSecrets(home);
   const description = hostDescription();
   let server: ServerHost | null = null;
+  let retirement: Retirement | null = null;
 
   const actions: ClientActions = {
     offered: (action, principal) =>
@@ -176,12 +178,6 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
   const [models, settings] = await Promise.all([
     options.models ?? nyteModels({ store, secrets, home }),
     settingsSeed(home),
-    usesLocalProvider
-      ? store.open().then(async (connection) => {
-          await migrateLocalWorkspaceIdentities(connection);
-          await importLegacyTrust(connection, home);
-        })
-      : undefined,
   ]);
 
   const builtins = [
@@ -264,7 +260,10 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
       machine: localMachine,
       capabilities: given.some((plugin) => plugin.id === browserTools.id) ? [browserTools.id] : [],
     },
-    revoked: options.onRevoked,
+    revoked() {
+      void retirement?.announce("restarting");
+      options.onRevoked?.();
+    },
   });
 
   opened.defer(() => host.close());
@@ -310,12 +309,24 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     for (const listener of listeners) await listener.close();
   });
 
+  const retiring = openRetirement(host.server, {
+    supervisor: options.supervisor ?? null,
+    replaced: () => options.onReplaced?.(),
+  });
+
+  retirement = retiring;
+  opened.defer(async () => {
+    retiring.close();
+    await retiring.announce("stopping");
+  });
+
   const attach = async (listenOptions: ListenOptions): Promise<Listener> => {
     const listener = await listen(host, {
       describe: () => description,
       tailnet,
       mcpServer,
       media,
+      retirement: retiring,
       ...listenOptions,
       identity: listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, home))),
     });

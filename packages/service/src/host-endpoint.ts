@@ -50,10 +50,6 @@ export function hostMetricsPath(env: Readonly<Record<string, string | undefined>
   return join(hostStateDirectory(env), "metrics");
 }
 
-export function hostRetirePath(env: Readonly<Record<string, string | undefined>> = process.env) {
-  return join(hostStateDirectory(env), "retire");
-}
-
 function hostStateDirectory(env: Readonly<Record<string, string | undefined>>): string {
   return env["NYTE_HOME"] ?? join(homedir(), ".nyte");
 }

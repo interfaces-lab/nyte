@@ -56,10 +56,9 @@ One home, one host:
 
 Retiring an old host:
 
-- A `--supervised` host exits only when a live process asks it to and nothing runs on it (`retireOnRequest`).
-- A local command that attaches to a host with an older `HostView.version` (`supersedes`) files a request (`requestRetire`). Once the host has taken it and exited, the command starts its own build on the address the old one saved.
-- A host that exits without taking a request stopped for another reason, such as Stop Host. No command starts it again.
-- A host acts only on requests of its own supervisor kind. A `nyte` request never retires the desktop app's launchd host.
+- The host decides. A newer client of its own supervisor kind gets `when-idle` in its welcome (`matchBuild`), and the host retires once no run or job is busy.
+- A `nyte` client never retires the desktop app's launchd host.
+- A client never stops a host to replace it.
 
 `nyte host`:
 

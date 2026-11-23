@@ -85,7 +85,7 @@ export function hostAgentPlist(job: HostAgentJob): string {
     ...(job.log === null
       ? []
       : [key("StandardOutPath", text(job.log)), key("StandardErrorPath", text(job.log))]),
-    key("KeepAlive", "<true/>"),
+    key("KeepAlive", `<dict>${key("SuccessfulExit", "<false/>")}</dict>`),
     key("RunAtLoad", "<true/>"),
     key("ProcessType", text("Interactive")),
   ];

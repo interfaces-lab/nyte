@@ -1,8 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
 import { serial } from "@nyte-ai/schema/serial";
-import { requestRetire } from "@nyte-ai/service/outdated-host";
-import type { RetireRequest } from "@nyte-ai/service/outdated-host";
 import { dialog } from "electron";
 import type { BrowserWindow, MessageBoxOptions } from "electron";
 import { ExpectedHostError } from "../shared/errors.ts";
@@ -11,7 +9,7 @@ import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
 import { processStarted } from "./host-agent.ts";
 import type { HostAgent } from "./host-agent.ts";
 import type { HostLinkState } from "../host/host-link.ts";
-import { readHostUpdate, retiresHost } from "./host-status.ts";
+import { readHostUpdate } from "./host-status.ts";
 
 const RESTART_LIMIT_MS = 30_000;
 
@@ -38,12 +36,6 @@ export function followHostProcess(options: {
   const reads = serial();
   let state: HostProcess = { kind: "offline" };
   let restarting = false;
-  let retire: RetireRequest | null = null;
-
-  const withdraw = async (): Promise<void> => {
-    await retire?.withdraw();
-    retire = null;
-  };
 
   const set = (next: HostProcess): void => {
     if (JSON.stringify(next) === JSON.stringify(state)) return;
@@ -58,7 +50,6 @@ export function followHostProcess(options: {
       const serving = link.kind === "connected" ? await options.agent.serving() : null;
       const startedAt = serving === null ? null : await processStarted(serving.pid);
       const update = readHostUpdate({ link, appVersion: options.appVersion });
-      const job = update === "stale" ? await options.agent.pid() : null;
 
       if (restarting || link !== options.link()) return;
 
@@ -69,10 +60,6 @@ export function followHostProcess(options: {
       }
 
       set({ kind: update, version: link.version, startedAt });
-
-      if (retiresHost({ link, appVersion: options.appVersion, serving, job })) {
-        retire = await requestRetire("launchd");
-      } else await withdraw();
     });
 
   const restart = async (): Promise<void> => {
@@ -104,7 +91,7 @@ export function followHostProcess(options: {
     async start() {
       await options.agent.start();
     },
-    close: () => reads.run(withdraw),
+    close: () => reads.run(async () => undefined),
   };
 }
 

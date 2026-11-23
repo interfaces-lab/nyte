@@ -50,15 +50,33 @@ export const ClientRowType = Type.Object({
 
 export type ClientRow = Decoded<typeof ClientRowType>;
 
+/** `operations` is the client build's operations digest, which tells two builds of one version apart. */
 export const HelloFrameType = Type.Object({
   c: Type.Literal("e"),
   type: Type.Literal("hello"),
   api_min_revision: Type.Integer({ minimum: 1 }),
-  api_revision: Type.Optional(Type.Integer({ minimum: 1 })),
+  api_revision: Type.Integer({ minimum: 1 }),
+  operations: Type.String(),
   client: ClientInfoType,
 });
 
 export type HelloFrame = Decoded<typeof HelloFrameType>;
+
+/**
+ * How the host's build compares with the client's that said hello. An older host says who may
+ * replace it: it retires itself `when-idle` for a newer client of its own supervisor, a person
+ * restarts it (`manual`), or this client can't (`none`).
+ */
+export const BuildMatchType = Type.Union([
+  Type.Object({ kind: Type.Literal("current") }),
+  Type.Object({
+    kind: Type.Literal("host-older"),
+    replace: Type.Enum(["when-idle", "manual", "none"]),
+  }),
+  Type.Object({ kind: Type.Literal("host-newer") }),
+]);
+
+export type BuildMatch = Decoded<typeof BuildMatchType>;
 
 export const WelcomeFrameType = Type.Object({
   c: Type.Literal("e"),
@@ -68,10 +86,39 @@ export const WelcomeFrameType = Type.Object({
   api_server_revision: Type.Integer(),
   host_id: idSchema<"host">(),
   client_id: idSchema<"client">(),
+  version: Type.String(),
+  startedAt: Type.Number(),
+  match: BuildMatchType,
   limits: Type.Object({ backlogBytes: Type.Integer(), maxFrameBytes: Type.Integer() }),
 });
 
 export type WelcomeFrame = Decoded<typeof WelcomeFrameType>;
+
+/** The host's answer to a hello outside the revisions it serves, before it closes the socket: which side must update. */
+export const RefusedFrameType = Type.Object({
+  c: Type.Literal("e"),
+  type: Type.Literal("refused"),
+  reason: Type.Enum(["update-host", "update-client"]),
+  message: Type.String(),
+});
+
+export type RefusedFrame = Decoded<typeof RefusedFrameType>;
+
+export const ClosingReasonType = Type.Enum(["replacing", "restarting", "stopping"]);
+
+export type ClosingReason = Decoded<typeof ClosingReasonType>;
+
+/** What the host pushes to every socket before it closes them with 1001. */
+export const ClosingEventType = Type.Object({
+  c: Type.Literal("e"),
+  type: Type.Literal("event"),
+  scope: Type.Literal("host"),
+  seq: Type.Null(),
+  kind: Type.Literal("closing"),
+  reason: ClosingReasonType,
+});
+
+export type ClosingEvent = Decoded<typeof ClosingEventType>;
 
 export const CallFrameType = Type.Object({
   c: Type.Literal("e"),
@@ -156,6 +203,7 @@ export type TextFrame = Decoded<typeof TextFrameType>;
 
 export const HostFrameType = Type.Union([
   WelcomeFrameType,
+  RefusedFrameType,
   ResultFrameType,
   ErrorFrameType,
   EventFrameType,

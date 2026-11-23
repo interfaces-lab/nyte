@@ -36,7 +36,19 @@ export async function hostCommand(
   });
 
   if (served.kind === "taken") throw taken(served.by);
-  output.status("none", `Stopped the host and removed ${hostFilePath()}.`);
+
+  if (served.kind === "store-newer") {
+    throw new CliError("failed", served.message, {
+      next: [{ label: "Update Nyte", argv: ["nyte", "update"] }],
+    });
+  }
+
+  output.status(
+    "none",
+    served.kind === "replaced"
+      ? `Stopped the host so a newer Nyte can start, and removed ${hostFilePath()}.`
+      : `Stopped the host and removed ${hostFilePath()}.`,
+  );
 
   return 0;
 }

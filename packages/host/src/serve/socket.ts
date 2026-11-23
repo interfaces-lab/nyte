@@ -19,10 +19,12 @@ import type {
   Authority,
   CallFrame,
   ClientId,
+  ClosingEvent,
+  ClosingReason,
   FragmentFrame,
-  HelloFrame,
   Json,
   PrincipalId,
+  RefusedFrame,
   SdkErrorWire,
   Seq,
   SessionChange,
@@ -45,6 +47,9 @@ import { Type } from "typebox";
 import type { RawData, WebSocket } from "ws";
 import type { TailnetControl } from "./tailnet.ts";
 import { bindConnection } from "./binding.ts";
+import { matchBuild } from "./build-match.ts";
+import type { HostBuild } from "./build-match.ts";
+import type { Retirement } from "./retire.ts";
 import { sharedClients } from "./clients.ts";
 import type { HostEvent, PerformEvent } from "./clients.ts";
 import { callBinding, UPLOADS } from "./handler.ts";
@@ -59,6 +64,8 @@ export interface SocketPeer {
   readonly tailnet?: TailnetControl;
   readonly mcpServer?: McpOwner;
   readonly execution?: { pause(): void; resume(): void };
+  readonly build: HostBuild;
+  readonly retirement: Retirement;
   readonly signal: AbortSignal;
   leave(): void;
 }
@@ -81,6 +88,8 @@ export type TextEntry =
 
 type EventOut =
   | WelcomeFrame
+  | RefusedFrame
+  | ClosingEvent
   | PerformEvent
   | HostEvent
   | { readonly c: "e"; readonly type: "result"; readonly id: string; readonly output: Json }
@@ -125,7 +134,6 @@ type EventOut =
 interface Outbox {
   event(frame: EventOut): void;
   text(entry: TextEntry): void;
-  acceptFragments(): void;
 }
 
 interface Outgoing {
@@ -168,7 +176,9 @@ const PUSH_MS = 33;
 
 const SESSIONS_PUSH_MS = 250;
 
-const FRAGMENT_REVISION = 23;
+const CLOSING_FLUSH_MS = 100;
+
+const CLOSING_LIMIT_MS = 2000;
 
 const FRAGMENT_ENVELOPE_BYTES = 1024;
 
@@ -215,7 +225,6 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const unsent = new Set<() => void>();
   let pushing: ReturnType<typeof setTimeout> | null = null;
   let pushed = 0;
-  let gathers = false;
   let textOpen = false;
 
   const push = (): void => {
@@ -231,12 +240,6 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   };
 
   const gather = (send: () => void): void => {
-    if (!gathers) {
-      send();
-
-      return;
-    }
-
     unsent.add(send);
 
     if (pushing !== null || closed) return;
@@ -547,18 +550,16 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       return;
     }
 
-    const refusal = refuseRevisions(value);
+    const match = matchBuild(peer.build, value, peer.authority);
 
-    if (refusal !== null) {
-      close(1008, refusal);
+    if ("reason" in match) {
+      outbox.event({ c: "e", type: "refused", ...match });
+      close(1008, match.message);
 
       return;
     }
 
-    if (value.api_revision !== undefined && value.api_revision >= FRAGMENT_REVISION) {
-      outbox.acceptFragments();
-      gathers = true;
-    }
+    if (match.kind === "host-older" && match.replace === "when-idle") peer.retirement.ask();
 
     const id = asId<"client">(crypto.randomUUID());
 
@@ -579,11 +580,14 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     outbox.event({
       c: "e",
       type: "welcome",
-      api_revision: Math.min(API_REVISION, value.api_revision ?? API_REVISION),
+      api_revision: Math.min(API_REVISION, value.api_revision),
       api_min_revision: API_MIN_REVISION,
       api_server_revision: API_REVISION,
       host_id: peer.connection.hostId,
       client_id: id,
+      version: peer.build.version,
+      startedAt: peer.server.startedAt,
+      match,
       limits: SOCKET_LIMITS,
     });
   };
@@ -704,6 +708,17 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     close(1008, reason instanceof SdkError ? reason.message : "The host disconnected its clients.");
   };
 
+  const ended = Promise.withResolvers<void>();
+
+  const closing = (reason: ClosingReason): Promise<void> => {
+    outbox.event({ c: "e", type: "event", scope: "host", seq: null, kind: "closing", reason });
+    setTimeout(() => close(1001, "The host is closing."), CLOSING_FLUSH_MS).unref();
+
+    return Promise.race([ended.promise, sleep(CLOSING_LIMIT_MS, undefined, { ref: false })]);
+  };
+
+  const unobserve = peer.retirement.observe(closing);
+
   socket.on("message", receive);
   socket.on("pong", () => {
     waiting = false;
@@ -713,6 +728,8 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   socket.once("close", () => {
     closed = true;
     clearInterval(heartbeat);
+    unobserve();
+    ended.resolve();
 
     unsent.clear();
     push();
@@ -741,7 +758,6 @@ function openOutbox(
   let eventBytes = 0;
   let textBytes = 0;
   let textClosed = false;
-  let fragments = false;
   let open = true;
 
   const shut = (code: number, reason: string): void => {
@@ -801,12 +817,6 @@ function openOutbox(
 
       const oversize = bytes > SOCKET_LIMITS.maxFrameBytes;
 
-      if (oversize && !fragments) {
-        shut(1009, "oversize");
-
-        return;
-      }
-
       for (const outgoing of oversize ? fragment(text) : [{ text, bytes }]) {
         events.push(outgoing);
         eventBytes += outgoing.bytes;
@@ -843,9 +853,6 @@ function openOutbox(
       }
 
       pump();
-    },
-    acceptFragments() {
-      fragments = true;
     },
   };
 }
@@ -897,20 +904,6 @@ function readScope(
     "denied",
     `A connection may subscribe only to its own client scope, not ${scope}.`,
   );
-}
-
-function refuseRevisions(hello: HelloFrame): string | null {
-  const served = `revisions ${API_MIN_REVISION}-${API_REVISION}`;
-
-  if (hello.api_min_revision > API_REVISION) {
-    return `Update the host: it serves ${served} and the client needs ${hello.api_min_revision} or later.`;
-  }
-
-  if (hello.api_revision !== undefined && hello.api_revision < API_MIN_REVISION) {
-    return `Update the client: the host serves ${served} and the client speaks up to ${hello.api_revision}.`;
-  }
-
-  return null;
 }
 
 function rawText(data: RawData): string {

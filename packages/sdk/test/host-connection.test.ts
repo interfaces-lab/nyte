@@ -355,48 +355,6 @@ describe("a reconnect", () => {
     }
   });
 
-  it("waits longer before each retry of a host that welcomes it and then closes for size", async () => {
-    const served = await serve();
-    const session = await startSession(served);
-    await send(served, session, "x".repeat(1_200_000));
-
-    const connection = await attach(served.listener, (request) => {
-      const socket = global(request);
-      const send = socket.send.bind(socket);
-
-      return Object.assign(socket, {
-        send(data: string) {
-          send(data.replace(`"api_revision":${API_REVISION},`, ""));
-        },
-      });
-    });
-
-    await until(connection, "open");
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    cleanups.push(async () => {
-      vi.useRealTimers();
-    });
-    const retries = recorder<number>();
-    const waits = retries.entries;
-
-    connection.health.subscribe(() => {
-      const health = connection.health.snapshot();
-
-      if (health.kind === "retrying") retries.record(health.at - Date.now());
-    });
-    watched(connection, session);
-
-    for (const close of [1, 2, 3]) {
-      await retries.reached(close);
-      expect(waits).toHaveLength(close);
-      vi.advanceTimersByTime(waits.at(-1) ?? 0);
-    }
-
-    expect(waits[1]).toBeGreaterThan(waits[0] ?? Infinity);
-    expect(waits[2]).toBeGreaterThan(waits[1] ?? Infinity);
-    expect(waits[2]).toBeGreaterThan(1000);
-  }, 30_000);
-
   it("keeps one socket when a health listener wakes the connection as it starts retrying", async () => {
     const served = await serve();
     const transport = counting();

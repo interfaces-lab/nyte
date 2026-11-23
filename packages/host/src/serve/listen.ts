@@ -18,6 +18,7 @@ import { readErrorCode } from "../fs-errors.ts";
 import type { McpService } from "../mcp-server/server.ts";
 import { sharedListeners } from "./listeners.ts";
 import type { MediaLinks } from "./media.ts";
+import type { Retirement } from "./retire.ts";
 import { serveSession } from "./socket.ts";
 import type { SocketPeer } from "./socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
@@ -30,6 +31,7 @@ export type HostListenOptions = ListenOptions & {
   readonly tailnet?: TailnetControl;
   readonly mcpServer?: McpService;
   readonly media?: MediaLinks | undefined;
+  readonly retirement?: Retirement;
 };
 
 export async function listen(host: ServedHost, options: HostListenOptions): Promise<Listener> {

@@ -165,10 +165,8 @@ async function send(host: Composed, fake: FakeModels, session: SessionId, text: 
   return host.session(session).head(main).send(text);
 }
 
-const FRAGMENTS = hello(1, [], "socket-test", 23);
-
 async function measured(listener: Listener) {
-  const client = await connect(listener, FRAGMENTS);
+  const client = await connect(listener);
   const sizes: number[] = [];
 
   client.socket.on("message", (data: RawData) =>
@@ -552,19 +550,6 @@ describe("the host's WebSocket", () => {
     expect(await raw.closing()).toEqual({ code: 1008, reason: "backlog" });
   }, 60_000);
 
-  it("closes an older client's connection with oversize when an answer passes maxFrameBytes", async () => {
-    const fake = fakeModels();
-    const host = await compose(fake);
-    const listener = await serve(host);
-    const session = await startSession(host, fake);
-    await (await send(host, fake, session, "x".repeat(1_200_000))).settled();
-    const client = await connect(listener);
-
-    client.start("head.read", { session, head: main, window: WINDOW });
-
-    expect(await client.closed).toEqual({ code: 1009, reason: "oversize" });
-  }, 30_000);
-
   it.each([
     { name: "plain text", text: "x".repeat(1_200_000) },
     { name: "quotes", text: '"'.repeat(1_200_000) },
@@ -572,7 +557,7 @@ describe("the host's WebSocket", () => {
     { name: "surrogate pairs", text: "😀".repeat(600_000) },
     { name: "backslashes and newlines", text: 'a\\"\n漢😀'.repeat(200_000) },
   ])(
-    "sends an answer over maxFrameBytes to a revision 23 client as fragments within the limit that join to the whole text: $name",
+    "sends an answer over maxFrameBytes as fragments within the limit that join to the whole text: $name",
     async (entry) => {
       const fake = fakeModels();
       const host = await compose(fake);
@@ -621,14 +606,23 @@ describe("the host's WebSocket", () => {
     expect(Math.max(...measuring.sizes)).toBeLessThanOrEqual(SOCKET_LIMITS.maxFrameBytes);
   }, 30_000);
 
-  it("closes 1008 with a reason that names the side to update when the revisions don't overlap", async () => {
+  it("answers a hello outside the window with a refusal that names the side to update, then closes 1008", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);
     const client = await openSocket(listener, hello(API_REVISION + 1));
     const closed = await client.closed;
 
-    expect(closed.code).toBe(1008);
-    expect(closed.reason).toMatch(/^Update the host/);
+    expect({ code: closed.code, frames: client.frames }).toEqual({
+      code: 1008,
+      frames: [
+        {
+          c: "e",
+          type: "refused",
+          reason: "update-host",
+          message: expect.stringMatching(/^Update the host: /u),
+        },
+      ],
+    });
   });
 
   it.skipIf(process.platform === "win32")(

@@ -795,13 +795,18 @@ const STORE_STEPS: readonly StoreStep[] = [
 
 export const STORE_VERSION: number = STORE_STEPS.length;
 
-export function assertStoreVersion(version: number): void {
-  if (version > STORE_VERSION) {
-    throw new SdkError(
+/** A store a newer build migrated: this build refuses to open it, and its supervisor must not start it again until Nyte is updated. */
+export class NewerStoreError extends SdkError {
+  constructor(version: number) {
+    super(
       "unavailable",
       `This data was updated by a newer version of Nyte (store version ${version}; this version reads up to ${STORE_VERSION}). Update Nyte to open it.`,
     );
   }
+}
+
+export function assertStoreVersion(version: number): void {
+  if (version > STORE_VERSION) throw new NewerStoreError(version);
 }
 
 const COMMIT_ATTEMPTS = 3;

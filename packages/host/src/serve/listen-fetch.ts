@@ -19,6 +19,8 @@ import type { McpService } from "../mcp-server/server.ts";
 import { MCP_TOKEN_PREFIX } from "../mcp-server/token.ts";
 import { allowsOrigin, createHandler } from "./handler.ts";
 import type { HandlerOptions } from "./handler.ts";
+import { openRetirement } from "./retire.ts";
+import type { Retirement } from "./retire.ts";
 import type { SocketPeer } from "./socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
 
@@ -58,6 +60,7 @@ export async function listenFetch(
     readonly tailnet?: TailnetControl;
     readonly mcpServer?: McpService;
     readonly media?: MediaLinks | undefined;
+    readonly retirement?: Retirement;
   },
 ): Promise<SocketListener> {
   const { auth } = options;
@@ -76,6 +79,11 @@ export async function listenFetch(
   }
   const { server } = host;
   const operations = await operationsDigest();
+
+  const retirement =
+    options.retirement ?? openRetirement(server, { supervisor: null, replaced: () => undefined });
+
+  const build = { version: server.version, operations, supervisor: retirement.supervisor };
   const cache = new Map<string, Cached>();
   const devices = new Map<string, Device>();
   const streams = new Map<PrincipalId, Set<Flight>>();
@@ -368,6 +376,8 @@ export async function listenFetch(
       tailnet: options.tailnet,
       mcpServer: options.mcpServer,
       execution: host.execution,
+      build,
+      retirement,
       signal: AbortSignal.any([generation.signal, controller.signal]),
       leave: () => land(flight),
     };

@@ -5,7 +5,6 @@ import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { connect } from "@nyte-ai/sdk/client";
 import type { ClientConnection } from "@nyte-ai/sdk/client";
-import type { Connection } from "@nyte-ai/sdk";
 import { tryLockFile } from "@nyte-ai/connect/host";
 import { SdkError } from "@nyte-ai/schema";
 import type { LocalEndpoint } from "@nyte-ai/service";
@@ -14,14 +13,11 @@ import {
   hostFilePath,
   hostLockPath,
   hostLogPath,
-  processAlive,
 } from "@nyte-ai/service/host-endpoint";
-import { requestRetire } from "@nyte-ai/service/outdated-host";
 import { CliError } from "./cli/errors.ts";
 import { printable } from "./cli/format.ts";
 import { selfCommand } from "./compiled.ts";
 import { hostFailure } from "./host-socket.ts";
-import { supersedes } from "./releases.ts";
 import { fileJournal } from "./send-journal.ts";
 import { VERSION } from "./version.ts";
 
@@ -39,8 +35,6 @@ const HOST_START_MS = 20_000;
 
 const HOST_POLL_MS = 100;
 
-const HOST_WATCH_MS = 2000;
-
 export async function connectHost(
   source: HostSource,
   kind: "tui" | "cli",
@@ -48,7 +42,7 @@ export async function connectHost(
 ): Promise<HostSession> {
   switch (source.kind) {
     case "local":
-      return retireOutdatedHost(await attachHost(await ensureHost(progress), kind));
+      return attachHost(await ensureHost(progress), kind);
     case "attached":
       return attachHost(source.endpoint, kind);
     default: {
@@ -102,44 +96,6 @@ function startHost(): ChildProcess {
   child.unref();
 
   return child;
-}
-
-function retireOutdatedHost(session: HostSession): HostSession {
-  const stop = new AbortController();
-  const retiring = retireWhenOutdated(session.connection, stop.signal).catch(() => undefined);
-
-  return {
-    ...session,
-    async close() {
-      stop.abort();
-      await session.close();
-      await retiring;
-    },
-  };
-}
-
-async function retireWhenOutdated(connection: Connection, signal: AbortSignal): Promise<void> {
-  const views = connection.watch()[Symbol.asyncIterator]();
-  const first = await views.next();
-  await views.return?.();
-
-  if (first.done === true || signal.aborted || !supersedes(VERSION, first.value.version)) return;
-  const host = await findRunningHost(hostFilePath());
-
-  if (host === null) return;
-  const request = await requestRetire("nyte");
-
-  while (!signal.aborted && processAlive(host.pid)) {
-    await sleep(HOST_WATCH_MS, undefined, { ref: false, signal }).catch(() => undefined);
-  }
-
-  if (!signal.aborted && (await request.consumed())) {
-    await ensureHost();
-
-    return;
-  }
-
-  await request.withdraw();
 }
 
 function hostLockHeld(): boolean {

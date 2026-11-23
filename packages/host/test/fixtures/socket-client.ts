@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { once } from "node:events";
-import { isJson, isJsonObject } from "@nyte-ai/schema";
+import { API_REVISION, isJson, isJsonObject } from "@nyte-ai/schema";
 import type { Json, JsonSchema, SessionId } from "@nyte-ai/schema";
 import type { Listener } from "@nyte-ai/core";
 import type { ServedHost } from "@nyte-ai/core/server";
@@ -24,17 +24,17 @@ export function hello(
   apiMinRevision = 1,
   actions: readonly string[] = [],
   name = "socket-test",
-  apiRevision?: number,
+  client: { readonly kind: string; readonly version: string } = { kind: "other", version: "1" },
 ): Json {
   return {
     c: "e",
     type: "hello",
     api_min_revision: apiMinRevision,
-    ...(apiRevision === undefined ? {} : { api_revision: apiRevision }),
+    api_revision: API_REVISION,
+    operations: "socket-test",
     client: {
-      kind: "other",
+      ...client,
       name,
-      version: "1",
       actions: actions.map((action) => ({ name: action, summary: `Does ${action}.`, input: {} })),
     },
   };
