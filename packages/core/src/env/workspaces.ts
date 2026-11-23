@@ -12,6 +12,7 @@ import type {
   SessionId,
   SnapshotId,
   WorkspaceId,
+  FolderTrust,
   WorkspaceInfo,
 } from "@nyte-ai/schema";
 import type { ConnectionContext } from "../contract/host.ts";
@@ -51,17 +52,11 @@ import {
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
-import {
-  byIdentity,
-  changed,
-  inspectWorkspaceAvailability,
-  readWorkspace,
-  sessionsOn,
-} from "./environment.ts";
+import { byIdentity, changed, inspectWorkspace, readWorkspace, sessionsOn } from "./environment.ts";
 import { mcpApi } from "./mcp.ts";
 import { keepPaths, readAttributedPaths, readRunPaths } from "./session-changes.ts";
-import { decideTrust, readFolderTrust } from "./trust.ts";
-import type { FolderTrust } from "./trust.ts";
+import { decideTrust, readTrustDecisions } from "./trust.ts";
+import type { TrustDecisions } from "./trust.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const PATCH_READ_MAX = 32;
@@ -102,7 +97,7 @@ export function createWorkspaces(
     async list() {
       const [records, trust] = await Promise.all([
         workspaceRecords(kernel.store),
-        readFolderTrust(kernel),
+        readTrustDecisions(kernel),
       ]);
 
       const infos = await Promise.all(
@@ -114,8 +109,9 @@ export function createWorkspaces(
     async inspect(target) {
       const provider = kernel.environments.provider(target.kind);
 
-      if (provider === undefined)
+      if (provider === undefined) {
         throw new SdkError("unavailable", `No environment provider serves ${target.kind}.`);
+      }
       const inspected = await provider.inspect(target);
 
       const registered = await byIdentity(kernel.store, {
@@ -139,11 +135,13 @@ export function createWorkspaces(
 
       if (inspected === null) return { kind: "unavailable", reason: "unreachable" };
 
-      if (inspected.availability.kind === "unavailable")
+      if (inspected.availability.kind === "unavailable") {
         return { kind: "unavailable", reason: inspected.availability.reason };
+      }
 
-      if (options?.expect !== undefined && options.expect.identity !== inspected.identity)
+      if (options?.expect !== undefined && options.expect.identity !== inspected.identity) {
         return { kind: "stale", identity: inspected.identity };
+      }
       const identity = { kind: target.kind, identity: inspected.identity };
       const id = asId<"workspace">(await objectId(identity));
 
@@ -156,7 +154,6 @@ export function createWorkspaces(
           id,
           target,
           identity: inspected.identity,
-          projectSources: inspected.projectSources,
           addedBy: context.principal,
           createdAt: Date.now(),
           isolation: null,
@@ -172,10 +169,10 @@ export function createWorkspaces(
 
         if (outcome.kind === "stale") return STALE;
 
-        if (options?.projectResources === undefined) changed(kernel, id);
+        if (options?.trusted === undefined) changed(kernel, id);
         else {
           const before = await readTrust(kernel);
-          await decideTrust(kernel, record, options.projectResources);
+          await decideTrust(kernel, record, options.trusted);
           await trustChanged(kernel, before);
         }
 
@@ -270,8 +267,9 @@ export function workspaceHandle(
         ? await kernel.environments.workspaceSnapshots(id)
         : await kernel.environments.snapshots(session);
 
-    if (found === null)
+    if (found === null) {
       throw new SdkError("unavailable", `Workspace ${id} takes no run snapshots.`);
+    }
 
     return found;
   };
@@ -370,9 +368,9 @@ export function workspaceHandle(
 
       if (record === null) return { kind: "missing" };
 
-      if (patch.projectResources !== undefined) {
+      if (patch.trusted !== undefined) {
         const before = await readTrust(kernel);
-        await decideTrust(kernel, record, patch.projectResources);
+        await decideTrust(kernel, record, patch.trusted, patch.at);
         await trustChanged(kernel, before);
       }
 
@@ -384,15 +382,17 @@ export function workspaceHandle(
       await kernel.environments.detachWorkspace(id);
 
       for (const session of await sessionsOn(kernel.store, id)) {
-        if (kernel.sessions.activation(session).kind !== "active")
+        if (kernel.sessions.activation(session).kind !== "active") {
           await kernel.environments.detach(session);
+        }
 
         if (
           kernel.plugins.runtimes().has(session) ||
           kernel.folds.folding(session) ||
           kernel.sessions.activation(session).kind !== "inactive"
-        )
+        ) {
           await kernel.plugins.reload(session).catch(() => undefined);
+        }
       }
 
       changed(kernel, id);
@@ -425,15 +425,15 @@ export function workspaceHandle(
 async function workspaceInfo(
   kernel: Kernel,
   id: WorkspaceId,
-  trust?: FolderTrust,
+  trust?: TrustDecisions,
 ): Promise<WorkspaceInfo | null> {
   const record = await readWorkspace(kernel.store, id);
 
   if (record === null) return null;
 
-  const [availability, trusted, writers] = await Promise.all([
-    inspectWorkspaceAvailability(kernel, record),
-    workspaceTrust(kernel, record, trust),
+  const [inspection, decisions, writers] = await Promise.all([
+    inspectWorkspace(kernel, record),
+    trust ?? readTrustDecisions(kernel),
     readWriters(kernel.store, id),
   ]);
 
@@ -441,23 +441,12 @@ async function workspaceInfo(
     id,
     target: record.target,
     identity: record.identity,
-    availability,
-    ...trusted,
-    projectSources: record.projectSources,
+    ...inspection,
+    trust: decisions.explain(record, inspection.projectSources),
     addedBy: record.addedBy,
     writers,
     isolation: record.isolation,
   };
-}
-
-async function workspaceTrust(
-  kernel: Kernel,
-  record: WorkspaceRecord,
-  given: FolderTrust | undefined,
-): Promise<Pick<WorkspaceInfo, "projectResources" | "trusted">> {
-  const trust = given ?? (await readFolderTrust(kernel));
-
-  return { projectResources: trust.decided(record), trusted: trust.trusted(record) };
 }
 
 function guardSwitches(kernel: Kernel, workspace: WorkspaceId, git: GitApi): GitApi {
@@ -762,10 +751,11 @@ async function runSnapshots(
   for (const session of await sessionsOn(store, workspace)) {
     const live = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
 
-    if (live !== null)
+    if (live !== null) {
       return live.record.snapshot === null
         ? null
         : { session, from: live.record.snapshot, to: null };
+    }
 
     const ended = await load(
       store,
@@ -817,7 +807,7 @@ export async function trustChanged(kernel: Kernel, before: TrustSnapshot): Promi
 
   await Promise.allSettled([
     ...moved.flatMap(([id, trust]) =>
-      flipped.has(id) ? [kernel.environments.trustChanged(id, trust.trusted === true)] : [],
+      flipped.has(id) ? [kernel.environments.trustChanged(id, trust.state === "trusted")] : [],
     ),
     ...sessions
       .flat()

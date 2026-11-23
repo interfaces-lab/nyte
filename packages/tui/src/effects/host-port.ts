@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId, compile, SdkError, ToolPartStateType, withJson } from "@nyte-ai/schema";
 import { mapped } from "@nyte-ai/protocol";
@@ -127,20 +126,15 @@ export function hostPort(
     },
     async trustInfo(workspace) {
       const info = await host.call("workspace.info", { workspace });
-      const inspected = await workspaces.inspect(info.target).catch(() => null);
-
-      const path = "path" in info.target ? info.target.path : info.id;
 
       return {
-        path,
-        home: path.replace(/\/+$/u, "") === homedir().replace(/\/+$/u, ""),
-        decision: info.projectResources,
-        trusted: info.trusted,
-        sources: inspected?.projectSources ?? info.projectSources,
+        path: "path" in info.target ? info.target.path : info.id,
+        trust: info.trust,
+        sources: info.projectSources,
       };
     },
-    async trust(workspace, value) {
-      const outcome = await host.workspace(workspace).update({ projectResources: value });
+    async trust(workspace, value, at) {
+      const outcome = await host.workspace(workspace).update({ trusted: value, at });
 
       if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
     },

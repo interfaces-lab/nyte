@@ -348,9 +348,7 @@ export function fakeHost(): FakeHost {
     mcpLogin: async () => undefined,
     trustInfo: async () => ({
       path: "/work",
-      home: false,
-      decision: true,
-      trusted: true,
+      trust: { state: "trusted", by: { kind: "folder", path: "/work" } },
       sources: [],
     }),
     trust: async () => undefined,

@@ -1,6 +1,7 @@
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../../lib/catalog.ts";
 import { shortId } from "../../lib/format.ts";
+import { ownDecision } from "../../lib/trust.ts";
 import type { AuthDialog } from "../dialogs/auth.ts";
 import { snapshot } from "../draft.ts";
 import { chatFolder, followedSession } from "../state.ts";
@@ -177,7 +178,7 @@ export const sessionHandlers = {
   },
   "set-trust": (state, msg) => ({
     state: withLocal(state, { settlingTrust: [...state.local.settlingTrust, msg.workspace] }),
-    effects: [{ kind: "set-trust", workspace: msg.workspace, value: msg.value }],
+    effects: [{ kind: "set-trust", workspace: msg.workspace, value: msg.value, at: msg.at }],
   }),
   "trust-settled": (state, msg) => stay(trustSettled(state, msg.workspace)),
   "apply-setting": (state, msg) => {
@@ -296,7 +297,7 @@ export const sessionHandlers = {
   "trust-loaded": (current, msg, now, reduce) => {
     const state = msg.ask === "always" ? current : trustSettled(current, msg.workspace);
 
-    if (msg.home) {
+    if (msg.trust.state === "home") {
       return msg.ask === "always"
         ? stay(
             withNotice(
@@ -311,16 +312,29 @@ export const sessionHandlers = {
 
     const folder = state.facts.chat === null ? null : chatFolder(state.facts.chat);
 
-    if (
-      msg.ask !== "always" &&
-      (msg.trusted !== null ||
-        msg.sources.length === 0 ||
-        folder?.kind !== "folder" ||
-        folder.id !== msg.workspace)
-    ) {
-      return stay(state);
+    const notice =
+      msg.trust.state === "undecided" || msg.trust.state === "untrusted" ? msg.trust.notice : null;
+
+    if (msg.ask !== "always") {
+      if (folder?.kind !== "folder" || folder.id !== msg.workspace) return stay(state);
+
+      if (notice === "tell") {
+        return stay(
+          withNotice(
+            state,
+            "This folder isn't trusted, so its skills, plugins and MCP servers didn't load. /trust loads them.",
+            "info",
+            now,
+          ),
+        );
+      }
+
+      if (notice !== "ask") return stay(state);
     }
-    const { workspace, path, decision, sources } = msg;
+    const { workspace, path, sources } = msg;
+    const decision = ownDecision(msg.trust, path);
+    const parent =
+      msg.trust.state === "undecided" || msg.trust.state === "untrusted" ? msg.trust.parent : null;
 
     return openDialog(
       state,
@@ -331,6 +345,7 @@ export const sessionHandlers = {
           workspace,
           path,
           decision,
+          parent,
           sources,
           gate: msg.ask === "at-launch",
         },

@@ -198,8 +198,11 @@ export function useForgetWorkspace() {
   });
 }
 
-export async function trustWorkspace(id: WorkspaceId): Promise<void> {
-  const outcome = await (await connected()).workspace(id).update({ projectResources: true });
+export async function trustWorkspace(
+  id: WorkspaceId,
+  at: "folder" | "parent" = "folder",
+): Promise<void> {
+  const outcome = await (await connected()).workspace(id).update({ trusted: true, at });
 
   if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
   await queryClient.invalidateQueries({ queryKey: keys.workspaces });

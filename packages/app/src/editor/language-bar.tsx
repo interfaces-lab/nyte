@@ -55,7 +55,7 @@ export function LanguageBar(input: {
   );
 
   const trust = useMutation({
-    mutationFn: trustWorkspace,
+    mutationFn: (workspace: WorkspaceId) => trustWorkspace(workspace),
     onSuccess: input.onTrusted,
     onError: (cause) =>
       toast.add({

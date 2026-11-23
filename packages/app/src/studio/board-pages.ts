@@ -545,7 +545,7 @@ async function workspaceTrusted(owner: BrowserOwner): Promise<boolean> {
   const workspaces = await (await connected()).workspaces.list();
 
   return workspaces.some(
-    (workspace) => workspace.trusted === true && workspacePath(workspace) === path,
+    (workspace) => workspace.trust.state === "trusted" && workspacePath(workspace) === path,
   );
 }
 

@@ -9,7 +9,7 @@ export function restorableFolder(workspace: WorkspaceInfo | null): SelectedWorks
     workspace.availability.kind === "unavailable" ||
     workspace.target.kind !== "local" ||
     !("path" in workspace.target) ||
-    (workspace.trusted === null && workspace.projectSources.length > 0)
+    (workspace.trust.state === "undecided" && workspace.trust.notice === "ask")
   ) {
     return undefined;
   }

@@ -128,7 +128,7 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
   const [workspace] = await fixture.host.workspaces.list();
 
   if (workspace === undefined) throw new Error("The host registered no workspace.");
-  await fixture.host.workspace(workspace.id).update({ projectResources: true });
+  await fixture.host.workspace(workspace.id).update({ trusted: true });
 
   await using tui = await startTui({ fixture });
   await tui.ready();

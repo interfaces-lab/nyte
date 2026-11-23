@@ -245,7 +245,7 @@ socketTest(
 
     if (opened.kind !== "opened") throw new Error("The folder did not open");
     const host = made.served;
-    await host.workspace(opened.workspace.id).update({ projectResources: true });
+    await host.workspace(opened.workspace.id).update({ trusted: true });
 
     const { session: chat } = await host.sessions.start({
       workspace: opened.workspace.id,

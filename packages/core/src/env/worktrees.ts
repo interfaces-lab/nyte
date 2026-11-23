@@ -101,7 +101,6 @@ export async function isolateWorkspace(
       id,
       target: worktree.target,
       identity: inspected.identity,
-      projectSources: inspected.projectSources,
       addedBy: principal,
       createdAt: Date.now(),
       isolation: {

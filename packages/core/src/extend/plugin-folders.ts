@@ -21,7 +21,7 @@ async function projectPluginFolder(kernel: Kernel, workspace: WorkspaceId): Prom
 
   if (record === null || !("path" in record.target)) return null;
 
-  if ((await projectTrust(kernel, record)) !== true) return null;
+  if (!(await projectTrust(kernel, record))) return null;
 
   return `${record.target.path.replace(/\/+$/u, "")}/${PLUGIN_FOLDER}`;
 }

@@ -167,7 +167,7 @@ export async function checkTrust(
 
 export async function setTrust(effect: Of<"set-trust">, context: HandlerContext): Promise<void> {
   try {
-    await context.ports.host.trust(effect.workspace, effect.value);
+    await context.ports.host.trust(effect.workspace, effect.value, effect.at);
   } finally {
     context.dispatch({ kind: "trust-settled", workspace: effect.workspace });
   }

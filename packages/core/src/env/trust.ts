@@ -1,4 +1,5 @@
-import type { WorkspaceTarget } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/schema";
+import type { FolderTrust, WorkspaceTarget } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeTrustRecord } from "../contract/records.ts";
@@ -12,12 +13,11 @@ export const WORKSPACE_TRUST = "workspaceTrust";
 
 type Trusted = Pick<WorkspaceRecord, "target" | "isolation">;
 
-export interface FolderTrust {
-  decided(workspace: Trusted): boolean | null;
-  trusted(workspace: Trusted): boolean | null;
+export interface TrustDecisions {
+  explain(workspace: Trusted, sources: readonly string[]): FolderTrust;
 }
 
-export async function readFolderTrust(kernel: Kernel): Promise<FolderTrust> {
+export async function readTrustDecisions(kernel: Kernel): Promise<TrustDecisions> {
   const [records, decisions, mode] = await Promise.all([
     workspaceRecords(kernel.store),
     trustRecords(kernel.store),
@@ -25,7 +25,6 @@ export async function readFolderTrust(kernel: Kernel): Promise<FolderTrust> {
   ]);
 
   const home = kernel.home?.replace(/\/+$/u, "") ?? null;
-  const fallback = mode === "always" ? true : mode === "never" ? false : null;
 
   const followed = (workspace: Trusted): WorkspaceTarget => {
     const source = workspace.isolation?.source;
@@ -36,37 +35,56 @@ export async function readFolderTrust(kernel: Kernel): Promise<FolderTrust> {
     );
   };
 
-  const decided = (target: WorkspaceTarget): boolean | null =>
-    decisions.find((decision) => Value.Equal(decision.target, target))?.trusted ?? null;
+  const saved = (target: WorkspaceTarget) => {
+    if (!("path" in target)) {
+      const exact = decisions.find((decision) => Value.Equal(decision.target, target));
 
-  return {
-    decided: (workspace) => decided(followed(workspace)),
-    trusted(workspace) {
-      const target = followed(workspace);
+      return exact === undefined ? null : { path: null, trusted: exact.trusted };
+    }
 
-      if (!("path" in target)) return decided(target) ?? fallback;
-
-      const { path } = target;
-
-      if (path === home) return false;
-
-      const nearest = decisions
+    return (
+      decisions
         .flatMap(({ target: above, trusted }) =>
           "path" in above &&
           above.kind === target.kind &&
           above.path !== home &&
-          (above.path === path || path.startsWith(`${above.path}/`))
-            ? [{ depth: above.path.length, trusted }]
+          (above.path === target.path || target.path.startsWith(`${above.path}/`))
+            ? [{ path: above.path, trusted }]
             : [],
         )
-        .toSorted((a, b) => b.depth - a.depth)[0];
+        .toSorted((a, b) => b.path.length - a.path.length)[0] ?? null
+    );
+  };
 
-      return nearest?.trusted ?? fallback;
+  return {
+    explain(workspace, sources) {
+      const target = followed(workspace);
+
+      if ("path" in target && target.path === home) return { state: "home" };
+      const decision = saved(target);
+      const skipped = sources.length > 0 ? "tell" : null;
+      const parent = folderAbove(target, home);
+
+      if (decision !== null) {
+        const by = { kind: "folder", path: decision.path } as const;
+
+        return decision.trusted
+          ? { state: "trusted", by }
+          : { state: "untrusted", by, notice: skipped, parent };
+      }
+
+      if (mode === "always") return { state: "trusted", by: { kind: "setting" } };
+
+      if (mode === "never") {
+        return { state: "untrusted", by: { kind: "setting" }, notice: skipped, parent };
+      }
+
+      return { state: "undecided", notice: sources.length > 0 ? "ask" : null, parent };
     },
   };
 }
 
-export async function projectTrust(kernel: Kernel, workspace: Trusted): Promise<boolean | null> {
+export async function projectTrust(kernel: Kernel, workspace: Trusted): Promise<boolean> {
   const home = kernel.home?.replace(/\/+$/u, "") ?? null;
   const target = trustTarget(workspace.target);
 
@@ -80,22 +98,25 @@ export async function projectTrust(kernel: Kernel, workspace: Trusted): Promise<
     if (own !== null) return own.record.trusted;
   }
 
-  return (await readFolderTrust(kernel)).trusted(workspace);
+  return (await readTrustDecisions(kernel)).explain(workspace, []).state === "trusted";
 }
 
 export async function decideTrust(
   kernel: Kernel,
   workspace: Trusted,
   trusted: boolean | null,
+  at: "folder" | "parent" = "folder",
 ): Promise<void> {
   const source = workspace.isolation?.source;
 
-  const target = trustTarget(
+  const own = trustTarget(
     (source === undefined
       ? undefined
       : (await workspaceRecords(kernel.store)).find((record) => record.id === source)?.target) ??
       workspace.target,
   );
+
+  const target = at === "folder" ? own : parentTarget(own, kernel);
 
   await commit(kernel, [
     {
@@ -106,6 +127,27 @@ export async function decideTrust(
           : await put(kernel.store, "trust", { target, trusted } satisfies TrustRecord),
     },
   ]);
+}
+
+function parentTarget(own: WorkspaceTarget, kernel: Kernel): WorkspaceTarget {
+  const above = folderAbove(own, kernel.home?.replace(/\/+$/u, "") ?? null);
+
+  if (above === null || !("path" in own)) {
+    throw new SdkError("invalid", "This folder has no folder above it whose trust would cover it.");
+  }
+
+  return { ...own, path: above };
+}
+
+function folderAbove(target: WorkspaceTarget, home: string | null): string | null {
+  if (!("path" in target)) return null;
+  const path = target.path.replace(/\/+$/u, "");
+  const cut = path.lastIndexOf("/");
+
+  if (cut <= 0) return null;
+  const above = path.slice(0, cut);
+
+  return above === home ? null : above;
 }
 
 async function trustRecords(store: StoreConnection): Promise<readonly TrustRecord[]> {

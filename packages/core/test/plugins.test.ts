@@ -916,7 +916,7 @@ describe("commands", () => {
     expect(await at.command("never", "")).toEqual({ kind: "unknown" });
     expect((await host.sessions.list()).items).toEqual([]);
 
-    expect(await at.update({ projectResources: false })).toEqual({ kind: "updated" });
+    expect(await at.update({ trusted: false })).toEqual({ kind: "updated" });
     expect((await at.catalog()).commands.map((command) => command.name)).toEqual(["hello"]);
     await expect(host.workspace(asId("missing")).catalog()).rejects.toMatchObject({
       code: "unknown",

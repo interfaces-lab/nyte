@@ -587,7 +587,7 @@ export interface Workspaces {
     target: WorkspaceTarget,
     options?: {
       /** Trusts (`true`) or declines (`false`) the folder's project files; by default the folder follows a decision saved for it or the nearest folder above it. */
-      readonly projectResources?: boolean;
+      readonly trusted?: boolean;
       readonly expect?: { readonly identity: EnvironmentIdentity };
     },
   ): Promise<AddOutcome>;
@@ -620,7 +620,9 @@ export interface Workspace {
    * sessions reload with the change.
    */
   update(patch: {
-    readonly projectResources?: boolean | null;
+    readonly trusted?: boolean | null;
+    /** Saves the decision for this folder (the default) or for the folder above it, which `trust.parent` names. */
+    readonly at?: "folder" | "parent";
   }): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
 
   reload(): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;

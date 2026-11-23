@@ -43,7 +43,21 @@ export const SIDECHAT_COMMAND = {
   completes: false,
 } satisfies CommandInfo;
 
-export const CLIENT_COMMANDS: readonly CommandInfo[] = [COMPACT_COMMAND, SIDECHAT_COMMAND];
+export const TRUST_COMMAND = {
+  name: "trust" satisfies ClientCommandName,
+  owner: "",
+  side: "client",
+  title: "Trust Folder",
+  description: "Load this folder's skills, plugins and MCP servers",
+  takesText: false,
+  completes: false,
+} satisfies CommandInfo;
+
+export const CLIENT_COMMANDS: readonly CommandInfo[] = [
+  COMPACT_COMMAND,
+  SIDECHAT_COMMAND,
+  TRUST_COMMAND,
+];
 
 export function usePluginCatalog(sessionId?: SessionId) {
   const store = sessionId === undefined ? undefined : chatStore(sessionId);

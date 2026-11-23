@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Plugin, Store } from "@nyte-ai/core";
 import { SdkError, standard } from "@nyte-ai/schema";
@@ -288,11 +288,11 @@ describe("openHost", () => {
     const [info] = await host.workspaces.list();
     await host.sessions.start({ workspace: info.id, content: "Hi." });
 
-    expect(info.projectResources).toBeNull();
+    expect(info.trust).toEqual({ state: "undecided", notice: "ask", parent: dirname(workspace) });
     expect(info.projectSources).toContain(".nyte/plugins/mine.mjs");
     expect((await firstView(host)).plugins.map((row) => row.id)).not.toContain("mine");
 
-    expect(await host.workspace(info.id).update({ projectResources: true })).toEqual({
+    expect(await host.workspace(info.id).update({ trusted: true })).toEqual({
       kind: "updated",
     });
     await host.sessions.start({ workspace: info.id, content: "Hi." });

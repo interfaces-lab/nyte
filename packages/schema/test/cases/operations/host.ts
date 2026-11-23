@@ -177,7 +177,7 @@ export const hostOperations = {
     OPERATIONS["workspaces.add"].input,
     {
       target: { kind: "local", path: "/repo" },
-      options: { projectResources: false, expect: { identity } },
+      options: { trusted: false, expect: { identity } },
     },
     { target: { kind: "local", path: "/repo" }, options: { expect: {} } },
   ),

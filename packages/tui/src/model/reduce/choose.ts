@@ -287,7 +287,13 @@ const CHOOSERS: Choosers = {
             {
               kind: "set-trust",
               workspace: purpose.workspace,
-              value: msg.choice === "trust" ? true : msg.choice === "decline" ? false : null,
+              value:
+                msg.choice === "trust" || msg.choice === "parent"
+                  ? true
+                  : msg.choice === "decline"
+                    ? false
+                    : null,
+              at: msg.choice === "parent" ? "parent" : "folder",
             },
             now,
           ),

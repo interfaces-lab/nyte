@@ -89,7 +89,7 @@ async function chatIn(home: string, workspace: string, fake: FakeModels = fakeMo
 
   const [info] = await host.workspaces.list();
   assert(info !== undefined);
-  await host.workspace(info.id).update({ projectResources: true });
+  await host.workspace(info.id).update({ trusted: true });
   const { session, receipt } = await host.sessions.start({ workspace: info.id, content: "Hi." });
   await receipt.settled();
 

@@ -8,7 +8,6 @@ import { driveInProcess } from "../src/drive/execution.ts";
 import { runStep } from "../src/engine/durable.ts";
 import { authenticateToken, redeemPairing } from "../src/api/principals.ts";
 import { workspaceHandle } from "../src/env/workspaces.ts";
-import { resourcesPlugin } from "../src/extend/resources.ts";
 import { readView } from "../src/watch/window.ts";
 import { viewHead } from "../src/watch/view.ts";
 import { createFoldCache } from "../src/watch/watch.ts";
@@ -78,7 +77,8 @@ async function patches(source: AsyncIterable<PatchSet>) {
 
 describe("workspaces", () => {
   it("inspects a target, adds it once, answers stale for a swapped identity, and lists it", async () => {
-    const { host, workspace } = await world();
+    const { host, workspace, disk } = await world();
+    disk.put("/work/other/.nyte/plugins/x.ts", "export default {};");
 
     expect(await host.workspaces.inspect({ kind: "local", path: "/work/other" })).toEqual({
       target: { kind: "local", path: "/work/other" },
@@ -111,7 +111,7 @@ describe("workspaces", () => {
 
     const added = await host.workspaces.add(
       { kind: "local", path: "/work/other" },
-      { projectResources: false, expect: { identity: asId("id:/work/other") } },
+      { trusted: false, expect: { identity: asId("id:/work/other") } },
     );
 
     assert(added.kind === "added");
@@ -123,8 +123,12 @@ describe("workspaces", () => {
           target: { kind: "local", path: "/work/other" },
           identity: "id:/work/other",
           availability: { kind: "available" },
-          projectResources: false,
-          trusted: false,
+          trust: {
+            state: "untrusted",
+            by: { kind: "folder", path: "/work/other" },
+            notice: "tell",
+            parent: "/work",
+          },
           projectSources: [".nyte/plugins/x.ts"],
           addedBy: LOCAL,
           writers: [],
@@ -346,7 +350,6 @@ describe("workspaces", () => {
       id: sandbox,
       target: { kind: "sandbox", locator: "box" },
       identity: asId("box"),
-      projectSources: [],
       addedBy: LOCAL,
       createdAt: 0,
       isolation: null,
@@ -478,57 +481,25 @@ describe("workspaces", () => {
     expect(provider.peakReads).toBe(4);
   });
 
-  it("asks about a new folder, applies the nearest parent's decision, and follows workspaceTrust", async () => {
-    const { host, disk } = await world({ plugins: [resourcesPlugin] });
-
-    const add = async (path: string) => {
-      disk.directories.add(path);
-      const added = await host.workspaces.add({ kind: "local", path });
-
-      assert(added.kind === "added");
-
-      return host.workspace(added.workspace);
-    };
-
-    const trust = async (handle: Awaited<ReturnType<typeof add>>) => {
-      const { projectResources, trusted } = await handle.info();
-
-      return { projectResources, trusted };
-    };
-
-    const fresh = await add("/elsewhere");
-    const child = await add("/work/project/packages/app");
-    const sibling = await add("/work/project-x");
-
-    expect(await trust(fresh)).toEqual({ projectResources: null, trusted: null });
-    expect(await trust(child)).toEqual({ projectResources: null, trusted: true });
-    expect(await trust(sibling)).toEqual({ projectResources: null, trusted: null });
-
-    expect(await host.settings.apply("workspaceTrust", "never")).toMatchObject({ kind: "applied" });
-    expect(await trust(fresh)).toEqual({ projectResources: null, trusted: false });
-    expect(await trust(child)).toEqual({ projectResources: null, trusted: true });
-    expect(await fresh.update({ projectResources: true })).toEqual({ kind: "updated" });
-    expect(await trust(fresh)).toEqual({ projectResources: true, trusted: true });
-    expect(await fresh.update({ projectResources: null })).toEqual({ kind: "updated" });
-    expect(await trust(fresh)).toEqual({ projectResources: null, trusted: false });
-  });
-
-  it("updates projectResources and yields the record as it changes", async () => {
+  it("updates trust and yields the record as it changes", async () => {
     const { host, workspace } = await world();
     const handle = host.workspace(workspace);
     const watched = handle.watch()[Symbol.asyncIterator]();
     const opened = await watched.next();
 
     assert(!opened.done);
-    expect(opened.value.projectResources).toBe(true);
-    expect(await handle.update({ projectResources: false })).toEqual({ kind: "updated" });
+    expect(opened.value.trust).toEqual({
+      state: "trusted",
+      by: { kind: "folder", path: "/work/project" },
+    });
+    expect(await handle.update({ trusted: false })).toEqual({ kind: "updated" });
 
     const next = await watched.next();
 
     assert(!next.done);
-    expect(next.value.projectResources).toBe(false);
+    expect(next.value.trust).toMatchObject({ state: "untrusted" });
     await watched.return?.();
-    expect(await host.workspace(asId("gone")).update({ projectResources: true })).toEqual({
+    expect(await host.workspace(asId("gone")).update({ trusted: true })).toEqual({
       kind: "missing",
     });
   });

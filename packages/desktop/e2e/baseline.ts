@@ -301,7 +301,7 @@ export async function trustedProject(prepared: PreparedHome, name: string): Prom
     const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
 
     if (added.kind !== "added") throw new Error(`Could not register ${project}: ${added.kind}`);
-    await host.workspace(added.workspace).update({ projectResources: true });
+    await host.workspace(added.workspace).update({ trusted: true });
 
     for (const id of Object.values(prepared.sessions)) {
       await host.session(id).update({ workspace: added.workspace });

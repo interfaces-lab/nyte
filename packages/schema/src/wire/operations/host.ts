@@ -283,7 +283,7 @@ export const HOST_OPERATIONS = {
       target: WorkspaceTargetType,
       options: Type.Optional(
         Type.Object({
-          projectResources: Type.Optional(Type.Boolean()),
+          trusted: Type.Optional(Type.Boolean()),
           expect: Type.Optional(Type.Object({ identity: idSchema<"environment-identity">() })),
         }),
       ),

@@ -369,7 +369,7 @@ async function readers(
 ) {
   const record = await readWorkspace(kernel.store, workspace);
   const homeEnv = await attachHome(kernel);
-  const trusted = record !== null && (await projectTrust(kernel, record)) === true;
+  const trusted = record !== null && (await projectTrust(kernel, record));
   const provider = record === null ? undefined : kernel.environments.provider(record.target.kind);
   const attached = classifyFileSupport(provider) === "available" ? attach() : null;
 
@@ -392,7 +392,7 @@ async function follow(kernel: Kernel, session: SessionId, workspace: WorkspaceId
 
   const record = await readWorkspace(kernel.store, workspace);
 
-  if (record === null || (await projectTrust(kernel, record)) !== true) return;
+  if (record === null || !(await projectTrust(kernel, record))) return;
 
   if (classifyFileSupport(kernel.environments.provider(record.target.kind)) !== "available") return;
   const env = await kernel.environments.attach(session).catch(() => null);

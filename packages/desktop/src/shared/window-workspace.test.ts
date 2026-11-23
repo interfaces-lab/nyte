@@ -10,8 +10,7 @@ function workspace(change: Partial<WorkspaceInfo>): WorkspaceInfo {
     target: { kind: "local", path: "/Users/me/project" },
     identity: asId("identity"),
     availability: { kind: "available" },
-    projectResources: null,
-    trusted: true,
+    trust: { state: "trusted", by: { kind: "folder", path: null } },
     projectSources: [],
     addedBy: asId("owner"),
     writers: [],
@@ -47,22 +46,29 @@ test.each<{
   },
   {
     name: "an untrusted folder with project sources waits for the trust question",
-    workspace: workspace({ trusted: null, projectSources: ["AGENTS.md"] }),
+    workspace: workspace({ trust: { state: "undecided", notice: "ask", parent: null } }),
     folder: undefined,
   },
   {
     name: "an untrusted folder without project sources shows",
-    workspace: workspace({ trusted: null }),
+    workspace: workspace({ trust: { state: "undecided", notice: null, parent: null } }),
     folder: project,
   },
   {
     name: "a trusted folder with project sources shows",
-    workspace: workspace({ projectSources: ["AGENTS.md"] }),
+    workspace: workspace({ projectSources: [".nyte/mcp.json"] }),
     folder: project,
   },
   {
     name: "a folder whose trust was declined shows, since only an unanswered question waits",
-    workspace: workspace({ trusted: false, projectSources: ["AGENTS.md"] }),
+    workspace: workspace({
+      trust: {
+        state: "untrusted",
+        by: { kind: "folder", path: null },
+        notice: "tell",
+        parent: null,
+      },
+    }),
     folder: project,
   },
   {

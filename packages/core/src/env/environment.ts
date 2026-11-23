@@ -136,10 +136,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       );
     }
 
-    const attached = await serving.attach(
-      record.target,
-      async () => (await projectTrust(kernel, record)) === true,
-    );
+    const attached = await serving.attach(record.target, () => projectTrust(kernel, record));
 
     if (attached.identity !== record.identity) {
       await attached.close();
@@ -297,24 +294,28 @@ export function classifyFileSupport(
   return provider?.snapshots === undefined ? "unsupported" : "available";
 }
 
-export async function inspectWorkspaceAvailability(
+export async function inspectWorkspace(
   kernel: Kernel,
   workspace: Pick<WorkspaceRecord, "target" | "identity">,
-): Promise<Availability> {
+): Promise<{ readonly availability: Availability; readonly projectSources: readonly string[] }> {
   const serving = kernel.environments.provider(workspace.target.kind);
 
-  if (serving === undefined) return { kind: "unavailable", reason: "unsupported" };
-
-  try {
-    const inspected = await serving.inspect(workspace.target);
-
-    return inspected.availability.kind === "unavailable" ||
-      inspected.identity === workspace.identity
-      ? inspected.availability
-      : { kind: "unavailable", reason: "unreachable" };
-  } catch {
-    return { kind: "unavailable", reason: "unreachable" };
+  if (serving === undefined) {
+    return { availability: { kind: "unavailable", reason: "unsupported" }, projectSources: [] };
   }
+
+  const inspected = await serving.inspect(workspace.target).catch(() => null);
+
+  if (inspected === null || inspected.availability.kind === "unavailable") {
+    return {
+      availability: inspected?.availability ?? { kind: "unavailable", reason: "unreachable" },
+      projectSources: [],
+    };
+  }
+
+  return inspected.identity === workspace.identity
+    ? { availability: inspected.availability, projectSources: inspected.projectSources }
+    : { availability: { kind: "unavailable", reason: "unreachable" }, projectSources: [] };
 }
 
 export async function readWorkspace(
@@ -487,10 +488,7 @@ function attachment(
     },
     language() {
       if (closing) return undefined;
-      language ??= provider.language?.(
-        env,
-        async () => (await projectTrust(kernel, workspace)) === true,
-      );
+      language ??= provider.language?.(env, () => projectTrust(kernel, workspace));
 
       return language;
     },

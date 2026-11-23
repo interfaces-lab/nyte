@@ -269,7 +269,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
 
   projectDirs = async () =>
     (await host.workspaces.list()).flatMap((entry) =>
-      entry.trusted === true && "path" in entry.target
+      entry.trust.state === "trusted" && "path" in entry.target
         ? [join(entry.target.path, ".nyte", "plugins")]
         : [],
     );

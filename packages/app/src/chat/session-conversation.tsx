@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { runStatus } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage, RunStatus } from "@nyte-ai/plugin/client/presentation";
 import { sessionScreenStyles } from "../panes/session-screen.stylex.ts";
@@ -7,12 +8,13 @@ import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useDeferredValue, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { Activation, Revision, SessionId, UserContent } from "@nyte-ai/sdk";
+import type { Activation, Revision, SessionId, UserContent, WorkspaceInfo } from "@nyte-ai/sdk";
 import type { ChatView } from "../data/chat-store.ts";
 import { Composer } from "./composer/composer.tsx";
 import type { ComposerEditorHandle } from "./composer/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./transcript/turn-view.tsx";
-import { observeActivation } from "../panes/open-workspace.tsx";
+import { observeActivation, observeTrust } from "../panes/open-workspace.tsx";
+import { workspacesQuery } from "../data/workspaces.ts";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { usePaneFocused, useSplitPanes } from "../panes/pane-context.tsx";
@@ -243,6 +245,23 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
+function TrustNotice({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
+  const folder = useChatWorkspace(sessionId);
+
+  const { data: workspace } = useQuery({
+    ...workspacesQuery,
+    select: (workspaces) => workspaces.find((entry) => entry.id === folder?.id),
+  });
+
+  return workspace === undefined ? null : <TrustOffer key={workspace.id} workspace={workspace} />;
+}
+
+function TrustOffer({ workspace }: { readonly workspace: WorkspaceInfo }): null {
+  useMountEffect(() => observeTrust(workspace));
+
+  return null;
+}
+
 function SideConversation({
   paneId,
   sessionId,
@@ -440,6 +459,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
         >
           <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
             {!((ready && chat.kind !== "loading") || failed) && <StartupReadsHold />}
+            {presentation === "full" && <TrustNotice sessionId={sessionId} />}
             {presentation === "full" && activation !== undefined && (
               <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
             )}

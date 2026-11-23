@@ -33,7 +33,7 @@ import type {
   WorkspaceCommandOutcome,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import type { Freshness, HeadView, LinkState } from "@nyte-ai/sdk/client";
+import type { FolderTrust, Freshness, HeadView, LinkState } from "@nyte-ai/sdk/client";
 import type { ApprovalDecision } from "@nyte-ai/plugin/approvals/schema";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { Clock } from "@opentui/core";
@@ -96,12 +96,10 @@ export interface HostPort {
   mcpLogin(workspace: WorkspaceId, server: string, driver: LoginDriver): Promise<void>;
   trustInfo(workspace: WorkspaceId): Promise<{
     readonly path: string;
-    readonly home: boolean;
-    readonly decision: boolean | null;
-    readonly trusted: boolean | null;
+    readonly trust: FolderTrust;
     readonly sources: readonly string[];
   }>;
-  trust(workspace: WorkspaceId, value: boolean | null): Promise<void>;
+  trust(workspace: WorkspaceId, value: boolean | null, at: "folder" | "parent"): Promise<void>;
   applySetting(id: string, value: Json): Promise<SettingOutcome>;
   tasks(session: SessionId): AsyncIterable<readonly Task[]>;
   blob(id: string): AsyncIterable<Uint8Array>;

@@ -5,10 +5,11 @@ import { create, props } from "@stylexjs/stylex";
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { Activation } from "@nyte-ai/sdk";
+import type { Activation, TrustSource, WorkspaceId, WorkspaceInfo } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { keys, queryClient } from "../data/query-client.ts";
-import { commitHostWorkspace } from "../data/workspaces.ts";
+import { commitHostWorkspace, trustWorkspace } from "../data/workspaces.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
 import type { HostState } from "../contract/nyte.ts";
@@ -37,6 +38,7 @@ const styles = create({
 
 interface TrustPrompt {
   readonly path: string;
+  readonly chat?: { readonly workspace: WorkspaceId; readonly parent: string | null };
 }
 
 let prompt: TrustPrompt | undefined;
@@ -112,6 +114,56 @@ export async function activateWorkspace(path: string | null): Promise<boolean> {
 }
 
 let failedShown = false;
+
+const offered = new Set<WorkspaceId>();
+
+export function observeTrust(workspace: Pick<WorkspaceInfo, "id" | "target" | "trust">): void {
+  const { trust } = workspace;
+  const notice = trust.state === "undecided" || trust.state === "untrusted" ? trust.notice : null;
+
+  if (notice === null || offered.has(workspace.id)) return;
+  offered.add(workspace.id);
+
+  if (trust.state === "undecided") {
+    setPrompt({
+      path: "path" in workspace.target ? workspace.target.path : workspace.id,
+      chat: { workspace: workspace.id, parent: trust.parent },
+    });
+
+    return;
+  }
+
+  if (trust.state !== "untrusted") return;
+  const id = `workspace-trust-${workspace.id}`;
+
+  toast.add({
+    title: "This folder isn't trusted",
+    description: `Its skills, plugins and MCP servers didn't load. ${untrustedReason(workspace.target, trust.by)}`,
+    id,
+    timeout: 0,
+    actionProps: {
+      children: "Trust Folder",
+      onClick: () => {
+        toast.close(id);
+        void trustWorkspace(workspace.id).catch((cause: unknown) =>
+          toast.add({
+            type: "error",
+            title: "Couldn't trust this folder",
+            description: errorMessage(cause),
+          }),
+        );
+      },
+    },
+  });
+}
+
+function untrustedReason(target: WorkspaceInfo["target"], by: TrustSource): string {
+  if (by.kind === "setting") return "Project trust is set to never in Settings.";
+
+  return by.path === null || ("path" in target && target.path === by.path)
+    ? "You chose not to trust it."
+    : `You chose not to trust ${by.path}.`;
+}
 
 export function observeActivation(activation: Activation): void {
   if (activation.kind !== "unavailable") toast.close("workspace-unavailable");
@@ -189,6 +241,8 @@ export function WorkspaceDialogHost(): ReactElement | null {
   if (current === undefined) return null;
   const path = current.path;
 
+  if (current.chat !== undefined) return <ChatTrustDialog path={path} chat={current.chat} />;
+
   const grant = (grantWith: NonNullable<typeof trust>): void => {
     void grantTrust(grantWith, current).then((granted) => {
       if (granted) void router.navigate({ to: "/", search: {}, replace: true });
@@ -218,6 +272,49 @@ export function WorkspaceDialogHost(): ReactElement | null {
               </Button>
             </>
           )}
+        </Dialog.Footer>
+      </Dialog.Popup>
+    </Dialog.Root>
+  );
+}
+
+function ChatTrustDialog({
+  path,
+  chat,
+}: {
+  readonly path: string;
+  readonly chat: NonNullable<TrustPrompt["chat"]>;
+}): ReactElement {
+  const decide = (at: "folder" | "parent"): void => {
+    setPrompt(undefined);
+    void trustWorkspace(chat.workspace, at).catch((cause: unknown) =>
+      toast.add({
+        type: "error",
+        title: "Couldn't trust this folder",
+        description: errorMessage(cause),
+      }),
+    );
+  };
+
+  return (
+    <Dialog.Root key={path} defaultOpen onOpenChange={(open) => !open && declineTrust()}>
+      <Dialog.Popup xstyle={styles.popup}>
+        <Dialog.Title xstyle={styles.title}>Trust Folder</Dialog.Title>
+        <div {...props(styles.path)}>{path}</div>
+        <Dialog.Description>
+          This folder has its own skills, plugins or MCP servers. Trusting it loads them and lets
+          Nyte run code and change files here.
+        </Dialog.Description>
+        <Dialog.Footer>
+          <Button onClick={() => declineTrust()}>Not Now</Button>
+          {chat.parent !== null && (
+            <Button title={chat.parent} onClick={() => decide("parent")}>
+              {`Trust ${chat.parent.split("/").findLast(Boolean) ?? chat.parent}`}
+            </Button>
+          )}
+          <Button variant="solid" tone="primary" onClick={() => decide("folder")}>
+            Trust Folder
+          </Button>
         </Dialog.Footer>
       </Dialog.Popup>
     </Dialog.Root>

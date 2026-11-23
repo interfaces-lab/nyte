@@ -209,7 +209,10 @@ export function fakeProvider(
     inspect: async (target) => ({
       identity: asId<"environment-identity">(`id:${readTargetPath(target)}`),
       availability: provider.availability ?? { kind: "available" },
-      projectSources: [".nyte/plugins/x.ts"],
+      projectSources: [...disk.files.keys()]
+        .filter((path) => path.startsWith(`${readTargetPath(target)}/.nyte/`))
+        .map((path) => path.slice(readTargetPath(target).length + 1))
+        .toSorted(),
     }),
     async attach(target) {
       if (provider.failure !== null) throw new Error(provider.failure);
@@ -340,7 +343,7 @@ export function kernelOver(
 }
 
 export async function addWorkspace(host: Omit<Host, "listen">, path = "/work/project") {
-  const added = await host.workspaces.add({ kind: "local", path }, { projectResources: true });
+  const added = await host.workspaces.add({ kind: "local", path }, { trusted: true });
 
   if (added.kind !== "added" && added.kind !== "exists") {
     throw new Error(`Not added: ${added.kind}.`);

@@ -13,7 +13,7 @@ import { asId } from "@nyte-ai/schema";
 import type { Host } from "@nyte-ai/core";
 import type { McpView } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it, vi } from "vitest";
-import { createMcpHub, openHost } from "../src/index.ts";
+import { createMcpHub, localProvider, openHost } from "../src/index.ts";
 import type { McpConnector } from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
@@ -432,4 +432,45 @@ it("keeps concurrent edits, writes a project override explicitly, refuses clashi
   expect(await pending).toEqual({ done: true, value: undefined });
   expect(Date.now() - started).toBeLessThan(100);
   await hub.close();
+});
+
+it("loads an untrusted folder's own servers only once a folder above it is trusted, and says why until then", async () => {
+  const root = await home({});
+  const folder = join(root, "dev", "adk");
+  await mkdir(join(folder, ".nyte"), { recursive: true });
+  await writeMcp(folder, { mine: { url: "https://fake.test/mcp", exposure: "direct" } });
+
+  await using host = await openHost({
+    store: memoryStore(),
+    models: fakeModels().models,
+    plugins: [{ id: "local", environment: localProvider({ home: root }) }],
+    workspace: { kind: "local", path: folder },
+    home: root,
+    mcp: createMcpHub({ home: root, connect: () => fakeServer() }),
+  });
+
+  expect(await host.settings.apply("workspaceTrust", "never")).toEqual({ kind: "applied" });
+  const [workspace] = await host.workspaces.list();
+  assert(workspace !== undefined);
+  const views = host.workspace(workspace.id).mcp.watch()[Symbol.asyncIterator]();
+
+  expect((await host.workspace(workspace.id).info()).trust).toEqual({
+    state: "untrusted",
+    by: { kind: "setting" },
+    notice: "tell",
+    parent: join(root, "dev"),
+  });
+  expect((await next(views, () => true)).servers).toEqual([]);
+
+  expect(await host.workspace(workspace.id).update({ trusted: true, at: "parent" })).toEqual({
+    kind: "updated",
+  });
+
+  expect((await host.workspace(workspace.id).info()).trust).toEqual({
+    state: "trusted",
+    by: { kind: "folder", path: join(root, "dev") },
+  });
+  expect(await next(views, (view) => view.servers[0]?.state.kind === "connected")).toMatchObject({
+    servers: [{ name: "mine", scope: "project" }],
+  });
 });

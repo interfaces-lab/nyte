@@ -332,7 +332,7 @@ async function openWorkspace(connect: Input["connect"], scope?: McpScope): Promi
     );
   }
 
-  if ((await workspace.info()).trusted !== true) {
+  if ((await workspace.info()).trust.state !== "trusted") {
     throw new CliError(
       "missing_input",
       "Can't change this folder's .nyte/mcp.json until the folder is trusted.",
@@ -370,7 +370,7 @@ async function listedWorkspace(connect: Input["connect"]): Promise<{
 
     return {
       mcp: workspace.mcp,
-      folder: (await workspace.info()).trusted === true ? "trusted" : "untrusted",
+      folder: (await workspace.info()).trust.state === "trusted" ? "trusted" : "untrusted",
     };
   }
 

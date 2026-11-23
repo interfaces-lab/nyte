@@ -45,7 +45,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "workspaces.cleanWorktrees": () => sdk.workspaces.cleanWorktrees(),
     "workspaces.scanStorage": () => sdk.workspaces.scanStorage(),
     "workspaces.cleanStorage": () => sdk.workspaces.cleanStorage([]),
-    "workspace.update": () => at.update({ projectResources: false }),
+    "workspace.update": () => at.update({ trusted: false }),
     "workspace.reload": () => at.reload(),
     "mcp.watch": () => at.mcp.watch()[Symbol.asyncIterator]().next(),
     "mcp.reconnect": () => at.mcp.reconnect("s"),

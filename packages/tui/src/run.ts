@@ -130,7 +130,7 @@ export async function trustFolder(
   const workspace =
     session === null ? await addFolder(connection, cwd) : (await session.info()).workspace;
 
-  const outcome = await connection.workspace(workspace).update({ projectResources: trusted });
+  const outcome = await connection.workspace(workspace).update({ trusted });
 
   if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
 }

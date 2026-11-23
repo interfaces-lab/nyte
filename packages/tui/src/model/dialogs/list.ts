@@ -83,6 +83,7 @@ export type ListPurpose =
       readonly workspace: WorkspaceId;
       readonly path: string;
       readonly decision: boolean | null;
+      readonly parent: string | null;
       readonly sources: readonly string[];
       readonly gate: boolean;
     };
