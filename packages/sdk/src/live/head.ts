@@ -12,15 +12,7 @@ import { asSdkError, openSessionStore } from "@nyte-ai/protocol";
 import type { HostSocket, SessionRows, SessionStore, SocketEvent } from "@nyte-ai/protocol";
 import type { Catalogs } from "./catalogs.ts";
 import { activations, sessionChanges, sessionsChanges } from "../event-checks.ts";
-import {
-  freshnessCell,
-  keepRows,
-  listenerSet,
-  readRetries,
-  request,
-  sameJson,
-  takesHeld,
-} from "./store.ts";
+import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./store.ts";
 import type { Freshness, Join, Live } from "./store.ts";
 
 type RowIn<T> = T extends ReadonlyMap<string, infer Row> ? Row : never;
@@ -144,12 +136,7 @@ export function openHeadStore(
 
     try {
       const subscribing = subscribe();
-      const point = held?.store.describe();
-
-      const resume =
-        point?.held === undefined || (await takesHeld(live))
-          ? point
-          : { seq: point.seq, from: point.from };
+      const resume = held?.store.describe();
 
       const window = await request(live, "head.read", {
         session: input.session,

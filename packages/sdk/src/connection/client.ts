@@ -18,7 +18,9 @@ import { journalLoop } from "../send/journal.ts";
 import type { JournalLoop } from "../send/journal.ts";
 import { partHandle } from "./part.ts";
 import { moveOutcome, receiptHandle, runHandle, sendReceipt } from "./receipts.ts";
-import { createLink, createRows } from "./rows.ts";
+import { linkCell } from "../live/link.ts";
+import type { LinkCell } from "../live/link.ts";
+import { createRows } from "./rows.ts";
 import type { Rows } from "./rows.ts";
 import { loginHandle } from "./login.ts";
 import { workspaceHandle } from "./workspace.ts";
@@ -31,6 +33,7 @@ type ClientContext = {
   readonly journal: RequestJournal;
   readonly journaled: readonly JournalEntry[];
   readonly hostFrames?: AsyncIterator<Json>;
+  readonly link?: LinkCell;
 };
 
 type Bound = {
@@ -44,7 +47,7 @@ const MAIN = asId<"head">("main");
 export type Client = { readonly connection: Connection; readonly journal: JournalLoop };
 
 export function createClient(transport: Transport, context: ClientContext): Client {
-  const link = createLink();
+  const link = context.link ?? linkCell();
   const rows = createRows(transport, link);
 
   const bound: Bound = {
@@ -56,10 +59,10 @@ export function createClient(transport: Transport, context: ClientContext): Clie
   bound.journal.replay(context.journaled);
   let hostFrames = context.hostFrames;
 
-  link.signal.addEventListener("abort", () => void hostFrames?.return?.(), { once: true });
+  link.closed.addEventListener("abort", () => void hostFrames?.return?.(), { once: true });
 
   const close = async (): Promise<void> => {
-    link.close("client");
+    link.close();
   };
 
   const connection: Connection = {

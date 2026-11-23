@@ -2,15 +2,7 @@ import type { SessionId, SessionInfo, SessionsChange } from "@nyte-ai/schema";
 import { asSdkError, openDirectoryStore } from "@nyte-ai/protocol";
 import type { DirectoryStore, HostSocket, OperationInput, SocketEvent } from "@nyte-ai/protocol";
 import { sessionsChanges } from "../event-checks.ts";
-import {
-  freshnessCell,
-  keepRows,
-  listenerSet,
-  readRetries,
-  request,
-  sameJson,
-  takesHeld,
-} from "./store.ts";
+import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./store.ts";
 import type { Freshness, Join, Live } from "./store.ts";
 
 export type SessionsWindow = Omit<OperationInput<"sessions.read">, "resume">;
@@ -51,10 +43,7 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
 
     try {
       const subscribing = subscribe();
-      const point = store?.describe();
-
-      const resume =
-        point === undefined || (await takesHeld(attached)) ? point : { seq: point.seq };
+      const resume = store?.describe();
 
       const answer = await request(attached, "sessions.read", { ...window, resume });
 

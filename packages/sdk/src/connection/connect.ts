@@ -6,6 +6,7 @@ import { createTransport, decodeError, decodeOutput } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
 import { createClient } from "./client.ts";
 import type { Client } from "./client.ts";
+import type { LinkCell } from "../live/link.ts";
 import { createSendJournal } from "../send/journal.ts";
 import { parsed } from "./receipts.ts";
 
@@ -26,7 +27,9 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
   return (await dial(options)).connection;
 }
 
-export async function dial(options: ConnectOptions): Promise<Dialed> {
+export async function dial(
+  options: ConnectOptions & { readonly link?: LinkCell },
+): Promise<Dialed> {
   const { credentials } = options;
   const send = options.fetch ?? fetch;
   const key = credentials.kind === "pairing" ? `${options.url}\n${credentials.code}` : null;
@@ -54,7 +57,7 @@ export async function dial(options: ConnectOptions): Promise<Dialed> {
 }
 
 async function openClient(
-  options: ConnectOptions,
+  options: ConnectOptions & { readonly link?: LinkCell },
   transport: Transport,
   first: HostViewWire,
   frames: AsyncIterator<Json>,
@@ -96,6 +99,7 @@ async function openClient(
     journal,
     journaled,
     hostFrames: frames,
+    link: options.link,
   });
 
   return { ...client, credential };

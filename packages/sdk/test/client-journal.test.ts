@@ -1,9 +1,9 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
-import { decodeInput } from "@nyte-ai/protocol";
+import { decodeInput, encodeError, errorStatus } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { createSendJournal } from "../src/send/journal.ts";
-import { readOperation } from "./served.ts";
+import { BASE, readOperation } from "./served.ts";
 import {
   client,
   closeOpened,
@@ -736,3 +736,71 @@ async function removeUnsent(row: Removal): Promise<void> {
   expect(posts).toBe(removed);
   expect(await journal.load()).toEqual([]);
 }
+
+const linkLossRows: readonly {
+  readonly answer: string;
+  readonly fail: (response: Response) => Response | Promise<never>;
+  readonly posts: number;
+  readonly outcome: string;
+}[] = [
+  {
+    answer: "a fetch that fails",
+    fail: () => Promise.reject(new TypeError("fetch failed")),
+    posts: 2,
+    outcome: "sent",
+  },
+  {
+    answer: "a host that asks to be tried again",
+    fail: (response) =>
+      errorAnswer(response, new SdkError("unavailable", "Opening.", { retry: true })),
+    posts: 2,
+    outcome: "sent",
+  },
+  {
+    answer: "a stale answer",
+    fail: (response) => errorAnswer(response, new SdkError("stale", "Moved on.")),
+    posts: 1,
+    outcome: "stale",
+  },
+  {
+    answer: "an unavailable answer",
+    fail: (response) => errorAnswer(response, new SdkError("unavailable", "No model.")),
+    posts: 1,
+    outcome: "unavailable",
+  },
+];
+
+function errorAnswer(response: Response, error: SdkError): Response {
+  return new Response(JSON.stringify(encodeError(error)), {
+    status: errorStatus[error.code],
+    headers: response.headers,
+  });
+}
+
+it.each(linkLossRows)(
+  "sends again after $answer only when the link was lost",
+  async ({ fail, posts, outcome }) => {
+    const host = await open();
+    const journal = createSendJournal();
+    const connection = await client(host, journal);
+    const session = await settledChat(host, connection);
+    host.fake.reply(text("Once."));
+    let posted = 0;
+
+    host.intercept(async (request, next) => {
+      if (readOperation(request) !== "head.send") return next(request);
+      posted += 1;
+
+      if (posted > 1) return next(request);
+
+      return fail(await next(new Request(BASE, { method: "POST", body: "{}" })));
+    });
+
+    const sent = await session.send("Hi.").then(
+      () => "sent",
+      (error: unknown) => (error instanceof SdkError ? error.code : String(error)),
+    );
+
+    expect({ posted, sent }).toEqual({ posted: posts, sent: outcome });
+  },
+);

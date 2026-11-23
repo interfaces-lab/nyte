@@ -18,9 +18,12 @@ export { streamedText } from "./view/streamed-text.ts";
 
 export type { StreamedText } from "./view/streamed-text.ts";
 
+export type { Health } from "./connect.ts";
+
+export type { LinkState } from "./live/link.ts";
+
 export type {
   ActionHandler,
-  Health,
   OpenSocket,
   Requester,
   SocketRequest,

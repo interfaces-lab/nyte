@@ -2,7 +2,13 @@ import { basename, join } from "node:path";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { API_REVISION, asId } from "@nyte-ai/schema";
 import { connect, createSendJournal, SdkError } from "@nyte-ai/sdk/client";
-import type { ClientConnection, Connection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
+import type {
+  ClientConnection,
+  Connection,
+  HostView,
+  LinkState,
+  SessionInfo,
+} from "@nyte-ai/sdk/client";
 import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type {
   HostEvent,
@@ -135,19 +141,28 @@ function serverProblem(cause: unknown): ServerConnectionProblem {
   return SERVER_PROBLEMS.server;
 }
 
-function linkedServer(url: string, view: HostView): ServerState {
-  const { link } = view;
+function linkedServer(url: string, state: LinkState): ServerState | null {
+  switch (state.kind) {
+    case "connecting":
+      return null;
+    case "open":
+      return { kind: "connected", baseUrl: url, version: state.version };
+    case "away":
+    case "closed":
+      return { kind: "unavailable", baseUrl: url, problem: SERVER_PROBLEMS.network };
+    case "refused":
+      return {
+        kind: "unavailable",
+        baseUrl: url,
+        problem:
+          state.reason === "auth" ? SERVER_PROBLEMS.authentication : SERVER_PROBLEMS.incompatible,
+      };
+    default: {
+      const _exhaustive: never = state;
 
-  if (link.kind === "connected") return { kind: "connected", baseUrl: url, version: view.version };
-
-  const problem =
-    link.kind === "reconnecting" || link.reason === "client"
-      ? SERVER_PROBLEMS.network
-      : link.reason === "revoked"
-        ? SERVER_PROBLEMS.authentication
-        : SERVER_PROBLEMS.incompatible;
-
-  return { kind: "unavailable", baseUrl: url, problem };
+      return _exhaustive;
+    }
+  }
 }
 
 export function throwForRenderer(cause: unknown): never {
@@ -538,7 +553,7 @@ export class DesktopHost {
     return watch;
   }
 
-  private async connectSaved(watch: ServerWatch): Promise<Connection> {
+  private async connectSaved(watch: ServerWatch): Promise<ClientConnection> {
     const saved = watch.saved;
 
     const connection = await connect({
@@ -577,33 +592,35 @@ export class DesktopHost {
     let wait = WATCH_RETRY_MS;
 
     while (!signal.aborted) {
-      try {
-        const connection = await this.connectSaved(watch);
-
-        const stop = (): void => {
-          void connection.close();
-        };
-
-        signal.addEventListener("abort", stop, { once: true });
-
-        try {
-          for await (const view of connection.watch()) {
-            wait = WATCH_RETRY_MS;
-            this.serverAnswered(watch, linkedServer(saved.url, view));
-          }
-        } finally {
-          signal.removeEventListener("abort", stop);
-          await connection.close().catch(() => undefined);
+      const connection = await this.connectSaved(watch).catch((cause: unknown) => {
+        if (!signal.aborted) {
+          this.serverAnswered(watch, {
+            kind: "unavailable",
+            baseUrl: saved.url,
+            problem: serverProblem(cause),
+          });
         }
 
-        throw new SdkError("unavailable", "The server closed the connection.");
-      } catch (cause) {
-        if (signal.aborted) return;
-        this.serverAnswered(watch, {
-          kind: "unavailable",
-          baseUrl: saved.url,
-          problem: serverProblem(cause),
+        return null;
+      });
+
+      if (connection !== null) {
+        const show = (): void => {
+          const state = linkedServer(saved.url, connection.link.snapshot());
+
+          if (state !== null) this.serverAnswered(watch, state);
+        };
+
+        const unfollow = connection.link.subscribe(show);
+        show();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
         });
+        unfollow();
+        await connection.close().catch(() => undefined);
+
+        return;
       }
 
       await pause(wait, signal);

@@ -129,6 +129,14 @@ export interface LiveSource<T> {
 
 const OPEN = { kind: "open", since: 0 } as const;
 
+const OPEN_LINK = {
+  kind: "open",
+  since: 0,
+  version: "0.0.0",
+  startedAt: 0,
+  match: { kind: "current" },
+} as const;
+
 const MAIN = asId<"head">("main");
 
 const NO_MESSAGES: readonly MessageId[] = [];
@@ -350,6 +358,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     github: { account: refuse, signIn: refuse, signOut: refuse, ...script.github },
     documents: { read: refuse, bytes: refuse, write: refuse, watch: refused, ...script.documents },
     health: { subscribe: health.subscribe, snapshot: () => health.latest() ?? OPEN },
+    link: { subscribe: () => () => undefined, snapshot: () => OPEN_LINK },
     refused: {
       subscribe: (listener) => script.refused?.subscribe(listener) ?? (() => undefined),
       snapshot: () => script.refused?.latest() ?? NO_REFUSALS,

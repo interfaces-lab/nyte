@@ -14,11 +14,12 @@ import type {
 } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core/client";
 import type { RequestJournal } from "@nyte-ai/core";
+import { linkLost } from "@nyte-ai/protocol";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "../connection/rows.ts";
-import { backoff, httpRetryDelay } from "../connection/rows.ts";
+import { untilOpen } from "../live/link.ts";
 import { parsed } from "../connection/receipts.ts";
-import { listenerSet } from "../live/store.ts";
+import { listenerSet, retryDelay } from "../live/store.ts";
 import type { Live } from "../live/store.ts";
 
 /**
@@ -196,12 +197,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
         if (!discarded.aborted) return sent;
         await rows.call("receipt.stop", { session, receipt: id });
       } catch (error) {
-        const closing = rows.link.signal.aborted;
+        const closing = rows.link.closed.aborted || rows.link.snapshot().kind === "refused";
 
-        if (
-          closing ||
-          !(error instanceof SdkError && (error.code === "unavailable" || error.code === "stale"))
-        ) {
+        if (closing || !linkLost(error)) {
           if (!closing) await journal.remove(id);
           current.unanswered ??= closing ? "kept" : "dropped";
           held.delete(id);
@@ -211,11 +209,11 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
         }
 
         current.attempts += 1;
-        const delay = httpRetryDelay(current.attempts);
+        const delay = retryDelay(current.attempts - 1);
         dev("sdk", "send retrying", { receipt: id, attempts: current.attempts, delay });
         current.retrying = { at: Date.now() + delay, reason: error.message };
         changed();
-        await backoff(rows.link, delay, AbortSignal.any([rows.link.signal, discarded]));
+        await untilOpen(rows.link, delay, AbortSignal.any([rows.link.closed, discarded]));
       }
     }
 

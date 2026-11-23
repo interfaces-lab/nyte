@@ -2,15 +2,16 @@ import { asId, SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { createTransport } from "@nyte-ai/protocol";
 import { afterEach, expect, it, vi } from "vitest";
-import { createLink, createRows } from "../src/connection/rows.ts";
+import { createRows } from "../src/connection/rows.ts";
+import { linkCell } from "../src/live/link.ts";
 
 afterEach(() => vi.useRealTimers());
 
-it("reports each lost watch and backs off before reopening it, restoring the link on a reopened watch's first frame", async () => {
+it("waits on the retry curve before reopening a lost watch, and reopens it at once when the link opens", async () => {
   vi.useFakeTimers();
-  const link = createLink();
+  const link = linkCell();
   const transport = createTransport({ url: "http://unused.test", headers: async () => ({}) });
-  const attempts: Json[][] = [[{ kind: "jobs", jobs: [] }], [], [], [{ kind: "jobs", jobs: [] }]];
+  const attempts: Json[][] = [[{ kind: "jobs", jobs: [] }], [], [{ kind: "jobs", jobs: [] }]];
   let opened = 0;
 
   const rows = createRows(
@@ -36,38 +37,32 @@ it("reports each lost watch and backs off before reopening it, restoring the lin
 
   try {
     expect(await watching.next()).toEqual({ done: false, value: { kind: "jobs", jobs: [] } });
-    expect(link.current()).toEqual({ kind: "connected" });
+    const second = watching.next();
 
-    let returned = false;
+    await vi.advanceTimersByTimeAsync(124);
+    expect(opened).toBe(1);
+    await vi.advanceTimersByTimeAsync(126);
+    expect(opened).toBe(2);
 
-    const second = watching.next().then((value) => {
-      returned = true;
-
-      return value;
+    link.socket({
+      kind: "open",
+      since: Date.now(),
+      version: "0.0.29",
+      startedAt: 0,
+      match: { kind: "current" },
     });
+    await vi.advanceTimersByTimeAsync(0);
 
-    await vi.advanceTimersByTimeAsync(24);
-    expect(link.current()).toMatchObject({ kind: "reconnecting", attempts: 1 });
-    await vi.advanceTimersByTimeAsync(26);
-    expect(link.current()).toMatchObject({ kind: "reconnecting", attempts: 2 });
-    await vi.advanceTimersByTimeAsync(99);
-    expect(link.current()).toMatchObject({ kind: "reconnecting", attempts: 2 });
-    await vi.advanceTimersByTimeAsync(151);
-    expect(link.current()).toMatchObject({ kind: "reconnecting", attempts: 3 });
-    await vi.advanceTimersByTimeAsync(99);
-    expect(returned).toBe(false);
-    await vi.advanceTimersByTimeAsync(401);
     expect(await second).toEqual({ done: false, value: { kind: "jobs", jobs: [] } });
-    expect(link.current()).toEqual({ kind: "connected" });
-    expect(opened).toBe(4);
+    expect(opened).toBe(3);
   } finally {
     await watching.return?.();
-    link.close("client");
+    link.close();
   }
 });
 
 it("reopens a watch whose frame it cannot read, and fails when the reopened watch's first frame is unreadable too", async () => {
-  const link = createLink();
+  const link = linkCell();
   const transport = createTransport({ url: "http://unused.test", headers: async () => ({}) });
   const jobs = { kind: "jobs", jobs: [] };
   const unknown = { kind: "unknown" };
@@ -101,9 +96,8 @@ it("reopens a watch whose frame it cannot read, and fails when the reopened watc
     expect(opened).toBe(2);
     await expect(watching.next()).rejects.toThrow("frames this client cannot read");
     expect(opened).toBe(3);
-    expect(link.current()).toEqual({ kind: "connected" });
   } finally {
     await watching.return?.();
-    link.close("client");
+    link.close();
   }
 });

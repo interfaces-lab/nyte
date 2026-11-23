@@ -245,7 +245,7 @@ describe("client", () => {
     );
 
     expect(closed.link).toEqual({ kind: "closed", reason: "revoked" });
-    await expect(connection.workspaces.list()).rejects.toMatchObject({ code: "unavailable" });
+    await expect(connection.workspaces.list()).rejects.toMatchObject({ code: "unauthenticated" });
   });
 
   it("aborts an upload on close", async () => {
@@ -336,7 +336,7 @@ describe("client", () => {
 
     expect(await watching.next()).toEqual({ done: true, value: undefined });
     expect(opens).toBe(2);
-    await expect(connection.sessions.list()).rejects.toMatchObject({ code: "unavailable" });
+    await expect(connection.sessions.list()).rejects.toMatchObject({ code: "unauthenticated" });
   });
 
   it("stops a wait backing off across link loss as soon as its signal aborts, posting nothing more (ADV C 8)", async () => {

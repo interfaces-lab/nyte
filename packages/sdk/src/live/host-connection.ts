@@ -1,11 +1,13 @@
-import { SdkError, SOCKET_PATH } from "@nyte-ai/schema";
+import { OPERATIONS, SdkError, SOCKET_PATH } from "@nyte-ai/schema";
 import type {
   ActionDeclaration,
   Awaitable,
   ClientId,
   ClientInfo,
+  ClosingReason,
   Disposer,
   HeadName,
+  HostId,
   Json,
   PartId,
   PerformEvent,
@@ -15,7 +17,7 @@ import type {
   ToolProgress,
   WelcomeFrame,
 } from "@nyte-ai/schema";
-import { asSdkError, openHostSocket } from "@nyte-ai/protocol";
+import { asSdkError, linkLost, namesOperation, openHostSocket } from "@nyte-ai/protocol";
 import type {
   CallName,
   HostSocket,
@@ -24,10 +26,11 @@ import type {
   SocketClosed,
   SocketLike,
 } from "@nyte-ai/protocol";
+import { dev } from "@nyte-ai/core/client";
 import { catalogCache } from "./catalogs.ts";
 import { credentialHeaders } from "../connection/connect.ts";
 import type { HostCredentials } from "../connection/connect.ts";
-import { performs } from "../event-checks.ts";
+import { closings, performs } from "../event-checks.ts";
 import { openClientsStore } from "./clients.ts";
 import type { ClientsStore } from "./clients.ts";
 import { openSessions } from "./sessions.ts";
@@ -36,23 +39,9 @@ import { openHeadStore } from "./head.ts";
 import type { HeadStore } from "./head.ts";
 import { openPartStore } from "./part.ts";
 import type { PartStore } from "./part.ts";
-import { listenerSet, request, socketRetryDelay } from "./store.ts";
+import type { LinkCell, LinkState } from "./link.ts";
+import { request, retryDelay } from "./store.ts";
 import type { Attachment, Live } from "./store.ts";
-
-export type Health =
-  | { readonly kind: "connecting" }
-  | { readonly kind: "open"; readonly since: number }
-  | {
-      readonly kind: "retrying";
-      readonly attempt: number;
-      readonly at: number;
-      readonly error: SdkError;
-    }
-  | {
-      readonly kind: "blocked";
-      readonly reason: "auth" | "version" | "offline";
-      readonly error: SdkError;
-    };
 
 export interface SocketRequest {
   readonly url: string;
@@ -64,6 +53,9 @@ export type OpenSocket = (request: SocketRequest) => SocketLike;
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface LinkOptions {
+  readonly link: LinkCell;
+  /** The host the connection's requests reach. A socket another host answers is refused, since its rows would come from another store. */
+  readonly host: HostId;
   readonly credentials: HostCredentials;
   readonly client: Omit<ClientInfo, "actions">;
   readonly socket?: OpenSocket;
@@ -86,7 +78,8 @@ export type Requester = PerformEvent["requester"];
 export type ActionHandler = (input: Json, requester: Requester) => Awaitable<Json>;
 
 export interface SocketLink {
-  readonly health: Live<Health>;
+  /** The connection's link state. Reading it dials the socket. */
+  readonly link: Live<LinkState>;
   retry(): void;
   close(): void;
   call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
@@ -106,8 +99,10 @@ export interface SocketLink {
 
 interface Attempt {
   opened: boolean;
+  welcomed: boolean;
+  closing: ClosingReason | null;
   refusal: number | null;
-  closed: Pick<SocketClosed, "code" | "reason"> | null;
+  closed: SocketClosed | null;
 }
 
 interface Joined {
@@ -127,9 +122,14 @@ interface Offered {
 
 const LOGIN_STATUS_MS = 5000;
 
+const UNANSWERED_HELLOS = 2;
+
+const UNANSWERED_HELLO =
+  "The host didn't answer this client's hello, so it runs a build too old to talk to. Update Nyte on the host.";
+
 export function openLink(address: string, options: LinkOptions): SocketLink {
   const openSocket = options.socket ?? openGlobalSocket;
-  const healthListeners = listenerSet();
+  const { link } = options;
   const joined = new Set<Joined>();
   const scopes = new Map<string, number>();
   const waiters = new Set<Waiter>();
@@ -137,38 +137,56 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
   const offers = new Map<string, Offered>();
   let subscribed = new Map<string, Promise<void>>();
   const credentials = options.credentials;
-  let health: Health = { kind: "connecting" };
   let started = false;
   let attempt = 0;
   let sizeCloses = 0;
+  let unanswered = 0;
   let generation = 0;
   let released = false;
   let declared = "[]";
   let current: HostSocket | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const show = (next: Health): void => {
-    health = next;
+  const show = (next: LinkState): void => {
+    link.socket(next);
+    settleWaiters();
+  };
 
-    if (next.kind === "retrying" || next.kind === "blocked") {
-      for (const waiter of waiters.values()) waiter.reject(next.error);
-    }
+  const settleWaiters = (): void => {
+    const state = link.snapshot();
 
-    if (next.kind !== "connecting") waiters.clear();
-    healthListeners.notify();
+    if (state.kind !== "refused" && state.kind !== "closed") return;
+
+    const error =
+      state.kind === "refused"
+        ? state.error
+        : new SdkError("unavailable", "This connection is closed.");
+
+    for (const waiter of waiters) waiter.reject(error);
+    waiters.clear();
+  };
+
+  const stopped = (): boolean => {
+    const state = link.snapshot();
+
+    return released || state.kind === "refused" || state.kind === "closed";
   };
 
   const actions = (): readonly ActionDeclaration[] =>
     Array.from(offers.values(), (offered) => offered.action);
 
   const connect = async (): Promise<void> => {
-    if (released) return;
+    if (stopped()) return;
     generation += 1;
     const mine = generation;
     clearTimeout(retryTimer);
-
-    if (health.kind !== "connecting") show({ kind: "connecting" });
-    const seen: Attempt = { opened: false, refusal: null, closed: null };
+    const seen: Attempt = {
+      opened: false,
+      welcomed: false,
+      closing: null,
+      refusal: null,
+      closed: null,
+    };
 
     try {
       const headers = await credentialHeaders(credentials);
@@ -179,9 +197,6 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
 
       raw.addEventListener("open", () => {
         seen.opened = true;
-      });
-      raw.addEventListener("close", (event) => {
-        seen.closed = { code: event.code, reason: event.reason };
       });
 
       const hello = actions();
@@ -201,10 +216,7 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
       opened(socket, seen);
     } catch (error) {
       if (mine !== generation) return;
-
-      if (!seen.opened) {
-        seen.refusal = await loginStatus(address, credentials, options.fetch ?? fetch);
-      }
+      seen.refusal = await loginStatus(address, credentials, options.fetch ?? fetch);
 
       if (mine === generation) failed(asSdkError(error), seen);
     }
@@ -235,6 +247,9 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
 
       for (const listener of texts) listener(update);
     });
+    socket.onEvent((event) => {
+      if (closings.Check(event)) seen.closing = event.reason;
+    });
 
     for (const entry of joined) {
       entry.attachment.attach(socket, () => subscribe(socket, entry.scope));
@@ -242,15 +257,42 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
 
     if (texts.size > 0) openText(socket);
     void socket.welcome.then(
-      (welcome) => welcomed(socket, welcome),
+      (welcome) => welcomed(socket, welcome, seen),
       () => undefined,
     );
   };
 
-  const welcomed = (socket: HostSocket, welcome: WelcomeFrame): void => {
+  const welcomed = (socket: HostSocket, welcome: WelcomeFrame, seen: Attempt): void => {
     if (current !== socket || released) return;
+    seen.welcomed = true;
+
+    if (welcome.host_id !== options.host) {
+      current = null;
+      socket.close();
+
+      for (const entry of joined) entry.attachment.detach();
+
+      show({
+        kind: "refused",
+        reason: "other-host",
+        error: new SdkError(
+          "stale",
+          `Host ${welcome.host_id} answered instead of ${options.host}. Connect again to reach it.`,
+        ),
+      });
+
+      return;
+    }
+
     attempt = 0;
-    show({ kind: "open", since: Date.now() });
+    unanswered = 0;
+    show({
+      kind: "open",
+      since: Date.now(),
+      version: welcome.version,
+      startedAt: welcome.startedAt,
+      match: welcome.match,
+    });
 
     if (offers.size > 0) {
       const scope = `client/${welcome.client_id}`;
@@ -264,10 +306,11 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
   const dropped = (socket: HostSocket, closed: SocketClosed, seen: Attempt): void => {
     if (current !== socket) return;
     current = null;
+    seen.closed = closed;
 
     for (const entry of joined) entry.attachment.detach();
 
-    if (released) return;
+    if (stopped()) return;
 
     if (declared !== JSON.stringify(actions())) {
       void connect();
@@ -275,19 +318,25 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
       return;
     }
 
-    failed(
-      new SdkError(
-        "unavailable",
-        closed.reason === "" ? `The host closed the socket (${closed.code}).` : closed.reason,
-      ),
-      seen,
-    );
+    if (!seen.welcomed) {
+      void loginStatus(address, credentials, options.fetch ?? fetch).then((status) => {
+        seen.refusal = status;
+
+        if (current === null && !stopped()) failed(lostSocket(closed), seen);
+      });
+
+      return;
+    }
+
+    failed(lostSocket(closed), seen);
   };
 
   const failed = (error: SdkError, seen: Attempt): void => {
+    if (stopped()) return;
+
     if (seen.refusal === 401 || seen.refusal === 403) {
       show({
-        kind: "blocked",
+        kind: "refused",
         reason: "auth",
         error: new SdkError(
           seen.refusal === 401 ? "unauthenticated" : "denied",
@@ -298,8 +347,29 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
       return;
     }
 
-    if (seen.closed?.code === 1008 && /^Update the (host|client)/.test(seen.closed.reason)) {
-      show({ kind: "blocked", reason: "version", error });
+    const refused = seen.closed?.refused ?? null;
+
+    if (refused !== null) {
+      show({
+        kind: "refused",
+        reason: refused.reason,
+        error: new SdkError("not_supported", refused.message),
+      });
+
+      return;
+    }
+
+    unanswered =
+      seen.opened && !seen.welcomed && seen.closing === null && seen.refusal !== null
+        ? unanswered + 1
+        : 0;
+
+    if (unanswered >= UNANSWERED_HELLOS) {
+      show({
+        kind: "refused",
+        reason: "update-host",
+        error: new SdkError("not_supported", UNANSWERED_HELLO),
+      });
 
       return;
     }
@@ -311,14 +381,23 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
       (closed.code === 1009 || (closed.code === 1008 && closed.reason === "backlog"))
         ? sizeCloses + 1
         : 0;
-    schedule(error);
+    schedule(seen.closing, error);
   };
 
-  const schedule = (error: SdkError): void => {
-    const delay = socketRetryDelay(attempt + sizeCloses);
+  const schedule = (closing: ClosingReason | null, error: SdkError): void => {
+    const delay = retryDelay(attempt + sizeCloses);
     attempt += 1;
     retryTimer = setTimeout(() => void connect(), delay);
-    show({ kind: "retrying", attempt, at: Date.now() + delay, error });
+    const previous = link.snapshot();
+    const away = previous.kind === "away" ? previous : null;
+    dev("sdk", "link away", { attempt, delay, message: error.message });
+
+    show({
+      kind: "away",
+      since: away?.since ?? Date.now(),
+      retryAt: Date.now() + delay,
+      reason: closing ?? away?.reason ?? "lost",
+    });
   };
 
   const subscribe = (socket: HostSocket, scope: string): Promise<void> => {
@@ -337,6 +416,13 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
   const start = (): void => {
     if (started) return;
     started = true;
+    link.subscribe(() => {
+      if (!stopped()) return;
+      generation += 1;
+      clearTimeout(retryTimer);
+      current?.close();
+      settleWaiters();
+    });
     queueMicrotask(() => void connect());
   };
 
@@ -372,14 +458,32 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
     start();
 
     if (current !== null) return Promise.resolve(current);
+    const state = link.snapshot();
 
-    if (health.kind === "retrying" || health.kind === "blocked") {
-      return Promise.reject(health.error);
+    if (state.kind === "refused") return Promise.reject(state.error);
+
+    if (released || state.kind === "closed") {
+      return Promise.reject(new SdkError("unavailable", "This connection is closed."));
     }
 
-    if (released) return Promise.reject(new SdkError("unavailable", "This connection is closed."));
-
     return new Promise((resolve, reject) => waiters.add({ resolve, reject }));
+  };
+
+  const call = async <N extends CallName>(
+    name: N,
+    input: OperationInput<N>,
+  ): Promise<OperationOutput<N>> => {
+    for (;;) {
+      const socket = await ready();
+
+      try {
+        return await request(socket, name, input);
+      } catch (error) {
+        const query = namesOperation(name) && OPERATIONS[name].kind === "query";
+
+        if (!linkLost(error) || !query || !(await lost(socket))) throw error;
+      }
+    }
   };
 
   const openText = (socket: HostSocket): void => {
@@ -415,17 +519,17 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
 
   const catalogs = catalogCache(async (id) => request(await ready(), "catalogs.read", { id }));
 
-  const link: SocketLink = {
-    health: {
+  const socketLink: SocketLink = {
+    link: {
       subscribe(listener) {
         start();
 
-        return healthListeners.subscribe(listener);
+        return link.subscribe(listener);
       },
       snapshot() {
         start();
 
-        return health;
+        return link.snapshot();
       },
     },
     retry() {
@@ -437,15 +541,25 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
 
         return;
       }
+      const state = link.snapshot();
 
-      if (health.kind === "retrying" || health.kind === "blocked") {
+      if (state.kind === "refused") {
+        unanswered = 0;
+        link.retry();
+        show({ kind: "connecting" });
+        void connect();
+
+        return;
+      }
+
+      if (state.kind === "away") {
         void connect();
 
         return;
       }
 
       current?.probe().catch(() => {
-        if (current === null && health.kind === "retrying") void connect();
+        if (current === null && link.snapshot().kind === "away") void connect();
       });
     },
     close() {
@@ -460,9 +574,7 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
       waiters.clear();
       current?.close();
     },
-    async call(name, input) {
-      return request(await ready(), name, input);
-    },
+    call,
     head: (session, head, view) =>
       openHeadStore({ session, head, tail: view.tail }, join, catalogs),
     part: (session, part) => openPartStore({ session, part }, join),
@@ -479,7 +591,7 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
     },
     clients: () => openClientsStore(join),
     perform: (client, action, input, perform) =>
-      link.call("client.perform", {
+      call("client.perform", {
         client,
         action,
         input,
@@ -499,7 +611,7 @@ export function openLink(address: string, options: LinkOptions): SocketLink {
     },
   };
 
-  return link;
+  return socketLink;
 }
 
 async function loginStatus(
@@ -525,6 +637,17 @@ async function loginStatus(
   await response?.body?.cancel().catch(() => undefined);
 
   return response?.status ?? null;
+}
+
+function lostSocket(closed: SocketClosed): SdkError {
+  return new SdkError(
+    "unavailable",
+    closed.reason === "" ? `The host closed the socket (${closed.code}).` : closed.reason,
+  );
+}
+
+async function lost(socket: HostSocket): Promise<boolean> {
+  return Promise.race([socket.closed.then(() => true), Promise.resolve(false)]);
 }
 
 function textUpdate(frame: Exclude<TextFrame, { readonly type: "closed" }>): TextUpdate {

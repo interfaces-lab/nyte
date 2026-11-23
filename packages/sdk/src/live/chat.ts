@@ -19,7 +19,8 @@ import type { HeadView } from "../view/head-view.ts";
 import { pages } from "../view/history.ts";
 import { streamedText } from "../view/streamed-text.ts";
 import type { HeadStore } from "./head.ts";
-import type { Health, TextUpdate } from "./host-connection.ts";
+import type { TextUpdate } from "./host-connection.ts";
+import type { LinkState } from "./link.ts";
 import { listenerSet } from "./store.ts";
 import type { Freshness, Live } from "./store.ts";
 
@@ -33,7 +34,7 @@ export interface ChatSnapshot {
   readonly expired: readonly MessageId[];
   /**
    * `host` while the host's row says the run is stopping. `asked` from a `stop()` until the host
-   * answers with its row or ends the run, the stop fails, or the link's health changes, so a stop
+   * answers with its row or ends the run, the stop fails, or the link's state changes, so a stop
    * sent into a link found lost can be sent again. `asked` only says a stop was sent; the host
    * decides whether the run stops.
    */
@@ -95,7 +96,7 @@ export interface ChatParts {
   readonly head: HeadName;
   readonly open: () => HeadStore;
   readonly text: (listener: (update: TextUpdate) => void) => Disposer;
-  readonly health: Live<Health>;
+  readonly link: Live<LinkState>;
   readonly journal: JournalLoop;
 }
 
@@ -106,7 +107,7 @@ interface Opened {
 
 interface Ask {
   readonly run: RunId;
-  readonly health: Health;
+  readonly link: LinkState;
 }
 
 const NO_MESSAGES: readonly MessageId[] = [];
@@ -130,9 +131,7 @@ export function openChat(parts: ChatParts): Chat {
 
     if (execution.kind === "live" && execution.stopping) return "host";
 
-    return asked !== null &&
-      asked.run === execution.run.id &&
-      asked.health === parts.health.snapshot()
+    return asked !== null && asked.run === execution.run.id && asked.link === parts.link.snapshot()
       ? "asked"
       : "no";
   };
@@ -184,7 +183,7 @@ export function openChat(parts: ChatParts): Chat {
             head.subscribe(changed),
             parts.text(stream),
             parts.journal.subscribe(changed),
-            parts.health.subscribe(redraw),
+            parts.link.subscribe(redraw),
           ],
         };
       }
@@ -224,7 +223,7 @@ export function openChat(parts: ChatParts): Chat {
       if (execution === undefined || execution.kind === "idle" || snapshot.stopping !== "no") {
         return Promise.resolve();
       }
-      const ask = { run: execution.run.id, health: parts.health.snapshot() };
+      const ask = { run: execution.run.id, link: parts.link.snapshot() };
       asked = ask;
       redraw();
 

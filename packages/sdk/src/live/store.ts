@@ -27,22 +27,17 @@ export interface Retries {
   readonly reset: () => void;
 }
 
-const HELD_REVISION = 27;
-
-const RETRY_BASE_MS = 1000;
+const RETRY_BASE_MS = 250;
 
 const RETRY_MAX_MS = 30_000;
 
-export function socketRetryDelay(attempt: number): number {
+/** The one retry curve: a dial, a resumed watch and a held send each wait this long before attempt `attempt + 1`. */
+export function retryDelay(attempt: number): number {
   return jittered(Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt));
 }
 
 export function jittered(ceiling: number): number {
   return ceiling / 2 + (Math.random() * ceiling) / 2;
-}
-
-export async function takesHeld(socket: HostSocket): Promise<boolean> {
-  return (await socket.welcome).api_server_revision >= HELD_REVISION;
 }
 
 export function freshnessCell(): FreshnessCell {
@@ -73,7 +68,7 @@ export function readRetries(): Retries {
     failed: (run) => {
       failures += 1;
       clearTimeout(timer);
-      timer = setTimeout(run, socketRetryDelay(failures));
+      timer = setTimeout(run, retryDelay(failures));
     },
     reset: () => {
       failures = 0;
