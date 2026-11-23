@@ -1,6 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, RefObject } from "react";
-import { preferences, useSetting } from "../preferences/index.ts";
 import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { WorkspaceFileEditor } from "./file-editor.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
@@ -17,7 +16,7 @@ export function FileTabPanel({
   group,
   editors,
   shown,
-  saves,
+  autoSave,
   onGoToLine,
 }: {
   readonly viewKey: WorkbenchViewKey;
@@ -25,11 +24,9 @@ export function FileTabPanel({
   readonly group: FileGroup;
   readonly editors: RefObject<Map<string, FileEditorHandle>>;
   readonly shown: boolean;
-  readonly saves: boolean;
+  readonly autoSave: boolean;
   readonly onGoToLine: () => void;
 }): ReactElement {
-  const autoSave = useSetting(preferences.fileAutoSave);
-
   return (
     <div
       id={`${viewKey}-file-panel-${file.id}`}
@@ -47,7 +44,7 @@ export function FileTabPanel({
         file={file}
         active={shown && file.id === group.active?.id}
         visible={file.id === group.active?.id}
-        autoSave={autoSave && saves}
+        autoSave={autoSave}
         onGoToLine={onGoToLine}
       />
     </div>

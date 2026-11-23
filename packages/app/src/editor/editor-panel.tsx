@@ -15,6 +15,7 @@ import {
   clientActions,
 } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { WORKBENCH_KINDS } from "../workbench/model.ts";
 import type { WorkbenchViewKey } from "../workbench/model.ts";
@@ -32,7 +33,7 @@ import { useExplorerVisibility } from "./explorer-visibility.ts";
 import { EditorSidebar, SidebarToggles, useSidebarTab } from "./editor-sidebar.tsx";
 import { useFileClosing } from "./file-closing.tsx";
 import { useRememberActiveFile } from "./remember-active-file.ts";
-import { DiscardChanges, useDiscardRequest } from "./discard-changes.tsx";
+import { DiscardChanges } from "./discard-changes.tsx";
 import { FileOptionsMenu } from "./file-options-menu.tsx";
 import { EditorPalette } from "./editor-palette.tsx";
 import { FileTabPanel } from "./file-tab-panel.tsx";
@@ -114,9 +115,13 @@ export function EditorPanel({
 
   useRememberActiveFile({ viewKey, activeFile, tabs: tabs.tabs, shown });
   const editors = useRef(new Map<string, FileEditorHandle>());
-  const { discardPath, setDiscardPath, menuRef } = useDiscardRequest();
+  const [discardPath, setDiscardPath] = useState<string>();
+  const menuRef = useRef<HTMLButtonElement>(null);
   const [copyError, setCopyError] = useState<string>();
   const [palette, setPalette] = useState<string>();
+  const chosenSide = useSetting(preferences.editorSidePanel);
+  const sidePanel = explorerDocked ? "start" : chosenSide;
+  const autoSave = useSetting(preferences.fileAutoSave);
 
   const copyPath = (value: string): void => {
     void navigator.clipboard
@@ -215,11 +220,13 @@ export function EditorPanel({
         editors={editors}
         menuRef={menuRef}
         explorerDocked={explorerDocked}
+        sidePanel={sidePanel}
         onCopyPath={copyPath}
         onDiscard={setDiscardPath}
       />
       <SidebarToggles
         explorerDocked={explorerDocked}
+        sidePanel={sidePanel}
         explorerShown={explorerShown}
         sidebar={sidebar}
         onToggle={toggleSidebar}
@@ -340,7 +347,8 @@ export function EditorPanel({
                     group={group}
                     editors={editors}
                     shown={shown}
-                    saves={
+                    autoSave={
+                      autoSave &&
                       workspaceActive &&
                       tabs.tabs.find((tab) => tab.path === file.path)?.id === file.id &&
                       tabs.pendingClose?.id !== file.id &&
@@ -365,7 +373,7 @@ export function EditorPanel({
             sidebar={sidebar}
             searchRef={searchRef}
             shown={shown}
-            explorerDocked={explorerDocked}
+            sidePanel={sidePanel}
             onCopyPath={copyPath}
           />
         )}
@@ -383,7 +391,7 @@ export function EditorPanel({
       {confirmation}
       <DiscardChanges
         discardPath={discardPath}
-        setDiscardPath={setDiscardPath}
+        onClose={() => setDiscardPath(undefined)}
         menuRef={menuRef}
         tabs={tabs.tabs}
         editors={editors}

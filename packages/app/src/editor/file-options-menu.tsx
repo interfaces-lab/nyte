@@ -16,7 +16,6 @@ import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import type { Preference } from "../preferences/index.ts";
 import { workspaceFile } from "../workbench/paths.ts";
-import { useSidePanel } from "./editor-sidebar.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import type { FileTab } from "./file-store.ts";
 import { opensUnwrapped } from "./long-line.ts";
@@ -67,6 +66,7 @@ export function FileOptionsMenu({
   editors,
   menuRef,
   explorerDocked,
+  sidePanel,
   onCopyPath,
   onDiscard,
 }: {
@@ -76,11 +76,10 @@ export function FileOptionsMenu({
   readonly editors: RefObject<Map<string, FileEditorHandle>>;
   readonly menuRef: RefObject<HTMLButtonElement | null>;
   readonly explorerDocked: boolean;
+  readonly sidePanel: "start" | "end";
   readonly onCopyPath: (path: string) => void;
   readonly onDiscard: (path: string | undefined) => void;
 }): ReactElement {
-  const sidePanel = useSidePanel(explorerDocked);
-
   const formats =
     activeDocument?.kind === "text" &&
     workspace !== undefined &&

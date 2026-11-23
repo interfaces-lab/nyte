@@ -1,33 +1,21 @@
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { useRef, useState } from "react";
-import type { Dispatch, ReactElement, RefObject, SetStateAction } from "react";
+import { useState } from "react";
+import type { ReactElement, RefObject } from "react";
 import { errorMessage } from "../contract/errors.ts";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import type { FileTab } from "./file-store.ts";
 
-/** Which file's edits are being discarded, and the control focus returns to when the dialog closes. */
-export interface DiscardRequest {
-  readonly discardPath: string | undefined;
-  readonly setDiscardPath: Dispatch<SetStateAction<string | undefined>>;
-  readonly menuRef: RefObject<HTMLButtonElement | null>;
-}
-
-/** Holds a request to discard a file's unsaved edits. */
-export function useDiscardRequest(): DiscardRequest {
-  const [discardPath, setDiscardPath] = useState<string>();
-  const menuRef = useRef<HTMLButtonElement>(null);
-
-  return { discardPath, setDiscardPath, menuRef };
-}
-
 /** Confirms a discard request, then reloads the file from disk in its editor. */
 export function DiscardChanges({
   discardPath,
-  setDiscardPath,
+  onClose,
   menuRef,
   tabs,
   editors,
-}: DiscardRequest & {
+}: {
+  readonly discardPath: string | undefined;
+  readonly onClose: () => void;
+  readonly menuRef: RefObject<HTMLButtonElement | null>;
   readonly tabs: readonly FileTab[];
   readonly editors: RefObject<Map<string, FileEditorHandle>>;
 }): ReactElement {
@@ -58,7 +46,7 @@ export function DiscardChanges({
       return;
     }
 
-    setDiscardPath(undefined);
+    onClose();
     setDiscardError(undefined);
   };
 
@@ -73,7 +61,7 @@ export function DiscardChanges({
       confirmLabel="Discard Changes"
       pendingLabel="Reloading…"
       onOpenChange={(open) => {
-        if (!open) setDiscardPath(undefined);
+        if (!open) onClose();
       }}
       onConfirm={() => void discard()}
     />

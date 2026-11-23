@@ -4,7 +4,6 @@ import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
-import { preferences, useSetting } from "../preferences/index.ts";
 import { WORKBENCH_KINDS } from "../workbench/model.ts";
 import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { SidePanel } from "../workbench/side-panel.tsx";
@@ -31,13 +30,6 @@ export interface SidebarTab {
   readonly searchOpened: boolean;
   readonly select: (tab: SidebarTabName) => void;
   readonly showSearch: () => void;
-}
-
-/** The edge the editor's side panel sits on. A docked explorer always sits at the start. */
-export function useSidePanel(explorerDocked: boolean): "start" | "end" {
-  const chosenSide = useSetting(preferences.editorSidePanel);
-
-  return explorerDocked ? "start" : chosenSide;
 }
 
 /** Tracks the sidebar's tab, which falls back to the explorer whenever the file store reveals a file. */
@@ -77,17 +69,17 @@ export function useSidebarTab({
 /** The toolbar's search and sidebar toggles. */
 export function SidebarToggles({
   explorerDocked,
+  sidePanel,
   explorerShown,
   sidebar,
   onToggle,
 }: {
   readonly explorerDocked: boolean;
+  readonly sidePanel: "start" | "end";
   readonly explorerShown: boolean;
   readonly sidebar: SidebarTab;
   readonly onToggle: () => void;
 }): ReactElement {
-  const sidePanel = useSidePanel(explorerDocked);
-
   return (
     <>
       <Toggle
@@ -129,7 +121,7 @@ export function EditorSidebar({
   sidebar,
   searchRef,
   shown,
-  explorerDocked,
+  sidePanel,
   onCopyPath,
 }: {
   readonly viewKey: WorkbenchViewKey;
@@ -145,11 +137,9 @@ export function EditorSidebar({
   readonly sidebar: SidebarTab;
   readonly searchRef: RefObject<HTMLDivElement | null>;
   readonly shown: boolean;
-  readonly explorerDocked: boolean;
+  readonly sidePanel: "start" | "end";
   readonly onCopyPath: (path: string) => void;
 }): ReactElement {
-  const sidePanel = useSidePanel(explorerDocked);
-
   const drafts = tabs.flatMap((file) =>
     file.draft === undefined ? [] : [{ path: file.path, contents: file.draft.contents }],
   );
