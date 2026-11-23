@@ -249,7 +249,7 @@ export async function configure(
   patch: ConfigurationPatch,
   activation = false,
 ): Promise<ConfigureOutcome> {
-  const selected = await attempt(`Configuring ${head}`, async () => {
+  const configured = await attempt(`Configuring ${head}`, async () => {
     const current = await requireSession(kernel.store, session);
     const entry = current.record.heads.find((other) => other.name === head);
 
@@ -268,7 +268,7 @@ export async function configure(
       contributions: runtime.contributions(),
     });
 
-    if (resolved.kind !== "exact") return resolved;
+    if (resolved.kind !== "exact") return { kind: "refused" as const, outcome: resolved };
 
     const record = {
       ...current.record,
@@ -286,15 +286,41 @@ export async function configure(
       },
     ]);
 
-    return outcome.kind === "set" ? resolved : STALE;
+    return outcome.kind === "set"
+      ? {
+          kind: "configured" as const,
+          selected: resolved,
+          ids: changedSettingIds(entry.selected?.settings ?? {}, resolved.settings, patch.settings),
+        }
+      : STALE;
   });
 
-  if (selected.kind !== "exact") return selected;
+  if (configured.kind === "refused") return configured.outcome;
 
-  if (patch.settings !== undefined) {
-    await settingsConfigured(kernel, session, Object.keys(patch.settings));
-  }
+  if (configured.ids.length > 0) await settingsConfigured(kernel, session, configured.ids);
   const ref = await kernel.store.refs.get(headRef(session, head));
 
-  return { kind: "configured", selected, revision: ref?.revision ?? EMPTY_REVISION };
+  return {
+    kind: "configured",
+    selected: configured.selected,
+    revision: ref?.revision ?? EMPTY_REVISION,
+  };
+}
+
+function changedSettingIds(
+  before: Readonly<Record<string, Json>>,
+  after: Readonly<Record<string, Json>>,
+  patched: Readonly<Record<string, Json>> | undefined,
+): readonly string[] {
+  const ids = new Set(Object.keys(patched ?? {}));
+
+  for (const [id, value] of Object.entries(after)) {
+    if (JSON.stringify(before[id]) !== JSON.stringify(value)) ids.add(id);
+  }
+
+  for (const id of Object.keys(before)) {
+    if (!Object.hasOwn(after, id)) ids.add(id);
+  }
+
+  return [...ids];
 }

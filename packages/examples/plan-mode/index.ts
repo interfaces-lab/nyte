@@ -5,6 +5,7 @@ import type {
   ActionOutput,
   ExecutionEnv,
   PluginStorage,
+  PromptSection,
   Session,
   SettingDefinition,
   ToolDefinition,
@@ -25,7 +26,7 @@ import {
 } from "./plan-file.ts";
 import type { PlanState, TrayState } from "./plan-file.ts";
 
-const PLAN_MODE = "plan.mode";
+const PLAN_MODE = "mode.plan";
 
 const MAIN = asId<"head">("main");
 
@@ -39,18 +40,29 @@ const mode = {
   description: "Researches and writes an implementation plan before changing any code.",
   type: "switch",
   scope: "chat",
-  mode: { icon: "square-checklist", color: "oklch(0.75 0.166 64)" },
+  mode: {
+    icon: "plan",
+    color: "oklch(0.75 0.166 64)",
+  },
 } satisfies SettingDefinition;
 
 const on: When = (chat) => chat.settings[PLAN_MODE] === true;
 
-const GUIDE = `Plan mode is on. Research the change and write an implementation plan; don't implement it.
+const instructions = {
+  id: PLAN_MODE,
+  delivery: "reminder",
+  when: on,
+  text: `Plan mode is on.
+
+Research the change and write an implementation plan; don't implement it.
 
 - Read code and run read-only commands to understand the change. Edit only markdown files.
 - Ask with the question tool only about decisions that change the plan, one or two at a time, each with the option you recommend first. Pick a sensible default for anything smaller.
 - When you know enough, call create_plan once: a short name, a one or two sentence overview, the plan in markdown starting with a # heading (what changes, where, and how to check it works), and the to-dos in the order to do them.
 - To revise the plan, edit its file directly. Don't call create_plan again.
-- Don't start building. The user reviews the plan and presses Build when it's ready.`;
+- Don't start building. The user reviews the plan and presses Build when it's ready.`,
+  gone: "Plan mode is off. Its instructions no longer apply.",
+} satisfies PromptSection;
 
 const createParameters = standard(
   Type.Object({
@@ -99,17 +111,25 @@ const cardHandlers: CardHandlers = {
 
     if (card.built) return undefined;
 
-    await context.api.session.head(MAIN).send(buildPrompt(card), {
-      delivery: "queue",
-      source: { kind: "action", label: `Build plan: ${card.name}` },
-      id: asId(`plan-build-${context.part.id}`),
-    });
+    const settings = context.api.registries.settings;
+    await settings.set(PLAN_MODE, false);
+
+    await context.api.session
+      .head(MAIN)
+      .send(buildPrompt(card), {
+        delivery: "queue",
+        source: { kind: "action", label: `Build plan: ${card.name}` },
+        id: asId(`plan-build-${context.part.id}`),
+      })
+      .catch(async (error: unknown) => {
+        await settings.set(PLAN_MODE, true);
+        throw error;
+      });
 
     const updated = await context.part.update((current) => ({ ...current, built: true }));
 
     if (updated.kind !== "updated") throw new Error("This plan can no longer be built.");
 
-    await context.api.registries.settings.set(PLAN_MODE, false);
     await closeCardTrays(context.api.session, context.part.id);
 
     return undefined;
@@ -380,12 +400,25 @@ async function readPlanTodos(env: ExecutionEnv, path: string): Promise<PlanState
 }
 
 export default {
-  id: "plan",
+  id: "plan-mode",
   contribute: {
+    commands: [
+      {
+        name: "plan",
+        title: "Plan",
+        description: "Turn Plan mode on or off",
+        async run(text, { api }) {
+          const turnsOn = (await api.registries.settings.value(PLAN_MODE)) !== true;
+          await api.registries.settings.set(PLAN_MODE, turnsOn);
+
+          return turnsOn && text !== "" ? { prompt: text } : undefined;
+        },
+      },
+    ],
     parts: [planCard, planTray],
+    prompt: [instructions],
     settings: [mode],
     tools: [createPlan],
-    prompt: [{ id: "plan", text: GUIDE, when: on }],
   },
   hooks: { run_ended: refreshPlans },
 } satisfies Plugin;

@@ -1,8 +1,9 @@
 import { SdkError } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { kvRef } from "../src/store.ts";
-import type { Plugin, PluginApi, PluginStorage } from "../src/index.ts";
+import type { Plugin, PluginApi, PluginStorage, SettingDefinition } from "../src/index.ts";
 import { configuration, setup, workspace } from "../src/harness.ts";
+import { fakeModels, open } from "./fake-models.ts";
 import { volume, theme, loaded } from "./plugin-support.ts";
 
 afterEach(() => {
@@ -258,6 +259,111 @@ describe("settings", () => {
     expect(await host.settings.apply("exa.key", null)).toEqual({ kind: "applied" });
     expect(shown()?.value).toBeNull();
     expect(await own.value("exa.key")).toBeNull();
+  });
+
+  it.each([true, false])("rejects a mode switch that sets default %s", async (value) => {
+    const { host } = await setup();
+    const setting: SettingDefinition = JSON.parse(
+      JSON.stringify({
+        id: "mode.bad",
+        title: "Bad",
+        type: "switch",
+        scope: "chat",
+        default: value,
+        mode: { icon: "bolt" },
+      }),
+    );
+
+    const report = await host.plugins.check([
+      { id: "bad-mode", contribute: { settings: [setting] } },
+    ]);
+
+    expect(report.plugins).toEqual([
+      {
+        kind: "rejected",
+        id: "bad-mode",
+        issues: [
+          {
+            severity: "error",
+            path: ["settings", "mode.bad", "default"],
+            message: "A mode switch always starts off and can't set a default.",
+            source: { plugin: "bad-mode" },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("notifies a mode switch's watch when turning another mode on turns it off", async () => {
+    let alphaApi: PluginApi<"core"> | undefined;
+    let betaApi: PluginApi<"core"> | undefined;
+
+    const alpha: Plugin<"core"> = {
+      id: "alpha",
+      contribute: {
+        settings: [
+          {
+            id: "mode.alpha",
+            title: "Alpha",
+            type: "switch",
+            scope: "chat",
+            mode: { icon: "bolt" },
+          },
+        ],
+      },
+      activate(api) {
+        alphaApi = api;
+
+        return {};
+      },
+    };
+
+    const beta: Plugin<"core"> = {
+      id: "beta",
+      contribute: {
+        settings: [
+          {
+            id: "mode.beta",
+            title: "Beta",
+            type: "switch",
+            scope: "chat",
+            mode: { icon: "flame" },
+          },
+        ],
+      },
+      activate(api) {
+        betaApi = api;
+
+        return {};
+      },
+    };
+
+    const fake = fakeModels();
+    fake.reply({ content: [{ type: "text", text: "Hi." }] });
+    await using host = await open(fake, { plugins: [alpha, beta] });
+    const { session, receipt } = await host.sessions.start({ content: "Hi." });
+    await receipt.settled();
+    assert(alphaApi !== undefined && betaApi !== undefined);
+
+    const alphaValues = alphaApi.registries.settings.watch("mode.alpha")[Symbol.asyncIterator]();
+    const betaValues = betaApi.registries.settings.watch("mode.beta")[Symbol.asyncIterator]();
+
+    expect(await alphaValues.next()).toEqual({ done: false, value: false });
+    expect(await betaValues.next()).toEqual({ done: false, value: false });
+
+    expect(await session.configure({ settings: { "mode.alpha": true } })).toMatchObject({
+      kind: "configured",
+    });
+    expect(await alphaValues.next()).toEqual({ done: false, value: true });
+
+    expect(await session.configure({ settings: { "mode.beta": true } })).toMatchObject({
+      kind: "configured",
+    });
+    expect(await betaValues.next()).toEqual({ done: false, value: true });
+    expect(await alphaValues.next()).toEqual({ done: false, value: false });
+
+    await alphaValues.return?.();
+    await betaValues.return?.();
   });
 });
 

@@ -23,6 +23,7 @@ import type {
   TextContent,
   ThinkingContent,
   ToolResultMessage,
+  UserMessage,
 } from "@nyte-ai/schema/model";
 import type { Models } from "@nyte-ai/ai";
 import { estimateContextTokens, estimateTextTokens } from "@nyte-ai/ai/utils/estimate";
@@ -247,14 +248,17 @@ async function buildContext(
   const model = models.getModel(configuration.model.provider, configuration.model.id);
   const compactions = readCompactions(input.steps);
 
+  const resolved = await resolveSections(runtime, configuration.model);
+
   const prompt = await settleSystemPrompt(kernel, {
     session,
     head: input.head,
     run: input.run,
     sections: systemSections(found.record.prompt, input.agent, resources.prompt, [
-      ...(await resolveSections(runtime, configuration.model)),
+      ...resolved.system,
       ...(await projectSections(kernel, found.record, resources)),
     ]),
+    reminders: resolved.reminders,
     commits: input.steps.map((step) => step.commit),
     compacted: compactions.removed,
     folds: !takesSystemUpdates(model),
@@ -282,6 +286,7 @@ async function buildContext(
     steps: input.steps,
     compactions,
     updates: prompt.updates,
+    reminders: prompt.reminders,
     run: input.run,
     images: model?.input.includes("image") === true,
     responses,
@@ -368,6 +373,7 @@ async function conversation(
     readonly steps: readonly Step[];
     readonly compactions: ReturnType<typeof readCompactions>;
     readonly updates: ReadonlyMap<CommitId, readonly SystemMessage[]>;
+    readonly reminders: ReadonlyMap<CommitId, readonly UserMessage[]>;
     readonly run: RunId | null;
     readonly images: boolean;
     readonly responses: ReadonlyMap<RunId, Usage>;
@@ -377,7 +383,7 @@ async function conversation(
   const removed = input.compactions.removed;
   const anchors = input.compactions.anchors;
   const messages: Message[] = [];
-  const queued: SystemMessage[] = [];
+  const queued: Message[] = [];
 
   const release = (): void => {
     messages.push(...queued.splice(0));
@@ -555,7 +561,10 @@ async function conversation(
   for (const step of steps) {
     if (openGroup() === null) release();
     await visit(step);
-    queued.push(...(input.updates.get(step.commit) ?? []));
+    queued.push(
+      ...(input.updates.get(step.commit) ?? []),
+      ...(input.reminders.get(step.commit) ?? []),
+    );
 
     if (openGroup() === null) release();
   }

@@ -4,7 +4,6 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { SettingInfo, SettingTint } from "@nyte-ai/schema";
 import { Button } from "@nyte-ai/ui/button";
 import { ICON_NAMES, Icon } from "@nyte-ai/ui/icon";
-import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { toast } from "@nyte-ai/ui/toast";
@@ -33,9 +32,9 @@ const styles = create({
   }),
 });
 
-export function readModes(
+function readModes(
   settings: readonly SettingInfo[] | undefined,
-  chosen: Readonly<Record<string, boolean>> = {},
+  chosen: Readonly<Record<string, boolean>>,
 ): readonly ComposerMode[] {
   return (settings ?? []).flatMap((setting): ComposerMode[] =>
     setting.mode === undefined
@@ -87,16 +86,12 @@ export function cycleModes(modes: ComposerModes): (() => void) | undefined {
   return modes.modes.length === 0 ? undefined : () => modes.set(nextModes(modes.modes));
 }
 
-const NO_MODE = "none";
-
-/** The mode control: the active mode, or Mode when none is on, opening every mode to pick from. Undefined with no modes. */
+/** The active mode as a chip that turns it off; undefined while no mode is on, since Shift+Tab picks one. */
 export function modeControl(modes: ComposerModes): ReactElement | undefined {
-  if (modes.modes.length === 0) return undefined;
   const active = modes.modes.find((mode) => mode.on);
-  const tint = active?.tint ?? null;
 
-  const choose = (value: unknown): void =>
-    modes.set(Object.fromEntries(modes.modes.map((mode) => [mode.id, mode.id === value])));
+  if (active === undefined) return undefined;
+  const tint = active.tint;
 
   return (
     <span
@@ -105,35 +100,18 @@ export function modeControl(modes: ComposerModes): ReactElement | undefined {
         tint !== null && styles.tint(tint.hue, Math.min(1, tint.chroma / RAMP_PEAK_CHROMA)),
       )}
     >
-      <Menu>
-        <MenuTrigger
-          render={
-            <Button
-              variant={active === undefined ? "ghost" : "soft"}
-              size="sm"
-              pill
-              aria-keyshortcuts="Shift+Tab"
-              title={active === undefined ? "Choose a mode" : `${active.title} mode`}
-            >
-              {active !== undefined && active.icon !== null && (
-                <Icon name={active.icon} size="xs" />
-              )}
-              <span {...props(styles.label)}>{active?.title ?? "Mode"}</span>
-              <Icon name="chevron-down" size="2xs" />
-            </Button>
-          }
-        />
-        <MenuContent side="top" align="start">
-          <MenuRadioGroup value={active?.id ?? NO_MODE} onValueChange={choose}>
-            <MenuRadioItem value={NO_MODE}>No mode</MenuRadioItem>
-            {modes.modes.map((mode) => (
-              <MenuRadioItem key={mode.id} value={mode.id} icon={mode.icon ?? undefined}>
-                {mode.title}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-        </MenuContent>
-      </Menu>
+      <Button
+        variant="soft"
+        size="sm"
+        pill
+        aria-pressed
+        aria-keyshortcuts="Shift+Tab"
+        title={`Turn off ${active.title}`}
+        onClick={() => modes.set({ [active.id]: false })}
+      >
+        {active.icon !== null && <Icon name={active.icon} size="xs" />}
+        <span {...props(styles.label)}>{active.title}</span>
+      </Button>
     </span>
   );
 }

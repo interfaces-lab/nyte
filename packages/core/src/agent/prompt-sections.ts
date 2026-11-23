@@ -7,9 +7,8 @@ import type {
   RunId,
   SessionId,
 } from "@nyte-ai/schema";
-import type { SystemMessage } from "@nyte-ai/schema/model";
+import type { SystemMessage, UserMessage } from "@nyte-ai/schema/model";
 import type { Kernel, PluginRuntime } from "../contract/kernel.ts";
-import type { PromptSection } from "../contract/plugin.ts";
 import { decodePromptRecord } from "../contract/records.ts";
 import type { PromptRecord } from "../contract/records.ts";
 import type { Resources } from "../contract/workspace.ts";
@@ -22,14 +21,27 @@ interface SystemSection {
   readonly text: string;
 }
 
-export type FixedSection = PromptSection & { readonly text: string };
+export interface FixedSection {
+  readonly id: string;
+  readonly text: string;
+  readonly order?: number;
+}
+
+export interface ReminderSection {
+  readonly id: string;
+  readonly text: string;
+  readonly gone: string;
+}
 
 interface SystemPrompt {
   readonly head: SystemMessage | null;
   readonly updates: ReadonlyMap<CommitId, readonly SystemMessage[]>;
+  readonly reminders: ReadonlyMap<CommitId, readonly UserMessage[]>;
 }
 
 type Update = PromptRecord["updates"][number];
+
+type ReminderEntry = NonNullable<PromptRecord["reminders"]>[number];
 
 export function systemSections(
   own: PromptOverride | null,
@@ -65,12 +77,18 @@ export function systemSections(
 export async function resolveSections(
   runtime: PluginRuntime,
   model: ModelRef,
-): Promise<readonly FixedSection[]> {
+): Promise<{
+  readonly system: readonly FixedSection[];
+  readonly reminders: readonly ReminderSection[];
+}> {
+  const system: FixedSection[] = [];
+  const reminders: ReminderSection[] = [];
+
   const resolved = await Promise.all(
     runtime.registries.prompt.entries().map(async (entry) => {
       const section = entry.item;
 
-      if (typeof section.text === "string") return [{ ...section, text: section.text }];
+      if (typeof section.text === "string") return { section, text: section.text };
       const api = runtime.api(entry.owner);
 
       if (api === undefined) {
@@ -81,17 +99,30 @@ export async function resolveSections(
       }
 
       const text = await Promise.resolve(section.text({ model, api })).catch((error: unknown) => {
+        if (error instanceof SdkError && error.code === "unavailable") return null;
+
         throw new SdkError(
           "internal",
           `Plugin ${entry.owner}'s prompt section ${section.id} failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       });
 
-      return text === null ? [] : [{ ...section, text }];
+      return text === null ? null : { section, text };
     }),
   );
 
-  return resolved.flat();
+  for (const item of resolved) {
+    if (item === null) continue;
+    const { section, text } = item;
+
+    if (section.delivery === "reminder") {
+      reminders.push({ id: section.id, text, gone: section.gone });
+    } else {
+      system.push({ id: section.id, text, order: section.order });
+    }
+  }
+
+  return { system, reminders };
 }
 
 export async function settleSystemPrompt(
@@ -101,6 +132,7 @@ export async function settleSystemPrompt(
     readonly head: HeadName;
     readonly run: RunId | null;
     readonly sections: readonly SystemSection[];
+    readonly reminders: readonly ReminderSection[];
     readonly commits: readonly CommitId[];
     readonly compacted: ReadonlySet<CommitId>;
     readonly folds: boolean;
@@ -128,9 +160,17 @@ export async function settleSystemPrompt(
     return outcome.kind === "set" ? next : STALE;
   });
 
-  if (input.folds) return { head: systemMessage(input.sections), updates: new Map() };
+  const reminders = new Map(
+    [...Map.groupBy(settled.reminders ?? [], (entry) => entry.after)].map(([after, entries]) => [
+      after,
+      entries.map(reminderMessage),
+    ]),
+  );
+
+  if (input.folds) return { head: systemMessage(input.sections), updates: new Map(), reminders };
 
   return {
+    reminders,
     head: settled.sections.length === 0 ? null : systemMessage(settled.sections),
     updates: new Map(
       [...Map.groupBy(settled.updates, (update) => update.after)].map(([after, updates]) => [
@@ -142,6 +182,22 @@ export async function settleSystemPrompt(
 }
 
 function settle(
+  recorded: PromptRecord | undefined,
+  input: {
+    readonly sections: readonly SystemSection[];
+    readonly reminders: readonly ReminderSection[];
+    readonly commits: readonly CommitId[];
+    readonly compacted: ReadonlySet<CommitId>;
+  },
+): PromptRecord {
+  const reminders = settleReminders(recorded?.reminders ?? [], input);
+
+  return reminders.length === 0
+    ? settleSections(recorded, input)
+    : { ...settleSections(recorded, input), reminders };
+}
+
+function settleSections(
   recorded: PromptRecord | undefined,
   input: {
     readonly sections: readonly SystemSection[];
@@ -168,6 +224,54 @@ function settle(
   if (after === undefined) return { sections: input.sections, updates: [] };
 
   return { sections: base, updates: [...kept, { after, sections: change }] };
+}
+
+function settleReminders(
+  recorded: readonly ReminderEntry[],
+  input: {
+    readonly commits: readonly CommitId[];
+    readonly compacted: ReadonlySet<CommitId>;
+    readonly reminders: readonly ReminderSection[];
+  },
+): readonly ReminderEntry[] {
+  const path = new Set(input.commits);
+  const onPath = recorded.filter((entry) => path.has(entry.after));
+  const after = input.commits.at(-1);
+
+  if (after === undefined) return [];
+  const current = new Map(input.reminders.map((section) => [section.id, section]));
+  const latestAny = new Map<string, ReminderEntry>();
+  const latestLive = new Map<string, ReminderEntry>();
+
+  for (const entry of onPath) {
+    latestAny.set(entry.id, entry);
+
+    if (!input.compacted.has(entry.after)) latestLive.set(entry.id, entry);
+  }
+
+  const left = [...latestAny.values()].flatMap((entry) =>
+    !current.has(entry.id) && entry.text !== null
+      ? [{ after, id: entry.id, text: null, gone: entry.gone }]
+      : [],
+  );
+
+  const told = input.reminders.flatMap((section) =>
+    latestLive.get(section.id)?.text !== section.text
+      ? [{ after, id: section.id, text: section.text, gone: section.gone }]
+      : [],
+  );
+
+  const kept = onPath.filter((entry) => !input.compacted.has(entry.after));
+
+  return [...kept, ...left, ...told];
+}
+
+function reminderMessage(entry: ReminderEntry): UserMessage {
+  return {
+    role: "user",
+    content: `<system-reminder>\n${entry.text ?? entry.gone}\n</system-reminder>`,
+    timestamp: 0,
+  };
 }
 
 function applyUpdate(sections: readonly SystemSection[], update: Update): readonly SystemSection[] {

@@ -1,0 +1,25 @@
+{
+  "name": "@nyte-ai/example-plan-mode",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
+    "typebox": "^1.4.7"
+  },
+  "devDependencies": {
+    "@nyte-ai/bench": "workspace:*",
+    "@nyte-ai/host": "workspace:*",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1",
+    "vitest": "^5.1.0"
+  }
+}

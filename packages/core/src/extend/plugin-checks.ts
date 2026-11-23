@@ -52,12 +52,19 @@ export function preflight(
     if (plugin.id.includes("/")) error(["id"], `The plugin id ${plugin.id} contains "/".`);
 
     for (const setting of plugin.contribute?.settings ?? []) {
-      const color = "mode" in setting ? setting.mode?.color : undefined;
+      if (!("mode" in setting) || setting.mode === undefined) continue;
 
-      if (color !== undefined && readTint(color) === undefined) {
+      if (setting.mode.color !== undefined && readTint(setting.mode.color) === undefined) {
         error(
           ["settings", setting.id, "mode", "color"],
-          `${color} isn't a CSS colour. Write one such as #8b5cf6 or oklch(0.62 0.21 293).`,
+          `${setting.mode.color} isn't a CSS colour. Write one such as #8b5cf6 or oklch(0.62 0.21 293).`,
+        );
+      }
+
+      if (Object.getOwnPropertyDescriptor(setting, "default")?.value !== undefined) {
+        error(
+          ["settings", setting.id, "default"],
+          "A mode switch always starts off and can't set a default.",
         );
       }
     }

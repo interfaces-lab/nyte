@@ -1,15 +1,10 @@
 import { posix } from "node:path";
 import { definePart } from "@nyte-ai/core";
-import type {
-  ExecutionEnv,
-  SettingDefinition,
-  ToolDefinition,
-  ToolInvocation,
-  When,
-} from "@nyte-ai/core";
+import type { ExecutionEnv, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { asId, standard } from "@nyte-ai/schema";
 import type { FileVersion, Infer, PartId, ToolContent } from "@nyte-ai/schema";
-import type { Command, HookHandler, Plugin } from "@nyte-ai/plugin/core";
+import type { Command, HookHandler } from "@nyte-ai/plugin/core";
+import type { Mode } from "../mode.ts";
 import { Type } from "typebox";
 import {
   describeStanding,
@@ -50,27 +45,15 @@ const MAX_METRICS = 1000;
 
 const METRIC_LINE = /^METRIC\s+([^\s=]+)=(\S+)\s*$/u;
 
-const mode = {
-  id: AUTORESEARCH,
-  title: "Autoresearch",
-  description:
-    "Runs an experiment loop in this chat: try an idea, measure it, keep or revert it, and repeat until you stop it.",
-  type: "switch",
-  scope: "chat",
-  mode: { icon: "test-tube", color: "oklch(0.62 0.15 160)" },
-} satisfies SettingDefinition;
+const MODE = "mode.autoresearch";
 
-const on: When = (chat) => chat.settings[AUTORESEARCH] === true;
+const PROMPT = `When ${PROMPT_PATH} doesn't exist yet, treat the user's goal as the objective and set up a session first:
 
-const dashboard = definePart({
-  kind: AUTORESEARCH,
-  state: standingState,
-  actions: {},
-  view: new URL("./dashboard.view.tsx", import.meta.url),
-  fallback: (current) => describeStanding(current),
-});
+- Work out the metric, its unit, whether lower or higher is better, the command that measures it, and the files in scope. Infer what you can from the code; ask with the question tool for what you can't.
+- Write ${PROMPT_PATH} (objective, metric, files in scope, constraints, ideas) and .auto/measure.sh, which prints \`METRIC <name>=<number>\` lines. Add ${CHECKS_PATH} when correctness needs guarding, for example tests and types.
+- Call init_experiment, measure the baseline with run_experiment, and log it with log_experiment as keep.
 
-const LOOP = `Autoresearch mode is on in this chat. Run the experiment loop until the user stops it:
+Then run the experiment loop until the user stops it:
 
 1. Pick one idea from ${PROMPT_PATH} and change the code for it.
 2. Call run_experiment. It runs .auto/measure.sh, or the command you pass, times it, reads its \`METRIC name=number\` lines, and runs ${CHECKS_PATH} when the benchmark passes.
@@ -80,23 +63,26 @@ const LOOP = `Autoresearch mode is on in this chat. Run the experiment loop unti
 
 When confidence is under 1x, re-run the best idea before building on it.`;
 
-const SETUP_STEPS = `- Work out the metric, its unit, whether lower or higher is better, the command that measures it, and the files in scope. Infer what you can from the code; ask with the question tool for what you can't.
-- From a clean working tree, create a branch for this session, such as autoresearch/<short-name>.
-- Write ${PROMPT_PATH} (objective, metric, files in scope, constraints, ideas) and .auto/measure.sh, which prints \`METRIC <name>=<number>\` lines. Add ${CHECKS_PATH} when correctness needs guarding, for example tests and types.
-- Call init_experiment, measure the baseline with run_experiment, and log it with log_experiment as keep.`;
-
-const SETUP = `Autoresearch mode is on in this chat, and this workspace has no session yet. Treat the user's next message as the goal and set one up, then start the loop:
-${SETUP_STEPS}`;
+const dashboard = definePart({
+  kind: AUTORESEARCH,
+  state: standingState,
+  actions: {},
+  view: new URL("./dashboard.view.tsx", import.meta.url),
+  fallback: (current) => describeStanding(current),
+});
 
 const CONTINUE = "Continue the autoresearch loop with the next experiment.";
 
 const USAGE = "Name what to optimize, for example /autoresearch make the test suite faster.";
 
 const DIRTY =
-  "The working tree has changes outside .auto/. Commit them on this session's branch first, so a discarded experiment reverts only its own changes.";
+  "The working tree has changes outside .auto/. Commit them first, so a discarded experiment reverts only its own changes.";
 
 const DETACHED_HEAD =
-  "HEAD is detached. Create and check out a branch first, such as autoresearch/<short-name>, before calling init_experiment.";
+  "HEAD is detached. Check out this chat's branch again, then call init_experiment.";
+
+const OUTSIDE_WORKTREE =
+  "Autoresearch commits and reverts code, so it runs only in a chat with its own worktree. Run /autoresearch with a goal to start one.";
 
 const NO_SESSION = "This workspace has no autoresearch session. Call init_experiment first.";
 
@@ -151,13 +137,13 @@ const logParameters = standard(
 
 const initExperiment: ToolDefinition<Infer<typeof initParameters>> = {
   name: "init_experiment",
-  when: on,
   description:
-    "Start an autoresearch session: name its primary metric and direction. Needs a branch (not detached HEAD) and a clean working tree outside .auto/, since discarded experiments are reverted with git. Call it again to start a new segment with a different metric.",
+    "Start an autoresearch session: name its primary metric and direction. Needs a clean working tree outside .auto/, since discarded experiments are reverted with git. Call it again to start a new segment with a different metric.",
   parameters: initParameters,
   class: (args) => ({ kind: "custom", label: `Starting autoresearch: ${args.name}` }),
   rerun: "never",
   async execute(args, invocation) {
+    await requireOwnWorktree(invocation);
     const env = invocation.env;
     const changed = await git(env, ["status", "--porcelain", "--", ...PATHS], invocation.signal);
 
@@ -187,12 +173,12 @@ const initExperiment: ToolDefinition<Infer<typeof initParameters>> = {
 
 const runExperiment: ToolDefinition<Infer<typeof runParameters>> = {
   name: "run_experiment",
-  when: on,
   description: `Run the benchmark and time it: ${MEASURE} unless you pass a command. Reports its exit code, wall-clock time, its \`METRIC name=number\` lines and the end of its output. When it exits 0 and ${CHECKS_PATH} exists, runs that too and reports whether it passed.`,
   parameters: runParameters,
   class: (args) => ({ kind: "shell", command: args.command ?? MEASURE }),
   rerun: "never",
   async execute(args, invocation) {
+    await requireOwnWorktree(invocation);
     const env = invocation.env;
     const command = args.command ?? MEASURE;
     const started = performance.now();
@@ -245,12 +231,12 @@ const runExperiment: ToolDefinition<Infer<typeof runParameters>> = {
 
 const logExperiment: ToolDefinition<Infer<typeof logParameters>> = {
   name: "log_experiment",
-  when: on,
   description: `Record a run in ${LOG_PATH}. keep commits everything outside .auto/; discard, crash and checks_failed revert it. Returns the session's best result against its baseline and how far above the noise it sits.`,
   parameters: logParameters,
   class: (args) => ({ kind: "custom", label: `Logging experiment: ${args.status}` }),
   rerun: "never",
   async execute(args, invocation) {
+    await requireOwnWorktree(invocation);
     const env = invocation.env;
     const snapshot = await readLogSnapshot(env);
     const current = standing(snapshot.entries);
@@ -289,36 +275,49 @@ const logExperiment: ToolDefinition<Infer<typeof logParameters>> = {
 const autoresearchCommand: Command<"core"> = {
   name: AUTORESEARCH,
   title: "Autoresearch",
-  description: "Run an experiment loop on a goal, or leave it with off",
+  description: "Run an experiment loop on a goal, or turn it off",
   takesText: true,
-  complete: (prefix) =>
-    "off".startsWith(prefix.trim())
-      ? [{ value: "off", label: "off", description: "Leave autoresearch mode" }]
-      : [],
   async run(text, context) {
     const api = context.api;
 
-    if (text === "off") {
-      await api.registries.settings.set(AUTORESEARCH, false);
+    if (text === "" && (await api.registries.settings.value(MODE)) === true) {
+      await api.registries.settings.set(MODE, false);
 
       return `Autoresearch is off. ${LOG_PATH} is kept, so /autoresearch resumes it.`;
+    }
+
+    const { workspace } = await api.session.info();
+
+    if ((await api.host.workspace(workspace).info()).isolation?.session !== api.session.id) {
+      if (text === "") return USAGE;
+
+      const name = `Autoresearch: ${text}`;
+
+      await api.host.sessions.start({
+        workspace,
+        isolation: "worktree",
+        name,
+        configuration: { settings: { [MODE]: true } },
+        content: `Start an autoresearch session: ${text}`,
+      });
+
+      return `Started "${name}" in a new chat with its own worktree. It commits and reverts code there and leaves this checkout alone.`;
     }
 
     const resuming = (await api.env.files.stat(posix.join(api.env.cwd, PROMPT_PATH))) !== null;
 
     if (!resuming && text === "") return USAGE;
 
-    await api.registries.settings.set(AUTORESEARCH, true);
+    await api.registries.settings.set(MODE, true);
 
-    return { prompt: resuming ? resume(text) : setup(text) };
+    return { prompt: resuming ? resume(text) : `Start an autoresearch session: ${text}` };
   },
 };
 
-function setup(goal: string): string {
-  return `Start an autoresearch session: ${goal}
-
-Set it up, then start the loop:
-${SETUP_STEPS}`;
+async function requireOwnWorktree(invocation: ToolInvocation): Promise<void> {
+  if ((await invocation.workspace.info()).isolation?.session !== invocation.session.id) {
+    throw new Error(OUTSIDE_WORKTREE);
+  }
 }
 
 function resume(note: string): string {
@@ -332,17 +331,17 @@ const continueLoop: HookHandler<"run_ended"> = async (end, context) => {
 
   if (context.head === null || context.run === null) return;
 
-  if ((await api.registries.settings.value(AUTORESEARCH)) !== true) return;
+  if ((await api.registries.settings.value(MODE)) !== true) return;
 
   if (end.kind === "stopped") {
-    await api.registries.settings.set(AUTORESEARCH, false);
+    await api.registries.settings.set(MODE, false);
 
     return;
   }
 
   if (end.kind !== "completed" || standing(await readLog(api.env)) === null) return;
 
-  if ((await api.registries.settings.value(AUTORESEARCH)) !== true) return;
+  if ((await api.registries.settings.value(MODE)) !== true) return;
 
   await api.session.head(context.head).send(CONTINUE, {
     delivery: "queue",
@@ -658,19 +657,16 @@ function reply(value: string) {
 }
 
 export default {
-  id: AUTORESEARCH,
-  contribute: {
-    parts: [dashboard],
-    settings: [mode],
-    tools: [initExperiment, runExperiment, logExperiment],
-    prompt: [
-      {
-        id: AUTORESEARCH,
-        text: async (context) => (standing(await readLog(context.api.env)) === null ? SETUP : LOOP),
-        when: on,
-      },
-    ],
-    commands: [autoresearchCommand],
-  },
-  hooks: { run_ended: continueLoop },
-} satisfies Plugin;
+  id: MODE,
+  name: AUTORESEARCH,
+  title: "Autoresearch",
+  description:
+    "Runs an experiment loop in this chat: try an idea, measure it, keep or revert it, and repeat until you stop it.",
+  icon: "atom",
+  color: "oklch(0.62 0.15 160)",
+  prompt: PROMPT,
+  tools: [initExperiment, runExperiment, logExperiment],
+  parts: [dashboard],
+  toggle: autoresearchCommand,
+  onRunEnded: continueLoop,
+} satisfies Mode;

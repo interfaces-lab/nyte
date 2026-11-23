@@ -360,7 +360,12 @@ describe("resources", () => {
     const context = sections.find((section) => section.id === "project-context");
     const skills = sections.find((section) => section.id === "skills");
 
-    assert(context !== undefined && skills !== undefined);
+    assert(
+      context !== undefined &&
+        context.delivery !== "reminder" &&
+        skills !== undefined &&
+        skills.delivery !== "reminder",
+    );
     expect([context.order, skills.order]).toEqual([10, 90]);
     expect(context.text).toMatch(/# \/home\/ada\/\.nyte\/AGENTS\.md[\s\S]*# \/AGENTS\.md/u);
     expect(context.text).toContain("# /work/project/AGENTS.override.md\n\nProject override.");

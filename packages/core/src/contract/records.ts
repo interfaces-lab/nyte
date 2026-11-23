@@ -77,6 +77,16 @@ const PromptRecordType = record({
       sections: list(record({ id: Type.String(), text: nullable(Type.String()) })),
     }),
   ),
+  reminders: Type.Optional(
+    list(
+      record({
+        after: idSchema<"commit">(),
+        id: Type.String(),
+        text: nullable(Type.String()),
+        gone: Type.String(),
+      }),
+    ),
+  ),
 });
 
 export type PromptRecord = Static<typeof PromptRecordType>;
@@ -279,7 +289,6 @@ const WorkspaceRecordType = record({
   id: idSchema<"workspace">(),
   target: typed<WorkspaceTarget>()(WorkspaceTargetType),
   identity: idSchema<"environment-identity">(),
-  projectSources: list(Type.String()),
   addedBy: idSchema<"principal">(),
   createdAt: Type.Number(),
   isolation: nullable(typed<WorktreeIsolation>()(WorktreeIsolationType)),

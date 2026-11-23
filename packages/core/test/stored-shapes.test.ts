@@ -32,12 +32,12 @@ it("keeps every stored shape until a store change is decided", () => {
     principals: "103773fcbe00ed1c",
     process: "95737928ecd08a26",
     project: "43d15ff3e2d118f1",
-    prompt: "415e40695f4ad3f6",
+    prompt: "07293c5b3c4e520c",
     receipt: "f3eb06f1a16b8288",
     run: "13ba5f76f2b6a01f",
     seen: "d56e60a18cd524d4",
     session: "eb34f6599591f4ca",
     trust: "3134382ffff2bad2",
-    workspace: "1276ff8f9e376d05",
+    workspace: "ff24fe45fbe0b8c6",
   });
 });

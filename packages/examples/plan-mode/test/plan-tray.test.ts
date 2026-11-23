@@ -6,11 +6,12 @@ import { memoryStore } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it } from "vitest";
-import { localProvider, openHost } from "../src/index.ts";
-import { fakeModels } from "./fixtures/fake-models.ts";
-import type { FakeModels } from "./fixtures/fake-models.ts";
+import { fakeModels } from "@nyte-ai/bench";
+import type { FakeModels } from "@nyte-ai/bench";
+import { localProvider, openHost } from "@nyte-ai/host";
+import plan from "../index.ts";
 
-const PLAN_MODE = "plan.mode";
+const PLAN_MODE = "mode.plan";
 
 const folders: string[] = [];
 
@@ -114,7 +115,7 @@ const cases: readonly PlanCase[] = [
     },
   },
   {
-    name: "Build from the tray queues one action message, marks the card built, closes the tray, and turns plan.mode off",
+    name: "Build from the tray queues one action message, marks the card built, closes the tray, and turns plan.mode off, which its request is told",
     async check({ session, fake }) {
       const before = await session.view();
       const tray = trays(before)[0];
@@ -134,6 +135,19 @@ const cases: readonly PlanCase[] = [
       expect(cards(after).at(-1)?.state).toMatchObject({ name: "Alpha", built: true });
       expect(trays(after)).toEqual([]);
       expect(planMode(after)).toBe(false);
+
+      const told = (fake.requests.at(-1)?.context.messages ?? []).flatMap((message) =>
+        message.role === "user" &&
+        typeof message.content === "string" &&
+        message.content.startsWith("<system-reminder>")
+          ? [message.content.split("\n")[1]]
+          : [],
+      );
+
+      expect(told).toEqual([
+        "Plan mode is on.",
+        "Plan mode is off. Its instructions no longer apply.",
+      ]);
     },
   },
   {
@@ -206,7 +220,11 @@ it.each(cases)(
     await using host = await openHost({
       store: memoryStore(),
       models: fake.models,
-      plugins: [{ id: "local", environment: localProvider({ home }) }, ...(row.plugins ?? [])],
+      plugins: [
+        { id: "local", environment: localProvider({ home }) },
+        plan,
+        ...(row.plugins ?? []),
+      ],
       workspace: { kind: "local", path: home },
       home,
     });

@@ -88,7 +88,7 @@ export async function startDraft(
         ...(workspace !== undefined && { workspace }),
         ...(project !== undefined && { project: project.id }),
         ...(project !== undefined && { name: project.name }),
-        configuration: { model, thinking: draft?.choice?.thinking, settings: draft?.modes },
+        configuration: { model, thinking: draft?.choice?.thinking },
       },
       plan,
     );

@@ -122,9 +122,7 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
   const seen = new Set<string>();
 
   return [
-    ...staticDefinitions(kernel).filter(
-      (entry) => entry.definition.scope === "host" || entry.definition.mode !== undefined,
-    ),
+    ...staticDefinitions(kernel).filter((entry) => entry.definition.scope === "host"),
     ...[...kernel.plugins.runtimes().values()].flatMap((runtime) =>
       runtime.registries.settings
         .entries()

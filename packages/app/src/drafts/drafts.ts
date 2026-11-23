@@ -90,7 +90,6 @@ const storedDraftSchema = Type.Object(
     choice: Type.Optional(
       Type.Object({ model: ModelRefType, thinking: Type.Optional(ThinkingType) }, strict),
     ),
-    modes: Type.Optional(Type.Record(Type.String(), Type.Boolean())),
     omitted: Type.Optional(omittedSchema),
   },
   strict,
@@ -318,7 +317,6 @@ export class WindowDrafts {
             project: next.project,
             folder: next.folder,
             choice: next.choice,
-            modes: next.modes,
             omitted: next.omitted === 0 ? undefined : next.omitted,
           }
         : undefined,
@@ -446,7 +444,6 @@ export class WindowDrafts {
           model: stored.record.choice.model,
           thinking: stored.record.choice.thinking,
         },
-        modes: stored.record.modes,
         project: stored.record.project,
         folder: stored.record.folder,
         status: EDITING,

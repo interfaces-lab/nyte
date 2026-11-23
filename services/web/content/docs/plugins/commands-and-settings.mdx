@@ -168,36 +168,77 @@ The preset pages are `server`, `profile`, `general`, `notifications`, `appearanc
 
 ### Composer modes [#modes]
 
-A per-chat switch with `mode` shows in the desktop composer: a chip beside the model while it is on,
-and a step of Shift+Tab in the message field.
+A per-chat switch with `mode` is a composer mode. A chat starts with no mode on. Turn one on with its
+slash command or with Shift+Tab, and it shows as a chip beside the model until it's off again.
 
 ```ts title="plan-mode.ts"
-import type { SettingDefinition } from "@nyte-ai/plugin/core";
+import type { Plugin } from "@nyte-ai/plugin/core";
 
-const plan = {
-  id: "plan.mode",
-  title: "Plan",
-  type: "switch",
-  scope: "chat",
-  mode: { icon: "list", color: "oklch(0.62 0.21 293)" },
-} satisfies SettingDefinition;
+const PLAN = "mode.plan";
+
+export default {
+  id: "plan-mode",
+  contribute: {
+    settings: [
+      {
+        id: PLAN,
+        title: "Plan",
+        type: "switch",
+        scope: "chat",
+        mode: { icon: "plan", color: "oklch(0.62 0.21 293)" },
+      },
+    ],
+    prompt: [
+      {
+        id: PLAN,
+        delivery: "reminder",
+        when: (chat) => chat.settings[PLAN] === true,
+        text: "Plan mode is on.\n\nResearch the change and write a plan. Don't edit code.",
+        gone: "Plan mode is off. Its instructions no longer apply.",
+      },
+    ],
+    commands: [
+      {
+        name: "plan",
+        title: "Plan",
+        description: "Turn Plan mode on or off",
+        async run(text, { api }) {
+          const turnsOn = (await api.registries.settings.value(PLAN)) !== true;
+          await api.registries.settings.set(PLAN, turnsOn);
+
+          return turnsOn && text !== "" ? { prompt: text } : undefined;
+        },
+      },
+    ],
+  },
+} satisfies Plugin;
 ```
 
-- `mode` needs `type: "switch"` and `scope: "chat"`; the types refuse any other setting.
+- `mode` needs `type: "switch"` and `scope: "chat"`, and no `default`: a mode starts off. The
+  types refuse any other setting.
 - `icon` is one of the app's icon names, such as `list`, `git-branch` or `test-tube`. A name the
   app lacks draws the chip without an icon.
-- `color` is any CSS colour, such as `#8b5cf6`, `rebeccapurple` or `oklch(0.62 0.21 293)`. The chip
-  keeps its hue and chroma and takes lightness from the theme, so it reads in light and dark mode. A
-  colour that doesn't parse is reported on the plugin.
+- `color` is any CSS colour, such as `#8b5cf6`, `rebeccapurple` or `oklch(0.62 0.21 293)`. The
+  chip keeps its hue and chroma and takes lightness from the theme, so it reads in light and
+  dark mode. A colour that doesn't parse is reported on the plugin.
+- Give the mode's instructions as a [reminder section](/docs/plugins/reference#prompt-section) gated on the
+  switch. When the mode turns on, the next request tells the model its text after the latest
+  message; when it turns off, the model is told the section's `gone` text. The system prompt stays
+  the same either way, on every provider.
 - Modes are exclusive. Turning one on, from the composer, a command or `settings.set`, turns the
-  chat's other modes off. Shift+Tab steps off, then each mode in turn. Clicking a chip turns its
+  chat's other modes off. Shift+Tab steps off, then each mode in turn. Clicking the chip turns its
   mode off.
-- A mode picked in a new chat's composer starts with that chat. That composer offers the modes of
-  the plugins the host loads for every chat.
-- A change takes effect at once, in a running turn too: a tool or prompt section gated on the mode
-  comes or goes with the turn's next request.
-- What the mode does is up to the plugin: gate tools and prompt sections with
-  `when: (chat) => chat.settings["plan.mode"] === true`.
+- Give the mode a command that toggles its switch, as above: `/plan` turns it on, `/plan` again turns
+  it off, and `/plan` with text turns it on and sends the text. A new chat's composer shows no modes,
+  so a mode starts once the chat has.
+- A change takes effect at once, in a running turn too: the turn's next request is told, and a tool
+  gated on the mode comes or goes with it.
+- Gate the mode's tools with the same `when` as its reminder section.
+- Nyte ships two modes: Debug and Autoresearch. For whole modes written as folder plugins, see the
+  [Plan](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/plan-mode),
+  [Ask](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/ask-mode) and
+  [Multitask](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/multitask-mode)
+  examples. Copy a folder into `~/.nyte/plugins` to load it.
 - The terminal doesn't show modes yet. A command that sets the switch works everywhere.
 
 ### Secrets [#secrets]

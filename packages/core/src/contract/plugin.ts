@@ -129,7 +129,7 @@ export type SettingDefinition<T = unknown> = {
   | { readonly type: "switch"; readonly default?: boolean; readonly mode?: undefined }
   | {
       readonly type: "switch";
-      readonly default?: boolean;
+      readonly default?: never;
       readonly scope: "chat";
       /**
        * Shows the switch as a composer mode: a chip while it is on, and a step of the mode key.
@@ -323,7 +323,7 @@ export interface Agent {
   readonly tools?: readonly string[];
 }
 
-export interface PromptSection {
+export type PromptSection = {
   readonly id: string;
   /** The text, or a function core calls as it builds each request, for text that follows live state. A changed result reaches the model as an update after the conversation so far, so the cached start of the conversation stays as it was. `null` leaves the section out. */
   readonly text:
@@ -332,10 +332,16 @@ export interface PromptSection {
         readonly model: ModelRef;
         readonly api: PluginApi<"core">;
       }) => Awaitable<string | null>);
-  readonly order?: number;
   /** Whether the section is in a chat. */
   readonly when?: When;
-}
+} & (
+  | { readonly delivery?: "system"; readonly order?: number }
+  | {
+      readonly delivery: "reminder";
+      /** Said when the section leaves the chat. */
+      readonly gone: string;
+    }
+);
 
 export interface ModelContextPolicy {
   readonly model: ModelRef;
