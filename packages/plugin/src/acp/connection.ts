@@ -242,7 +242,7 @@ export class AcpProcess {
     return (await this.#initialized()).agentCapabilities?.promptCapabilities?.image === true;
   }
 
-  /** Opens a conversation: the one `resume` names when the agent can take it back, else a new one. Throws when `resume` can't be taken back. */
+  /** Opens a new conversation, or takes back the one `resume` names; throws when the agent can't take it back. */
   async open(
     cwd: string,
     approve: AcpApprove,
@@ -255,7 +255,7 @@ export class AcpProcess {
       resume === undefined ? await this.create(cwd) : await this.reopen(initialized, cwd, resume);
 
     const { sessionId } = session;
-    this.#options.set(sessionId, session.configOptions ?? []);
+    this.#options.set(sessionId, session.configOptions ?? this.#options.get(sessionId) ?? []);
 
     const mode = this.launch.mode;
 
@@ -289,22 +289,26 @@ export class AcpProcess {
   private async reopen(initialized: InitializeResponse, cwd: string, sessionId: string) {
     const capabilities = initialized.agentCapabilities;
 
-    if (capabilities?.sessionCapabilities?.resume !== undefined) {
-      const resumed = await this.#connection.agent.request(methods.agent.session.resume, {
-        sessionId,
-        cwd,
-        mcpServers: [],
-      });
+    if ((capabilities?.sessionCapabilities?.resume ?? null) !== null) {
+      const resumed = await this.signedIn(() =>
+        this.#connection.agent.request(methods.agent.session.resume, {
+          sessionId,
+          cwd,
+          mcpServers: [],
+        }),
+      );
 
       return { ...resumed, sessionId };
     }
 
     if (capabilities?.loadSession === true) {
-      const loaded = await this.#connection.agent.request(methods.agent.session.load, {
-        sessionId,
-        cwd,
-        mcpServers: [],
-      });
+      const loaded = await this.signedIn(() =>
+        this.#connection.agent.request(methods.agent.session.load, {
+          sessionId,
+          cwd,
+          mcpServers: [],
+        }),
+      );
 
       return { ...loaded, sessionId };
     }
@@ -313,14 +317,18 @@ export class AcpProcess {
   }
 
   private create(cwd: string) {
-    return this.newSession(cwd)
+    return this.signedIn(() => this.newSession(cwd));
+  }
+
+  private signedIn<T>(run: () => Promise<T>): Promise<T> {
+    return run()
       .catch(async (error: unknown) => {
         if (!signInNeeded(error) || this.agent.auth === undefined) throw error;
         await this.#connection.agent.request(methods.agent.authenticate, {
           methodId: this.agent.auth,
         });
 
-        return this.newSession(cwd);
+        return run();
       })
       .catch((error: unknown) => {
         if (signInNeeded(error)) {

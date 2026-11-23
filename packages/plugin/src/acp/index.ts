@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   bindSession,
+  createAssistantMessageEventStream,
   getCurrentSystemPrompt,
   getCurrentTools,
   lazyStream,
@@ -9,6 +10,7 @@ import {
 import type {
   Api,
   AssistantMessageEventStream,
+  Message,
   Model,
   Provider,
   SimpleStreamOptions,
@@ -29,6 +31,8 @@ import { Value } from "typebox/value";
 import type { Plugin } from "../core.ts";
 import { agentCatalog, agentChoice } from "./catalog.ts";
 import type { AcpAgent, AcpLaunch, AgentRoute } from "./catalog.ts";
+import { PERMISSIONS } from "../approvals/schema.ts";
+import { readsOnly } from "../side-chat.ts";
 import { AcpProcess } from "./connection.ts";
 import type { AgentChoice } from "./connection.ts";
 import type { AcpThread } from "./thread.ts";
@@ -36,24 +40,19 @@ import type { AgentForm } from "./forms.ts";
 import { question } from "../question/question.ts";
 import { answerInput } from "../question/schema.ts";
 import { messageKey, transcriptText, userBlocks } from "./transcript.ts";
-import { MIRROR_TOOL, mirrorArguments, mirrorClass } from "./translate.ts";
+import { emptyMessage, MIRROR_TOOL, mirrorArguments, mirrorClass } from "./translate.ts";
 import type { MirrorArguments } from "./translate.ts";
 
 export type { AcpAgent } from "./catalog.ts";
 
 const NOT_RUNNING = "The agent is no longer running this turn. Send a message to continue.";
 
-const UNATTENDED = "Run every tool without asking";
-
-const RECONNECTED =
-  "Nyte lost its connection to you and has reconnected to this conversation. Carry on where you left off.";
-
 const SAVED = "conversation";
 
 const savedConversation = Type.Object({
   agent: Type.String(),
   session: Type.String(),
-  seen: Type.Integer({ minimum: 0 }),
+  answered: Type.Integer({ minimum: 0 }),
   digest: Type.String(),
 });
 
@@ -69,6 +68,7 @@ interface Binding {
   readonly approve: PluginApi<"core">["approve"];
   readonly wake: (agent: string) => void;
   readonly storage: PluginStorage;
+  readonly unattended: () => Promise<boolean>;
 }
 
 interface Live {
@@ -165,38 +165,53 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
   async function connect(
     id: string,
     agent: AcpAgent,
-    signal: AbortSignal | undefined,
   ): Promise<{ readonly entry: Live; readonly binding: Binding; readonly agent: AcpProcess }> {
     const binding = bindings.get(id);
 
     if (binding === undefined) throw new Error("ACP agents answer inside a Nyte session.");
-    const { env } = binding;
-    const key = JSON.stringify([agent.id, agent.command, env.cwd]);
-    let entry = live.get(id);
+    const launch =
+      (agent.unattended !== undefined && (await binding.unattended())
+        ? agent.unattended
+        : undefined) ?? agent.launch;
+
+    return join(id, agent, binding, launch);
+  }
+
+  async function join(
+    id: string,
+    agent: AcpAgent,
+    binding: Binding,
+    launch: AcpLaunch,
+  ): Promise<{ readonly entry: Live; readonly binding: Binding; readonly agent: AcpProcess }> {
+    const key = JSON.stringify([agent.id, agent.command, binding.env.cwd, launch]);
+    const entry = live.get(id);
     const started = entry?.key === key ? await entry.process.catch(() => undefined) : undefined;
 
-    if (entry === undefined || started === undefined || started.closed) {
-      if (entry !== undefined) forget(entry);
+    if (live.get(id) !== entry) return join(id, agent, binding, launch);
 
-      entry = {
-        key,
-        process: chooseLaunch(agent, binding, signal).then((launch) =>
-          AcpProcess.start(env, agent, launch),
-        ),
-        thread: undefined,
-        known: [],
-      };
-      live.set(id, entry);
+    if (entry !== undefined && started !== undefined && !started.closed) {
+      return { entry, binding, agent: started };
     }
 
-    return { entry, binding, agent: await entry.process };
+    if (entry !== undefined) forget(entry);
+
+    const fresh: Live = {
+      key,
+      process: AcpProcess.start(binding.env, agent, launch),
+      thread: undefined,
+      known: [],
+    };
+
+    live.set(id, fresh);
+
+    return { entry: fresh, binding, agent: await fresh.process };
   }
 
   const respond: Answer = async (route, model, context, request) => {
     const id = request?.sessionId;
 
     if (id === undefined) throw new Error("ACP agents answer inside a Nyte session.");
-    const { entry, binding, agent } = await connect(id, route.agent, request?.signal);
+    const { entry, binding, agent } = await connect(id, route.agent);
     const choice = agentChoice(route, request?.reasoning);
     const messages = context.messages.filter((message) => message.role !== "system");
     const keys = messages.map(messageKey);
@@ -205,12 +220,16 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
     const note = messageKey({ role: "user", content: wakeNote(route.agent.name), timestamp: 0 });
     const woken = keys.at(-1) === note;
 
-    const prompt = messages
-      .slice(first)
-      .flatMap((message) =>
-        message.role === "user" && messageKey(message) !== note ? userBlocks(message, images) : [],
-      );
+    const userContent = (from: number) =>
+      messages
+        .slice(from)
+        .flatMap((message) =>
+          message.role === "user" && messageKey(message) !== note
+            ? userBlocks(message, images)
+            : [],
+        );
 
+    const prompt = userContent(first);
     const current = entry.thread;
 
     const continues =
@@ -244,30 +263,28 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
         request?.signal?.throwIfAborted();
         thread.send(prompt);
       } else if (woken) thread.drainWake();
+    } else if (woken && current !== undefined) {
+      return quietReply(model);
     } else {
       if (current !== undefined) agent.forget(current);
 
       const reattached =
         current === undefined
-          ? await reattach(agent, binding, choice, request?.signal, keys)
+          ? await reattach(agent, binding, choice, request?.signal, messages)
           : undefined;
 
       if (reattached !== undefined) {
         thread = reattached.thread;
+        const missed = userContent(reattached.from);
 
-        const missed = messages
-          .slice(reattached.seen)
-          .flatMap((message) =>
-            message.role === "user" && messageKey(message) !== note
-              ? userBlocks(message, images)
-              : [],
-          );
-
-        thread.send(missed.length > 0 ? missed : [{ type: "text", text: RECONNECTED }]);
+        if (missed.length > 0) thread.send(missed);
+        else thread.drainWake();
       } else {
         if (prompt.length === 0) throw new Error(NOT_RUNNING);
         thread = await ready(agent, binding, choice, request?.signal);
-        const history = transcriptText(messages.slice(0, first));
+        const history = transcriptText(
+          messages.slice(0, first).filter((message) => messageKey(message) !== note),
+        );
 
         thread.send(
           history === ""
@@ -291,12 +308,15 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
       }
 
       entry.known = [...keys, messageKey(message)];
+
+      if (message.stopReason === "toolUse") return;
+
       void binding.storage
         .set(SAVED, {
           agent: agent.agent.id,
           session: thread.session,
-          seen: entry.known.length,
-          digest: digest(entry.known),
+          answered: messages.length,
+          digest: digest(messages),
         })
         .catch(() => undefined);
     });
@@ -308,7 +328,7 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
     const id = request?.sessionId;
 
     if (id === undefined) throw new Error("ACP agents answer inside a Nyte session.");
-    const { binding, agent } = await connect(id, route.agent, request?.signal);
+    const { binding, agent } = await connect(id, route.agent);
     const thread = await ready(
       agent,
       binding,
@@ -317,8 +337,12 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
     );
     const system = getCurrentSystemPrompt(context.messages);
 
+    const note = messageKey({ role: "user", content: wakeNote(route.agent.name), timestamp: 0 });
+
     const conversation = transcriptText(
-      context.messages.filter((message) => message.role !== "system"),
+      context.messages.filter(
+        (message) => message.role !== "system" && messageKey(message) !== note,
+      ),
     );
 
     thread.send([
@@ -348,7 +372,8 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
         api.session.id,
         {
           env: api.env,
-          storage: api.storage.at("session"),
+          storage: api.storage,
+          unattended: () => runsUnattended(api),
           approve: (call, signal) => api.approve(call, signal),
           wake: (agent) =>
             void api.session
@@ -372,51 +397,73 @@ export function acpAgents(agents: readonly AcpAgent[]): readonly Plugin[] {
   ];
 }
 
-/** Takes back the agent's conversation this chat saved, when the chat still starts with what the agent saw. */
 async function reattach(
   agent: AcpProcess,
   binding: Binding,
   choice: AgentChoice,
   signal: AbortSignal | undefined,
-  keys: readonly string[],
-): Promise<{ readonly thread: AcpThread; readonly seen: number } | undefined> {
+  messages: readonly Message[],
+): Promise<{ readonly thread: AcpThread; readonly from: number } | undefined> {
   const saved = await binding.storage.get(SAVED);
 
   if (
     !Value.Check(savedConversation, saved) ||
     saved.agent !== agent.agent.id ||
-    saved.seen > keys.length ||
-    digest(keys.slice(0, saved.seen)) !== saved.digest
+    messages[saved.answered]?.role !== "assistant" ||
+    digest(messages.slice(0, saved.answered)) !== saved.digest
   ) {
     return undefined;
   }
 
-  const thread = await ready(agent, binding, choice, signal, saved.session).catch(() => undefined);
+  const from = saved.answered + 1;
 
-  return thread === undefined ? undefined : { thread, seen: saved.seen };
+  if (messages.slice(from).some((message) => message.role !== "user")) return undefined;
+
+  const thread = await ready(agent, binding, choice, signal, saved.session).catch(
+    (error: unknown) => {
+      if (signal?.aborted === true) throw error;
+
+      return undefined;
+    },
+  );
+
+  return thread === undefined ? undefined : { thread, from };
 }
 
-function digest(keys: readonly string[]): string {
-  return createHash("sha256").update(JSON.stringify(keys)).digest("hex");
+function digest(messages: readonly Message[]): string {
+  return createHash("sha256")
+    .update(JSON.stringify(messages.map((message) => [message.role, message.content])))
+    .digest("hex");
+}
+
+async function runsUnattended(api: PluginApi<"core">): Promise<boolean> {
+  if (await readsOnly(api.session, api.host)) return false;
+
+  const views = api.host.watch()[Symbol.asyncIterator]();
+  const first = await views.next();
+  await views.return?.();
+
+  if (first.done === true) return false;
+
+  const policy = first.value.settings.find(
+    (setting) => setting.id === PERMISSIONS && setting.owner === "approvals",
+  );
+
+  return policy === undefined || policy.value === "full";
+}
+
+function quietReply(model: Model<Api>): AssistantMessageEventStream {
+  const stream = createAssistantMessageEventStream();
+  const output = { ...emptyMessage(model), stopReason: "stop" as const };
+  stream.push({ type: "start", partial: output });
+  stream.push({ type: "done", reason: "stop", message: output });
+  stream.end();
+
+  return stream;
 }
 
 function wakeNote(agent: string): string {
   return `${agent} continued on its own.`;
-}
-
-async function chooseLaunch(
-  agent: AcpAgent,
-  binding: Binding,
-  signal: AbortSignal | undefined,
-): Promise<AcpLaunch> {
-  if (agent.unattended === undefined) return agent.launch;
-
-  const verdict = await binding.approve(
-    { name: agent.name, class: { kind: "custom", label: UNATTENDED } },
-    signal ?? new AbortController().signal,
-  );
-
-  return verdict.kind === "allow" ? agent.unattended : agent.launch;
 }
 
 async function ready(
