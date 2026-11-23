@@ -418,6 +418,9 @@ Response:
                                       },
                                       "retryAfterMs": {
                                         "type": "number"
+                                      },
+                                      "resetsAt": {
+                                        "type": "number"
                                       }
                                     }
                                   }
@@ -472,6 +475,22 @@ Response:
                                 "const": "input"
                               },
                               "message": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "provider", "continuation"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "agent-continued"
+                              },
+                              "provider": {
+                                "type": "string"
+                              },
+                              "continuation": {
                                 "type": "string"
                               }
                             }
@@ -536,6 +555,22 @@ Response:
                                 "const": "input"
                               },
                               "message": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "provider", "continuation"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "agent-continued"
+                              },
+                              "provider": {
+                                "type": "string"
+                              },
+                              "continuation": {
                                 "type": "string"
                               }
                             }
@@ -665,6 +700,22 @@ Response:
                                 "const": "input"
                               },
                               "message": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "provider", "continuation"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "agent-continued"
+                              },
+                              "provider": {
+                                "type": "string"
+                              },
+                              "continuation": {
                                 "type": "string"
                               }
                             }

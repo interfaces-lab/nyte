@@ -213,6 +213,8 @@ export async function compactSession(session: Session, instructions: string): Pr
       return { kind: "sent", note: "Nothing to compact" };
     case "busy":
       return { kind: "refused", message: "Wait for the current run before compacting." };
+    case "provider-managed":
+      return { kind: "sent", note: "This agent manages its own context" };
     default: {
       const _exhaustive: never = outcome;
 

@@ -199,6 +199,7 @@ export async function advance(
     if (
       claimed &&
       !state.undrained.has(name) &&
+      !kernel.providerRuns.held(session, head) &&
       (report?.kind !== "continue" || (state.held.get(name)?.owners.size ?? 0) === 0)
     ) {
       await release(kernel, session, head);
@@ -215,6 +216,11 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   const report = live === null ? null : await settleLive(kernel, session, head, live);
 
   if (report !== null) return report;
+  const continuation = await kernel.providerRuns.start(session, head);
+  if (continuation !== null) {
+    begin(kernel, session, continuation);
+    return (await drive(kernel, session, head, continuation)) ?? next(kernel, session, head);
+  }
   const due = await dueInputs(kernel, session, head);
 
   if (due === null) return { kind: "idle" };
@@ -334,7 +340,12 @@ async function recover(
 async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise<boolean> {
   const live = await liveRun(kernel.store, session, head);
 
-  if (live === null) return (await dueInputs(kernel, session, head)) !== null;
+  if (live === null) {
+    return (
+      (await kernel.providerRuns.pending(session, head)) ||
+      (await dueInputs(kernel, session, head)) !== null
+    );
+  }
 
   return (
     !kernel.executionState.driving.has(live.record.view.id) &&
@@ -527,7 +538,9 @@ async function renewIdle(kernel: Kernel): Promise<void> {
       .run(name, async () => {
         const entry = held.get(name);
 
-        return entry === undefined || entry.owners.size === 0 || advancing.has(name)
+        return entry === undefined ||
+          (entry.owners.size === 0 && !kernel.providerRuns.held(entry.session, entry.head)) ||
+          advancing.has(name)
           ? null
           : claimNow(kernel, entry.session, entry.head);
       })
@@ -948,6 +961,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
   const live = await liveRun(kernel.store, session, head);
 
   if (live === null) {
+    if (await kernel.providerRuns.pending(session, head)) return { kind: "continue" };
     const due = await dueInputs(kernel, session, head);
 
     if (due?.kind === "held") return { kind: "retry", until: due.until };

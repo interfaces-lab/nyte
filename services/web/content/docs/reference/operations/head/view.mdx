@@ -899,6 +899,9 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                           },
                           "retryAfterMs": {
                             "type": "number"
+                          },
+                          "resetsAt": {
+                            "type": "number"
                           }
                         }
                       }
@@ -2090,6 +2093,9 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                       },
                       "retryAfterMs": {
                         "type": "number"
+                      },
+                      "resetsAt": {
+                        "type": "number"
                       }
                     }
                   }
@@ -2371,6 +2377,9 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                                 "type": "string"
                               },
                               "retryAfterMs": {
+                                "type": "number"
+                              },
+                              "resetsAt": {
                                 "type": "number"
                               }
                             }
@@ -2702,6 +2711,9 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                                 },
                                 "retryAfterMs": {
                                   "type": "number"
+                                },
+                                "resetsAt": {
+                                  "type": "number"
                                 }
                               }
                             }
@@ -2756,6 +2768,22 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                           "const": "input"
                         },
                         "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["kind", "provider", "continuation"],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "agent-continued"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "continuation": {
                           "type": "string"
                         }
                       }
@@ -2820,6 +2848,22 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                           "const": "input"
                         },
                         "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["kind", "provider", "continuation"],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "agent-continued"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "continuation": {
                           "type": "string"
                         }
                       }
@@ -2949,6 +2993,22 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                           "const": "input"
                         },
                         "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["kind", "provider", "continuation"],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "agent-continued"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "continuation": {
                           "type": "string"
                         }
                       }
@@ -3200,6 +3260,45 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
             },
             {
               "type": "null"
+            }
+          ]
+        },
+        "occupancy": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind", "usedTokens", "windowTokens"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "measured"
+                },
+                "usedTokens": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "windowTokens": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "unknown"
+                }
+              }
             }
           ]
         }

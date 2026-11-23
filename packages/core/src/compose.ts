@@ -14,6 +14,8 @@ import type { MutableModels } from "@nyte-ai/ai/models";
 import { createCompactor, createSummarizer } from "./agent/compaction.ts";
 import { createRequest } from "./agent/request.ts";
 import { stoppableTool } from "./agent/tool-runner.ts";
+import { createProviderRuns } from "./engine/provider-runs.ts";
+import { createRuntimePolicy } from "./extend/runtime-policy.ts";
 import { createTurnDriver } from "./agent/turn.ts";
 import { createConnection, createHost } from "./api/connection.ts";
 import { createHostState } from "./api/host.ts";
@@ -540,7 +542,15 @@ export function createKernel(input: KernelOptions): Kernel {
   let pages: PageTable | null = null;
   let secretKey: Promise<CryptoKey> | null = null;
 
+  let providerRuns: Kernel["providerRuns"] | undefined;
+  let runtimePolicy: Kernel["runtimePolicy"] | undefined;
   const kernel: Kernel = {
+    get providerRuns() {
+      return (providerRuns ??= createProviderRuns(kernel));
+    },
+    get runtimePolicy() {
+      return (runtimePolicy ??= createRuntimePolicy(kernel));
+    },
     hostId: input.hostId,
     instance: input.instance ?? crypto.randomUUID(),
     presence: input.presence ?? null,

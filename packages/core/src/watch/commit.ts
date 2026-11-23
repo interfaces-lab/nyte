@@ -61,15 +61,17 @@ export async function commit(
   updates: readonly RefUpdate[],
   under: RunScope | null = null,
 ): Promise<SetOutcome> {
+  const prepared = await kernel.providerRuns.history(updates);
   const fenced =
     under === null
-      ? updates
-      : updates.map((update) => ({
+      ? prepared
+      : prepared.map((update) => ({
           ...update,
           fences: [...(update.fences ?? []), liveRef(under.session, under.run)],
         }));
 
   const outcome = await kernel.store.refs.set(fenced);
+  if (outcome.kind === "set") await kernel.providerRuns.committed(prepared);
   dev("store", "refs.set", { names: updates.map(({ name }) => name), outcome });
 
   if (outcome.kind === "fenced" && under !== null) kernel.runs.abort(under.run);

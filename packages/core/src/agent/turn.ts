@@ -15,7 +15,7 @@ import type {
   SessionId,
   Usage,
 } from "@nyte-ai/schema";
-import type { Models } from "@nyte-ai/ai";
+import type { Models, ProviderHeadRequest } from "@nyte-ai/ai";
 import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema/model";
 import { CONTINUE_INTERRUPTED } from "../builtins/interruptions.ts";
 import { LOCAL, PARTICIPANT_AUTHORITY } from "../contract/host.ts";
@@ -68,6 +68,12 @@ import { executeCall } from "./tool-runner.ts";
 import type { ToolIntent } from "./tool-runner.ts";
 import { estimateTranscriptTokens, requestBody } from "./transcript.ts";
 import { followedTrace, startSpan, traced } from "../util/trace.ts";
+import { providerTools } from "./provider-tools.ts";
+import {
+  providerCheckpoint,
+  checkpointSeal,
+  providerLifetime,
+} from "../engine/provider-checkpoint.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
 
 interface AttemptState {
@@ -96,6 +102,7 @@ interface Turn {
 }
 
 interface TurnRequest extends PreparedRequest {
+  readonly execution: ProviderHeadRequest;
   readonly runtime: PluginRuntime;
 }
 
@@ -249,44 +256,6 @@ async function prepareRequest(
     await runtime.ready;
     await awaitMcpServers(kernel, runtime, session, signal);
     const configuration = await resolveHeadConfiguration(kernel, session, head);
-    const configured = modelInfo(models, configuration.model, runtime);
-
-    if (configured === null) {
-      return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
-    }
-    const input = { session, head, run: state.run, configuration };
-
-    const body = () => requestBody(kernel, models, runtime, input);
-
-    const compacting = (
-      built: Awaited<ReturnType<typeof body>>,
-      reason: "threshold" | "overflow",
-    ) =>
-      compact(kernel, models, runtime, {
-        ...input,
-        transcript: built.transcript,
-        info: configured,
-        reason,
-        signal,
-      });
-
-    let built = await body();
-
-    if (asked.overflow !== null) {
-      const recovered = await compacting(built, "overflow");
-
-      if (recovered.kind === "failed") return recovered;
-
-      if (recovered.kind === "skipped") return { kind: "failed", failure: asked.overflow };
-      built = await body();
-    }
-
-    if (estimateTranscriptTokens(built.transcript) > configured.compactAt) {
-      const compacted = await compacting(built, "threshold");
-
-      if (compacted.kind === "compacted") built = await body();
-    }
-
     const request = await runtime.hooks.transform(
       "before_request",
       {
@@ -309,8 +278,89 @@ async function prepareRequest(
       );
     }
 
+    const input = {
+      session,
+      head,
+      run: state.run,
+      configuration: { ...configuration, model: request.model, thinking: request.thinking },
+    };
+
+    const body = () => requestBody(kernel, models, runtime, input);
+
+    const compacting = (
+      built: Awaited<ReturnType<typeof body>>,
+      reason: "threshold" | "overflow",
+    ) =>
+      compact(kernel, models, runtime, {
+        ...input,
+        transcript: built.transcript,
+        info,
+        reason,
+        signal,
+      });
+
+    let built = await body();
+
+    if (
+      asked.overflow !== null &&
+      models.getProvider(model.provider)?.contextManagement !== "provider"
+    ) {
+      const recovered = await compacting(built, "overflow");
+
+      if (recovered.kind === "failed") return recovered;
+
+      if (recovered.kind === "skipped") return { kind: "failed", failure: asked.overflow };
+      built = await body();
+    }
+
+    if (
+      models.getProvider(model.provider)?.contextManagement !== "provider" &&
+      estimateTranscriptTokens(built.transcript) > info.compactAt
+    ) {
+      const compacted = await compacting(built, "threshold");
+
+      if (compacted.kind === "compacted") built = await body();
+    }
+
+    if (
+      asked.overflow !== null &&
+      models.getProvider(model.provider)?.contextManagement === "provider"
+    ) {
+      return { kind: "failed", failure: asked.overflow };
+    }
+    if (
+      state.run.origin.kind === "agent-continued" &&
+      state.run.origin.provider !== model.provider
+    ) {
+      return failedRequest("The agent continuation no longer belongs to this provider.");
+    }
+    const scope = {
+      kind: "head" as const,
+      session,
+      head,
+      run: state.run.id,
+      request:
+        ((
+          await load(
+            kernel.store,
+            await kernel.store.refs.get(runRef(session, state.run.id)),
+            decodeRunRecord,
+          )
+        )?.record.requests ?? 0) + 1,
+      attempt: asked.attempt,
+      origin: state.run.origin,
+      history: built.history,
+      lifetime: providerLifetime(signal),
+    };
+    const execution: ProviderHeadRequest = {
+      ...scope,
+      checkpoint: await providerCheckpoint(kernel, scope, model),
+      tools: providerTools(kernel, runtime, scope, built.transcript.tools),
+      claimContinuation: (id) => kernel.providerRuns.claim(session, head, state.run.id, id),
+    };
     return {
       kind: "request",
+      execution,
       request,
       model,
       info,
@@ -364,6 +414,7 @@ async function streamResponse(
     headers: { ...prepared.request.options.headers },
     maxTokens: prepared.info.maxOutput,
     sessionId: session,
+    execution: prepared.execution,
   });
 
   return {
@@ -421,15 +472,44 @@ async function settleResponse(
           }),
         );
 
+    const partUpdates = await settledParts(context, state.opened);
+    const seal = checkpointSeal(
+      response.prepared.execution,
+      response.prepared.model,
+      response.message,
+    );
+    const last = partUpdates.findLast(
+      (update) => update.name === `sessions/${session}/heads/${head}`,
+    )?.target;
+    const providerSeal =
+      seal === undefined
+        ? record.providerSeal
+        : {
+            ...seal,
+            anchor:
+              last == null ? seal.anchor : { kind: "commit" as const, id: asId<"commit">(last) },
+          };
     return {
-      record: { ...next, response: response.usage, phase: executing ? "executing" : next.phase },
+      record: {
+        ...next,
+        response: response.usage,
+        contextOccupancy: response.message.contextOccupancy,
+        providerSeal,
+        phase: executing ? "executing" : next.phase,
+      },
       events: [
-        requestEvent(head, "assistant", response.usage, response.prepared.info),
+        requestEvent(
+          head,
+          "assistant",
+          response.usage,
+          response.prepared.info,
+          response.message.contextOccupancy,
+        ),
         ...(executing
           ? [{ head, kind: "run", run, change: "phase", phase: "executing" } as const]
           : []),
       ],
-      updates: [...(await settledParts(context, state.opened)), ...intents],
+      updates: [...partUpdates, ...intents],
     };
   });
 

@@ -59,6 +59,7 @@ export async function stopRun(
     return end === null ? { kind: "missing" } : { kind: "settled", outcome: end };
   }
 
+  await kernel.providerRuns.revoke(session, fenced.head, "stop");
   await finishFence(kernel, session, run);
   await stopAwaitedChildRuns(kernel, session, run);
   await kernel.waits.runStopped(session, run);
@@ -108,6 +109,7 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
 
   if (found.record.stopping) return { kind: "stopping", head };
 
+  const current = await readSession(kernel.store, session);
   const [live, inbox, tip] = await Promise.all([
     liveParts(kernel, session, run),
     readInbox(kernel.store, session, head),
@@ -131,6 +133,26 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
         events: [{ head, kind: "run", run, change: "stopping" }],
       },
       { name: liveRef(session, run), target: null },
+      ...(current === null
+        ? []
+        : [
+            {
+              name: current.ref.name,
+              expect: current.ref.revision,
+              target: await put(kernel.store, "session", {
+                ...current.record,
+                heads: current.record.heads.map((entry) =>
+                  entry.name === head
+                    ? {
+                        ...entry,
+                        providerFence: (entry.providerFence ?? 0) + 1,
+                        historyEpoch: (entry.historyEpoch ?? 0) + 1,
+                      }
+                    : entry,
+                ),
+              }),
+            },
+          ]),
       ...stopped,
       { name: inboxRef(session, head), target: rewritten, expect: readRefExpectation(inbox.ref) },
     ],

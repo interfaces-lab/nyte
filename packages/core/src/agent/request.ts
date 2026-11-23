@@ -13,6 +13,7 @@ import type {
   DurableEvent,
   Failure,
   HeadName,
+  ContextOccupancy,
   ModelInfo,
   ModelRequest,
   ModelRequestInput,
@@ -106,6 +107,7 @@ export function requestEvent(
   step: Extract<DurableEvent, { readonly kind: "request" }>["step"],
   usage: Usage,
   info: ModelInfo,
+  occupancy?: ContextOccupancy,
 ): DurableEvent {
   return {
     head,
@@ -114,7 +116,13 @@ export function requestEvent(
     usage,
     step,
     context: {
-      tokens: usage.input + usage.cacheRead + usage.cacheWrite + usage.output,
+      tokens:
+        occupancy?.kind === "measured"
+          ? occupancy.usedTokens
+          : occupancy?.kind === "unknown"
+            ? 0
+            : usage.input + usage.cacheRead + usage.cacheWrite + usage.output,
+      ...(occupancy === undefined ? {} : { occupancy }),
       window: info.contextWindow,
       lastRequest: usage,
     },
@@ -206,6 +214,7 @@ async function exchange(
           headers: { ...request.options.headers },
           maxTokens: input.maxOutput,
           sessionId: session ?? undefined,
+          execution: { kind: "standalone", purpose: "plugin" },
         },
       ),
     );

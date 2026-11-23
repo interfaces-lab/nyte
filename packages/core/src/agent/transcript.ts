@@ -1,6 +1,7 @@
 import { isJsonObject } from "@nyte-ai/schema";
 import type {
   CommitId,
+  ContextOccupancy,
   Configuration,
   HeadName,
   Json,
@@ -8,6 +9,7 @@ import type {
   ModelRef,
   PromptOverride,
   RunId,
+  Position,
   RunView,
   SessionId,
   ToolPartState,
@@ -25,7 +27,7 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@nyte-ai/schema/model";
-import type { Models } from "@nyte-ai/ai";
+import type { Models, ProviderHeadRequest } from "@nyte-ai/ai";
 import { estimateContextTokens, estimateTextTokens } from "@nyte-ai/ai/utils/estimate";
 import { LOCAL } from "../contract/host.ts";
 import type { Kernel, PluginRuntime, ToolSource } from "../contract/kernel.ts";
@@ -37,7 +39,7 @@ import { withFold } from "../watch/reads.ts";
 import { fileContent, userContent } from "./user-content.ts";
 import { THOUGHTS } from "./open-parts.ts";
 import { runRef } from "../store/refs.ts";
-import { load, readPositionCommit, requireSession, START } from "../store/session.ts";
+import { load, readPositionCommit, readTip, requireSession, START } from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
 import { scanResources } from "../extend/resources.ts";
 import { projectSections } from "./project-prompt.ts";
@@ -105,7 +107,11 @@ export async function requestBody(
     readonly run: RunView | null;
     readonly configuration: Configuration;
   },
-): Promise<{ readonly transcript: Transcript; readonly source: ToolSource }> {
+): Promise<{
+  readonly transcript: Transcript;
+  readonly source: ToolSource;
+  readonly history: ProviderHeadRequest["history"];
+}> {
   const { session, head, configuration } = input;
   const run = input.run?.id ?? null;
   const where = { session, head, run, principal: LOCAL };
@@ -146,10 +152,32 @@ export async function requestBody(
   );
 
   const declared = new Set(tools.map((info) => info.name));
+  const found = await requireSession(kernel.store, session);
+  const tip = await readTip(kernel.store, session, head);
+  const position: Position = tip.id === null ? { kind: "start" } : { kind: "commit", id: tip.id };
+  const inputs = await Promise.all(
+    steps.flatMap((step) => {
+      const body = step.record.body;
+      if (body.kind !== "user") return [];
+      return [
+        userContent(kernel, body.content, true).then((content) => ({
+          commit: step.commit,
+          message: body.message,
+          source: body.source,
+          projection: { role: "user" as const, content, timestamp: step.record.at },
+        })),
+      ];
+    }),
+  );
 
   return {
     transcript: { messages: messages.map((message) => markLoads(message, loads, declared)), tools },
     source,
+    history: {
+      epoch: found.record.heads.find((entry) => entry.name === head)?.historyEpoch ?? 0,
+      tip: position,
+      inputs,
+    },
   };
 }
 
@@ -277,6 +305,14 @@ async function buildContext(
         );
 
   const responses = new Map<RunId, Usage>();
+  const occupancies = new Map<RunId, ContextOccupancy>();
+  if (lastRun !== null && ended?.contextOccupancy !== undefined) {
+    occupancies.set(lastRun.id, ended.contextOccupancy);
+  }
+
+  if (live?.record.contextOccupancy !== undefined) {
+    occupancies.set(live.record.view.id, live.record.contextOccupancy);
+  }
 
   if (lastRun !== null && ended?.response !== undefined) responses.set(lastRun.id, ended.response);
 
@@ -290,6 +326,7 @@ async function buildContext(
     run: input.run,
     images: model?.input.includes("image") === true,
     responses,
+    occupancies,
   });
 
   return prompt.head === null ? messages : [prompt.head, ...messages];
@@ -377,6 +414,7 @@ async function conversation(
     readonly run: RunId | null;
     readonly images: boolean;
     readonly responses: ReadonlyMap<RunId, Usage>;
+    readonly occupancies: ReadonlyMap<RunId, ContextOccupancy>;
   },
 ): Promise<Message[]> {
   const steps = input.steps;
@@ -589,7 +627,11 @@ async function conversation(
   const last = messages[answered.at];
 
   if (usage === undefined || last?.role !== "assistant") return messages;
-  const anchored: AssistantMessage = { ...last, usage: modelUsage(usage) };
+  const anchored: AssistantMessage = {
+    ...last,
+    usage: modelUsage(usage),
+    contextOccupancy: input.occupancies.get(answered.run),
+  };
   const commit = projections.get(last);
 
   if (commit !== undefined) projections.set(anchored, commit);

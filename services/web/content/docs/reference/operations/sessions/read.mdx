@@ -513,6 +513,9 @@ None of its own.
                                             },
                                             "retryAfterMs": {
                                               "type": "number"
+                                            },
+                                            "resetsAt": {
+                                              "type": "number"
                                             }
                                           }
                                         }
@@ -567,6 +570,22 @@ None of its own.
                                       "const": "input"
                                     },
                                     "message": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "provider", "continuation"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "agent-continued"
+                                    },
+                                    "provider": {
+                                      "type": "string"
+                                    },
+                                    "continuation": {
                                       "type": "string"
                                     }
                                   }
@@ -631,6 +650,22 @@ None of its own.
                                       "const": "input"
                                     },
                                     "message": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "provider", "continuation"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "agent-continued"
+                                    },
+                                    "provider": {
+                                      "type": "string"
+                                    },
+                                    "continuation": {
                                       "type": "string"
                                     }
                                   }
@@ -760,6 +795,22 @@ None of its own.
                                       "const": "input"
                                     },
                                     "message": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "provider", "continuation"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "agent-continued"
+                                    },
+                                    "provider": {
+                                      "type": "string"
+                                    },
+                                    "continuation": {
                                       "type": "string"
                                     }
                                   }

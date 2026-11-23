@@ -378,7 +378,15 @@ export interface Keybinding {
   readonly command: string;
 }
 
+import type {
+  ProviderRunsApi,
+  RuntimeLaunchPolicy,
+  RuntimePolicyApi,
+  RuntimeScope,
+} from "./provider.ts";
+
 export interface RuntimeCall {
+  readonly scope?: RuntimeScope;
   readonly name: string;
   readonly class: ToolClass;
 }
@@ -391,6 +399,8 @@ export interface SideTable {
   core: {
     api: {
       readonly session: Session;
+      readonly providerRuns: ProviderRunsApi;
+      readonly runtimePolicy: RuntimePolicyApi;
 
       readonly env: ExecutionEnv;
 
@@ -405,6 +415,11 @@ export interface SideTable {
     };
     plugin: {
       readonly environment?: EnvironmentProvider;
+      readonly runtimeLaunchPolicy?: (context: {
+        readonly api: PluginApi<"core">;
+        readonly head: HeadName;
+        readonly signal: AbortSignal;
+      }) => Promise<RuntimeLaunchPolicy>;
       /** A model provider for the whole host, read from built-in and home plugins; a project or chat plugin's is ignored. Its models are offered in every chat, so a provider that needs the chat reads it through its plugin's `activate`. */
       readonly provider?: Provider;
       readonly approve?: (

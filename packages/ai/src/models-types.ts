@@ -87,7 +87,10 @@ export type ModelsDeferredFetchOptions = DeferredFetchOptions & ModelsRequestTra
 
 export type ModelsDeferredCancelOptions = DeferredCancelOptions & ModelsRequestTransforms;
 
+export type ProviderContextManagement = "nyte" | "provider";
+
 export interface Provider<TApi extends Api = Api> {
+  readonly contextManagement?: ProviderContextManagement;
   readonly id: string;
   readonly name: string;
 

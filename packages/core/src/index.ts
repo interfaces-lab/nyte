@@ -113,6 +113,16 @@ export { changesSince, readWindow } from "./watch/window.ts";
 
 export type { Machine } from "./contract/presence.ts";
 
+export type {
+  ProviderHeadRegistration,
+  ProviderRunsApi,
+  ProviderRevocation,
+  RuntimeLaunchPolicy,
+  RuntimeScope,
+  RuntimePolicyGrant,
+  RuntimePolicyApi,
+} from "./contract/provider.ts";
+
 export type { OsProcess } from "./contract/records.ts";
 
 export type {

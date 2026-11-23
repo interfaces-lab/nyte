@@ -17,6 +17,8 @@ import {
   decodeRunRecord,
   decodeSeenRecord,
   decodeSessionRecord,
+  decodeProviderCheckpointRecord,
+  decodeProviderContinuationRecord,
   decodeTrustRecord,
   decodeWorkspaceRecord,
   loggedEvent,
@@ -44,6 +46,8 @@ type Decode = (object: Json | null) => object | null;
 const DECODERS = new Map<string, Decode>(
   Object.entries({
     session: decodeSessionRecord,
+    "provider-checkpoint": decodeProviderCheckpointRecord,
+    "provider-continuation": decodeProviderContinuationRecord,
     commit: decodeCommitRecord,
     inbox: decodeInboxRecord,
     run: decodeRunRecord,

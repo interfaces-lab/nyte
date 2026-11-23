@@ -144,6 +144,9 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
     await runtime.ready;
     const configuration = await resolveHeadConfiguration(kernel, session, head);
     const { model } = configuration;
+    if (models.getProvider(model.provider)?.contextManagement === "provider") {
+      return { kind: "provider-managed" };
+    }
     const info = modelInfo(models, model, runtime);
 
     if (info === null) {

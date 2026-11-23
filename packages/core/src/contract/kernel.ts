@@ -91,7 +91,11 @@ export interface HostChange {
   readonly sessions: readonly SessionId[];
 }
 
+import type { ProviderRunsTable, RuntimePolicyTable } from "./provider.ts";
+
 export interface Kernel {
+  readonly providerRuns: ProviderRunsTable;
+  readonly runtimePolicy: RuntimePolicyTable;
   readonly hostId: HostId;
 
   readonly instance: string;
@@ -308,6 +312,7 @@ export interface Compactor {
   }): Promise<
     | { readonly kind: "started"; readonly message: MessageId }
     | { readonly kind: "nothing-to-compact" }
+    | { readonly kind: "provider-managed" }
   >;
 }
 

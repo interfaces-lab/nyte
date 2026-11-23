@@ -245,6 +245,13 @@ export default {
   id: "approvals",
   contribute: { parts: [approval], settings: [permissions] },
   approve: approveRuntimeCall,
+  async runtimeLaunchPolicy(context) {
+    if (await readsOnly(context.api.session, context.api.host)) {
+      return { kind: "denied", reason: READ_ONLY };
+    }
+
+    return (await readPolicy(context.api)) === "full" ? { kind: "unattended" } : { kind: "gated" };
+  },
   hooks: {
     offer_tools: async (tools, context) => {
       if (!(await readsOnly(context.api.session, context.api.host))) return tools;

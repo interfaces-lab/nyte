@@ -283,7 +283,9 @@ export async function agentLoop<P extends PreparedRequest>(
         input.source.kind === "answer",
     );
 
-    if (calls.length === 0 && !asked) return { reason: "done", usage };
+    if (calls.length === 0 && !asked && message.providerBoundary === undefined) {
+      return { reason: "done", usage };
+    }
   }
 }
 

@@ -17,6 +17,8 @@ export {
   decodeRunRecord,
   decodeSeenRecord,
   decodeSessionRecord,
+  decodeProviderCheckpointRecord,
+  decodeProviderContinuationRecord,
   decodeTrustRecord,
   decodeWorkspaceRecord,
   envelope,

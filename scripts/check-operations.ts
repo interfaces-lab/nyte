@@ -112,7 +112,8 @@ function updateLock(): void {
   ) {
     return;
   }
-  const next: Lock = { revision: API_REVISION, operations: digests };
+
+  const next = { revision: API_REVISION, operations: digests };
   writeFileSync(lockPath, `${JSON.stringify(next, null, 2)}\n`);
 }
 

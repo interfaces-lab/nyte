@@ -145,6 +145,7 @@ async function storeHostValue(
   const trust = id === WORKSPACE_TRUST ? await readTrust(kernel) : null;
 
   await commit(kernel, [{ name, target: await put(kernel.store, "kv", stored) }]);
+  await kernel.runtimePolicy.revoke(null);
   changed(kernel, id, null);
 
   if (trust !== null) void trustChanged(kernel, trust).catch(() => undefined);
@@ -273,7 +274,15 @@ export async function configure(
     const record = {
       ...current.record,
       heads: current.record.heads.map((other) =>
-        other.name === head ? { ...other, selected: resolved } : other,
+        other.name === head
+          ? {
+              ...other,
+              selected: resolved,
+              historyEpoch:
+                (other.historyEpoch ?? 0) +
+                (patch.model !== undefined || patch.agent !== undefined ? 1 : 0),
+            }
+          : other,
       ),
     };
 
@@ -296,6 +305,11 @@ export async function configure(
   });
 
   if (configured.kind === "refused") return configured.outcome;
+
+  await kernel.runtimePolicy.revoke(session);
+  if (patch.model !== undefined || patch.agent !== undefined) {
+    await kernel.providerRuns.revoke(session, head, "route");
+  }
 
   if (configured.ids.length > 0) await settingsConfigured(kernel, session, configured.ids);
   const ref = await kernel.store.refs.get(headRef(session, head));

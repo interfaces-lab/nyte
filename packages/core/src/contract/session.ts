@@ -1,3 +1,4 @@
+import type { RuntimeScope } from "./provider.ts";
 import type {
   CommandCompletion,
   CommandOutcome,
@@ -145,7 +146,12 @@ export interface Session extends Head {
   readonly parts: {
     create<K extends PartDefinition>(
       kind: K,
-      input: { readonly state: PartState<K>; readonly placement: Placement; readonly id?: PartId },
+      input: {
+        readonly state: PartState<K>;
+        readonly placement: Placement;
+        readonly id?: PartId;
+        readonly runtimeScope?: RuntimeScope;
+      },
     ): Promise<Part<K>>;
   };
 
@@ -221,5 +227,6 @@ export interface Head {
     | { readonly kind: "started"; readonly message: MessageId }
     | { readonly kind: "busy"; readonly run: RunId }
     | { readonly kind: "nothing-to-compact" }
+    | { readonly kind: "provider-managed" }
   >;
 }

@@ -41,6 +41,8 @@ export function stepPluginApi(
 ): PluginApi<"core"> {
   return {
     side: api.side,
+    providerRuns: api.providerRuns,
+    runtimePolicy: api.runtimePolicy,
     host: kernel.handles.connection(context),
     registries: api.registries,
     storage: api.storage,
@@ -78,6 +80,8 @@ export function build(
 
   return {
     side: "core",
+    providerRuns: kernel.providerRuns.api(session, owner, input.signal),
+    runtimePolicy: kernel.runtimePolicy.api(session, owner, input.signal),
     host: kernel.handles.connection(CORE_CONTEXT),
     registries: input.registries,
     storage: createPluginStorage(kernel, { owner, session }),

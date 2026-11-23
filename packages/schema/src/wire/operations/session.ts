@@ -237,6 +237,7 @@ export const SESSION_OPERATIONS = {
         Type.Object({ kind: Type.Literal("started"), message: idSchema<"message">() }),
         Type.Object({ kind: Type.Literal("busy"), run: idSchema<"run">() }),
         Type.Object({ kind: Type.Literal("nothing-to-compact") }),
+        Type.Object({ kind: Type.Literal("provider-managed") }),
       ]),
     ),
   },

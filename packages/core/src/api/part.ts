@@ -1,3 +1,4 @@
+import type { RuntimeScope } from "../contract/provider.ts";
 import { asId, isJson, isJsonObject, SdkError, standard } from "@nyte-ai/schema";
 import type {
   CallId,
@@ -63,7 +64,12 @@ export async function createPart<K extends PartDefinition>(
   context: ConnectionContext,
   session: SessionId,
   kind: K,
-  input: { readonly state: unknown; readonly placement: Placement; readonly id?: PartId },
+  input: {
+    readonly state: unknown;
+    readonly placement: Placement;
+    readonly id?: PartId;
+    readonly runtimeScope?: RuntimeScope;
+  },
 ): Promise<Part<K>> {
   const origin = context.origin;
   const from = origin?.session === session ? origin : null;
@@ -125,7 +131,16 @@ export async function createPart<K extends PartDefinition>(
 
   const id = typeof acquired === "string" ? asId<"part">(acquired) : minted;
   const transcript = input.placement.kind === "transcript";
-  const run = input.placement.kind === "modal" ? (from?.run ?? null) : null;
+  const run =
+    input.placement.kind === "modal"
+      ? input.runtimeScope?.activity.kind === "run"
+        ? input.runtimeScope.activity.id
+        : (from?.run ?? null)
+      : null;
+  if (input.runtimeScope !== undefined && !context.authority.has("owner")) {
+    throw new SdkError("denied", "Runtime parts require trusted scope.");
+  }
+
   const name = partRef(session, id);
 
   const landedBefore =
