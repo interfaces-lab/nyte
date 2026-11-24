@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.2 — 2026-11-24
+
+- Language features in Nyte Code: completions, inline diagnostics and code actions, links, colours, linked editing, range formatting and rename edits. The host routes each request to a server that offers it and downloads a missing server when asked. New servers: clangd, jdtls, rust-analyzer, sourcekit-lsp, ruby-lsp, lua-language-server, ty, Ruff, Tombi, marksman, yaml, JSON, CSS, HTML, bash with shellcheck, postgres and ESLint. New grammars for C and C++, Java, Lua, Ruby, SQL, Swift and TOML.
+- The Code window's editor is its main area. Terminals and browsers open in a bottom dock (Ctrl+backtick). The sidebar switches between Files, Search and Changes. Changes commits the checked files without touching git's staging, can commit and push or open a pull request, and retries a failed push. Shift+Cmd+P opens a command palette, Cmd+N names a new file, and a status bar shows the branch and caret.
+- Built-in Debug and Autoresearch modes, toggled with /name or Shift+Tab. A plugin's chat switch shows as a composer mode.
+- A folder's trust is decided once on the host, with an offer to trust its parent.
+- A chat whose folder is gone stays, and can be forked into another folder.
+- Workspace storage can be scanned and cleaned.
+- Provider quotas show when they reset.
+- ACP agents run through durable provider requests, with dialects and forms.
+
 ## v0.0.29 — 2026-11-09
 
 ### Fixes
