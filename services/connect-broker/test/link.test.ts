@@ -252,7 +252,7 @@ describe("linking a desktop", () => {
   it("rate-limits links per owner", async () => {
     const statuses: number[] = [];
 
-    for (let index = 0; index < 11; index += 1)
+    for (let index = 0; index < 11; index += 1) {
       statuses.push(
         (
           await harness.send({
@@ -265,6 +265,7 @@ describe("linking a desktop", () => {
           })
         ).status,
       );
+    }
 
     expect(statuses.slice(0, 10).every((status) => status === 400)).toBe(true);
     expect(statuses[10]).toBe(429);

@@ -17,17 +17,11 @@ const execute = promisify(execFile);
 
 export type AgentRegistration = Electron.LoginItemSettings["status"];
 
-export interface ServingHost {
-  readonly pid: number;
-  readonly own: boolean;
-}
-
 export interface HostAgent {
   readonly label: string;
   start(): Promise<AgentRegistration>;
   registration(): Promise<AgentRegistration>;
   pid(): Promise<number | null>;
-  serving(): Promise<ServingHost | null>;
   restart(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -46,16 +40,6 @@ export function hostAgent(options: HostAgentOptions): HostAgent {
   if (process.platform !== "darwin") return detachedHost(options);
 
   return options.build === null ? developmentAgent(options) : loginItemAgent(options);
-}
-
-export async function processStarted(pid: number): Promise<number | null> {
-  const printed = await execute("ps", ["-o", "lstart=", "-p", String(pid)], {
-    env: { ...process.env, LC_ALL: "C" },
-  }).catch(() => null);
-
-  const started = printed === null ? Number.NaN : Date.parse(printed.stdout.trim());
-
-  return Number.isNaN(started) ? null : started;
 }
 
 function loginItemAgent(options: HostAgentOptions): HostAgent {
@@ -77,7 +61,6 @@ function loginItemAgent(options: HostAgentOptions): HostAgent {
     },
     registration,
     pid: () => launchdPid(job.label),
-    serving: () => servingHost(options.nyteHome, job.label),
     restart: () => replaceHost(options, job.label),
     async stop() {
       app.setLoginItemSettings({ ...service, openAtLogin: false });
@@ -123,7 +106,6 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
     start,
     registration: async () => ((await loaded()) ? "enabled" : "not-registered"),
     pid: () => launchdPid(label),
-    serving: () => servingHost(options.nyteHome, label),
     async restart() {
       await start();
       await replaceHost(options, label);
@@ -144,12 +126,6 @@ async function replaceHost(options: HostAgentOptions, label: string): Promise<vo
   }
 
   await kickstart(label);
-}
-
-async function servingHost(nyteHome: string, label: string): Promise<ServingHost | null> {
-  const pid = await servedPid(nyteHome);
-
-  return pid === null ? null : { pid, own: pid === (await launchdPid(label)) };
 }
 
 async function servedPid(nyteHome: string): Promise<number | null> {
@@ -203,11 +179,6 @@ function detachedHost(options: HostAgentOptions): HostAgent {
     start,
     registration: async () => (process.platform === "win32" ? "not-found" : "enabled"),
     pid,
-    async serving() {
-      const running = await pid();
-
-      return running === null ? null : { pid: running, own: false };
-    },
     async restart() {
       await stop();
 
@@ -218,8 +189,9 @@ function detachedHost(options: HostAgentOptions): HostAgent {
 }
 
 async function stopped(pid: () => Promise<number | null>): Promise<void> {
-  for (let attempt = 0; attempt < 50 && (await pid()) !== null; attempt++)
+  for (let attempt = 0; attempt < 50 && (await pid()) !== null; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 function appId(options: HostAgentOptions): string {
@@ -234,7 +206,7 @@ async function bootstrap(path: string): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     const failed = await execute("launchctl", ["bootstrap", domain(), path]).then(
       () => null,
-      (cause: unknown) => cause,
+      (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause), { cause })),
     );
 
     if (failed === null) return;

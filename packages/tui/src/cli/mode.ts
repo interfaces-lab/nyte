@@ -50,8 +50,9 @@ export function resolvePresentation(
 
   if (noColor !== undefined && noColor !== "") return { rich, color: false };
 
-  if (forceColor !== undefined)
+  if (forceColor !== undefined) {
     return { rich, color: forceColor !== "0" && forceColor !== "false" };
+  }
 
   return { rich, color: rich };
 }

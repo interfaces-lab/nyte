@@ -68,7 +68,7 @@ export function selectQuestionAnswer(
   value: string,
   typed: boolean,
 ): QuestionFieldDraft {
-  if (field.kind === "multiple")
+  if (field.kind === "multiple") {
     return typed
       ? { ...field, customText: value, customSelected: true }
       : {
@@ -77,6 +77,7 @@ export function selectQuestionAnswer(
             ? field.options.filter((option) => option !== value)
             : [...field.options, value],
         };
+  }
 
   return {
     ...field,
@@ -89,10 +90,11 @@ export function collectQuestionAnswers(draft: QuestionDraft): QuestionAnswers {
   return draft.fields.map((field) => {
     const custom = field.customText.trim();
 
-    if (field.kind === "multiple")
+    if (field.kind === "multiple") {
       return [
         ...new Set([...field.options, ...(field.customSelected && custom !== "" ? [custom] : [])]),
       ];
+    }
 
     if (field.selection.kind === "option") return [field.selection.value];
 

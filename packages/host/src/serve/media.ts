@@ -12,12 +12,12 @@ const MAX_LINKS = 256;
 
 const CHUNK = 256 * 1024;
 
-type Link = {
+interface Link {
   readonly path: string;
   readonly mime: string;
   readonly principal: PrincipalId;
   readonly used: number;
-};
+}
 
 export interface MediaLinks {
   issue(path: string, principal: PrincipalId): Promise<string>;
@@ -32,8 +32,9 @@ export function createMediaLinks(): MediaLinks {
     links.delete(token);
     links.set(token, link);
 
-    for (const [held, kept] of links)
+    for (const [held, kept] of links) {
       if (links.size > MAX_LINKS || link.used - kept.used > IDLE_MS) links.delete(held);
+    }
   };
 
   return {
@@ -71,8 +72,9 @@ export function createMediaLinks(): MediaLinks {
       const size = stats.size;
       const range = parseRange(header, size);
 
-      if (range?.kind === "unsatisfiable")
+      if (range?.kind === "unsatisfiable") {
         return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+      }
       const start = range?.start ?? 0;
       const end = range?.end ?? size - 1;
 

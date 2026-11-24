@@ -218,11 +218,12 @@ test("a design file that throws shows its error in the design list, and the othe
   await expect(tab.frame("Phase card")).toBeVisible();
   await expect(tab.frame("Tonight").getByText("Low tide, slow water")).toBeVisible();
 
-  for (const name of ["Tonight", "Phase card", "Controls"])
+  for (const name of ["Tonight", "Phase card", "Controls"]) {
     await expect(
       tab.list.getByRole("button", { name, exact: true }).getByRole("img"),
       `${name} shows no error`,
     ).toHaveCount(0);
+  }
   expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
 });
 

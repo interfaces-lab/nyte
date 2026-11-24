@@ -14,11 +14,12 @@ import type {
 } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core/client";
 import type { RequestJournal } from "@nyte-ai/core";
+import { linkLost } from "@nyte-ai/protocol";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "../connection/rows.ts";
-import { backoff, httpRetryDelay } from "../connection/rows.ts";
+import { untilOpen } from "../live/link.ts";
 import { parsed } from "../connection/receipts.ts";
-import { listenerSet } from "../live/store.ts";
+import { listenerSet, retryDelay } from "../live/store.ts";
 import type { Live } from "../live/store.ts";
 
 /**
@@ -41,7 +42,7 @@ export interface JournalLoop {
   expired(session: SessionId, head: HeadName): readonly Message["id"][];
   resend(session: SessionId, message: Message["id"]): Promise<boolean>;
   discard(session: SessionId, message: Message["id"]): Promise<boolean>;
-  sending(id: ReceiptId): Sending | null;
+  held(id: ReceiptId): Promise<Sending>;
   subscribe(listener: () => void): Disposer;
   readonly refused: RefusedSends;
 }
@@ -80,7 +81,7 @@ type Sent = OperationOutput<"head.send">;
 
 type Landed = Pick<SessionView, "messages" | "queue" | "leadingPrompt">;
 
-type Held = {
+interface Held {
   entry: JournalEntry;
   attempts: number;
   retrying: { readonly at: number; readonly reason: string } | null;
@@ -89,7 +90,7 @@ type Held = {
   expired: boolean;
   discarded: AbortController;
   unanswered: Unanswered | null;
-};
+}
 
 /**
  * Returns a journal over `storage`, in memory by default. Each entry is stored under its host and
@@ -160,16 +161,14 @@ function readEntry(text: string): JournalEntry | null {
 
 export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): JournalLoop {
   const held = new Map<string, Held>();
+  const waiting = new Map<string, PromiseWithResolvers<Sending>>();
   const writes = new Map<string, Promise<void>>();
   const tails = new Map<string, Promise<void>>();
   const shown = new Map<string, number>();
-  const listeners = new Set<() => void>();
+  const listeners = listenerSet();
   const refusals = listenerSet();
   let refused: readonly RefusedSend[] = [];
-
-  const changed = (): void => {
-    for (const listener of listeners) listener();
-  };
+  const changed = listeners.notify;
 
   const attempt = async (entry: JournalEntry): Promise<Sent | typeof EXPIRED> => {
     const { id, session, head, content, options } = entry;
@@ -198,12 +197,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
         if (!discarded.aborted) return sent;
         await rows.call("receipt.stop", { session, receipt: id });
       } catch (error) {
-        const closing = rows.link.signal.aborted;
+        const closing = rows.link.closed.aborted || rows.link.snapshot().kind === "refused";
 
-        if (
-          closing ||
-          !(error instanceof SdkError && (error.code === "unavailable" || error.code === "stale"))
-        ) {
+        if (closing || !linkLost(error)) {
           if (!closing) await journal.remove(id);
           current.unanswered ??= closing ? "kept" : "dropped";
           held.delete(id);
@@ -213,11 +209,11 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
         }
 
         current.attempts += 1;
-        const delay = httpRetryDelay(current.attempts);
+        const delay = retryDelay(current.attempts - 1);
         dev("sdk", "send retrying", { receipt: id, attempts: current.attempts, delay });
         current.retrying = { at: Date.now() + delay, reason: error.message };
         changed();
-        await backoff(rows.link, delay, AbortSignal.any([rows.link.signal, discarded]));
+        await untilOpen(rows.link, delay, AbortSignal.any([rows.link.closed, discarded]));
       }
     }
 
@@ -240,7 +236,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
     const all = [...held.values()];
 
     const later = all
-      .slice(all.findIndex((row) => row === current) + 1)
+      .slice(all.indexOf(current) + 1)
       .filter(
         ({ entry }) =>
           entry.session === current.entry.session &&
@@ -248,8 +244,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
           entry.options.replace === target,
       );
 
-    for (const row of later)
+    for (const row of later) {
       row.entry = { ...row.entry, options: { ...row.entry.options, replace: message } };
+    }
 
     await Promise.all(later.map((row) => journal.put(row.entry)));
   };
@@ -289,6 +286,8 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
       if (tails.get(key) === tail) tails.delete(key);
     });
     held.set(entry.id, current);
+    waiting.get(entry.id)?.resolve({ unanswered: () => current.unanswered });
+    waiting.delete(entry.id);
     changed();
 
     return sent;
@@ -330,8 +329,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
       const slot = slots.get(target) ?? target;
       shown.set(slot, current);
 
-      if (current.answered !== null && current.answered !== target)
+      if (current.answered !== null && current.answered !== target) {
         slots.set(current.answered, slot);
+      }
     }
 
     return shown;
@@ -358,7 +358,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
 
       const tail = written.then(
         () => undefined,
-        () => undefined,
+        () => {
+          waiting.delete(entry.id);
+        },
       );
 
       writes.set(key, tail);
@@ -390,8 +392,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
           entry.session !== session ||
           entry.head !== head ||
           (!ids.has(answered) && answeredAfter !== null && seq <= answeredAfter)
-        )
+        ) {
           continue;
+        }
         held.delete(receipt);
         journal
           .remove(current.entry.id)
@@ -434,18 +437,16 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
 
       return gone.length > 0;
     },
-    sending(id) {
+    held(id) {
       const current = held.get(id);
 
-      return current === undefined ? null : { unanswered: () => current.unanswered };
-    },
-    subscribe(listener) {
-      listeners.add(listener);
+      if (current !== undefined) return Promise.resolve({ unanswered: () => current.unanswered });
+      const known = waiting.get(id) ?? Promise.withResolvers<Sending>();
+      waiting.set(id, known);
 
-      return () => {
-        listeners.delete(listener);
-      };
+      return known.promise;
     },
+    subscribe: listeners.subscribe,
     refused: {
       subscribe: refusals.subscribe,
       snapshot: () => refused,

@@ -139,74 +139,11 @@ export type ServerConnectOutcome =
   | { readonly kind: "connected"; readonly baseUrl: string; readonly version: string }
   | { readonly kind: "failed"; readonly message: string };
 
-export type RemoteReach = RemoteAccessPluginId;
-
-export type RemoteAccessPluginId = "cloudflare";
-
 export type TailnetNode = TailnetStatus | { readonly state: "unavailable" };
 
-export interface CloudflareTunnelSettings {
-  readonly hostname: string;
-  readonly port: number;
-  readonly tunnelToken: string;
+export interface RemoteAccessState {
+  readonly tailnet: TailnetNode;
 }
-
-export interface RemoteDevice {
-  readonly id: string;
-  readonly name: string;
-  readonly createdAt: number;
-  readonly state:
-    | { readonly kind: "pending"; readonly expiresAt: number }
-    | { readonly kind: "paired"; readonly pairedAt: number };
-}
-
-export type TunnelFailure = "ingress_mismatch" | "ingress_unverified" | "exited";
-
-export type TunnelConnection =
-  | { readonly kind: "stopped" }
-  | { readonly kind: "connecting" }
-  | { readonly kind: "connected"; readonly connections: number }
-  | { readonly kind: "retrying"; readonly attempt: number }
-  | { readonly kind: "failed"; readonly reason: TunnelFailure };
-
-export type CloudflareTunnelView =
-  | { readonly kind: "unregistered" }
-  | { readonly kind: "unavailable" }
-  | { readonly kind: "unconfigured"; readonly cloudflaredInstalled: boolean }
-  | {
-      readonly kind: "configured";
-      readonly hostname: string;
-      readonly port: number;
-      readonly cloudflaredInstalled: boolean;
-      readonly connection: TunnelConnection;
-      readonly devices: readonly RemoteDevice[];
-    };
-
-export interface RemotePairing {
-  readonly deviceId: string;
-  readonly address: string;
-  readonly token: string;
-  readonly expiresAt: number;
-}
-
-export type ServedTarget =
-  | { readonly kind: "home" }
-  | { readonly kind: "project"; readonly workspace: SelectedWorkspace };
-
-export type RemoteAccessState =
-  | {
-      readonly kind: "off";
-      readonly tailnet: TailnetNode;
-      readonly cloudflare: CloudflareTunnelView;
-    }
-  | {
-      readonly kind: "serving";
-      readonly reach: RemoteAccessPluginId;
-      readonly address: string;
-      readonly target: ServedTarget;
-      readonly tailnet: TailnetNode;
-      readonly cloudflare: CloudflareTunnelView;
-    };
 
 import type { ConnectView } from "@nyte-ai/connect";
 
@@ -562,12 +499,6 @@ export interface HostBridge {
   };
   remote: {
     state(): Promise<RemoteAccessState>;
-    start(input: { reach: RemoteReach }): Promise<RemoteAccessState>;
-    stop(): Promise<void>;
-    configure(input: { plugin: RemoteAccessPluginId } & CloudflareTunnelSettings): Promise<void>;
-    clear(input: { plugin: RemoteAccessPluginId }): Promise<void>;
-    pair(input: { plugin: RemoteAccessPluginId; name: string }): Promise<RemotePairing>;
-    revoke(input: { plugin: RemoteAccessPluginId; deviceId: string }): Promise<void>;
     configureTailnet(input: { enabled: boolean }): Promise<void>;
     signOutTailnet(): Promise<void>;
   };
@@ -586,7 +517,7 @@ export interface HostBridge {
   }) => Promise<number | undefined>;
   readonly browser?: BrowserBridge;
   readonly attention?: AttentionBridge;
-  readonly setWorkspacePath?: (path: string | null) => void;
+  readonly setWorkspace?: (workspace: SelectedWorkspace | null) => void;
   readonly setUnsavedEdits?: (held: boolean) => void;
   /** Focuses the app's window on this workspace, or opens one beside this window, and lands it on the subject. */
   readonly switchApp?: (input: {
@@ -594,6 +525,7 @@ export interface HostBridge {
     readonly workspace: SelectedWorkspace | null;
     readonly subject: ArrivalSubject | null;
   }) => Promise<void>;
+  readonly openSettings?: (input: { readonly page?: string }) => Promise<void>;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 

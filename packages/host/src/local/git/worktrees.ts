@@ -85,7 +85,11 @@ type Git = (
   env?: Readonly<Record<string, string>>,
 ) => Promise<string>;
 
-type Repository = { readonly root: string; readonly gitDir: string; readonly prefix: string };
+interface Repository {
+  readonly root: string;
+  readonly gitDir: string;
+  readonly prefix: string;
+}
 
 function gitCommand(binary = "git"): Git {
   return async (cwd, args, env) => {
@@ -94,8 +98,9 @@ function gitCommand(binary = "git"): Git {
       env: { ...ENV, ...env },
     });
 
-    if (ran.code !== 0)
+    if (ran.code !== 0) {
       throw new SdkError("unavailable", ran.stderr.trim() || `git ${args[0] ?? ""} failed.`);
+    }
 
     return ran.stdout.toString("utf8");
   };
@@ -182,8 +187,9 @@ export function localWorktrees(options?: {
         newline > 0 &&
         entry.slice(newline + 1) === name &&
         (await hasBranch(root, branch, options))
-      )
+      ) {
         return branch;
+      }
     }
 
     return null;
@@ -203,8 +209,9 @@ export function localWorktrees(options?: {
       if (
         listed.some((worktree) => worktree.path === folder) ||
         (await stat(folder).catch(() => null)) !== null
-      )
+      ) {
         continue;
+      }
 
       const [created] = await Promise.allSettled([
         git(root, ["branch", "--no-track", branch, head]),
@@ -241,18 +248,20 @@ export function localWorktrees(options?: {
     async create(env, input) {
       const repo = await readRepository(git, env.cwd);
 
-      if (repo === null)
+      if (repo === null) {
         throw new SdkError(
           "unavailable",
           `${env.cwd} is not in a git repository, so it cannot have a worktree.`,
         );
+      }
       const head = await commitAt(repo.root, "HEAD");
 
-      if (head === null)
+      if (head === null) {
         throw new SdkError(
           "unavailable",
           `${repo.root} has no commits yet, so a worktree has nothing to branch from.`,
         );
+      }
 
       const below = (root: string): WorkspaceTarget => ({
         kind: "local",
@@ -263,12 +272,13 @@ export function localWorktrees(options?: {
       const claimed = await findClaimedBranch(repo.root, input.name);
       const open = listed.find((worktree) => claimed !== null && worktree.branch === claimed);
 
-      if (claimed !== null && open !== undefined)
+      if (claimed !== null && open !== undefined) {
         return {
           target: below(open.path),
           branch: claimed,
           base: (await commitAt(repo.root, `refs/heads/${claimed}`)) ?? head,
         };
+      }
 
       const parent = join(folders, basename(repo.root));
       await mkdir(parent, { recursive: true });
@@ -293,8 +303,9 @@ export function localWorktrees(options?: {
     async remove(worktree) {
       const path = "path" in worktree.target ? worktree.target.path : null;
 
-      if (path === null || (await stat(path).catch(() => null)) === null)
+      if (path === null || (await stat(path).catch(() => null)) === null) {
         return { folder: "removed", branch: "kept" };
+      }
       const [root = path, common = ""] = (
         await git(path, [
           "rev-parse",
@@ -310,12 +321,14 @@ export function localWorktrees(options?: {
         status
           .split("\0")
           .some((entry) => entry !== "" && !(entry.startsWith("!! ") && entry.endsWith("/")))
-      )
+      ) {
         return { folder: "kept", branch: "kept" };
+      }
       await git(common, ["worktree", "remove", root]);
 
-      if ((await commitAt(common, `refs/heads/${worktree.branch}`)) !== worktree.base)
+      if ((await commitAt(common, `refs/heads/${worktree.branch}`)) !== worktree.base) {
         return { folder: "removed", branch: "kept" };
+      }
       await git(common, ["branch", "-D", worktree.branch]);
 
       return { folder: "removed", branch: "deleted" };

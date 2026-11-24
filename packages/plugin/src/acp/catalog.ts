@@ -16,22 +16,17 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { executable, findOnPath } from "../find-on-path.ts";
-import { AcpProcess, choices, findOption } from "./connection.ts";
-import type { AgentChoice } from "./connection.ts";
-import { ACP_API } from "./translate.ts";
+import { AgentProcess, choices, findOption } from "./process.ts";
+import type { AgentChoice } from "./process.ts";
+import { ACP_API } from "./projection.ts";
 
-const PROBE_TIMEOUT_MS = 5_000;
+const PROBE_TIMEOUT_MS = 5000;
 
 const PROBE_TTL_MS = 86_400_000;
 
-export interface AcpAgent {
-  readonly id: string;
-  readonly name: string;
-  readonly command: string;
-  readonly args: readonly string[];
-  readonly env: Readonly<Record<string, string>>;
-  readonly mode?: string;
-}
+import type { AcpAgent } from "./profiles.ts";
+
+export type { AcpAgent, AcpLaunch } from "./profiles.ts";
 
 export interface AgentRoute {
   readonly model: Model<Api>;
@@ -64,13 +59,15 @@ export async function agentCatalog(
   if (command === undefined) return { routes: [] };
   const launched = { ...agent, command };
   const binary = await stat(await realpath(command));
+
   const launch = JSON.stringify([
     command,
-    agent.args,
-    agent.mode ?? null,
+    agent.launch.args,
+    agent.launch.mode ?? null,
     binary.mtimeMs,
     binary.size,
   ]);
+
   const kept = restore(context.stored, launch);
 
   const fresh =
@@ -131,22 +128,16 @@ function agentRoutes(agent: AcpAgent, models: readonly AgentModel[]): readonly A
 async function probe(agent: AcpAgent, signal: AbortSignal): Promise<readonly AgentModel[]> {
   const stop = AbortSignal.any([signal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]);
   stop.throwIfAborted();
-  const running = AcpProcess.spawn(agent, tmpdir());
+  const running = AgentProcess.spawn(agent, tmpdir());
 
-  const abort = () =>
-    running.close(
-      new Error(`${agent.name} didn't list its models in time.`, { cause: stop.reason }),
-    );
+  const abort = () => void running.close();
 
   stop.addEventListener("abort", abort, { once: true });
 
   try {
-    const thread = await running.open(tmpdir(), async () => ({
-      kind: "deny",
-      reason: "Nyte is only listing models.",
-    }));
+    await running.open({ cwd: tmpdir() });
 
-    const initial = running.configOptions(thread);
+    const initial = running.configOptions();
     const option = findOption(initial, "model");
 
     if (option === undefined) return [];
@@ -161,7 +152,7 @@ async function probe(agent: AcpAgent, signal: AbortSignal): Promise<readonly Age
       const options =
         choice.value === option.currentValue
           ? initial
-          : await running.configure(thread, option.id, choice.value);
+          : await running.configure(option.id, choice.value);
 
       const levels = choices(findOption(options, "thought_level")).map((level) => level.value);
       models.push({ value: choice.value, name: choice.name, levels });
@@ -170,7 +161,7 @@ async function probe(agent: AcpAgent, signal: AbortSignal): Promise<readonly Age
     return models;
   } finally {
     stop.removeEventListener("abort", abort);
-    running.close();
+    await running.close();
   }
 }
 

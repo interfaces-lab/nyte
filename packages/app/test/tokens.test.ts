@@ -58,7 +58,7 @@ test.each(
 
         if (row.color === undefined) throw new Error("Missing ink color");
 
-        for (const offset of [0, 2, 4])
+        for (const offset of [0, 2, 4]) {
           expect(
             Math.abs(
               Number.parseInt(row.color.slice(offset, offset + 2), 16) -
@@ -66,6 +66,7 @@ test.each(
             ),
             `${row.mode} ${row.scope} ink on ${row.surface}: #${row.color}, expected #${row.expected}`,
           ).toBeLessThanOrEqual(1);
+        }
       }
     }
   },

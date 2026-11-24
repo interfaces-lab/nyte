@@ -8,21 +8,15 @@ import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { toast } from "@nyte-ai/ui/toast";
 import { create, props } from "@stylexjs/stylex";
-import { useRef, type ReactElement } from "react";
+import { useRef } from "react";
+import type { ReactElement } from "react";
 import { errorMessage } from "../contract/errors.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { BUILT_IN_THEMES } from "../theme/built-in-themes.ts";
-import {
-  findTheme,
-  parseVscodeTheme,
-  themeSwatch,
-  type ColorScheme,
-  type ThemeChoice,
-  type ThemeChoices,
-  type VscodeTheme,
-} from "../theme/vscode-theme.ts";
+import { findTheme, parseVscodeTheme, themeSwatch } from "../theme/vscode-theme.ts";
+import type { ColorScheme, ThemeChoice, ThemeChoices, VscodeTheme } from "../theme/vscode-theme.ts";
 import { settings } from "../theme/schema.stylex.ts";
-import { SettingsRow, SettingsSection } from "./rows.tsx";
+import { SettingsRow, SettingsSection } from "../settings-rows/rows.tsx";
 
 const SLOTS = [
   { scheme: "light", title: "Light mode" },
@@ -243,8 +237,9 @@ function removeTheme(theme: VscodeTheme): void {
   const choices = preferences.themes.get();
   const choice = choices[theme.scheme];
 
-  if (choice.source === "imported" && choice.name === theme.name)
+  if (choice.source === "imported" && choice.name === theme.name) {
     preferences.themes.set({ ...choices, [theme.scheme]: { source: "nyte" } });
+  }
   preferences.importedThemes.set(
     preferences.importedThemes
       .get()

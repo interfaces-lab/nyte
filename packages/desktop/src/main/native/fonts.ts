@@ -119,7 +119,7 @@ async function readLocalFonts(
 
   if (platform === "linux") {
     return parseFontconfigCatalog(
-      await run("/usr/bin/fc-list", ["--format=%{family}\\t%{spacing}\\n"]),
+      await run("/usr/bin/fc-list", [String.raw`--format=%{family}\t%{spacing}\n`]),
     );
   }
 

@@ -36,6 +36,8 @@ import {
   WorkspaceInspectionSchema,
   WorkspaceTargetSchema,
   WorktreeCleanupSchema,
+  StorageCleanupSchema,
+  StorageScanSchema,
   McpViewSchema,
   McpChangeSchema,
   McpServerConfigSchema,
@@ -136,7 +138,7 @@ export const workspaceCases = {
       path: "/notes/a.md",
       mime: "text/markdown",
       contents: "# A\n",
-      encoding: "utf-8",
+      encoding: "utf8",
       version: fileVersion,
     },
     { kind: "text", path: "/notes/a.md", mime: "text/markdown", version: fileVersion },
@@ -270,6 +272,29 @@ export const workspaceCases = {
     { kind: "busy" },
   ),
   WorktreeCleanupSchema: sample(WorktreeCleanupSchema, { cleaned: 2 }, { cleaned: "2" }),
+  StorageScanSchema: sample(
+    StorageScanSchema,
+    {
+      disk: { size: 1000, free: 200 },
+      items: [
+        {
+          id: "caches:npm",
+          group: "caches",
+          title: "npm cache",
+          detail: "Downloads again on the next install",
+          path: "/Users/me/.npm/_cacache",
+          bytes: null,
+          blocked: "npm is running",
+        },
+      ],
+    },
+    { disk: null, items: [{ id: "x", group: "trash" }] },
+  ),
+  StorageCleanupSchema: sample(
+    StorageCleanupSchema,
+    { cleaned: ["caches:npm"], failed: [{ id: "caches:go", reason: "go is running" }], disk: null },
+    { cleaned: "caches:npm", failed: [], disk: null },
+  ),
   WorkspaceInspectionSchema: sample(
     WorkspaceInspectionSchema,
     {
@@ -336,8 +361,7 @@ export const workspaceCases = {
       target: { kind: "local", path: "/repo" },
       identity,
       availability: { kind: "available" },
-      projectResources: true,
-      trusted: true,
+      trust: { state: "trusted", by: { kind: "folder", path: null } },
       projectSources: [],
       addedBy: principal,
       writers: [run],

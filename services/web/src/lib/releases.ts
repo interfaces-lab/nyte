@@ -37,8 +37,9 @@ async function fetchMacRelease(): Promise<MacRelease | null> {
     if (typeof asset !== "object" || asset === null) continue;
     if (!("name" in asset) || typeof asset.name !== "string") continue;
     if (!asset.name.endsWith("-mac-arm64.dmg")) continue;
-    if (!("browser_download_url" in asset) || typeof asset.browser_download_url !== "string")
+    if (!("browser_download_url" in asset) || typeof asset.browser_download_url !== "string") {
       continue;
+    }
     return {
       version: release.tag_name,
       notesUrl: release.html_url,

@@ -161,8 +161,9 @@ async function signIn(home: string, origin: string): Promise<void> {
         label: "E2E",
       });
 
-      for await (const step of login.steps())
+      for await (const step of login.steps()) {
         if (step.kind === "paste") await login.answer("sk-e2e");
+      }
       await host.models.setDefault(E2E_MODEL);
     } finally {
       await host.close();
@@ -181,8 +182,8 @@ export async function electronExecutable(): Promise<string> {
 }
 
 async function ensureTuiLink(parent: string): Promise<void> {
-  await symlink(TUI_ROOT, join(parent, "tui"), "junction").catch((cause: NodeJS.ErrnoException) => {
-    if (cause.code !== "EEXIST") throw cause;
+  await symlink(TUI_ROOT, join(parent, "tui"), "junction").catch((cause: unknown) => {
+    if (!(cause instanceof Error && "code" in cause && cause.code === "EEXIST")) throw cause;
   });
 }
 

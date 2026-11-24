@@ -122,8 +122,9 @@ export function directorySessions(updates: readonly RefUpdate[]): {
       group === undefined ||
       DIRECTORY_REFS.has(group) ||
       update.events?.some((event) => DIRECTORY_EVENTS.has(event.kind)) === true
-    )
+    ) {
       changed.add(session);
+    }
   }
 
   return {

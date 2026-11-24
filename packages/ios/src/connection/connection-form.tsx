@@ -10,19 +10,13 @@ import { css, html } from "react-strict-dom";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { ScanSheet } from "./scan-sheet.tsx";
-import { displayAddress, parseConnection, type Connection } from "./connection.ts";
-import { connectCopy, SHARE_LOCATION, type ConnectStage } from "./connect-copy.ts";
+import { displayAddress, parseConnection } from "./connection.ts";
+import type { Connection } from "./connection.ts";
+import { connectCopy, SHARE_LOCATION } from "./connect-copy.ts";
+import type { ConnectStage } from "./connect-copy.ts";
 import { connectHost } from "./host.ts";
-import {
-  controls,
-  useTheme,
-  radii,
-  spacing,
-  textStyles,
-  tokens,
-  typography,
-  type Theme,
-} from "../theme.ts";
+import { controls, useTheme, radii, spacing, textStyles, tokens, typography } from "../theme.ts";
+import type { Theme } from "../theme.ts";
 
 const VERIFY_TIMEOUT_MS = 10_000;
 
@@ -128,11 +122,12 @@ export function ConnectionForm({
 
       setStage(failure.kind === "cancelled" && timedOut ? { kind: "silent", address } : failure);
     } catch (cause) {
-      if (attempt.current === controller)
+      if (attempt.current === controller) {
         setStage({
           kind: "unexpected",
           detail: cause instanceof Error ? cause.message : String(cause),
         });
+      }
     } finally {
       clearTimeout(timer);
 
@@ -307,13 +302,14 @@ export function ConnectionForm({
                   textContentType="oneTimeCode"
                   onSubmitEditing={() => {
                     if (complete) void connect();
-                    else
+                    else {
                       (name.trim() === ""
                         ? nameInput
                         : url.trim() === ""
                           ? addressInput
                           : tokenInput
                       ).current?.focus();
+                    }
                   }}
                   enablesReturnKeyAutomatically
                   returnKeyType="go"

@@ -27,20 +27,24 @@ function normalizeAnswers(
   items: readonly QuestionInfo[],
   supplied: QuestionAnswers,
 ): QuestionAnswers {
-  if (supplied.length !== items.length)
+  if (supplied.length !== items.length) {
     throw new SdkError("invalid", "Submit one answer list for each question.");
+  }
 
   return items.map((item, index) => {
     const selected = supplied[index].map((answer) => answer.trim());
 
-    if (selected.some((answer) => answer === ""))
+    if (selected.some((answer) => answer === "")) {
       throw new SdkError("invalid", "Answers cannot be blank.");
+    }
 
-    if (!item.multiple && selected.length > 1)
+    if (!item.multiple && selected.length > 1) {
       throw new SdkError("invalid", "This question accepts one answer.");
+    }
 
-    if (new Set(selected).size !== selected.length)
+    if (new Set(selected).size !== selected.length) {
       throw new SdkError("invalid", "Choose each answer only once.");
+    }
 
     return item.multiple ? selected.toSorted() : selected;
   });
@@ -72,8 +76,9 @@ const handlers: Handlers = {
       if (phase.kind === "skipped") throw new SdkError("invalid", "These questions were skipped.");
 
       if (phase.kind === "answered") {
-        if (JSON.stringify(phase.answers) !== JSON.stringify(normalized))
+        if (JSON.stringify(phase.answers) !== JSON.stringify(normalized)) {
           throw new SdkError("invalid", "These questions were already answered.");
+        }
         answered = { asked: current.questions, phase };
 
         return current;
@@ -90,8 +95,9 @@ const handlers: Handlers = {
       return { ...current, phase: next };
     });
 
-    if (outcome.kind !== "updated")
+    if (outcome.kind !== "updated") {
       throw new Error(`The questions could not be answered: ${outcome.kind}.`);
+    }
 
     if (answered?.phase.kind !== "answered" || answered.phase.head === null) return;
 
@@ -115,16 +121,18 @@ const handlers: Handlers = {
     const outcome = await context.part.update((current) => {
       const phase = current.phase;
 
-      if (phase.kind === "answered")
+      if (phase.kind === "answered") {
         throw new SdkError("invalid", "These questions were already answered.");
+      }
 
       if (phase.kind === "skipped") return current;
 
       return { ...current, phase: { kind: "skipped", late: phase.kind === "open" } };
     });
 
-    if (outcome.kind !== "updated")
+    if (outcome.kind !== "updated") {
       throw new Error(`The questions could not be skipped: ${outcome.kind}.`);
+    }
   },
 };
 
@@ -146,12 +154,14 @@ const ask: ToolDefinition<Infer<typeof questionParameters>> = {
   asks: "never",
   rerun: "safe",
   async execute(args, invocation) {
-    if (await readsOnly(invocation.session, invocation.host))
+    if (await readsOnly(invocation.session, invocation.host)) {
       throw new SdkError("denied", "A side chat can't ask the user questions.");
+    }
 
     for (const item of args.questions) {
-      if (new Set(item.options.map((option) => option.label.trim())).size !== item.options.length)
+      if (new Set(item.options.map((option) => option.label.trim())).size !== item.options.length) {
         throw new SdkError("invalid", "Question option labels must be distinct.");
+      }
     }
 
     const part = await invocation.session.parts.create(question, {

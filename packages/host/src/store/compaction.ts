@@ -25,7 +25,7 @@ const START_DELAY_MS = 30_000;
 
 const WORKING_MS = 60 * 60_000;
 
-const BATCH_ROWS = 1_000;
+const BATCH_ROWS = 1000;
 
 const REMOVE_BATCH = `DELETE FROM objects WHERE rowid > ?1 AND rowid <= ?2
   AND NOT EXISTS (SELECT 1 FROM refs WHERE refs.target = objects.id)
@@ -92,8 +92,9 @@ export async function compactStore(
 
     const watermark = Math.min(through, Number(readLast.get()?.last));
 
-    if (watermark !== start)
+    if (watermark !== start) {
       await lock(() => database.exec(`PRAGMA user_version = ${String(watermark)}`));
+    }
     const purged = await purgeRemovedSessions(database, signal, lock, written, cutoff);
     const checkpoints = Number((await lock(() => dropCheckpoints.run())).changes);
     written();
@@ -119,7 +120,7 @@ async function purgeRemovedSessions(
 
   let purged = 0;
 
-  for (const session of sessions)
+  for (const session of sessions) {
     for (;;) {
       const changes = Number((await lock(() => purge.run(session, cutoff))).changes);
       written();
@@ -128,6 +129,7 @@ async function purgeRemovedSessions(
       purged += changes;
       await setImmediate(undefined, { signal });
     }
+  }
 
   return purged;
 }

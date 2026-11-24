@@ -1,0 +1,170 @@
+{
+  "language": "html",
+  "servers": ["vscode-html-language-server"],
+  "vscode": {
+    "extension": "vscode.html-language-features",
+    "source": "https://github.com/microsoft/vscode/blob/main/extensions/html-language-features/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "index.html",
+          "after": "<sec",
+          "says": "section"
+        },
+        {
+          "file": "index.html",
+          "after": "border-co",
+          "says": "border-color"
+        },
+        {
+          "file": "index.html",
+          "after": "console.log(la",
+          "says": "label"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Answers in HTML markup as well as embedded <style> and <script> blocks."
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "index.html",
+          "after": "<sec",
+          "says": "section"
+        },
+        {
+          "file": "index.html",
+          "after": "border-co",
+          "says": "border-color"
+        },
+        {
+          "file": "index.html",
+          "after": "formatGree",
+          "says": "formatGreeting"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Answers in HTML markup as well as embedded <style> and <script> blocks."
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "index.html",
+          "after": "color: var(--hero-ac",
+          "says": "index.html"
+        },
+        {
+          "file": "index.html",
+          "after": "label = formatGree",
+          "says": "index.html"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Answered inside embedded <style> and <script> blocks."
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "index.html",
+          "after": "label = formatGree"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "index.html",
+          "after": "--hero-ac",
+          "says": "index.html"
+        },
+        {
+          "file": "index.html",
+          "after": "function formatGree",
+          "says": "index.html"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Answered inside embedded <style> and <script> blocks."
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "index.html",
+          "says": "section"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "index.html",
+          "after": "col"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "index.html"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "index.html",
+          "after": "<div   class=\"hero-note\"><p>Unformatted line</p></div>"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "index.html",
+          "after": "<sec",
+          "says": "index.html"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "index.html",
+          "says": "Unknown property: 'colr'"
+        }
+      ],
+      "servers": ["vscode-html-language-server"],
+      "answers": true,
+      "vscode": true,
+      "note": "Validates embedded <style> and <script> blocks; HTML markup itself is not validated."
+    }
+  }
+}

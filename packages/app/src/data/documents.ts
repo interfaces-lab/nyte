@@ -33,7 +33,7 @@ export async function writeDocument(input: {
     input.expect === undefined ? undefined : { expect: input.expect },
   );
 
-  if (outcome.kind === "saved")
+  if (outcome.kind === "saved") {
     queryClient.setQueryData<Document>(keys.document(input.path), (document) =>
       document?.kind === "text"
         ? {
@@ -44,6 +44,7 @@ export async function writeDocument(input: {
           }
         : document,
     );
+  }
 
   return outcome;
 }

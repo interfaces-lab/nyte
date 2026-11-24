@@ -1,0 +1,20 @@
+{
+  "name": "@nyte-ai/example-ask-mode",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "@nyte-ai/bench": "workspace:*",
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/host": "workspace:*",
+    "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
+    "@types/node": "^26.6.6",
+    "vitest": "^5.1.0"
+  }
+}

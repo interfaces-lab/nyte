@@ -1,10 +1,12 @@
 import type { Failure, HeadName, RefUpdate, RunId, SessionId } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
+import { decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { headRef, runCallsPrefix, runRef } from "../store/refs.ts";
 import { withFold } from "../watch/reads.ts";
-import { liveRun, put } from "../store/session.ts";
+import { attempt, liveRun, load, put, STALE } from "../store/session.ts";
+import { commit } from "../watch/commit.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
 
@@ -32,6 +34,18 @@ export async function interruption(
   if (live === null || kernel.executionState.driving.has(live.record.view.id)) return [];
   const run = live.record.view.id;
 
+  if (live.record.released === true) {
+    const { released: _released, ...record } = live.record;
+
+    return [
+      {
+        name: runRef(session, run),
+        target: await put(kernel.store, "run", record),
+        expect: live.ref.revision,
+      },
+    ];
+  }
+
   if (!foreign && !(await responseCut(kernel, session, run))) return [];
   const mark = await progressMark(kernel.store, session, head, run);
   const count = live.record.interrupted?.mark === mark ? live.record.interrupted.count + 1 : 1;
@@ -44,6 +58,30 @@ export async function interruption(
       expect: live.ref.revision,
     },
   ];
+}
+
+export async function releaseRun(kernel: Kernel, session: SessionId, run: RunId): Promise<null> {
+  if (kernel.presence?.revoked.aborted === true) return null;
+
+  return attempt(`Releasing run ${run}`, async () => {
+    const found = await load(
+      kernel.store,
+      await kernel.store.refs.get(runRef(session, run)),
+      decodeRunRecord,
+    );
+
+    if (found === null || found.record.released === true) return null;
+
+    const outcome = await commit(kernel, [
+      {
+        name: runRef(session, run),
+        target: await put(kernel.store, "run", { ...found.record, released: true }),
+        expect: found.ref.revision,
+      },
+    ]);
+
+    return outcome.kind === "set" ? null : STALE;
+  });
 }
 
 function responseCut(kernel: Kernel, session: SessionId, run: RunId): Promise<boolean> {

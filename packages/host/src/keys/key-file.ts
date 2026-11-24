@@ -20,8 +20,9 @@ export async function readKeyFile(path: string, name: string): Promise<Uint8Arra
       );
     });
 
-  if (bytes.length !== 32)
+  if (bytes.length !== 32) {
     throw new SdkError("invalid", `The ${name} at ${path} is ${bytes.length} bytes, not 32.`);
+  }
 
   return bytes;
 }

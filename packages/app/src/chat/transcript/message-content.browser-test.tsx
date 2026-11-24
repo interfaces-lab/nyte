@@ -79,7 +79,7 @@ export async function run(): Promise<string> {
       host.querySelector('[data-composer-readonly][contenteditable="false"]') !== null,
       "read-only editor root",
     );
-    check(host.textContent?.includes("/review") === true, "skill invocation renders a chip");
+    check(host.textContent?.includes("/review"), "skill invocation renders a chip");
     check(
       host.querySelector('[data-composer-chip="skill"] button[aria-label^="Remove " ]') === null,
       "readonly has no remove control",
@@ -107,7 +107,7 @@ export async function run(): Promise<string> {
     render("/unfinished\n\n\n  plain text  ");
     await paint();
     check(host.querySelector("[data-composer-chip]") === null, "unselected slash text stays text");
-    check(host.textContent?.includes("  plain text  ") === true, "inline whitespace survives");
+    check(host.textContent?.includes("  plain text  "), "inline whitespace survives");
     check(host.querySelector("a") === null, "stale links removed on content replacement");
     render("[$review](/skills/review/SKILL.md)");
     await paint();

@@ -55,6 +55,44 @@ export const WorktreeCleanupType = Type.Object({ cleaned: Type.Number() });
 
 export type WorktreeCleanup = Decoded<typeof WorktreeCleanupType>;
 
+export const STORAGE_GROUPS = ["worktrees", "projects", "caches", "nyte"] as const;
+
+export type StorageGroup = (typeof STORAGE_GROUPS)[number];
+
+export const DiskSpaceType = Type.Object({ size: Type.Number(), free: Type.Number() });
+
+export type DiskSpace = Decoded<typeof DiskSpaceType>;
+
+export const StorageItemType = Type.Object({
+  /** Names the item to `workspaces.cleanStorage`. Stable between scans while the item stays the same. */
+  id: Type.String(),
+  group: Type.Enum(STORAGE_GROUPS),
+  title: Type.String(),
+  detail: Type.String(),
+  path: nullable(Type.String()),
+  /** Null when only the tool that owns it can tell, as for `pnpm store prune`. */
+  bytes: nullable(Type.Number()),
+  /** Why it can't be cleaned right now, such as "Xcode is open"; null when it can. */
+  blocked: nullable(Type.String()),
+});
+
+export type StorageItem = Decoded<typeof StorageItemType>;
+
+export const StorageScanType = Type.Object({
+  disk: nullable(DiskSpaceType),
+  items: Type.Array(StorageItemType),
+});
+
+export type StorageScan = Decoded<typeof StorageScanType>;
+
+export const StorageCleanupType = Type.Object({
+  cleaned: Type.Array(Type.String()),
+  failed: Type.Array(Type.Object({ id: Type.String(), reason: Type.String() })),
+  disk: nullable(DiskSpaceType),
+});
+
+export type StorageCleanup = Decoded<typeof StorageCleanupType>;
+
 export const WorkspaceInspectionType = Type.Object({
   target: WorkspaceTargetType,
   identity: idSchema<"environment-identity">(),
@@ -75,13 +113,47 @@ export const WorktreeIsolationType = Type.Object({
 
 export type WorktreeIsolation = Decoded<typeof WorktreeIsolationType>;
 
+const TrustSourceType = Type.Union([
+  Type.Object({ kind: Type.Literal("folder"), path: nullable(Type.String()) }),
+  Type.Object({ kind: Type.Literal("setting") }),
+]);
+
+/**
+ * Whether a folder's own skills, plugins, MCP servers and system prompt load, why, and what a
+ * client should say. `home` is the user's home folder, whose files load as the user's own.
+ * `by` names the saved decision that applies (`path` is the folder it was saved for: this one, a
+ * folder above it, or a worktree's source) or the `workspaceTrust` setting. `notice` is `ask`
+ * when the folder has project files and nobody decided, and `tell` when its project files were
+ * skipped; it is null when there is nothing to say. `parent` is the folder above whose decision
+ * would cover this one, or null when there is none to offer: the home folder, the root, or a
+ * target that isn't a folder.
+ */
+export const FolderTrustType = Type.Union([
+  Type.Object({ state: Type.Literal("home") }),
+  Type.Object({
+    state: Type.Literal("undecided"),
+    notice: nullable(Type.Literal("ask")),
+    parent: nullable(Type.String()),
+  }),
+  Type.Object({ state: Type.Literal("trusted"), by: TrustSourceType }),
+  Type.Object({
+    state: Type.Literal("untrusted"),
+    by: TrustSourceType,
+    notice: nullable(Type.Literal("tell")),
+    parent: nullable(Type.String()),
+  }),
+]);
+
+export type FolderTrust = Decoded<typeof FolderTrustType>;
+
+export type TrustSource = Decoded<typeof TrustSourceType>;
+
 export const WorkspaceInfoType = Type.Object({
   id: idSchema<"workspace">(),
   target: WorkspaceTargetType,
   identity: idSchema<"environment-identity">(),
   availability: AvailabilityType,
-  projectResources: nullable(Type.Boolean()),
-  trusted: nullable(Type.Boolean()),
+  trust: FolderTrustType,
   projectSources: Type.Array(Type.String()),
   addedBy: idSchema<"principal">(),
   writers: Type.Array(idSchema<"run">()),
@@ -103,6 +175,10 @@ export const AddOutcomeSchema: Schema<AddOutcome> = standard(AddOutcomeType);
 export const ForgetOutcomeSchema: Schema<ForgetOutcome> = standard(ForgetOutcomeType);
 
 export const WorktreeCleanupSchema: Schema<WorktreeCleanup> = standard(WorktreeCleanupType);
+
+export const StorageScanSchema: Schema<StorageScan> = standard(StorageScanType);
+
+export const StorageCleanupSchema: Schema<StorageCleanup> = standard(StorageCleanupType);
 
 export const WorkspaceInspectionSchema: Schema<WorkspaceInspection> = standard(
   withJson(WorkspaceInspectionType),

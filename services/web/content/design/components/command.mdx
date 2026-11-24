@@ -98,17 +98,11 @@ const matches = commands.filter((command) =>
 Except `Command.Root`, each part takes `xstyle`, `className`, and `style`. `className` and `style`
 accept plain values or functions of the underlying Base UI part's state. See [Theming](/design/theming).
 
-The part tables below come from Base UI, MIT, © Material-UI SAS.
+For every other prop, see Base UI's [Dialog](https://base-ui.com/react/components/dialog) and [Autocomplete](https://base-ui.com/react/components/autocomplete) references.
 
 ### Root
 
 `Command.Root` passes through Base UI's dialog root unstyled. No handle factory is exported.
-
-<include>../../base-ui-reference/dialog/Root.md</include>
-
-### Trigger
-
-<include>../../base-ui-reference/dialog/Trigger.md</include>
 
 ### Popup
 
@@ -127,8 +121,6 @@ Takes Base UI dialog popup props, including `ref`.
 | `onItemHighlighted` | `(value: ItemValue \| undefined, eventDetails) => void` |                     | Highlight changes or clears.                                            |
 | `itemToStringValue` | `(value: ItemValue) => string`                          |                     | Converts values to text. `{ value, label }` uses `label` automatically. |
 
-<include>../../base-ui-reference/dialog/Popup.md</include>
-
 ### Input
 
 Defaults to `autoComplete="off"` and `spellCheck={false}`. Both can be overridden.
@@ -137,23 +129,11 @@ Defaults to `autoComplete="off"` and `spellCheck={false}`. Both can be overridde
 | ---------- | ----------- | ---------------- |
 | `trailing` | `ReactNode` | After the field. |
 
-<include>../../base-ui-reference/autocomplete/Input.md</include>
-
-### List
-
-<include>../../base-ui-reference/autocomplete/List.md</include>
-
 ### Group
 
 | Prop      | Type        |
 | --------- | ----------- |
 | `heading` | `ReactNode` |
-
-<include>../../base-ui-reference/autocomplete/Group.md</include>
-
-### Separator
-
-<include>../../base-ui-reference/autocomplete/Separator.md</include>
 
 ### Item
 
@@ -163,16 +143,6 @@ Defaults to `autoComplete="off"` and `spellCheck={false}`. Both can be overridde
 | `leading`  | `ReactNode` | Glyph column.                     |
 | `meta`     | `ReactNode` | Binds no key.                     |
 | `children` | `ReactNode` |                                   |
-
-<include>../../base-ui-reference/autocomplete/Item.md</include>
-
-### Empty
-
-<include>../../base-ui-reference/autocomplete/Empty.md</include>
-
-### Close
-
-<include>../../base-ui-reference/dialog/Close.md</include>
 
 ## Accessibility
 

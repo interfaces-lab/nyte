@@ -1,3 +1,4 @@
+import type { RuntimeScope } from "../contract/provider.ts";
 import { asId, isJson, isJsonObject, SdkError, standard } from "@nyte-ai/schema";
 import type {
   CallId,
@@ -63,7 +64,12 @@ export async function createPart<K extends PartDefinition>(
   context: ConnectionContext,
   session: SessionId,
   kind: K,
-  input: { readonly state: unknown; readonly placement: Placement; readonly id?: PartId },
+  input: {
+    readonly state: unknown;
+    readonly placement: Placement;
+    readonly id?: PartId;
+    readonly runtimeScope?: RuntimeScope;
+  },
 ): Promise<Part<K>> {
   const origin = context.origin;
   const from = origin?.session === session ? origin : null;
@@ -79,21 +85,24 @@ export async function createPart<K extends PartDefinition>(
 
   const registered = kernel.partDefinitions.get(kind.kind);
 
-  if (registered !== undefined && registered.definition !== kind)
+  if (registered !== undefined && registered.definition !== kind) {
     throw new SdkError("invalid", `Another definition is registered for ${kind.kind}.`);
+  }
   for (const action of Object.values(kind.actions)) convertJsonSchema(action.input, "output");
   const checked = await check(registered?.definition.state ?? kind.state, input.state);
 
-  if (checked.kind === "invalid")
+  if (checked.kind === "invalid") {
     throw new SdkError("invalid", `The state fails ${kind.kind}'s schema.`, {
       issues: checked.issues,
     });
+  }
   const state = checked.value;
 
   if (!isJson(state)) throw new SdkError("invalid", `${kind.kind}'s state is not JSON.`);
 
-  if (registered === undefined && kind.onAction !== undefined)
+  if (registered === undefined && kind.onAction !== undefined) {
     throw new SdkError("invalid", "a definition with onAction must be contributed");
+  }
   await requireSession(kernel.store, session);
 
   const owner = registered?.owner ?? null;
@@ -122,7 +131,16 @@ export async function createPart<K extends PartDefinition>(
 
   const id = typeof acquired === "string" ? asId<"part">(acquired) : minted;
   const transcript = input.placement.kind === "transcript";
-  const run = transcript ? null : (from?.run ?? null);
+  const run =
+    input.placement.kind === "modal"
+      ? input.runtimeScope?.activity.kind === "run"
+        ? input.runtimeScope.activity.id
+        : (from?.run ?? null)
+      : null;
+  if (input.runtimeScope !== undefined && !context.authority.has("owner")) {
+    throw new SdkError("denied", "Runtime parts require trusted scope.");
+  }
+
   const name = partRef(session, id);
 
   const landedBefore =
@@ -139,8 +157,9 @@ export async function createPart<K extends PartDefinition>(
         step !== null ||
         (existing.record.partKind === kind.kind &&
           (await objectId(existing.record.state)) === (await objectId(state)))
-      )
+      ) {
         return;
+      }
 
       throw new SdkError("invalid", `Part ${id} already exists with another kind or state.`);
     }
@@ -314,22 +333,26 @@ function partHandleFor<K extends PartDefinition>(
         if (found === null) return { kind: "missing" };
         const { ref, record } = found;
 
-        if (guarded(record))
+        if (guarded(record)) {
           return { kind: "invalid", issues: [issue(`${record.partKind} is a built-in part.`)] };
+        }
 
-        if (options?.version !== undefined && options.version !== record.version)
+        if (options?.version !== undefined && options.version !== record.version) {
           return { kind: "stale" };
+        }
         const given = nextState(kind, next, record.state);
 
-        if (given === null)
+        if (given === null) {
           return {
             kind: "invalid",
             issues: [issue(`Part ${id}'s stored state fails its schema.`)],
           };
+        }
         const definition = readDefinition(record);
 
-        if (definition === null)
+        if (definition === null) {
           return { kind: "invalid", issues: [issue(`No state schema is available for ${id}.`)] };
+        }
         const checked = await check(definition.state, given.value);
 
         if (checked.kind === "invalid") return checked;
@@ -371,13 +394,14 @@ function partHandleFor<K extends PartDefinition>(
       const offered = { action: named, input: isJson(accepted.value) ? accepted.value : null };
       const call = asId<"call">(`act:${id}:${crypto.randomUUID()}`);
 
-      if (handler !== null)
+      if (handler !== null) {
         await openAction(kernel, {
           session,
           part: id,
           call,
           intent: { part: id, ...offered, principal: context.principal },
         });
+      }
 
       const performed: Performed =
         handler === null
@@ -393,7 +417,7 @@ function partHandleFor<K extends PartDefinition>(
 
       if (performed.kind === "closed") return performed;
 
-      if (performed.kind === "threw")
+      if (performed.kind === "threw") {
         return performed.error instanceof SdkError && performed.error.code === "invalid"
           ? { kind: "rejected", reason: performed.error.message }
           : {
@@ -403,13 +427,15 @@ function partHandleFor<K extends PartDefinition>(
                   ? performed.error.message
                   : String(performed.error),
             };
+      }
       const output = performed.output;
 
-      if (!fitsActionOutput(kind, action, output, handler === null ? null : (kind ?? definition)))
+      if (!fitsActionOutput(kind, action, output, handler === null ? null : (kind ?? definition))) {
         return {
           kind: "failed",
           message: `${record.partKind}'s ${named} returned output its schema rejects.`,
         };
+      }
 
       if (modal && !(await answered(kernel, session, id, offered))) return { kind: "closed" };
 
@@ -426,8 +452,9 @@ function partHandleFor<K extends PartDefinition>(
 
         if (found === null) return null;
 
-        if (guarded(found.record))
+        if (guarded(found.record)) {
           throw new SdkError("denied", `${found.record.partKind} is a built-in part.`);
+        }
 
         const outcome = await commit(kernel, [
           {
@@ -517,8 +544,9 @@ export async function rerunAction(kernel: Kernel, session: SessionId, call: Call
     call,
   });
 
-  if (performed.kind === "returned" && found.record.placement.kind === "modal")
+  if (performed.kind === "returned" && found.record.placement.kind === "modal") {
     await answered(kernel, session, intent.part, { action: intent.action, input: intent.input });
+  }
 }
 
 async function perform(
@@ -572,13 +600,14 @@ async function perform(
     (outcome): Performed | Promise<Performed> => {
       if (outcome.kind === "done") return { kind: "returned", output: outcome.value };
 
-      if (outcome.kind === "interrupted")
+      if (outcome.kind === "interrupted") {
         return {
           kind: "threw",
           error: new Error(
             `The ${input.action} action was interrupted and may have partially run.`,
           ),
         };
+      }
 
       return new Promise<Performed>(() => undefined);
     },
@@ -616,8 +645,9 @@ async function firstAnswer(
       found === null ||
       found.record.placement.kind !== "modal" ||
       found.record.status.kind !== "live"
-    )
+    ) {
       return null;
+    }
 
     const stored = await storedAnswer(kernel.store, session, found.record);
 
@@ -656,10 +686,11 @@ async function actInput(
   if (spec === undefined) return null;
   const checked = await check(spec.input, input);
 
-  if (checked.kind === "invalid")
+  if (checked.kind === "invalid") {
     throw new SdkError("invalid", `The input fails ${definition.kind}'s ${action} schema.`, {
       issues: checked.issues,
     });
+  }
 
   return { value: checked.value };
 }

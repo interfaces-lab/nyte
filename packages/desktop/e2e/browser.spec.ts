@@ -275,7 +275,7 @@ test("the integrated browser journey", async ({ desktop }, testInfo) => {
     const archive = sidebar(page).getByRole("button", { name: `Archive ${FIXTURES.alpha}` });
     await expect(async () => {
       await row.hover();
-      await archive.click({ timeout: 1_000 });
+      await archive.click({ timeout: 1000 });
     }).toPass();
     const notice = page.locator('[data-slot="toast"]').filter({ hasText: "1 chat archived" });
     await expect(notice).toBeVisible();
@@ -287,8 +287,9 @@ test("the integrated browser journey", async ({ desktop }, testInfo) => {
     const toastBox = await notice.boundingBox();
     const composerBox = await page.getByRole("form", { name: "Message" }).boundingBox();
 
-    if (toastBox === null || composerBox === null)
+    if (toastBox === null || composerBox === null) {
       throw new Error("The toast or composer is hidden");
+    }
     expect(
       toastBox.x < composerBox.x + composerBox.width &&
         composerBox.x < toastBox.x + toastBox.width &&
@@ -592,8 +593,9 @@ test("the integrated browser journey", async ({ desktop }, testInfo) => {
     const over = overlapMiddle(box, dialogBox);
     soft(over, "the sign-in dialog overlaps the page").not.toBeNull();
 
-    if (over !== null)
+    if (over !== null) {
       soft(paintsPage(await colorAt(desktop, over)), "the page paints over the dialog").toBe(false);
+    }
     await dialog.getByLabel("Username", { exact: true }).fill("dev");
     await dialog.getByLabel("Password", { exact: true }).fill("secret");
     await dialog.getByRole("button", { name: "Sign In", exact: true }).click();
@@ -762,10 +764,11 @@ test("the integrated browser journey", async ({ desktop }, testInfo) => {
     const over = overlapMiddle(box, listBox);
     soft(over, "the suggestions overlap the page").not.toBeNull();
 
-    if (over !== null)
+    if (over !== null) {
       soft(paintsPage(await colorAt(desktop, over)), "the page paints over the suggestions").toBe(
         false,
       );
+    }
     await addressField.press("Escape");
     await addressField.press("Escape");
     await expect(suggestions).toBeHidden();

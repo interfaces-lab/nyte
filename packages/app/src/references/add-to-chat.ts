@@ -10,6 +10,8 @@ type ChatExcerptReceiver = (excerpt: ChatExcerpt) => HTMLElement | false | Promi
 
 let receiver: ChatExcerptReceiver | undefined;
 
+let showChat: (() => void) | undefined;
+
 export const NO_CHAT = "Open a chat, then try again.";
 
 export function receiveChatExcerpts(receive: ChatExcerptReceiver): () => void {
@@ -20,6 +22,15 @@ export function receiveChatExcerpts(receive: ChatExcerptReceiver): () => void {
   };
 }
 
+/** Shows the chat before an excerpt goes in, so it never lands in a composer the workbench covers. */
+export function showChatForExcerpts(show: () => void): () => void {
+  showChat = show;
+
+  return () => {
+    if (showChat === show) showChat = undefined;
+  };
+}
+
 export function addToChat(excerpt: {
   readonly image: File;
   readonly signal?: AbortSignal;
@@ -27,6 +38,7 @@ export function addToChat(excerpt: {
 export function addToChat(excerpt: { readonly reference: MessageReference }): boolean;
 export function addToChat(excerpt: ChatExcerpt): boolean | Promise<HTMLElement>;
 export function addToChat(excerpt: ChatExcerpt): boolean | Promise<HTMLElement> {
+  showChat?.();
   const result = receiver?.(excerpt) ?? false;
 
   if (excerpt.image === undefined) return result !== false;

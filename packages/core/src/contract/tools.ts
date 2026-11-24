@@ -3,6 +3,7 @@ import type {
   CallId,
   HeadName,
   Json,
+  PrincipalId,
   RunId,
   Schema,
   ToolClass,
@@ -29,6 +30,8 @@ export interface ToolInvocation extends Durable {
   readonly api: PluginApi<"core">;
   readonly workspace: Workspace;
   readonly env: ExecutionEnv;
+  /** The principal who sent the latest message that landed on this head, or null when no message there records one. */
+  sender(): Promise<PrincipalId | null>;
   progress(update: ToolProgress): void;
   readonly foreground: ForegroundJobs;
   readonly tools: {

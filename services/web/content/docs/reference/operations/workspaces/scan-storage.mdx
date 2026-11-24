@@ -1,0 +1,164 @@
+---
+title: workspaces.scanStorage
+description: "Measures the space the host's disk could get back: worktrees, project build output, tool caches and Nyte's old logs."
+---
+
+Scans the host's machine for space it can get back, and measures each item. Nothing is removed.
+
+The built-in local provider reports four groups:
+
+| Group       | What it finds                                                                                                                                                         |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `worktrees` | Build output in Nyte worktrees whose chat has been idle a day, and git worktrees untouched for a week with nothing to commit and nothing ignored that doesn't rebuild |
+| `projects`  | Git-ignored build output, such as `node_modules`, `dist` and `.next`, in repositories untouched for a week                                                            |
+| `caches`    | Caches that tools rebuild or download again, such as the npm cache, Xcode DerivedData and the pnpm store                                                              |
+| `nyte`      | Nyte's logs untouched for two weeks                                                                                                                                   |
+
+It looks at registered workspaces, repositories a few levels under common project folders such as
+`~/Developer`, and the worktree folders of other coding agents. A workspace with a running chat is
+skipped. An item's `bytes` is `null` when only its tool can tell, as for `pnpm store prune`. An
+item's `blocked` says why it can't be cleaned now, such as `Xcode is running`.
+
+## When to call it
+
+When a user opens a storage view. A scan runs `git status` and `du` across every repository it
+finds, so it can take several seconds; cache the result.
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+{
+  "disk": { "size": 994662584320, "free": 48318382080 },
+  "items": [
+    {
+      "id": "projects:build:/Users/me/Developer/shop",
+      "group": "projects",
+      "title": "shop",
+      "detail": "node_modules ×4, .next · untouched for 3 months",
+      "path": "/Users/me/Developer/shop",
+      "bytes": 2147483648,
+      "blocked": null
+    }
+  ]
+}
+```
+
+## Errors
+
+`unavailable` when the host has no local disk to clean, as a host serving only remote workspaces.
+Otherwise only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["disk", "items"],
+  "properties": {
+    "disk": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["size", "free"],
+          "properties": {
+            "size": {
+              "type": "number"
+            },
+            "free": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "group", "title", "detail", "path", "bytes", "blocked"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "group": {
+            "enum": ["worktrees", "projects", "caches", "nyte"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

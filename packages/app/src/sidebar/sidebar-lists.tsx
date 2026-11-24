@@ -20,7 +20,8 @@ import type { ChatDraft } from "../panes/session-view-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { openProjectDialog } from "../projects/project-dialog.tsx";
 import { shellActions, useStagePage } from "../tabs/shell-state.ts";
-import { DraftRow, SessionRow, type SessionPlace } from "./sidebar-rows.tsx";
+import { DraftRow, SessionRow } from "./sidebar-rows.tsx";
+import type { SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   chatMark,
@@ -29,10 +30,9 @@ import {
   folderView,
   hasSessionFilters,
   sessionPage,
-  type SessionViewGroup,
-  type ShelfHold,
 } from "./sidebar-view.ts";
-import { type SessionShelf, type SessionViewSettings } from "../preferences/session-view.ts";
+import type { SessionViewGroup, ShelfHold } from "./sidebar-view.ts";
+import type { SessionShelf, SessionViewSettings } from "../preferences/session-view.ts";
 
 export interface ListedSession {
   readonly place: SessionPlace;
@@ -48,7 +48,6 @@ export interface ListContext {
   readonly view: SessionViewSettings;
   readonly showDrafts: boolean;
   readonly activeSessionId: SessionId | undefined;
-  readonly openWorkspace: WorkspaceId | null;
   readonly unavailable: ReadonlySet<WorkspaceId>;
   readonly chats: ChatDirectory;
   readonly unread: ReadonlySet<SessionId>;
@@ -129,8 +128,9 @@ function EmptyList({
   readonly filtered: boolean;
   readonly onClearFilters: () => void;
 }): ReactElement {
-  if (!filtered)
+  if (!filtered) {
     return <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>No chats yet</div>;
+  }
 
   return (
     <>
@@ -226,7 +226,6 @@ function ListedRow({
     <SessionRow
       session={listed.session}
       selected={listed.session.id === context.activeSessionId}
-      draggable={listed.place.workspace === context.openWorkspace}
       unreachable={
         listed.session.workspace !== null && context.unavailable.has(listed.session.workspace)
       }
@@ -381,7 +380,13 @@ export function FolderList({
 }): ReactElement | null {
   const { view, reveal } = context;
   const { drafts: openDrafts, activeDraftId } = useDrafts();
-  const drafts = context.showDrafts && open ? openDrafts : [];
+
+  const drafts = context.showDrafts
+    ? openDrafts.filter((draft) =>
+        draft.folder === undefined ? open : draft.folder === place.path,
+      )
+    : [];
+
   const now = useNowMinute();
 
   if (sessions === undefined && drafts.length === 0) return null;

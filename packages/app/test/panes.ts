@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
-import { WindowDrafts } from "../src/chat/composer/drafts.ts";
+import { WindowDrafts } from "../src/drafts/drafts.ts";
 import type { StorageArea } from "../src/lib/storage.ts";
 import type { Layout, LayoutAction } from "../src/panes/layout.ts";
 import type { PaneContent } from "../src/panes/pane-kinds.ts";

@@ -68,12 +68,14 @@ export function createPageTable(kernel: Kernel): PageTable {
         return page;
       }
 
-      if ((await known.digest) !== (await digest))
+      if ((await known.digest) !== (await digest)) {
         throw new SdkError("invalid", `The id ${key} already opened another page.`);
+      }
       const page = await known.page;
 
-      if (!entries.has(page.id))
+      if (!entries.has(page.id)) {
         throw new SdkError("unknown", `The page the id ${key} opened is closed.`);
+      }
 
       return page;
     },

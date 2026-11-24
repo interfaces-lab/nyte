@@ -104,10 +104,11 @@ function build(source: Source): Site {
     }),
   );
 
-  if (byUrl.size > 0)
+  if (byUrl.size > 0) {
     throw new Error(
       `Add to a meta.json: ${[...byUrl.values()].map((page) => page.path).join(", ")}`,
     );
+  }
 
   const pages = placed.map(({ page, section }, index): DocPage => ({
     slugs: page.slugs,
@@ -181,7 +182,7 @@ export function findPage(path: string): DocPage | undefined {
 }
 
 function trimSlashes(splat: string | undefined): string {
-  return (splat ?? "").replace(/^\/+|\/+$/g, "");
+  return (splat ?? "").replaceAll(/^\/+|\/+$/g, "");
 }
 
 export function everyPage(): readonly DocPage[] {

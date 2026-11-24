@@ -16,7 +16,7 @@ import { queryClient } from "../data/query-client.ts";
 import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { installConnection } from "../data/connection.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
-import { TerminalPanel } from "../workbench/terminal/terminal-panel.tsx";
+import { TerminalPanel } from "../terminal/terminal-panel.tsx";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -45,7 +45,7 @@ function shellJob() {
     id: asId<"job">("job-shell"),
     key: asId<"job-key">("shell"),
     write: async () => undefined,
-    output: async function* () {
+    async *output() {
       for (;;) {
         const frame = frames.shift();
 
@@ -131,7 +131,7 @@ export async function run(): Promise<string> {
         start: async () => shell.job,
         recover: async () => shell.job,
         list: async () => [],
-        watch: async function* () {},
+        async *watch() {},
       },
       job: () => shell.job,
     }),

@@ -1,10 +1,10 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+const root = join(import.meta.dirname, "../../..");
 
 const require = createRequire(createRequire(import.meta.url).resolve("@stylexjs/unplugin"));
 
@@ -76,7 +76,7 @@ export async function readGroups(path) {
 
   try {
     const module = join(directory, "tokens.ts");
-    writeFileSync(module, code.replace(/^import\s[^;]*;$/gm, ""));
+    writeFileSync(module, code.replaceAll(/^import\s[^;]*;$/gm, ""));
     const exports = await import(pathToFileURL(module).href);
     const groups = new Map();
 

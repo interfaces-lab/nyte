@@ -3,6 +3,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
 import { codemodePlugin } from "./codemode-plugin.ts";
+import { partViewsPlugin } from "./part-views-plugin.ts";
 import { BINARY_ENTRYPOINTS } from "./defines.ts";
 
 const packages = fileURLToPath(new URL("../../", import.meta.url));
@@ -37,7 +38,7 @@ for (const target of targets) {
     entrypoints: BINARY_ENTRYPOINTS.map((entry) => join(packages, entry)),
     root: packages,
     target: "bun",
-    plugins: [solidPlugin, codemodePlugin],
+    plugins: [partViewsPlugin, solidPlugin, codemodePlugin],
     define: {
       "process.platform": JSON.stringify(target.platform),
       "process.arch": JSON.stringify(target.arch),

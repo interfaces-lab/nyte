@@ -12,7 +12,7 @@ process.env["NYTE_DB"] ??= join(homedir(), ".nyte", "nyte-dev.db");
 const story = process.env["NYTE_STORY"];
 
 if (story !== undefined) plugin(storyEntry(story));
-else if (process.env["NYTE_RELOAD"] !== "off")
+else if (process.env["NYTE_RELOAD"] !== "off") {
   plugin({
     name: "nyte-reload",
     setup(build) {
@@ -22,6 +22,7 @@ else if (process.env["NYTE_RELOAD"] !== "off")
       }));
     },
   });
+}
 
 ensureSolidTransformPlugin();
 

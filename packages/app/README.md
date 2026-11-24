@@ -1,29 +1,29 @@
 # @nyte-ai/app
 
-The Nyte interface. This package holds the React screens, queries and styles that the desktop app and the web app share. The package never talks to a host directly. It reads everything through a `NyteBridge` that its embedding installs. The desktop's bridge reaches the host through Electron's main process, and the web app's bridge in `src/web` connects through `@nyte-ai/sdk`.
+The Nyte interface. This package holds the React screens, queries and styles shared by the desktop app and the web app. It never talks to a host directly. It reads everything through a `NyteBridge` installed by its embedding. The desktop's bridge reaches the host through Electron's main process. The web app's bridge in `src/web` connects through `@nyte-ai/sdk`.
 
 ## Usage
 
-Call `installBridge` from `@nyte-ai/app/contract/nyte.ts` before anything imports `@nyte-ai/app/theme/boot.ts`. That module reads the bridge while it evaluates, and a read before installation throws. The desktop's renderer entry shows the order:
+Call `installBridge` from `@nyte-ai/app/contract/nyte.ts` before anything imports `@nyte-ai/app/boot/theme.ts`. That module reads the bridge while it evaluates, and a read before installation throws. The desktop's renderer entry shows the order:
 
 ```ts
 import "@nyte-ai/app/theme/faces.ts";
 import "./install-bridge.ts"; // calls installBridge(bridge)
-import "@nyte-ai/app/theme/boot.ts";
+import "@nyte-ai/app/boot/theme.ts";
 import "@nyte-ai/app/theme/focus-modality.ts";
 import "@nyte-ai/app/theme/global.css";
 ```
 
 The web app does the same in `src/web/install.ts`, the first import of `src/web/entry.tsx`.
 
-Then mount `App` from `@nyte-ai/app`. It takes the embedding's product mark as `appIcon` and a router from `createAppRouter`. The desktop passes its bundled `build/icon-macos.svg`.
+Then mount `App` from `@nyte-ai/app`. It takes the embedding's product mark as `appIcon`, a light and a dark image, and a router from `createAppRouter`. The desktop passes its day and night icon renders, `build/icon-day.png` and `build/icon.png`.
 
 ## Entry points
 
 - `@nyte-ai/app` exports `App`, `createAppRouter`, `queryClient`, `connectLocalHost`, `startRendererStartup` and the window and startup helpers.
 - `@nyte-ai/app/contract/*` holds the bridge contract. `bridge.ts` defines `NyteBridge` and the host, usage and browser types. `nyte.ts` exports `installBridge` and the `nyte` object that reads the installed bridge.
 - `@nyte-ai/app/vite` holds the Vite plugins an embedding's build needs, such as `deferredChunks` and `stylex`.
-- Other modules have their own subpath in `package.json`, such as `@nyte-ai/app/theme/boot.ts`.
+- Other modules have their own subpath in `package.json`, such as `@nyte-ai/app/boot/theme.ts`.
 - `@nyte-ai/app/e2e/errors`, `@nyte-ai/app/e2e/scenario-d`, `@nyte-ai/app/e2e/scenario-u-fixture` and `@nyte-ai/app/e2e/scenario-u-trace` share helpers with the desktop's end-to-end suite.
 
 Exports are TypeScript source. The embedding's bundler compiles them.
@@ -49,7 +49,7 @@ Set these public build variables in Vercel. Use the same Clerk instance and brok
 
 `.env.example` shows both. A missing or invalid value turns off account sign-in and leaves the address-and-token form. For local builds, put the values in a gitignored `.env.local`. The development server uses port 5179.
 
-Add `https://app.nyte.sh`, `http://localhost:5179` and `http://127.0.0.1:5179` to Clerk's allowed origins and web redirect URLs. The broker must authorize the same origins, and the standard session token's audience must match the broker's origin. [`@nyte-ai/connect`](../connect/README.md) covers the Clerk and broker setup. Add `app.nyte.sh` to the Vercel project and configure its DNS by hand.
+Add `https://app.nyte.sh`, `http://localhost:5179` and `http://127.0.0.1:5179` to Clerk's allowed origins and web redirect URLs. The broker must authorize the same origins. The standard session token's audience must match the broker's origin. [`@nyte-ai/connect`](../connect/README.md) covers the Clerk and broker setup. Add `app.nyte.sh` to the Vercel project and configure its DNS by hand.
 
 ### Vercel project
 
@@ -57,11 +57,11 @@ Use `packages/app` as the root directory, the Vite preset, `pnpm build` as the b
 
 ### Connections
 
-The account screen lists linked hosts, with offline hosts disabled. Connecting enrolls a device token for the tab and connects through the broker's relay. The token and the client ID live only in `sessionStorage`, so each tab is its own device and a reload resumes without enrolling again.
+The account screen lists linked hosts, with offline hosts disabled. Connecting enrolls a device token for the tab and connects through the broker's relay. The token and the client ID live only in `sessionStorage`. Each tab is then its own device, and a reload resumes without enrolling again.
 
 - **Switch Desktop** releases the device and reloads into the host list.
 - **Sign Out** asks the broker to revoke the device instead of releasing it, then ends the Clerk session.
-- Closing a tab forgets the token in the browser, but the server doesn't revoke it, and browser session restoration can bring it back.
+- Closing a tab forgets the token in the browser, but the server doesn't revoke it. Browser session restoration can bring it back.
 
 The app pins each host's identity per route in `localStorage` on first connection. It refuses a different key at that route until you choose **Pair as New Host**. The pin outlives tokens and sign-outs.
 

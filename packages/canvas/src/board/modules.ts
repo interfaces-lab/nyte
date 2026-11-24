@@ -37,6 +37,15 @@ export type Place = Omit<SheetError, "message">;
 
 const NOWHERE: Place = { path: null, line: null, column: null };
 
+class SheetFailure extends Error {
+  readonly sheet: SheetError;
+
+  constructor(sheet: SheetError) {
+    super(sheet.message);
+    this.sheet = sheet;
+  }
+}
+
 const MESSAGE_LIMIT = 2048;
 
 const registered = new Map<string, Registered>();
@@ -62,8 +71,9 @@ export function define(path: unknown, factory: unknown): void {
     evaluation.path !== path ||
     evaluation.factory !== null ||
     !makesExports(factory)
-  )
+  ) {
     return;
+  }
   evaluation.factory = factory;
 }
 
@@ -122,7 +132,7 @@ export function readSheet(path: string): SheetOutcome {
 
     if (module === undefined) throw new Error(`${name} is not a design file.`);
 
-    if (module.outcome.kind === "failed") throw module.outcome.error;
+    if (module.outcome.kind === "failed") throw new SheetFailure(module.outcome.error);
     const exports: Exports = {};
     instances.set(name, exports);
     module.outcome.factory(exports, load);
@@ -147,6 +157,8 @@ export function readSheet(path: string): SheetOutcome {
           },
         };
   } catch (error) {
+    if (error instanceof SheetFailure) return { kind: "failed", error: error.sheet };
+
     return { kind: "failed", error: readSheetError(error, locate(error)) };
   } finally {
     importing = null;
@@ -154,15 +166,17 @@ export function readSheet(path: string): SheetOutcome {
 }
 
 export function readSheetError(value: unknown, place: Place): SheetError {
-  if (typeof value !== "object" || value === null)
+  if (typeof value !== "object" || value === null) {
     return { ...place, message: clip(String(value)) };
+  }
   const message = "message" in value && typeof value.message === "string" ? value.message : "";
 
-  if (!("path" in value) || typeof value.path !== "string")
+  if (!("path" in value) || typeof value.path !== "string") {
     return {
       ...place,
       message: clip(message === "" ? "A design threw a value that is not an Error." : message),
     };
+  }
 
   return {
     message: clip(message),
@@ -195,12 +209,13 @@ export function locate(error: unknown): Place {
   for (const match of stack.matchAll(/(?<url>blob:[^\s()]+?):(?<line>\d+):(?<column>\d+)/gu)) {
     const path = sources.get(match.groups?.["url"] ?? "");
 
-    if (path !== undefined)
+    if (path !== undefined) {
       return {
         path,
         line: readPosition(Number(match.groups?.["line"])),
         column: readPosition(Number(match.groups?.["column"])),
       };
+    }
   }
 
   return NOWHERE;

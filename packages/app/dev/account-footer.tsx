@@ -1,6 +1,6 @@
 import "./install.ts";
 import "../src/theme/faces.ts";
-import "../src/theme/boot.ts";
+import "../src/boot/theme.ts";
 import "../src/theme/focus-modality.ts";
 import "../src/theme/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -11,7 +11,7 @@ import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { GitHubAccountState } from "@nyte-ai/sdk";
 import type { ConnectView, UpdateState } from "../src/contract/bridge.ts";
-import { AccountFooterMenu } from "../src/account/account-footer.tsx";
+import { AccountFooterMenu } from "../src/sidebar/account-footer.tsx";
 import { sidebarStyles as styles } from "../src/sidebar/sidebar.stylex.ts";
 import { keys } from "../src/data/query-client.ts";
 
@@ -180,9 +180,10 @@ function Harness(): ReactElement {
 
 const container = document.getElementById("root");
 
-if (container !== null)
+if (container !== null) {
   createRoot(container).render(
     <StrictMode>
       <Harness />
     </StrictMode>,
   );
+}

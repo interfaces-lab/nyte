@@ -9,8 +9,8 @@ import renderers from "@nyte-ai/plugin/client/transcript";
 import type { Placement, SessionId, SubmitDraft } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { canvasRenderers } from "./canvas-frame.tsx";
-import { PartOrigin } from "../chat/transcript/part-origin.ts";
-import { RawPartView } from "../chat/transcript/raw-part.tsx";
+import { PartOrigin } from "./part-origin.ts";
+import { RawPartView } from "./raw-part.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { connected, connection, onInstall } from "../data/connection.ts";
 import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
@@ -98,13 +98,14 @@ export function watchClientPlugins(
     const previous = focused;
     focused = next;
 
-    if (next !== undefined)
+    if (next !== undefined) {
       void mounting?.then((plugins) =>
         plugins.switched(
           previous === undefined ? null : connection().session(previous),
           connection().session(next),
         ),
       );
+    }
   };
 
   const stopRemount = onInstall((replaced) => {
@@ -182,12 +183,13 @@ function PluginPart({
 
   if (isValidElement(drawn)) return <PartOrigin value={origin}>{drawn}</PartOrigin>;
 
-  if (view !== undefined)
+  if (view !== undefined) {
     return (
       <PartOrigin value={origin}>
         <PartView sessionId={sessionId} message={message} view={view} />
       </PartOrigin>
     );
+  }
 
   return <RawPartView message={message} />;
 }

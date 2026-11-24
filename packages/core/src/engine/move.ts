@@ -101,8 +101,11 @@ export async function move(
       return receipt;
 
     case "failed":
-      if (!(await reserve(kernel, session, { id, kind: "move", digest, outcome: decided.outcome })))
+      if (
+        !(await reserve(kernel, session, { id, kind: "move", digest, outcome: decided.outcome }))
+      ) {
         await known(kernel.store, session, id, "move", digest);
+      }
 
       return receipt;
 
@@ -152,8 +155,9 @@ export async function move(
         ],
       })
         .then(async (summarized): Promise<MoveOutcome | null> => {
-          if (summarized.kind !== "moved")
+          if (summarized.kind !== "moved") {
             return summarized.kind === "failed" ? summarized.outcome : null;
+          }
 
           if (summarized.stopped !== null) {
             await finishFence(kernel, session, summarized.stopped);
@@ -213,17 +217,19 @@ async function decide(
 
     if (plan === null) return { kind: "failed", outcome: { kind: "missing-target" } };
 
-    if (head === MAIN && plan.landing === null && checked.inbox.messages.length === 0)
+    if (head === MAIN && plan.landing === null && checked.inbox.messages.length === 0) {
       throw new SdkError("invalid", EMPTY_CHAT);
+    }
     const abandoned = options.abandoned;
 
-    if (abandoned?.kind === "summarize" && plan.abandoned.length > 0)
+    if (abandoned?.kind === "summarize" && plan.abandoned.length > 0) {
       return {
         kind: "summarize",
         tip: checked.tip,
         plan,
         instructions: abandoned.instructions ?? null,
       };
+    }
 
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
 
@@ -253,11 +259,12 @@ async function decide(
       },
     ]);
 
-    if (outcome.kind !== "set")
+    if (outcome.kind !== "set") {
       return outcome.name === receiptRef(session, id) &&
         (await known(kernel.store, session, id, "move", digest))
         ? { kind: "replayed" }
         : STALE;
+    }
 
     return {
       kind: "moved",
@@ -306,8 +313,9 @@ function planHistoryMove(
 export async function recoverMoves(kernel: Kernel, session: SessionId): Promise<void> {
   const prefix = receiptRef(session, asId<"receipt">(""));
 
-  for (const ref of await kernel.store.sessions.pending({ kind: "receipt", sessions: [session] }))
+  for (const ref of await kernel.store.sessions.pending({ kind: "receipt", sessions: [session] })) {
     await recover(kernel, session, asId<"receipt">(ref.name.slice(prefix.length)));
+  }
 }
 
 async function recover(kernel: Kernel, session: SessionId, id: ReceiptId): Promise<void> {
@@ -323,11 +331,12 @@ async function recover(kernel: Kernel, session: SessionId, id: ReceiptId): Promi
         found.record.id === id &&
         !(await withFold(kernel, session, (state) => state.inputs.has(asId<"message">(id)))));
 
-    if (interrupted && (found.record.kind === "send" || found.record.kind === "move"))
+    if (interrupted && (found.record.kind === "send" || found.record.kind === "move")) {
       await settleReceipt(kernel, session, id, {
         kind: found.record.kind,
         outcome: { kind: "summary-failed", reason: "The summary was interrupted." },
       });
+    }
 
     return;
   }

@@ -1,11 +1,12 @@
-import { type Static, Type } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import {
   buildBaseCodexHeaders,
-  type CodexFrame,
   DEFAULT_CODEX_BASE_URL,
   extractAccountId,
 } from "../api/openai-codex-wire.ts";
+import type { CodexFrame } from "../api/openai-codex-wire.ts";
 import type {
   AccountLimitWindow,
   AccountLimits,

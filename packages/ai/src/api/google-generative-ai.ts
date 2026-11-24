@@ -1,14 +1,16 @@
 import {
-  type Content,
   FinishReason,
   FunctionCallingConfigMode,
-  type GenerateContentConfig,
-  type GenerateContentParameters,
   GoogleGenAI,
-  type HttpOptions,
-  type Part,
-  type ThinkingConfig,
   ThinkingLevel as GoogleThinkingLevel,
+} from "@google/genai";
+import type {
+  Content,
+  GenerateContentConfig,
+  GenerateContentParameters,
+  HttpOptions,
+  Part,
+  ThinkingConfig,
 } from "@google/genai";
 import { calculateCost, clampThinkingLevel } from "../model-capabilities.ts";
 import type {
@@ -463,7 +465,7 @@ function getGoogleBudget(
   customBudgets?: ThinkingBudgets,
 ): number {
   if (customBudgets?.[level] !== undefined) {
-    return customBudgets[level]!;
+    return customBudgets[level];
   }
 
   if (model.id.includes("2.5-pro")) {
@@ -471,7 +473,7 @@ function getGoogleBudget(
       minimal: 128,
       low: 2048,
       medium: 8192,
-      high: 32768,
+      high: 32_768,
     };
 
     return budgets[level];
@@ -482,7 +484,7 @@ function getGoogleBudget(
       minimal: 512,
       low: 2048,
       medium: 8192,
-      high: 24576,
+      high: 24_576,
     };
 
     return budgets[level];
@@ -493,7 +495,7 @@ function getGoogleBudget(
       minimal: 128,
       low: 2048,
       medium: 8192,
-      high: 24576,
+      high: 24_576,
     };
 
     return budgets[level];
@@ -572,7 +574,7 @@ function convertMessages(
   const normalizeToolCallId = (id: string): string => {
     if (!atLeastGemini3(model.id)) return id;
 
-    return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+    return id.replaceAll(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
   };
 
   const transformedMessages = transformMessages(conversation, model, normalizeToolCallId);
@@ -696,7 +698,7 @@ function convertMessages(
       },
     };
 
-    const lastContent = contents[contents.length - 1];
+    const lastContent = contents.at(-1);
 
     if (lastContent?.role === "user" && lastContent.parts?.some((part) => part.functionResponse)) {
       lastContent.parts.push(functionResponsePart);

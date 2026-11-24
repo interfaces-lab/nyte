@@ -17,7 +17,7 @@ export async function render(
 export async function frameShowing(
   setup: Pick<TestRendererSetup, "renderOnce" | "captureCharFrame">,
   text: string,
-  timeout = 3_000,
+  timeout = 3000,
 ): Promise<string> {
   const deadline = Date.now() + timeout;
 

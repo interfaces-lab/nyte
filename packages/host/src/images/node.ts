@@ -76,45 +76,45 @@ export function resolvePhotonWasmPath(): string {
 class WorkerUnavailable extends Error {}
 
 class PhotonThread {
-  readonly #worker: Worker;
-  readonly #pending = new Map<number, PromiseWithResolvers<PreparedImage | undefined>>();
-  readonly #onExit: (ended: PhotonThread) => void;
-  #nextId = 0;
-  #idle: ReturnType<typeof setTimeout> | undefined;
-  #started = false;
+  private readonly worker: Worker;
+  private readonly pending = new Map<number, PromiseWithResolvers<PreparedImage | undefined>>();
+  private readonly onExit: (ended: PhotonThread) => void;
+  private nextId = 0;
+  private idle: ReturnType<typeof setTimeout> | undefined;
+  private started = false;
 
   constructor(entry: string | URL, wasm: Uint8Array, onExit: (ended: PhotonThread) => void) {
-    this.#onExit = onExit;
+    this.onExit = onExit;
 
     try {
-      this.#worker = new Worker(entry, { workerData: wasm });
+      this.worker = new Worker(entry, { workerData: wasm });
     } catch (cause) {
       throw new WorkerUnavailable("The image worker cannot start", { cause });
     }
 
-    this.#worker.on("message", (reply: unknown) => {
+    this.worker.on("message", (reply: unknown) => {
       if (!Value.Check(prepareReply, reply)) {
-        this.#fail(new Error("Malformed image worker reply"));
-        void this.#worker.terminate();
+        this.fail(new Error("Malformed image worker reply"));
+        void this.worker.terminate();
 
         return;
       }
 
-      this.#started = true;
-      const request = this.#pending.get(reply.id);
+      this.started = true;
+      const request = this.pending.get(reply.id);
 
       if (request === undefined) return;
-      this.#pending.delete(reply.id);
+      this.pending.delete(reply.id);
 
       if ("error" in reply) request.reject(new Error(reply.error));
       else request.resolve(reply.result ?? undefined);
-      this.#settled();
+      this.settled();
     });
 
-    this.#worker.on("error", (cause) => this.#fail(cause));
+    this.worker.on("error", (cause) => this.fail(cause));
 
-    this.#worker.on("exit", (code) =>
-      this.#fail(new Error(`The image worker exited with code ${String(code)}`)),
+    this.worker.on("exit", (code) =>
+      this.fail(new Error(`The image worker exited with code ${String(code)}`)),
     );
   }
 
@@ -123,41 +123,41 @@ class PhotonThread {
     mimeType: string,
     limits: ImageLimits,
   ): Promise<PreparedImage | undefined> {
-    const id = this.#nextId++;
+    const id = this.nextId++;
     const request = Promise.withResolvers<PreparedImage | undefined>();
-    this.#pending.set(id, request);
-    clearTimeout(this.#idle);
-    this.#idle = undefined;
-    this.#worker.ref();
+    this.pending.set(id, request);
+    clearTimeout(this.idle);
+    this.idle = undefined;
+    this.worker.ref();
     const copy = bytes.slice();
 
-    this.#worker.postMessage({ id, bytes: copy, mimeType, limits } satisfies PrepareRequest, [
+    this.worker.postMessage({ id, bytes: copy, mimeType, limits } satisfies PrepareRequest, [
       copy.buffer,
     ]);
 
     return request.promise;
   }
 
-  #settled(): void {
-    if (this.#pending.size > 0) return;
-    this.#worker.unref();
+  private settled(): void {
+    if (this.pending.size > 0) return;
+    this.worker.unref();
 
-    this.#idle = setTimeout(() => {
-      this.#onExit(this);
-      void this.#worker.terminate();
+    this.idle = setTimeout(() => {
+      this.onExit(this);
+      void this.worker.terminate();
     }, IDLE_MS);
 
-    this.#idle.unref();
+    this.idle.unref();
   }
 
-  #fail(cause: unknown): void {
-    const failure = this.#started
+  private fail(cause: unknown): void {
+    const failure = this.started
       ? cause
       : new WorkerUnavailable("The image worker cannot start", { cause });
 
-    for (const request of this.#pending.values()) request.reject(failure);
-    this.#pending.clear();
-    clearTimeout(this.#idle);
-    this.#onExit(this);
+    for (const request of this.pending.values()) request.reject(failure);
+    this.pending.clear();
+    clearTimeout(this.idle);
+    this.onExit(this);
   }
 }

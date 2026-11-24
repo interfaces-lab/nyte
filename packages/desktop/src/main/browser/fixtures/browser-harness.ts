@@ -277,8 +277,9 @@ export async function runBrowserHarness(input: {
     await bundle("../../../preload/browser-page.ts", "preload.js", directory);
     await writeFile(join(directory, "host.html"), HOST_PAGE);
 
-    for (const [name, content] of Object.entries(input.files ?? {}))
+    for (const [name, content] of Object.entries(input.files ?? {})) {
       await writeFile(join(directory, name), content);
+    }
 
     await writeFile(
       join(directory, "harness.js"),

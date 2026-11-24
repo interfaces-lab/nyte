@@ -28,7 +28,7 @@ export interface WebBridge {
   ): Promise<Pick<SdkConnection, "hostId" | "publicKey">>;
 }
 
-const DIRECT_MS = 4_000;
+const DIRECT_MS = 4000;
 
 const NOT_CONNECTED = "The app is not connected to a server.";
 
@@ -37,6 +37,8 @@ const SERVER = "Change servers from the connect screen.";
 const REMOTE_ACCESS = "Remote access is turned on from the desktop app.";
 
 const refuse = (message: string) => (): Promise<never> => Promise.reject(new Error(message));
+
+const WEB_VERSION = "web";
 
 function browserPlatform(): NodeJS.Platform {
   const name = `${navigator.platform} ${navigator.userAgent}`;
@@ -91,6 +93,7 @@ async function openDirect(
 
   const endpoint: HostEndpoint = {
     url,
+    version: WEB_VERSION,
     credentials: { kind: "custom", headers: () => ({}) },
     expect: pin,
   };
@@ -168,18 +171,7 @@ export function createWebBridge(): WebBridge {
         disconnect: refuse(SERVER),
       },
       remote: {
-        state: () =>
-          Promise.resolve({
-            kind: "off",
-            tailnet: { state: "unavailable" },
-            cloudflare: { kind: "unregistered" },
-          }),
-        start: refuse(REMOTE_ACCESS),
-        stop: refuse(REMOTE_ACCESS),
-        configure: refuse(REMOTE_ACCESS),
-        clear: refuse(REMOTE_ACCESS),
-        pair: refuse(REMOTE_ACCESS),
-        revoke: refuse(REMOTE_ACCESS),
+        state: () => Promise.resolve({ tailnet: { state: "unavailable" } }),
         configureTailnet: refuse(REMOTE_ACCESS),
         signOutTailnet: refuse(REMOTE_ACCESS),
       },
@@ -215,6 +207,7 @@ export function createWebBridge(): WebBridge {
     connect: async ({ url, token }, options) => {
       const chosen: HostEndpoint = {
         url,
+        version: WEB_VERSION,
         credentials: { kind: "token", token },
         expect: options?.expect,
       };

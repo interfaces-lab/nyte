@@ -9,8 +9,9 @@ import type { BrowserTool } from "./browser/schema.ts";
 async function requireBrowser(invocation: ToolInvocation): Promise<BrowserApi> {
   const capability = await invocation.workspace.browser();
 
-  if (capability.kind !== "available")
+  if (capability.kind !== "available") {
     throw new Error(`No browser is available here: ${capability.reason}`);
+  }
 
   return capability.api;
 }
@@ -26,7 +27,7 @@ async function withPage<T>(
   if (target === undefined) throw new Error("No page is open. Call browser_open first.");
   await using held = await browser.adopt(asId(target));
 
-  return operate(held);
+  return await operate(held);
 }
 
 function render(snapshot: PageSnapshot): string {
@@ -42,8 +43,9 @@ function render(snapshot: PageSnapshot): string {
 function outcomeText(outcome: PageOutcome): string {
   if (outcome.kind === "applied") return render(outcome.snapshot);
 
-  if (outcome.kind === "stale")
+  if (outcome.kind === "stale") {
     return `The page changed (now revision ${outcome.revision}). Take a snapshot and try again.`;
+  }
 
   return outcome.kind === "refused"
     ? `Refused: ${outcome.reason}.`

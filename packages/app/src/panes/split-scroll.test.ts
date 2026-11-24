@@ -33,11 +33,12 @@ test(
 
     expect(working).toEqual([true]);
 
-    for (const journey of report)
+    for (const journey of report) {
       for (const [index, pane] of journey.panes.entries()) {
         const where = `${journey.name} pane ${String(index)}`;
         expect(pane.distance, where).toBeLessThanOrEqual(4);
         expect(pane.conversation, where).toBeGreaterThanOrEqual(pane.room / 2);
       }
+    }
   },
 );

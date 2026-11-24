@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core";
@@ -13,7 +12,7 @@ import { PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { fakeModels, lastUserText, titleReply } from "../src/index.ts";
 import type { Reply, Request } from "../src/index.ts";
 
-const SELF = fileURLToPath(import.meta.url);
+const SELF = import.meta.filename;
 
 const parsed = parseArgs({
   options: {
@@ -32,9 +31,13 @@ const STORE_LIMIT = 64 * 1024;
 
 type Tool = (typeof TOOLS)[number];
 
-type Sample = { readonly cpuMs: number; readonly wallMs: number; readonly storeBytes: number };
+interface Sample {
+  readonly cpuMs: number;
+  readonly wallMs: number;
+  readonly storeBytes: number;
+}
 
-type Row = {
+interface Row {
   readonly fixture: string;
   readonly tool: Tool;
   readonly runs: number;
@@ -42,7 +45,7 @@ type Row = {
   readonly cpuP90: number;
   readonly wallMs: number;
   readonly storeBytes: number;
-};
+}
 
 async function isolate(): Promise<void> {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-bench-snapshots-")));
@@ -91,15 +94,17 @@ async function bench(home: string): Promise<void> {
 
     if (base === undefined || big === undefined) continue;
 
-    if (big.cpuMs > base.cpuMs * RATIO_LIMIT)
+    if (big.cpuMs > base.cpuMs * RATIO_LIMIT) {
       failures.push(
         `${tool}: ${big.cpuMs.toFixed(1)} ms of CPU per call in the large folder is over ${String(RATIO_LIMIT)}× the small folder's ${base.cpuMs.toFixed(1)} ms`,
       );
+    }
 
-    if (big.storeBytes > STORE_LIMIT)
+    if (big.storeBytes > STORE_LIMIT) {
       failures.push(
         `${tool}: ${String(big.storeBytes)} snapshot bytes per call in the large folder is over ${String(STORE_LIMIT)}`,
       );
+    }
   }
 
   if (failures.length === 0) {
@@ -129,13 +134,14 @@ async function measureFolder(
 
       if (title !== null) return { content: [{ type: "text", text: title }] };
 
-      if (request.context.messages.at(-1)?.role === "toolResult")
+      if (request.context.messages.at(-1)?.role === "toolResult") {
         return { content: [{ type: "text", text: "Done." }] };
+      }
       const [tool, index] = lastUserText(request).split(" ");
       calls += 1;
       const id = `toolu_bench${String(calls).padStart(6, "0")}`;
 
-      if (tool === "write")
+      if (tool === "write") {
         return {
           content: [
             {
@@ -149,8 +155,9 @@ async function measureFolder(
             },
           ],
         };
+      }
 
-      if (tool === "bash")
+      if (tool === "bash") {
         return {
           content: [
             {
@@ -164,6 +171,7 @@ async function measureFolder(
             },
           ],
         };
+      }
 
       return { content: [{ type: "text", text: "Ok." }] };
     },

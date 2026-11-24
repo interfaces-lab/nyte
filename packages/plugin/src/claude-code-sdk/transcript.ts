@@ -105,12 +105,14 @@ function toParams(messages: readonly Message[], model: string): MessageParam[] {
     push(
       "assistant",
       message.content.flatMap((block): ContentBlock[] => {
-        if (block.type === "text")
+        if (block.type === "text") {
           return block.text.trim() === "" ? [] : [{ type: "text", text: block.text }];
+        }
 
         if (block.type === "thinking") {
-          if (!signed || block.thinkingSignature === undefined || block.thinkingSignature === "")
+          if (!signed || block.thinkingSignature === undefined || block.thinkingSignature === "") {
             return [];
+          }
 
           return block.redacted === true
             ? [{ type: "redacted_thinking", data: block.thinkingSignature }]
@@ -193,11 +195,13 @@ export function flatPrompt(messages: readonly Message[]): string {
 
   return turns
     .map((message) => {
-      if (message.role === "assistant")
+      if (message.role === "assistant") {
         return `Assistant:\n${message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")}`;
+      }
 
-      if (message.role === "toolResult")
+      if (message.role === "toolResult") {
         return `Tool result (${message.toolName}):\n${text(message.content)}`;
+      }
 
       return message.role === "user" ? `User:\n${text(message.content)}` : "";
     })

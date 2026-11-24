@@ -15,6 +15,7 @@ import type {
   KindTab,
   WorkbenchBrowse,
   WorkbenchChangesScope,
+  WorkbenchDock,
   WorkbenchTab,
   WorkbenchTabId,
   WorkbenchViewState,
@@ -79,7 +80,11 @@ export type WorkbenchViewAction =
       readonly group: EditorGroupId;
     }
   | { readonly kind: "focus-group"; readonly group: EditorGroupId }
-  | { readonly kind: "browse"; readonly root: WorkbenchBrowse };
+  | { readonly kind: "browse"; readonly root: WorkbenchBrowse }
+  | {
+      readonly kind: "dock";
+      readonly patch: Partial<Pick<WorkbenchDock, "open" | "height" | "maximized">>;
+    };
 
 type Side = "before" | "after";
 
@@ -198,8 +203,9 @@ export function reduceView(
         ? { ...state, layout: { ...state.layout, showing: "chat" } }
         : state;
     case "fit":
-      if (action.narrow && state.layout.kind === "split")
+      if (action.narrow && state.layout.kind === "split") {
         return { ...state, layout: NARROW_LAYOUT };
+      }
 
       return !action.narrow && workbenchNarrow(state.layout)
         ? { ...state, layout: SPLIT_LAYOUT }
@@ -243,6 +249,20 @@ export function reduceView(
           ? state.sidebars.filter((slot) => slot !== action.slot)
           : [...state.sidebars, action.slot],
       };
+    case "dock": {
+      const dock = {
+        ...state.dock,
+        ...action.patch,
+        height: Math.round(action.patch.height ?? state.dock.height),
+      };
+
+      return dock.open === state.dock.open &&
+        dock.height === state.dock.height &&
+        dock.maximized === state.dock.maximized
+        ? state
+        : { ...state, dock };
+    }
+
     default: {
       const _exhaustive: never = action;
 
@@ -278,8 +298,9 @@ function activate(state: WorkbenchViewState, id: WorkbenchTabId): WorkbenchViewS
     state.expanded &&
     layout === state.layout &&
     (group === undefined || state.group === group)
-  )
+  ) {
     return state;
+  }
 
   const shown = { ...state, active: id, expanded: true, layout };
 
@@ -317,8 +338,9 @@ function place(
     !state.tabs.some(
       (tab) => tab.kind === "file" && tab.id === target.before && tab.group === target.group,
     )
-  )
+  ) {
     return state;
+  }
 
   const held = state.tabs.find((tab) => tab.id === action.tab.id);
   const moved = held?.kind === "file" ? held : action.tab;
@@ -339,8 +361,9 @@ function place(
 
   const before = target.kind === "tabs" ? target.before : null;
 
-  if (twin?.kind === "file" && twin.id !== moved.id)
+  if (twin?.kind === "file" && twin.id !== moved.id) {
     return insertFile(close(prepared, moved.id), twin, before);
+  }
 
   return insertFile(
     withGroup(prepared, moved, target.group),

@@ -50,8 +50,8 @@ import {
   AnthropicEventSchema,
   AnthropicEventTypeSchema,
   IgnoredAnthropicEventSchema,
-  type AnthropicEvent,
 } from "./anthropic-events.ts";
+import type { AnthropicEvent } from "./anthropic-events.ts";
 import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import {
   adjustMaxTokensForThinking,
@@ -260,7 +260,8 @@ async function* iterateAnthropicEvents(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Could not parse Anthropic SSE event ${sse.event}: ${message}; data=${sse.data}; raw=${sse.raw.join("\\n")}`,
+        `Could not parse Anthropic SSE event ${sse.event}: ${message}; data=${sse.data}; raw=${sse.raw.join(String.raw`\n`)}`,
+        { cause: error },
       );
     }
   }

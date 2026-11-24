@@ -39,8 +39,9 @@ it.each([1, 128])("delivers a large replay in %i frames and continues its peer",
         new Response(
           sseFrames({
             async *[Symbol.asyncIterator]() {
-              for (let index = 0; index < (path === "large" ? count : 1); index += 1)
+              for (let index = 0; index < (path === "large" ? count : 1); index += 1) {
                 yield path === "large" ? content : "peer";
+              }
             },
           }),
         ),
@@ -57,8 +58,9 @@ it.each([1, 128])("delivers a large replay in %i frames and continues its peer",
     const peers = parseSse(peer);
     expect(await peers.next()).toEqual({ done: false, value: "peer" });
 
-    for (let index = 0; index < count; index += 1)
+    for (let index = 0; index < count; index += 1) {
       expect(await frames.next()).toEqual({ done: false, value: content });
+    }
     expect(await frames.next()).toEqual({ done: true, value: undefined });
     expect(await peers.next()).toEqual({ done: true, value: undefined });
   } finally {
@@ -132,8 +134,9 @@ it("registers twelve pending answers without occupying twelve HTTP responses", a
 
       if (new URL(request.url).pathname === `/${CHANNEL_PATH}`) channels += 1;
 
-      if (new URL(request.url).pathname === "/part.answer" && response.status === 202)
+      if (new URL(request.url).pathname === "/part.answer" && response.status === 202) {
         registered += 1;
+      }
 
       return response;
     },

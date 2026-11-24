@@ -79,7 +79,10 @@ describe("localProvider", () => {
     await symlink(root, join(parent, "link"));
     const provider = localProvider({ home: await folder() });
     const { identity } = await provider.inspect({ kind: "local", path: root });
-    const env = await provider.attach({ kind: "local", path: join(parent, "link") });
+    const env = await provider.attach(
+      { kind: "local", path: join(parent, "link") },
+      async () => false,
+    );
 
     expect([env.identity, env.cwd]).toEqual([identity, root]);
     expect(await env.files.read("a.txt")).toMatchObject({ kind: "text", contents: "hello\n" });
@@ -88,14 +91,18 @@ describe("localProvider", () => {
     const moved = join(parent, "renamed");
     await rename(root, moved);
     expect((await provider.inspect({ kind: "local", path: moved })).identity).toBe(identity);
-    const reattached = await provider.attach({ kind: "local", path: moved });
+    const reattached = await provider.attach({ kind: "local", path: moved }, async () => false);
 
     expect([reattached.identity, reattached.cwd]).toEqual([identity, moved]);
     await reattached.close();
-    await expect(provider.attach({ kind: "local", path: root })).rejects.toMatchObject({
+    await expect(
+      provider.attach({ kind: "local", path: root }, async () => false),
+    ).rejects.toMatchObject({
       code: "unavailable",
     });
-    await expect(provider.attach({ kind: "sandbox", locator: "box" })).rejects.toMatchObject({
+    await expect(
+      provider.attach({ kind: "sandbox", locator: "box" }, async () => false),
+    ).rejects.toMatchObject({
       code: "unavailable",
     });
     await expect(provider.destroy?.({ kind: "local", path: moved })).rejects.toMatchObject({

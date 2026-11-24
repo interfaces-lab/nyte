@@ -1,11 +1,13 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { create, props } from "@stylexjs/stylex";
-import { createContext, use, type ReactElement } from "react";
+import { createContext, use } from "react";
+import type { ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
 import { hairline } from "./styles/hairline.stylex.ts";
 import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
@@ -247,7 +249,7 @@ function TabsList({
 
 type TabsTabProps =
   | (StyledProps<TabsPrimitive.Tab.Props, Restyle<"Tabs.Tab">> & { readonly variant?: never })
-  | (StyledProps<TabsPrimitive.Tab.Props, Restyle<"Tabs.Tab[variant=bare]">> & {
+  | (StyledProps<TabsPrimitive.Tab.Props> & {
       readonly variant: "bare";
     });
 

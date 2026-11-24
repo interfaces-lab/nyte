@@ -15,13 +15,13 @@ import { replaceEqualDeep } from "@tanstack/react-query";
 import { coordinatedProject } from "../data/projects.ts";
 import { workspaceName, workspacePath } from "../data/workspaces.ts";
 
-export interface Folder {
+interface Folder {
   readonly workspace: WorkspaceId;
   readonly path: string;
   readonly name: string;
 }
 
-export type ChatLocation =
+type ChatLocation =
   | { readonly kind: "loading" }
   | { readonly kind: "unlisted" }
   | (Folder & {
@@ -43,6 +43,11 @@ export interface Chat {
 }
 
 export type ChatDirectory = ReadonlyMap<SessionId, Chat>;
+
+export interface ChatMark {
+  readonly state: TaskState;
+  readonly unread: boolean;
+}
 
 export function describeChats(
   sessions: Iterable<SessionInfo>,
@@ -66,8 +71,9 @@ export function describeChats(
         known.workspaces === workspaces &&
         known.projects === projects &&
         previous.get(session.id) === known.chat
-      )
+      ) {
         return [session.id, known.chat] as const;
+      }
       const head = mainHead(session);
       const project = coordinatedProject(session);
       const attention = headAttention(session);

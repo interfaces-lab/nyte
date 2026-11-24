@@ -1,8 +1,0 @@
-{
-  "git": {
-    "flow": "relaxed"
-  },
-  "files": {
-    "exclude": [".pnpm-store", "elyx_deps"]
-  }
-}

@@ -7,8 +7,8 @@ const ALLOWED = new Set(["AGENTS.md", "README.md", "RELEASING.md", "mise.toml"])
 const EXTENSION = /\.(?:[cm]?[jt]sx?|json|css|ya?ml|toml|md|sh|html)$/u;
 
 const RULES = new Set(
-  [...readFileSync("oxlint.config.ts", "utf8").matchAll(/"([\w-]+\/[\w-]+)":/gu)].map(
-    (match) => match[1],
+  ["oxlint.config.ts", "scripts/oxlint/nyte-rules.ts"].flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(/"([\w-]+\/[\w-]+)":/gu)].map((match) => match[1]),
   ),
 );
 
@@ -130,8 +130,9 @@ function names(code) {
     RULES.has(word) ||
     files.includes(word) ||
     /^packages\/<[^>]+>\/AGENTS\.md$/u.test(word)
-  )
+  ) {
     return false;
+  }
 
   if (word.startsWith("~/") || word.startsWith("@") || /^[a-z]+:\/\//u.test(word)) return false;
 
@@ -241,8 +242,8 @@ function readPnpm(words, target) {
 
 function findPackage(command) {
   const name = (command.dir ?? command.filter ?? ".")
-    .replace(/^["']|["']$/gu, "")
-    .replace(/^\.{3}|\.{3}$|^\^/gu, "");
+    .replaceAll(/^["']|["']$/gu, "")
+    .replaceAll(/^\.{3}|\.{3}$|^\^/gu, "");
 
   if (/[<>*{$]/u.test(name)) return undefined;
 

@@ -1,0 +1,157 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, posix } from "node:path";
+import { compile, findLanguage, LANGUAGES } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import { SCHEMA_STORE } from "../src/local/language/servers/vscode-json-language-server.ts";
+import { run } from "../src/local/process/command.ts";
+
+const USAGE = `Prints the pins a language server's install source needs.
+
+  node packages/host/scripts/pin-language-server.ts release <url>...
+      Downloads each URL and prints its url, sha256 and size.
+
+  node packages/host/scripts/pin-language-server.ts npm <lock.json> <name@version>...
+      Resolves the packages with npm and writes every tarball they need, with its
+      integrity, to <lock.json>.
+
+  node packages/host/scripts/pin-language-server.ts schemas <schemas.json> <commit>
+      Writes the schemas SchemaStore's catalog names at that commit, each with the
+      file patterns it takes, to <schemas.json>. Keeps the schemas SchemaStore serves
+      itself, and the patterns a file the JSON server opens can match.`;
+
+const JSON_FILES = [
+  ...Object.keys(LANGUAGES.json.ids).map((extension) => `x${extension}`),
+  ...Object.keys(LANGUAGES.json.fileNames ?? {}).map((name) => name.replaceAll("*", "x")),
+];
+
+const Catalog = compile(
+  Type.Object({
+    schemas: Type.Array(
+      Type.Object({ url: Type.String(), fileMatch: Type.Optional(Type.Array(Type.String())) }),
+    ),
+  }),
+);
+
+const Lockfile = compile(
+  Type.Object({
+    packages: Type.Record(
+      Type.String(),
+      Type.Object({
+        resolved: Type.Optional(Type.String()),
+        integrity: Type.Optional(Type.String()),
+        link: Type.Optional(Type.Boolean()),
+        os: Type.Optional(Type.Array(Type.String())),
+        cpu: Type.Optional(Type.Array(Type.String())),
+      }),
+    ),
+  }),
+);
+
+const [mode, ...rest] = process.argv.slice(2);
+
+if (mode === "release" && rest.length > 0) await pinRelease(rest);
+else if (mode === "npm" && rest.length > 1) await pinNpm(rest[0] ?? "", rest.slice(1));
+else if (mode === "schemas" && rest.length === 2) await pinSchemas(rest[0] ?? "", rest[1] ?? "");
+else {
+  console.error(USAGE);
+  process.exitCode = 2;
+}
+
+async function pinRelease(urls: readonly string[]): Promise<void> {
+  for (const url of urls) {
+    const response = await fetch(url);
+
+    if (!response.ok) throw new Error(`${url} answered ${response.status}.`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    console.log(
+      JSON.stringify({
+        url,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        bytes: bytes.byteLength,
+      }),
+    );
+  }
+}
+
+async function pinNpm(output: string, packages: readonly string[]): Promise<void> {
+  const folder = await mkdtemp(join(tmpdir(), "nyte-pin-"));
+
+  try {
+    await writeFile(join(folder, "package.json"), JSON.stringify({ private: true }));
+
+    const ran = await run(
+      "npm",
+      [
+        "install",
+        "--package-lock-only",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        ...packages,
+      ],
+      { cwd: folder },
+    );
+
+    if (ran.code !== 0) throw new Error(ran.stderr);
+    const lock: unknown = JSON.parse(await readFile(join(folder, "package-lock.json"), "utf8"));
+
+    if (!Lockfile.Check(lock)) throw new Error("npm wrote a lockfile this script cannot read.");
+
+    const pinned = Object.entries(lock.packages)
+      .flatMap((entry) => {
+        const found = entry[1];
+
+        return entry[0] === "" ||
+          found.link === true ||
+          found.resolved === undefined ||
+          found.integrity === undefined
+          ? []
+          : [
+              {
+                path: entry[0],
+                url: found.resolved,
+                integrity: found.integrity,
+                ...(found.os === undefined ? {} : { os: found.os }),
+                ...(found.cpu === undefined ? {} : { cpu: found.cpu }),
+              },
+            ];
+      })
+      .toSorted((left, right) => left.path.localeCompare(right.path));
+
+    await writeFile(output, `${JSON.stringify(pinned, null, 2)}\n`);
+    console.log(`${pinned.length} packages pinned in ${output}`);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+}
+
+async function pinSchemas(output: string, commit: string): Promise<void> {
+  const url = `https://raw.githubusercontent.com/SchemaStore/schemastore/${commit}/src/api/json/catalog.json`;
+  const response = await fetch(url);
+
+  if (!response.ok) throw new Error(`${url} answered ${response.status}.`);
+  const catalog: unknown = await response.json();
+
+  if (!Catalog.Check(catalog)) throw new Error("This script cannot read SchemaStore's catalog.");
+
+  const pinned = catalog.schemas.flatMap((schema) => {
+    const fileMatch = (schema.fileMatch ?? []).filter((pattern) => {
+      const name = pattern.slice(pattern.lastIndexOf("/") + 1);
+
+      return (
+        findLanguage(name.replaceAll(/\*+|\?/gu, "x"))?.name === "json" ||
+        JSON_FILES.some((file) => posix.matchesGlob(file, name))
+      );
+    });
+
+    return fileMatch.length > 0 && schema.url.startsWith(SCHEMA_STORE)
+      ? [`  ${JSON.stringify(schema.url.slice(SCHEMA_STORE.length))}: ${JSON.stringify(fileMatch)}`]
+      : [];
+  });
+
+  await writeFile(output, `{\n${pinned.join(",\n")}\n}\n`);
+  console.log(`${pinned.length} schemas pinned in ${output}`);
+}

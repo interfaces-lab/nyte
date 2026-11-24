@@ -14,9 +14,9 @@ const run = promisify(execFile);
 const REFERENCE = join(homedir(), "Developer", "reference");
 
 const FILES = [
-  { source: "cobra/command.go", line: 1_000 },
-  { source: "x-tools/gopls/internal/protocol/tsprotocol.go", line: 3_500 },
-  { source: "x-tools/internal/stdlib/manifest.go", line: 9_000 },
+  { source: "cobra/command.go", line: 1000 },
+  { source: "x-tools/gopls/internal/protocol/tsprotocol.go", line: 3500 },
+  { source: "x-tools/internal/stdlib/manifest.go", line: 9000 },
 ] as const;
 
 const TYPED = "\tvalue := strings.TrimSpace(name) // the quick brown fox";
@@ -81,8 +81,9 @@ test("typing, Enter and undo on real Go files", async ({ desk }, testInfo) => {
       code,
       testInfo.outputPath(`${slug(path)}-enter.json`),
       async () => {
-        for (let index = 0; index < 10; index += 1)
+        for (let index = 0; index < 10; index += 1) {
           await code.keyboard.press("Enter", { delay: 30 });
+        }
       },
     );
 
@@ -203,7 +204,7 @@ test("Go to Line takes the keys typed the moment it opens", async ({ desk }) => 
   await openByName(code, `go/${FILES[2].source}`);
   const landed = [];
 
-  for (const line of [1_000, 5_000, 9_999, 12_345, 18_000, 3, 777, 15_000, 42, 8_888]) {
+  for (const line of [1000, 5000, 9999, 12_345, 18_000, 3, 777, 15_000, 42, 8888]) {
     await caretStatus(code).click();
     await code.keyboard.type(`${String(line)}:1`);
     await code.keyboard.press("Enter");
@@ -223,7 +224,7 @@ test("double-click selects the word under the pointer", async ({ desk }) => {
   const words = ["package", "cobra", "import", "const", "FlagSetByCobraAnnotation", "helpFlagName"];
   const results = [];
 
-  for (let round = 0; round < 3; round += 1)
+  for (let round = 0; round < 3; round += 1) {
     for (const word of words) {
       await text.getByText(word, { exact: true }).first().dblclick();
       await code.keyboard.press("Meta+c");
@@ -232,6 +233,7 @@ test("double-click selects the word under the pointer", async ({ desk }) => {
         copied: await desk.application.evaluate((electron) => electron.clipboard.readText()),
       });
     }
+  }
 
   expect(results.filter((entry) => entry.copied !== entry.word)).toEqual([]);
 });
@@ -244,6 +246,9 @@ test("captures of the editor mid-edit, light and dark", async ({ desk }, testInf
     await desk.application.browserWindow(code)
   ).evaluate((window) => window.setBounds({ x: 40, y: 40, width: 1440, height: 900 }));
   await desk.front(code);
+  const file = join(desk.home, `go/${FILES[0].source}`);
+  const original = await readFile(file, "utf8");
+
   await openByName(code, `go/${FILES[0].source}`);
   await goTo(code, 1001, 13);
   await code.keyboard.press("Meta+d");
@@ -261,4 +266,10 @@ test("captures of the editor mid-edit, light and dark", async ({ desk }, testInf
 
     await testInfo.attach(`editor-${theme}`, { path, contentType: "image/png" });
   }
+
+  await desk.front(code);
+
+  for (let index = 0; index < 50; index += 1) await code.keyboard.press("Meta+z");
+  await code.keyboard.press("Meta+s");
+  await expect.poll(() => readFile(file, "utf8")).toBe(original);
 });

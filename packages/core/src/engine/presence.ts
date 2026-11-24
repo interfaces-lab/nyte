@@ -6,7 +6,7 @@ import type { StoreConnection } from "../contract/store.ts";
 import { PROCESSES, processRef } from "../store/refs.ts";
 import { fault } from "../util/dev-log.ts";
 
-export const BEAT_MS = 5_000;
+export const BEAT_MS = 5000;
 
 export const LAPSE_MS = 20_000;
 
@@ -42,8 +42,9 @@ export async function openPresence(
   const target = await raw.objects.put(body);
   const registered = await raw.refs.set([{ name, target, expect: "absent" }]);
 
-  if (registered.kind !== "set")
+  if (registered.kind !== "set") {
     throw new SdkError("internal", `${name} already exists; process instances must be unique.`);
+  }
 
   let revision = registered.revisions[0];
   const revocation = new AbortController();
@@ -192,8 +193,9 @@ export async function openPresence(
 
       const left = await raw.refs.set(leaving).catch(() => null);
 
-      if (left?.kind !== "set")
+      if (left?.kind !== "set") {
         await raw.refs.set([{ name, target: null, expect: revision }]).catch(() => undefined);
+      }
     },
   };
 }

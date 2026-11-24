@@ -1,14 +1,7 @@
-import { SdkError } from "@nyte-ai/schema";
-import type {
-  ByteReader,
-  Disposer,
-  HostView,
-  Json,
-  OutputFrame,
-  RequestOptions,
-} from "@nyte-ai/schema";
+import { OPERATIONS, SdkError } from "@nyte-ai/schema";
+import type { ByteReader, Json, OutputFrame, RequestOptions } from "@nyte-ai/schema";
 import { closable, dev } from "@nyte-ai/core/client";
-import { decodeOutput, encodeInput, linkLost } from "@nyte-ai/protocol";
+import { decodeOutput, encodeInput, linkLost, namesOperation } from "@nyte-ai/protocol";
 import type {
   ByteName,
   CallName,
@@ -19,8 +12,9 @@ import type {
   OperationOutput,
   Transport,
 } from "@nyte-ai/protocol";
-
-type LinkState = HostView["link"];
+import { untilOpen } from "../live/link.ts";
+import type { LinkCell } from "../live/link.ts";
+import { retryDelay } from "../live/store.ts";
 
 type RetryName = {
   [N in OperationName]: Declarations[N] extends { readonly wait: true }
@@ -32,18 +26,8 @@ type RetryName = {
       : never;
 }[OperationName];
 
-export interface Link {
-  current(): LinkState;
-  lost(): void;
-  restored(): void;
-  close(reason: "client" | "revoked" | "host-gone"): void;
-  subscribe(listener: (state: LinkState) => void): Disposer;
-  readonly signal: AbortSignal;
-}
-
 export interface Rows {
-  readonly link: Link;
-  operations(): string | null;
+  readonly link: LinkCell;
   call<N extends CallName>(
     name: N,
     input: OperationInput<N>,
@@ -75,108 +59,73 @@ export interface Rows {
 
 const DONE = { done: true, value: undefined } as const;
 
-const FIRST_DELAY_MS = 50;
-
-const BASE_DELAY_MS = 250;
-
-const MAX_DELAY_MS = 10_000;
-
-export function createLink(): Link {
-  let state: LinkState = { kind: "connected" };
-  const listeners = new Set<(state: LinkState) => void>();
-  const controller = new AbortController();
-
-  const publish = (next: LinkState): void => {
-    state = next;
-
-    for (const listener of listeners) listener(next);
-  };
-
-  return {
-    current: () => state,
-    lost() {
-      if (state.kind === "closed") return;
-      publish(
-        state.kind === "reconnecting"
-          ? { ...state, attempts: state.attempts + 1 }
-          : { kind: "reconnecting", since: Date.now(), attempts: 1 },
-      );
-    },
-    restored() {
-      if (state.kind === "reconnecting") publish({ kind: "connected" });
-    },
-    close(reason) {
-      if (state.kind === "closed") return;
-      dev("sdk", "link closed", { reason });
-      publish({ kind: "closed", reason });
-      controller.abort(new SdkError("unavailable", "The connection is closed."));
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    signal: controller.signal,
-  };
-}
-
-export function createRows(transport: Transport, link: Link): Rows {
+export function createRows(transport: Transport, link: LinkCell): Rows {
   const request = async <T>(
     send: (signal: AbortSignal) => Promise<T>,
     signal: AbortSignal | undefined,
   ): Promise<T> => {
-    link.signal.throwIfAborted();
+    link.closed.throwIfAborted();
+    const state = link.snapshot();
+
+    if (state.kind === "refused") throw state.error;
 
     try {
-      const answer = await send(
-        signal === undefined ? link.signal : AbortSignal.any([link.signal, signal]),
+      return await send(
+        signal === undefined ? link.closed : AbortSignal.any([link.closed, signal]),
       );
-
-      link.restored();
-
-      return answer;
     } catch (error) {
-      if (hostGone(transport, error)) link.close("host-gone");
-
-      link.signal.throwIfAborted();
-
-      if (linkLost(error)) link.lost();
-
-      if (error instanceof SdkError && error.code === "unauthenticated") link.close("revoked");
+      link.closed.throwIfAborted();
+      refuseFor(transport, link, error);
 
       throw error;
     }
   };
 
-  const call: Rows["call"] = async (name, input, options) =>
-    decodeOutput(
-      name,
-      await request(
-        (signal) => transport.invoke(name, encodeInput(name, input), { signal }),
-        options?.signal,
-      ),
-    );
+  const call: Rows["call"] = async (name, input, options) => {
+    for (let attempts = 0; ; attempts += 1) {
+      try {
+        return decodeOutput(
+          name,
+          await request(
+            (signal) => transport.invoke(name, encodeInput(name, input), { signal }),
+            options?.signal,
+          ),
+        );
+      } catch (error) {
+        const query = namesOperation(name) && OPERATIONS[name].kind === "query";
+
+        if (!linkLost(error) || !query || link.snapshot().kind !== "away") throw error;
+        dev("sdk", "query waiting", { name, attempts });
+        await untilOpen(
+          link,
+          retryDelay(attempts),
+          options?.signal === undefined
+            ? link.closed
+            : AbortSignal.any([link.closed, options.signal]),
+        );
+        options?.signal?.throwIfAborted();
+      }
+    }
+  };
 
   return {
     link,
-    operations: () => transport.operations(),
     call,
     async wait(name, input, options) {
       for (let attempts = 1; ; attempts += 1) {
         try {
           return await call(name, input, options);
         } catch (error) {
-          if (!linkLost(error) || link.signal.aborted || options?.signal?.aborted === true)
+          if (!linkLost(error) || link.closed.aborted || options?.signal?.aborted === true) {
             throw error;
+          }
           dev("sdk", "wait retrying", { name, attempts });
-          await backoff(
+          await untilOpen(
             link,
-            httpRetryDelay(attempts),
+            retryDelay(attempts - 1),
             options?.signal === undefined
-              ? link.signal
-              : AbortSignal.any([link.signal, options.signal]),
+              ? link.closed
+              : AbortSignal.any([link.closed, options.signal]),
           );
           options?.signal?.throwIfAborted();
         }
@@ -200,7 +149,7 @@ export function createRows(transport: Transport, link: Link): Rows {
       through(
         transport.frames(name, encodeInput(name, input)),
         (frame) => decoded(name, frame),
-        link.signal,
+        link.closed,
       ),
     watch: (name, input, opened) =>
       resumable(transport, link, name, encodeInput(name, input), opened),
@@ -208,21 +157,21 @@ export function createRows(transport: Transport, link: Link): Rows {
       through(
         transport.output(encodeInput("job.output", input)),
         (frame) => (frame.kind === "bytes" ? { value: frame } : decoded("job.output", frame)),
-        link.signal,
+        link.closed,
       ),
   };
 }
 
 function resumable<N extends OperationName>(
   transport: Transport,
-  link: Link,
+  link: LinkCell,
   name: N,
   input: Json,
   opened: AsyncIterator<Json> | undefined,
 ): AsyncIterable<OperationOutput<N>> {
   return closable<OperationOutput<N>>(() => {
     const stop = new AbortController();
-    const signal = AbortSignal.any([stop.signal, link.signal]);
+    const signal = AbortSignal.any([stop.signal, link.closed]);
     let frames: AsyncIterator<Json> | null = opened ?? null;
     let attempts = 0;
     let reopened = false;
@@ -244,26 +193,13 @@ function resumable<N extends OperationName>(
           try {
             next = await current.next();
           } catch (error) {
-            if (hostGone(transport, error)) {
-              link.close("host-gone");
-
-              return DONE;
-            }
-
-            if (error instanceof SdkError && error.code === "unauthenticated") {
-              link.close("revoked");
-
-              return DONE;
-            }
+            if (refuseFor(transport, link, error)) return DONE;
 
             if (!linkLost(error)) throw error;
           }
 
           if (next.done !== true) {
-            if (attempts > 0) {
-              dev("sdk", "watch resumed", { name, attempts });
-              link.restored();
-            }
+            if (attempts > 0) dev("sdk", "watch resumed", { name, attempts });
 
             attempts = 0;
             const value = decoded(name, next.value);
@@ -274,11 +210,12 @@ function resumable<N extends OperationName>(
               return { done: false, value: value.value };
             }
 
-            if (reopened)
+            if (reopened) {
               throw new SdkError(
                 "invalid",
                 `The host sends ${name} frames this client cannot read.`,
               );
+            }
             reopened = true;
             frames = null;
             void current.return?.();
@@ -292,8 +229,7 @@ function resumable<N extends OperationName>(
           if (signal.aborted) return DONE;
           attempts += 1;
           dev("sdk", "watch reconnecting", { name, attempts });
-          link.lost();
-          await backoff(link, httpRetryDelay(attempts), signal);
+          await untilOpen(link, retryDelay(attempts - 1), signal);
         }
       },
       close() {
@@ -367,44 +303,23 @@ function decoded<N extends OperationName>(
   }
 }
 
-function hostGone(transport: Transport, error: unknown): boolean {
+function refuseFor(transport: Transport, link: LinkCell, error: unknown): boolean {
+  if (!(error instanceof SdkError)) return false;
   const pinned = transport.host();
 
-  return (
-    error instanceof SdkError &&
+  if (
     error.code === "stale" &&
     pinned !== null &&
     error.hostId !== null &&
     error.hostId !== pinned
-  );
-}
+  ) {
+    link.refuse({ reason: "other-host", error });
 
-export function httpRetryDelay(attempts: number): number {
-  return attempts <= 1
-    ? FIRST_DELAY_MS
-    : Math.min(BASE_DELAY_MS * 2 ** (attempts - 2), MAX_DELAY_MS);
-}
+    return true;
+  }
 
-export function backoff(link: Link, ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
+  if (error.code !== "unauthenticated") return false;
+  link.refuse({ reason: "auth", error });
 
-      return;
-    }
-
-    const done = (): void => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", done);
-      unsubscribe();
-      resolve();
-    };
-
-    const timer = setTimeout(done, ms);
-    signal.addEventListener("abort", done, { once: true });
-
-    const unsubscribe = link.subscribe((state) => {
-      if (state.kind === "connected") done();
-    });
-  });
+  return true;
 }

@@ -36,8 +36,9 @@ const two: Fixture = (controller) => {
 const six: Fixture = (controller) => {
   selectSession(controller, A);
 
-  for (let split = 0; split < 5; split += 1)
+  for (let split = 0; split < 5; split += 1) {
     runPane(controller, { kind: "split", direction: "right" });
+  }
 };
 
 function unhide(between: Command, accepted: boolean): Command {
@@ -58,8 +59,9 @@ function typeInto(controller: TabPanes, paneId: PaneId): void {
 }
 
 function arrangement(node: LayoutNode<PaneContent>, before: Layout<PaneContent>): string {
-  if (node.kind === "split")
+  if (node.kind === "split") {
     return `${node.direction}(${node.children.map((child) => arrangement(child.node, before)).join(",")})`;
+  }
   const tab = node.tab;
   const kept = layoutPanes(before.root).some((entry) => entry.tab.id === tab.id);
 

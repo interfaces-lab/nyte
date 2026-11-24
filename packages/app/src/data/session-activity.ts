@@ -11,8 +11,9 @@ export type SessionActivity =
 const IDLE = { kind: "idle" } as const;
 
 function readActivity(message: Message): SessionActivity | null {
-  if (showsTool(message) && toolStatus(message).tense === "running")
+  if (showsTool(message) && toolStatus(message).tense === "running") {
     return { kind: "tool", toolClass: message.state.class };
+  }
 
   if (message.kind !== "part" || message.status.kind !== "live") return null;
 

@@ -27,6 +27,7 @@ import { holdLease } from "./lease.ts";
 import { lapsed, readParkedWait, runWait, WAIT_STOPPED, waitingOn } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
+// oxlint-disable-next-line typescript/consistent-type-definitions -- stored as Json, which needs the implicit index signature only a type alias has
 export type ActionIntent = {
   readonly part: PartId;
   readonly action: string;
@@ -124,8 +125,9 @@ export async function runStep<T>(
   const read = (result: Json | null): T => {
     const value = result === null ? null : input.decode(result);
 
-    if (value === null)
+    if (value === null) {
       throw new SdkError("internal", `Call ${call} recorded a result its step cannot read.`);
+    }
 
     return value;
   };
@@ -149,8 +151,13 @@ export async function runStep<T>(
     case "opened":
     case "parked":
     case "woken":
-      if (!opened.wrote && phase.replay === "never")
+      if (!opened.wrote && phase.replay === "never") {
         return { kind: "interrupted", value: await settle({ kind: "interrupted" }) };
+      }
+
+      break;
+    case "intended":
+      break;
   }
 
   const writes: Promise<unknown>[] = [];
@@ -252,18 +259,20 @@ export async function runAction(
               }
             },
             async settle(ended) {
-              if (ended.kind === "done" && ended.value.failed !== null)
+              if (ended.kind === "done" && ended.value.failed !== null) {
                 return { result: { kind: "failed", failed: ended.value.failed }, updates: [] };
+              }
               const output = ended.kind === "done" ? ended.value.output : undefined;
               const absent: Json = { kind: ended.kind };
 
               if (output === undefined) return { result: absent, updates: [] };
 
-              if (!isJson(output))
+              if (!isJson(output)) {
                 throw new SdkError(
                   "invalid",
                   `The ${input.action} action on part ${input.part} returned output that is not JSON.`,
                 );
+              }
 
               return { result: { kind: ended.kind, output }, updates: [] };
             },
@@ -327,8 +336,9 @@ export async function reserveRerun(
       phase === "settled" ||
       phase === "parked" ||
       ((current.reran?.waits ?? 0) === current.waits.length && !lapsed(kernel, current))
-    )
+    ) {
       return null;
+    }
 
     return {
       record: {
@@ -527,8 +537,9 @@ async function park(
       current.result !== null ||
       current.waiting !== null ||
       current.waits.length !== index
-    )
+    ) {
       return null;
+    }
     const record = { ...current, waiting: target, partial };
 
     return {
@@ -586,8 +597,9 @@ async function modalsWaiting(
       found.record.placement.kind !== "modal" ||
       status?.kind !== "live" ||
       status.waiting === call
-    )
+    ) {
       continue;
+    }
 
     updates.push({
       name,

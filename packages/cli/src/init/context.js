@@ -29,7 +29,7 @@ function readOsRelease() {
         .split("\n")
         .map((line) => line.match(/^([A-Z_]+)=(.*)$/u))
         .filter((match) => match !== null)
-        .map(([, key, value]) => [key, value.replace(/^"|"$/gu, "")]),
+        .map(([, key, value]) => [key, value.replaceAll(/^"|"$/gu, "")]),
     );
 
     return { name: fields.NAME ?? "Linux", id: fields.ID ?? "", version: fields.VERSION_ID ?? "" };

@@ -18,13 +18,13 @@ export interface McpOwner {
   revoke(input: OperationInput<"mcp.grants.revoke">): Promise<void>;
 }
 
-export type McpClient = {
+export interface McpClient {
   readonly id: string;
   readonly name: string;
   readonly redirectUris: readonly string[];
-};
+}
 
-export type McpSignIn = {
+export interface McpSignIn {
   readonly client: McpClient;
   readonly redirectUri: string;
   readonly state: string | null;
@@ -32,23 +32,23 @@ export type McpSignIn = {
   readonly resource: string;
   readonly issuer: string;
   readonly scope: string | null;
-};
+}
 
-export type McpGrant = {
+export interface McpGrant {
   readonly id: string;
   readonly client: string;
   readonly access: McpAccess;
   readonly resource: string;
   readonly expiresAt: number;
-};
+}
 
-export type McpTokens = {
+export interface McpTokens {
   readonly access_token: string;
   readonly token_type: "Bearer";
   readonly expires_in: number;
   readonly refresh_token: string;
   readonly scope: string;
-};
+}
 
 export type McpIssue =
   | { readonly kind: "issued"; readonly tokens: McpTokens }
@@ -77,18 +77,18 @@ export interface McpGrants extends McpOwner {
   authenticate(token: string, resource: string): Promise<McpGrant | null>;
 }
 
-type Pending = {
+interface Pending {
   readonly signIn: McpSignIn;
   readonly code: string;
   readonly expiresAt: number;
   location: string | null;
-};
+}
 
-type Code = {
+interface Code {
   readonly signIn: McpSignIn;
   readonly access: McpAccess;
   readonly expiresAt: number;
-};
+}
 
 const SIGN_IN_MS = 10 * 60 * 1000;
 
@@ -150,8 +150,9 @@ export function openMcpGrants(path: string): McpGrants {
       (entry) => entry.location === null && normalizeCode(entry.code) === wanted,
     );
 
-    if (found === undefined)
+    if (found === undefined) {
       throw new SdkError("unknown", "No MCP sign-in is waiting with that code.");
+    }
     found.location = location(found.signIn);
 
     return found.signIn;
@@ -185,8 +186,9 @@ export function openMcpGrants(path: string): McpGrants {
       const now = Date.now();
       prune(now);
 
-      if (pending.size >= MAX_PENDING)
+      if (pending.size >= MAX_PENDING) {
         throw new SdkError("unavailable", "Too many MCP sign-ins are waiting. Try again later.");
+      }
       const id = randomBytes(24).toString("base64url");
       const code = displayCode();
       pending.set(id, { signIn, code, expiresAt: now + SIGN_IN_MS, location: null });
@@ -234,20 +236,24 @@ export function openMcpGrants(path: string): McpGrants {
       const found = codes.get(input.code);
       codes.delete(input.code);
 
-      if (found === undefined)
+      if (found === undefined) {
         return refused("invalid_grant", "The authorization code is unknown, used or expired.");
+      }
 
       if (
         found.signIn.client.id !== input.clientId ||
         found.signIn.redirectUri !== input.redirectUri
-      )
+      ) {
         return refused("invalid_grant", "The code was issued to another client or redirect URI.");
+      }
 
-      if (input.resource !== null && input.resource !== found.signIn.resource)
+      if (input.resource !== null && input.resource !== found.signIn.resource) {
         return refused("invalid_target", `Ask for the resource ${found.signIn.resource}.`);
+      }
 
-      if (!VERIFIER.test(input.verifier) || challenge(input.verifier) !== found.signIn.challenge)
+      if (!VERIFIER.test(input.verifier) || challenge(input.verifier) !== found.signIn.challenge) {
         return refused("invalid_grant", "The code verifier does not match the code challenge.");
+      }
 
       return change((file) => {
         const now = Date.now();
@@ -281,14 +287,16 @@ export function openMcpGrants(path: string): McpGrants {
             candidate[1].refreshToken.hash === hash && candidate[1].refreshToken.expiresAt > now,
         );
 
-        if (entry === undefined || entry[1].client.id !== input.clientId)
+        if (entry === undefined || entry[1].client.id !== input.clientId) {
           return {
             file,
             result: refused("invalid_grant", "The refresh token is unknown, revoked or expired."),
           };
+        }
 
-        if (input.resource !== null && input.resource !== entry[1].resource)
+        if (input.resource !== null && input.resource !== entry[1].resource) {
           return { file, result: refused("invalid_target", `Ask for ${entry[1].resource}.`) };
+        }
         const issued = issue(entry[1], now);
 
         return {
@@ -333,8 +341,9 @@ export function openMcpGrants(path: string): McpGrants {
 
     async revoke(input) {
       await change((file) => {
-        if (!Object.hasOwn(file.grants, input.id))
+        if (!Object.hasOwn(file.grants, input.id)) {
           throw new SdkError("unknown", `No MCP grant has the id ${input.id}.`);
+        }
 
         return {
           file: {
@@ -359,8 +368,9 @@ async function readGrants(path: string): Promise<GrantFile> {
   if (text === null) return { grants: {} };
   const value = parseJson(text);
 
-  if (!grantFile.Check(value))
+  if (!grantFile.Check(value)) {
     throw new SdkError("internal", `${path} isn't a valid MCP grants file.`);
+  }
 
   return value;
 }
@@ -397,7 +407,7 @@ function displayCode(): string {
 }
 
 function normalizeCode(code: string): string {
-  return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return code.toUpperCase().replaceAll(/[^A-Z0-9]/g, "");
 }
 
 function digest(token: string): string {

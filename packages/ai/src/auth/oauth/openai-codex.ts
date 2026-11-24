@@ -1,12 +1,8 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
-import {
-  OAuthTokenResponseSchema,
-  type OAuthAuth,
-  type OAuthCredential,
-  type ProviderAuthInteraction,
-} from "../types.ts";
+import { OAuthTokenResponseSchema } from "../types.ts";
+import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { parseAuthorizationInput } from "./authorization-input.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "./oauth-page.ts";
@@ -43,7 +39,11 @@ const JWT_CLAIM_PATH = "https://api.openai.com/auth";
 
 export const ORIGINATOR = "nyte";
 
-type OAuthToken = { access: string; refresh: string; expires: number };
+interface OAuthToken {
+  access: string;
+  refresh: string;
+  expires: number;
+}
 
 type TokenOperation = "exchange" | "refresh";
 
@@ -72,16 +72,16 @@ const JwtClaims = Type.Object({
   ),
 });
 
-type DeviceAuthInfo = {
+interface DeviceAuthInfo {
   deviceAuthId: string;
   userCode: string;
   intervalSeconds: number;
-};
+}
 
-type DeviceTokenSuccess = {
+interface DeviceTokenSuccess {
   authorizationCode: string;
   codeVerifier: string;
-};
+}
 
 function assertNodeRuntime(): void {
   if (typeof process === "undefined" || !(process.versions?.node || process.versions?.bun)) {
@@ -114,7 +114,7 @@ async function fetchWithLoginCancellation(input: string, init: RequestInit): Pro
     return await fetch(input, init);
   } catch (error) {
     if (init.signal?.aborted) {
-      throw new Error("Login cancelled");
+      throw new Error("Login cancelled", { cause: error });
     }
 
     throw error;
@@ -186,6 +186,7 @@ async function refreshAccessToken(refreshToken: string, signal: AbortSignal): Pr
   } catch (error) {
     throw new Error(
       `OpenAI Codex token refresh error: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 
@@ -315,11 +316,11 @@ async function createAuthorizationFlow(
   return { verifier, state, url: url.toString() };
 }
 
-type OAuthServerInfo = {
+interface OAuthServerInfo {
   close: () => void;
   cancelWait: () => void;
   waitForCode: () => Promise<{ code: string } | null>;
-};
+}
 
 function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
   assertNodeRuntime();
@@ -499,9 +500,11 @@ async function loginOpenAICodex(interaction: ProviderAuthInteraction): Promise<O
         manualCode = input;
         server.cancelWait();
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         manualError = error instanceof Error ? error : new Error(String(error));
         server.cancelWait();
+
+        return manualError;
       });
 
     const result = await server.waitForCode();
@@ -518,9 +521,9 @@ async function loginOpenAICodex(interaction: ProviderAuthInteraction): Promise<O
     }
 
     if (!code) {
-      await manualPromise;
+      const lateManualError = await manualPromise;
 
-      if (manualError) throw manualError;
+      if (lateManualError) throw lateManualError;
 
       if (manualCode) {
         const parsed = parseAuthorizationInput(manualCode);
@@ -532,6 +535,7 @@ async function loginOpenAICodex(interaction: ProviderAuthInteraction): Promise<O
 
     if (!code) throw new Error("Missing authorization code");
 
+    // oxlint-disable-next-line typescript/return-await -- the finally closes the callback server before the token exchange starts
     return exchangeAuthorizationCodeForCredentials(
       code,
       verifier,

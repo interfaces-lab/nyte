@@ -140,7 +140,7 @@ function taskPrompt(view: HeadView): string | undefined {
 }
 
 function oneLine(text: string): string {
-  return text.trim().replace(/\s+/gu, " ");
+  return text.trim().replaceAll(/\s+/gu, " ");
 }
 
 export function taskActivity(task: Task): string {
@@ -149,8 +149,9 @@ export function taskActivity(task: Task): string {
 
   if (execution?.kind === "retrying") return execution.reason;
 
-  if (execution?.kind === "idle" && execution.lastRun?.end.kind === "failed")
+  if (execution?.kind === "idle" && execution.lastRun?.end.kind === "failed") {
     return execution.lastRun.end.failure.message;
+  }
 
   return task.view === undefined ? "" : (taskSteps(task.view).at(-1)?.text ?? "");
 }
@@ -191,8 +192,9 @@ export function taskTiming(task: Task): Timing | null {
   if (task.kind === "job") return { startedAt: task.job.startedAt, endedAt: task.job.endedAt };
   const execution = agentExecution(task);
 
-  if (execution !== undefined && execution.kind !== "idle")
+  if (execution !== undefined && execution.kind !== "idle") {
     return { startedAt: execution.run.startedAt, endedAt: null };
+  }
   const last = task.view?.turns.at(-1);
 
   return last === undefined || last.endedAt === null

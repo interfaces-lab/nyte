@@ -18,22 +18,22 @@ import {
   parseToolCallArguments,
   unfinishedToolCallArguments,
 } from "../utils/json-parse.ts";
-import {
-  appendGrammarToolInputJsonDelta,
-  type GrammarToolInputJsonBuffer,
-} from "./constrained-sampling.ts";
+import { appendGrammarToolInputJsonDelta } from "./constrained-sampling.ts";
+import type { GrammarToolInputJsonBuffer } from "./constrained-sampling.ts";
 import { emptyCost, stripStreamingScratchState } from "./assistant-stream.ts";
 import { TokenCount } from "./token-count.ts";
 import { encodeTextSignatureV1 } from "./openai-responses-convert.ts";
 import {
-  type ResponsesOutputItem,
-  type ResponsesServiceTier,
-  type ResponsesStatus,
   ResponsesStreamEventCheck,
-  type ResponsesTerminalResponse,
   ServiceTierSchema,
   StoredReasoningItemSchema,
   TerminalReasoningItemSchema,
+} from "./openai-responses-events.ts";
+import type {
+  ResponsesOutputItem,
+  ResponsesServiceTier,
+  ResponsesStatus,
+  ResponsesTerminalResponse,
 } from "./openai-responses-events.ts";
 
 /**

@@ -8,8 +8,8 @@ import { canvasTheme } from "../canvas/canvas-theme.ts";
 import { nyte } from "../contract/nyte.ts";
 import { currentLights, HERE, watchLights } from "../light/light.ts";
 import type { Subject } from "../light/light.ts";
-import { useAppearance } from "../theme/appearance-store.ts";
-import type { Appearance } from "../theme/appearance-store.ts";
+import { useAppearance } from "../preferences/appearance-store.ts";
+import type { Appearance } from "../preferences/appearance-store.ts";
 import { boardPages } from "./board-pages.ts";
 import type { ActivePage, BoardPages } from "./board-pages.ts";
 import { buildBoard, readPageAddresses } from "./design-compile.ts";
@@ -21,7 +21,7 @@ import { SURFACE } from "./designs.ts";
 import type { DesignStore, Designs } from "./designs.ts";
 import { studioStyles } from "./studio.stylex.ts";
 
-export type BoardCamera = Extract<AppMessage, { kind: "camera" }>["to"];
+type BoardCamera = Extract<AppMessage, { kind: "camera" }>["to"];
 
 export interface BoardHandle {
   /** Flies the camera to a file's frames. */
@@ -150,9 +150,11 @@ export function Board(input: {
     const place = (): void => live?.measure();
     const moved = new ResizeObserver(place);
 
-    if (live !== undefined)
-      for (let node: Element | null = frame.current; node !== null; node = node.parentElement)
+    if (live !== undefined) {
+      for (let node: Element | null = frame.current; node !== null; node = node.parentElement) {
         moved.observe(node);
+      }
+    }
     window.addEventListener("resize", place);
     place();
 
@@ -255,8 +257,9 @@ async function applyEdit(store: DesignStore, message: Edited): Promise<AppMessag
   const key = message.key;
   const text = store.read(key.path);
 
-  if (text === undefined || textDigest(text) !== message.base)
+  if (text === undefined || textDigest(text) !== message.base) {
     return { kind: "refused", from: key, reason: "changed" };
+  }
 
   if (!key.path.endsWith(".jsx")) return { kind: "refused", from: key, reason: "not-editable" };
   const source = await parseDesign(key.path, text);
@@ -270,9 +273,11 @@ async function applyEdit(store: DesignStore, message: Edited): Promise<AppMessag
 
   if (changes === undefined) return { kind: "refused", from: key, reason: "not-editable" };
 
-  for (const change of changes)
-    if (text.slice(change.start, change.end) !== change.text)
+  for (const change of changes) {
+    if (text.slice(change.start, change.end) !== change.text) {
       store.edit(key.path, change.start, change.end, change.text);
+    }
+  }
 
   const grown = changes.reduce(
     (sum, change) => sum + change.text.length - (change.end - change.start),

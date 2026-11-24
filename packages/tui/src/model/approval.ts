@@ -20,15 +20,17 @@ export function currentApproval(
 ): ApprovalModel | null {
   const [own] = openApprovals(head?.view ?? undefined);
 
-  if (head !== null && own !== undefined)
+  if (head !== null && own !== undefined) {
     return { ...own, session: head.id, owner: { kind: "head" } };
+  }
 
   for (const task of tasks) {
     if (task.kind !== "agent" || task.view === undefined) continue;
     const [first] = openApprovals(task.view);
 
-    if (first !== undefined)
+    if (first !== undefined) {
       return { ...first, session: task.id, owner: { kind: "child", short: shortId(task.id) } };
+    }
   }
 
   return null;

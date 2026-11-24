@@ -162,7 +162,7 @@ function SheetBody({
             <html.p role="alert" style={textStyles.error}>
               {catalog.message}
             </html.p>
-            <GlassButton label="Try Again" onPress={refresh} fill />
+            <GlassButton label="Try Again" onPress={() => void refresh()} fill />
           </html.div>
         ) : (
           <LegendList

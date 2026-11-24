@@ -3,17 +3,17 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
-import { type Persisted, persisted, type StorageArea } from "../lib/storage.ts";
+import { persisted } from "../lib/storage.ts";
+import type { Persisted, StorageArea } from "../lib/storage.ts";
 import {
+  DEFAULT_DOCK,
   FIRST_GROUP,
   FOLLOW_BROWSE,
   MAXIMIZED_WORKBENCH_LAYOUT,
   SPLIT_LAYOUT,
-  type WorkbenchSnapshot,
-  type WorkbenchTab,
-  type WorkbenchViewState,
   workbenchTabAvailable,
 } from "./model.ts";
+import type { WorkbenchSnapshot, WorkbenchTab, WorkbenchViewState } from "./model.ts";
 import { DEFAULT_WIDTH } from "./width.ts";
 
 export type WorkbenchPersistence = Pick<
@@ -107,6 +107,17 @@ const persistedWorkbenchView = Type.Object({
       Type.Object({ kind: Type.Literal("follow") }, strict),
       Type.Object({ kind: Type.Literal("workspace"), id: idSchema<"workspace">() }, strict),
     ]),
+  ),
+  dock: Type.Optional(
+    Type.Object(
+      {
+        open: Type.Boolean(),
+        active: Type.Union([nonEmpty, Type.Null()]),
+        height: Type.Number({ minimum: 0 }),
+        maximized: Type.Boolean(),
+      },
+      strict,
+    ),
   ),
 });
 
@@ -207,6 +218,7 @@ export function restoreSnapshot(
             width: stored.width === undefined ? DEFAULT_WIDTH : { pixels: stored.width },
             sidebars: stored.sidebars ?? [],
             browse: stored.browse ?? FOLLOW_BROWSE,
+            dock: stored.dock ?? DEFAULT_DOCK,
           }),
         ];
       }),
@@ -235,6 +247,7 @@ export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnap
         width: view.width.pixels,
         sidebars: [...view.sidebars],
         browse: view.browse,
+        dock: view.dock,
       };
     }),
   };

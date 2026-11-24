@@ -302,6 +302,8 @@ export type {
   WorkspaceCommandOutcome,
   WorkspaceId,
   WorkspaceInfo,
+  FolderTrust,
+  TrustSource,
   ProjectId,
   ProjectInfo,
   ProjectInput,

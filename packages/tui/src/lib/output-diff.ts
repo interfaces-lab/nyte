@@ -50,7 +50,7 @@ function hunkEnd(lines: readonly string[], start: number): number {
 
     if (line === undefined) return start;
 
-    if (line === "\\ No newline at end of file") {
+    if (line === String.raw`\ No newline at end of file`) {
       end++;
       continue;
     }
@@ -66,7 +66,7 @@ function hunkEnd(lines: readonly string[], start: number): number {
     end++;
   }
 
-  if (lines[end] === "\\ No newline at end of file") end++;
+  if (lines[end] === String.raw`\ No newline at end of file`) end++;
 
   return end;
 }
@@ -88,8 +88,9 @@ function changedLinePair(lines: readonly string[]): ChangedLinePair | undefined 
   const added = rows.flatMap((line, row) => (line.startsWith("+") ? [row] : []));
   const row = removed[0];
 
-  if (row === undefined || removed.length !== 1 || added.length !== 1 || added[0] !== row + 1)
+  if (row === undefined || removed.length !== 1 || added.length !== 1 || added[0] !== row + 1) {
     return undefined;
+  }
 
   return {
     removed: (rows[row] ?? "").slice(1),
@@ -99,7 +100,7 @@ function changedLinePair(lines: readonly string[]): ChangedLinePair | undefined 
 }
 
 function trimSection(lines: readonly string[]): string | undefined {
-  const text = lines.join("\n").replace(/^(?:\r?\n)+|(?:\r?\n)+$/gu, "");
+  const text = lines.join("\n").replaceAll(/^(?:\r?\n)+|(?:\r?\n)+$/gu, "");
 
   return text === "" ? undefined : text;
 }
@@ -160,12 +161,14 @@ export function diffFromOutput(text: string): OutputDiff | undefined {
         /^(?:index |(?:old|new|new file|deleted file) mode |(?:dis)?similarity index |(?:rename|copy) (?:from|to) |Binary files )/u.test(
           lines[headerEnd] ?? "",
         )
-      )
+      ) {
         headerEnd++;
+      }
     }
 
-    if (lines[headerEnd]?.startsWith("--- ") && lines[headerEnd + 1]?.startsWith("+++ "))
+    if (lines[headerEnd]?.startsWith("--- ") && lines[headerEnd + 1]?.startsWith("+++ ")) {
       headerEnd += 2;
+    }
     let fileEnd = headerEnd;
 
     while (lines[fileEnd]?.startsWith("@@ ")) {
@@ -196,8 +199,9 @@ export function diffFromOutput(text: string): OutputDiff | undefined {
         file.isCreate !== true &&
         file.isDelete !== true &&
         file.oldMode === file.newMode)
-    )
+    ) {
       break;
+    }
     files.push({ path: diffPath(file), sections: patchSections(file, source) });
     end = fileEnd;
 

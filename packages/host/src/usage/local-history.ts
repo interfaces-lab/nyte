@@ -3,10 +3,12 @@ import { lstat, opendir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { Value } from "typebox/value";
-import { calculateCost, type Models } from "@nyte-ai/ai";
+import { calculateCost } from "@nyte-ai/ai";
+import type { Models } from "@nyte-ai/ai";
 import { localDay } from "./store.ts";
 import {
   fileScanSchema,
@@ -14,9 +16,8 @@ import {
   readHistory,
   UsageScanCache,
   writeCacheDocument,
-  type HistoryLine,
-  type HistoryParser,
 } from "./history-file.ts";
+import type { HistoryLine, HistoryParser } from "./history-file.ts";
 import { summarizeModels, emptyModelUsage, recordedUsage } from "./summary.ts";
 import type { LocalHistoryUsage, ModelUsage, UsageWindow } from "./types.ts";
 import type { Usage } from "@nyte-ai/schema/model";
@@ -80,7 +81,7 @@ const assistantRecord = Type.Object({
   costUSD: Type.Optional(Type.Unknown()),
   message: Type.Object({
     id: Type.Optional(Type.String()),
-    model: Type.String({ minLength: 1, pattern: "\\S" }),
+    model: Type.String({ minLength: 1, pattern: String.raw`\S` }),
     usage: Type.Object({
       input_tokens: tokens,
       output_tokens: tokens,
@@ -244,8 +245,9 @@ export async function readClaudeCodeUsage(
     const root = await stat(projects);
     options.signal?.throwIfAborted();
 
-    if (!root.isDirectory())
+    if (!root.isDirectory()) {
       return { kind: "failed", message: "Claude Code history path is not a directory." };
+    }
   } catch {
     options.signal?.throwIfAborted();
 
@@ -597,8 +599,9 @@ const codexParser: HistoryParser<CodexFileScan> = (from) => {
       if (id === undefined || cursor.model === "") return;
       const usage = codexUsage(value.payload.usage);
 
-      if (usage.totalTokens > 0 && !modern.has(id))
+      if (usage.totalTokens > 0 && !modern.has(id)) {
         modern.set(id, { model: cursor.model, usage, at: parseRecordedAt(value.timestamp) });
+      }
 
       return;
     }

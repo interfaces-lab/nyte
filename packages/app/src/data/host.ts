@@ -1,14 +1,10 @@
 import { useSyncExternalStore } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { operationsDigest } from "@nyte-ai/sdk";
-import type { Health } from "@nyte-ai/sdk/client";
+import type { LinkState } from "@nyte-ai/sdk/client";
 import { installedLive } from "./connection.ts";
-import { keys } from "./query-client.ts";
+import { keys, queryClient } from "./query-client.ts";
 import type { HostProcess, HostState, UpdateState } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
-import { hostWatch } from "./watches.ts";
-import { useWatchSelect } from "./watch-store.ts";
-import { queryClient } from "./query-client.ts";
 
 const OPENING_HOST_STATE: HostState = { workspace: undefined };
 
@@ -28,7 +24,7 @@ export function useUpdateState() {
   });
 }
 
-export const hostProcessQuery = {
+const hostProcessQuery = {
   queryKey: keys.hostProcess,
   queryFn: async (): Promise<HostProcess> =>
     (await nyte.host.hostProcess?.state()) ?? { kind: "offline" },
@@ -61,21 +57,8 @@ export function useRemoteAccessState(active: boolean) {
   });
 }
 
-const health = installedLive((current) => current.health);
+const link = installedLive((current) => current.link);
 
-export function useHostHealth(): Health | undefined {
-  return useSyncExternalStore(health.subscribe, health.read, health.read);
-}
-
-export function useHostBuildMismatch(): { readonly operations: string } | undefined {
-  const operations = useWatchSelect(hostWatch("host"), (state) => state.value?.operations);
-
-  const own = useQuery({
-    queryKey: keys.clientOperations,
-    queryFn: operationsDigest,
-  }).data;
-
-  return operations !== undefined && operations !== null && own !== undefined && operations !== own
-    ? { operations }
-    : undefined;
+export function useHostLink(): LinkState | undefined {
+  return useSyncExternalStore(link.subscribe, link.read, link.read);
 }

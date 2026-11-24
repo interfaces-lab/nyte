@@ -4,9 +4,8 @@ import type { CompletionModel } from "../../src/model/completion.ts";
 import type { Dialog } from "../../src/model/dialogs/dialog.ts";
 import { draftModel, NO_PARTS } from "../../src/model/draft.ts";
 import type { DraftParts } from "../../src/model/draft.ts";
-import type { TableInput } from "../../src/model/table-input.ts";
+import type { TableInput, Blocked, RunModel } from "../../src/model/table-input.ts";
 import type { Place, QueueRow } from "../../src/model/queue.ts";
-import type { Blocked, RunModel } from "../../src/model/table-input.ts";
 import type { Draft } from "../../src/model/state.ts";
 
 export interface TableSpec {
@@ -39,7 +38,7 @@ function buildRun(spec: TableSpec["run"]): RunModel {
     case "waiting":
       return { kind: "waiting", run: asId("r1") };
     case "retrying":
-      return { kind: "retrying", run: asId("r1"), until: 5_000, reason: "rate limited" };
+      return { kind: "retrying", run: asId("r1"), until: 5000, reason: "rate limited" };
     default:
       return { kind: "idle" };
   }
@@ -65,7 +64,7 @@ function buildBlocked(spec: TableSpec["blocked"]): Blocked | null {
 function buildCompletion(spec: TableSpec["completion"]): CompletionModel | null {
   if (spec === undefined) return null;
 
-  if (spec === "empty")
+  if (spec === "empty") {
     return {
       token: { trigger: "/", query: "zz", from: 0, to: 3 },
       items: [],
@@ -74,8 +73,9 @@ function buildCompletion(spec: TableSpec["completion"]): CompletionModel | null 
       ownsEnter: false,
       queueable: false,
     };
+  }
 
-  if (spec === "argument")
+  if (spec === "argument") {
     return {
       token: { trigger: "argument", command: "cd", query: "sr", from: 4, to: 6 },
       items: [{ id: "src/", label: "src/", detail: "", kind: "argument" }],
@@ -84,6 +84,7 @@ function buildCompletion(spec: TableSpec["completion"]): CompletionModel | null 
       ownsEnter: false,
       queueable: false,
     };
+  }
 
   return {
     token: { trigger: "/", query: "re", from: 0, to: 3 },
@@ -180,7 +181,7 @@ export function tableInput(spec: TableSpec): TableInput {
             session: null,
             command: "sleep 9",
             include: true,
-            startedAt: 1_000,
+            startedAt: 1000,
             output: "",
             state: { kind: "running" },
             delivered: false,

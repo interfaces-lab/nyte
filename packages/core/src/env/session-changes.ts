@@ -35,14 +35,16 @@ export async function readAttributedPaths(
   while (cursor < through) {
     const events = await store.refs.log(session, cursor, LOG_PAGE);
 
-    for (const event of events)
+    for (const event of events) {
       if (
         event.seq <= through &&
         event.kind === "call" &&
         event.change === "settled" &&
         charged(event)
-      )
+      ) {
         for (const path of event.changes?.paths ?? []) paths.add(path);
+      }
+    }
 
     const last = events.at(-1);
 
@@ -61,7 +63,7 @@ export async function ownedChanges(
   extra: readonly string[] = [],
 ): Promise<ChangeSet> {
   const [from, attributed] = await Promise.all([
-    threadStart(store, session),
+    threadStart(store, session, (snapshot) => snapshots.comparable(snapshot, to)),
     readAttributedPaths(store, session),
   ]);
 

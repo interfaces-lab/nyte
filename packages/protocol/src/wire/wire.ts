@@ -45,13 +45,14 @@ export function encodeError(error: SdkError): SdkErrorWire {
 export function decodeError(value: Json, status?: number): SdkError {
   const result = SdkErrorWireSchema["~standard"].validate(value);
 
-  if (result instanceof Promise || result.issues !== undefined)
+  if (result instanceof Promise || result.issues !== undefined) {
     return new SdkError(
       status === undefined ? "internal" : statusCode(status),
       typeof value === "string" && value !== ""
         ? value
         : "The host answered with an error it did not describe.",
     );
+  }
   const wire = result.value;
 
   return new SdkError(wire.code, wire.message, {
@@ -84,8 +85,9 @@ export function sseFrames(
     start(controller) {
       const every = options?.heartbeatMs;
 
-      if (every !== undefined)
+      if (every !== undefined) {
         timer = setInterval(() => controller.enqueue(encoder.encode(": ping\n\n")), every);
+      }
     },
     async pull(controller) {
       try {
@@ -128,7 +130,7 @@ export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenera
 
       const text =
         held +
-        (afterReturn && decoded.startsWith("\n") ? decoded.slice(1) : decoded).replace(
+        (afterReturn && decoded.startsWith("\n") ? decoded.slice(1) : decoded).replaceAll(
           /\r\n?/g,
           "\n",
         );
@@ -269,8 +271,9 @@ export async function* parseOutputFrames(
       const read = await reader.read();
 
       if (read.done) {
-        if (offset < buffer.byteLength)
+        if (offset < buffer.byteLength) {
           throw new SdkError("internal", "The output stream ended mid-frame.");
+        }
 
         return;
       }
@@ -327,7 +330,7 @@ export function readInputHeader(request: Request): Json | null {
   if (header === null) return null;
 
   try {
-    const binary = atob(header.replace(/-/g, "+").replace(/_/g, "/"));
+    const binary = atob(header.replaceAll("-", "+").replaceAll("_", "/"));
 
     return parseJson(
       new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0))),
@@ -372,8 +375,9 @@ function decodeControl(value: Json): OutputFrame | null {
 
   if (value.kind === "gap") return { kind: "gap" };
 
-  if (value.kind === "exit")
+  if (value.kind === "exit") {
     return { kind: "exit", code: typeof value.code === "number" ? value.code : null };
+  }
 
   if (value.kind === "error" && value.error !== undefined) throw decodeError(value.error);
 
@@ -399,10 +403,10 @@ function joined(left: Uint8Array, right: Uint8Array): Uint8Array {
 }
 
 function base64url(input: Json): string {
-  const utf8 = encodeURIComponent(JSON.stringify(input)).replace(
+  const utf8 = encodeURIComponent(JSON.stringify(input)).replaceAll(
     /%([0-9A-F]{2})/g,
     (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)),
   );
 
-  return btoa(utf8).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(utf8).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }

@@ -38,8 +38,9 @@ export const connectServer: McpConnector = (entry, context) => {
 
   const headers = expand(transport.headers, entry.name);
 
-  if (Object.keys(headers).some((name) => name.toLowerCase() === "authorization"))
+  if (Object.keys(headers).some((name) => name.toLowerCase() === "authorization")) {
     return new StreamableHttpTransport({ url: transport.url, headers });
+  }
 
   return new StreamableHttpTransport({
     url: transport.url,
@@ -78,13 +79,14 @@ function expand(values: Readonly<Record<string, string>>, server: string): Recor
   return Object.fromEntries(
     Object.entries(values).map(([key, value]) => [
       key,
-      value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
+      value.replaceAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
         const found = process.env[name];
 
-        if (found === undefined)
+        if (found === undefined) {
           throw new Error(
             `${server} needs the environment variable ${name}. Set it where Nyte runs, then restart Nyte.`,
           );
+        }
 
         return found;
       }),

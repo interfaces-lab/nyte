@@ -52,8 +52,9 @@ export function refuse(
 }
 
 export function refuseUnstarted(state: State, now: number, opening: string | null = null): Step {
-  if (state.facts.chat?.kind === "blank")
+  if (state.facts.chat?.kind === "blank") {
     return refuse(state, "Send a message first.", now, "info");
+  }
 
   return opening === null ? stay(state) : refuse(state, opening, now);
 }

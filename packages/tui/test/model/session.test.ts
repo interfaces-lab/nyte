@@ -1,6 +1,8 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import { deriveScreen } from "../../src/model/screen.ts";
+import type { HostNotice } from "../../src/model/screen.ts";
+import type { LinkState } from "@nyte-ai/sdk/client";
 import type { Msg } from "../../src/model/msg.ts";
 import type { Step } from "../../src/model/step.ts";
 import { buildView, followed, FRESH } from "../fixture/view.ts";
@@ -577,34 +579,62 @@ describe("connection", () => {
   test("a dropped host and a stale chat show as two things, and both clear once it resumes", () => {
     const dropped = play(
       ready(working),
-      {
-        kind: "health",
-        health: {
-          kind: "retrying",
-          attempt: 1,
-          at: 5_000,
-          error: new SdkError("unavailable", "gone"),
-        },
-      },
+      { kind: "link", link: { kind: "away", since: 4000, retryAt: 5000, reason: "lost" } },
       {
         kind: "view",
         session: S1,
         view: working,
-        freshness: { kind: "stale", since: 4_000, error: null },
+        freshness: { kind: "stale", since: 4000, error: null },
       },
     );
 
     expect(deriveScreen(dropped.state, null)).toMatchObject({
-      health: { kind: "reconnecting", at: 5_000 },
-      updated: 4_000,
+      host: { kind: "reconnecting", at: 5000 },
+      updated: 4000,
     });
 
     const resumed = play(
       dropped.state,
-      { kind: "health", health: { kind: "open", since: 6_000 } },
+      { kind: "link", link: openLink({ kind: "current" }) },
       { kind: "view", session: S1, view: working, freshness: FRESH },
     );
 
-    expect(deriveScreen(resumed.state, null)).toMatchObject({ health: null, updated: null });
+    expect(deriveScreen(resumed.state, null)).toMatchObject({ host: null, updated: null });
+  });
+
+  test.each<{ readonly link: LinkState; readonly host: HostNotice | null }>([
+    { link: { kind: "connecting" }, host: null },
+    { link: openLink({ kind: "current" }), host: null },
+    { link: openLink({ kind: "host-newer" }), host: null },
+    { link: openLink({ kind: "host-older", replace: "when-idle" }), host: null },
+    { link: openLink({ kind: "host-older", replace: "manual" }), host: { kind: "restart-host" } },
+    { link: openLink({ kind: "host-older", replace: "none" }), host: { kind: "update-host" } },
+    { link: awayLink("replacing"), host: { kind: "updating" } },
+    { link: awayLink("restarting"), host: { kind: "restarting" } },
+    { link: awayLink("stopping"), host: { kind: "stopped" } },
+    { link: awayLink("lost"), host: { kind: "reconnecting", at: 9 } },
+    { link: refusedLink("auth"), host: { kind: "signed-out" } },
+    { link: refusedLink("other-host"), host: { kind: "other-host" } },
+    { link: refusedLink("update-host"), host: { kind: "update-host" } },
+    { link: refusedLink("update-client"), host: { kind: "update-nyte" } },
+    { link: { kind: "closed" }, host: null },
+  ])("shows $link.kind as $host", ({ link, host }) => {
+    expect(deriveScreen(play(ready(working), { kind: "link", link }).state, null).host).toEqual(
+      host,
+    );
   });
 });
+
+function openLink(match: Extract<LinkState, { readonly kind: "open" }>["match"]): LinkState {
+  return { kind: "open", since: 6000, version: "0.0.29", startedAt: 1, match };
+}
+
+function awayLink(reason: Extract<LinkState, { readonly kind: "away" }>["reason"]): LinkState {
+  return { kind: "away", since: 1, retryAt: 9, reason };
+}
+
+function refusedLink(
+  reason: Extract<LinkState, { readonly kind: "refused" }>["reason"],
+): LinkState {
+  return { kind: "refused", reason, error: new SdkError("not_supported", "No.") };
+}

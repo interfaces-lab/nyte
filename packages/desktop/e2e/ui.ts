@@ -301,8 +301,9 @@ export function settingsNav(page: Page): Locator {
 }
 
 export async function openSettings(page: Page, title: string): Promise<void> {
-  if (!(await settingsNav(page).isVisible()))
+  if (!(await settingsNav(page).isVisible())) {
     await sidebar(page).getByRole("link", { name: "Settings", exact: true }).click();
+  }
 
   await settingsNav(page).getByRole("link", { name: title, exact: true }).click();
   await expect(page.getByRole("heading", { name: title, level: 1 })).toBeVisible();

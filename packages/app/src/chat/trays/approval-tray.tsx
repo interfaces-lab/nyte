@@ -51,7 +51,8 @@ function moveFocus(event: KeyboardEvent<HTMLDivElement>): void {
 
   if (step === 0) return;
   const buttons = [...event.currentTarget.querySelectorAll("button")];
-  const current = buttons.findIndex((button) => button === document.activeElement);
+  const active = document.activeElement;
+  const current = active instanceof HTMLButtonElement ? buttons.indexOf(active) : -1;
 
   const next =
     current === -1 ? buttons.at(step > 0 ? 0 : -1) : buttons.at((current + step) % buttons.length);

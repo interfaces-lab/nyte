@@ -95,8 +95,9 @@ function hitArea(control: Element) {
   const reach = (dx: number, dy: number): number => {
     let distance = 0;
 
-    while (distance < 512 && hits(x + dx * (distance + 0.125), y + dy * (distance + 0.125)))
+    while (distance < 512 && hits(x + dx * (distance + 0.125), y + dy * (distance + 0.125))) {
       distance += 0.25;
+    }
 
     return distance;
   };
@@ -112,8 +113,9 @@ function hitArea(control: Element) {
 export async function run(): Promise<string> {
   const coarse = matchMedia("(pointer: coarse)").matches;
 
-  if (!coarse && !matchMedia("(pointer: fine)").matches)
+  if (!coarse && !matchMedia("(pointer: fine)").matches) {
     throw new Error("Pointer emulation failed");
+  }
   const floor = coarse ? 44 : 24;
   const host = document.createElement("div");
   document.body.append(host);
@@ -135,10 +137,11 @@ export async function run(): Promise<string> {
     for (const control of controls) {
       const box = hitArea(control);
 
-      if (box.width < floor - 0.25 || box.height < floor - 0.25)
+      if (box.width < floor - 0.25 || box.height < floor - 0.25) {
         failures.push(
           `${control.outerHTML.slice(0, 180)} hit area ${box.width}x${box.height}, expected ${floor}`,
         );
+      }
     }
 
     return controls.length;
@@ -334,8 +337,9 @@ export async function run(): Promise<string> {
           if (
             Math.min(box.right, next.right) - Math.max(box.left, next.left) > 0.25 &&
             Math.min(box.bottom, next.bottom) - Math.max(box.top, next.top) > 0.25
-          )
+          ) {
             failures.push("ButtonGroup/Toolbar hit areas overlap");
+          }
         }
       }
     }

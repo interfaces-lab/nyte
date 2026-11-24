@@ -293,12 +293,12 @@ const noRestyle = {
 
           context.report({
             node,
-            message:
-              `<${component}> takes no ${attribute}: it would skip the xstyle contract. ` +
-              (contract
+            message: `<${component}> takes no ${attribute}: it would skip the xstyle contract. ${
+              contract
                 ? `Place it through xstyle, which takes ${list([...contract.allow, ...(contract.also ?? [])])}; ` +
                   `choose its look with its props, or style a wrapper element you own.`
-                : `Choose its look with its props, or style a wrapper element you own.`),
+                : `Choose its look with its props, or style a wrapper element you own.`
+            }`,
           });
 
           return;
@@ -342,10 +342,7 @@ const noRestyle = {
 
           context.report({
             node,
-            message:
-              `<${component}> owns its ${list(concerns)}, so xstyle cannot set ` +
-              `${list([...rejected.keys()])} (from ${list(sources)}). ` +
-              advice(component, contract, concerns),
+            message: `<${component}> owns its ${list(concerns)}, so xstyle cannot set ${list([...rejected.keys()])} (from ${list(sources)}). ${advice(component, contract, concerns)}`,
           });
         }
       },

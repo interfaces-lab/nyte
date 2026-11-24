@@ -5,7 +5,7 @@ import { startComposerChat } from "../chat/composer/composer-send.ts";
 import { connected } from "../data/connection.ts";
 import { queryClient } from "../data/query-client.ts";
 import { workspacePath, workspacesQuery } from "../data/workspaces.ts";
-import { activateWorkspace } from "../sidebar/use-show-session.ts";
+import { activateWorkspace } from "../panes/open-workspace.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
 export async function startProjectChat(project: ProjectInfo, goal: string): Promise<void> {

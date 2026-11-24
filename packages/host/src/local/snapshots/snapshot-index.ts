@@ -9,12 +9,12 @@ import { sha256 } from "../../hash.ts";
 import type { Ran } from "../process/command.ts";
 import { readErrorCode } from "../../fs-errors.ts";
 
-export type Repository = {
+export interface Repository {
   readonly root: string;
   readonly gitDir: string;
   readonly commonDir: string;
   readonly prefix: string;
-};
+}
 
 type Git = (
   cwd: string,
@@ -22,18 +22,18 @@ type Git = (
   extra?: { readonly env?: Readonly<Record<string, string>> },
 ) => Promise<Ran>;
 
-export type SnapshotIndex = {
+export interface SnapshotIndex {
   readonly write: (repo: Repository) => Promise<Ran>;
   readonly writeEmpty: (repo: Repository) => Promise<Ran>;
-};
+}
 
 type Change = "add" | "remove";
 
-type KeptIndex = {
+interface KeptIndex {
   readonly watched: readonly string[];
   readonly stamp: string;
   readonly touched: ReadonlyMap<string, Change>;
-};
+}
 
 const INDEX_IDLE_MS = 5 * 60_000;
 
@@ -123,8 +123,9 @@ export function snapshotIndex(cwd: string, store: string, git: Git): SnapshotInd
     if (
       changes === null ||
       [...changes.keys()].some((path) => RULE_FILES.has(basename(path).toLowerCase()))
-    )
+    ) {
       return null;
+    }
     const written = await writeTree(repo, indexPath);
 
     if (written.code !== 0) return null;
@@ -147,8 +148,9 @@ export function snapshotIndex(cwd: string, store: string, git: Git): SnapshotInd
     const changes = parseVerbose(added.stdout);
     const written = await writeTree(repo, indexPath);
 
-    if (written.code === 0 && changes !== null && watching !== null)
+    if (written.code === 0 && changes !== null && watching !== null) {
       keptIndex = { watched: watching.watched, stamp: watching.stamp, touched: changes };
+    }
 
     return written;
   };
@@ -321,8 +323,9 @@ async function matchesDisk(root: string, touched: ReadonlyMap<string, Change>): 
 
     if (check.change === "remove") return found.length === 0;
 
-    if (check.change === "add" && found.some((entry) => entry.isDirectory()))
+    if (check.change === "add" && found.some((entry) => entry.isDirectory())) {
       repositories.push(check.path);
+    }
 
     return true;
   });
@@ -342,7 +345,7 @@ async function matchesDisk(root: string, touched: ReadonlyMap<string, Change>): 
 }
 
 async function listDirectory(path: string): Promise<Map<string, Dirent[]> | null> {
-  const entries = await readdir(path, { withFileTypes: true }).catch((error) => {
+  const entries = await readdir(path, { withFileTypes: true }).catch((error: unknown) => {
     const code = readErrorCode(error);
 
     return code === "ENOENT" || code === "ENOTDIR" ? [] : null;

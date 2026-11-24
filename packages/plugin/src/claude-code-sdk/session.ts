@@ -78,29 +78,30 @@ export function isolatedOptions(claude: string | undefined, env: ProviderEnv | u
 type TurnItem = Extract<SDKMessage, { type: "stream_event" | "result" | "assistant" }>;
 
 class Inbox<T> {
-  readonly #items: T[] = [];
-  #waiter: (() => void) | undefined;
-  #ended = false;
+  private readonly items: T[] = [];
+  private waiter: (() => void) | undefined;
+  private ended = false;
 
   push(item: T): void {
-    this.#items.push(item);
-    this.#wake();
+    this.items.push(item);
+    this.wake();
   }
 
   clear(): void {
-    this.#items.length = 0;
+    this.items.length = 0;
   }
 
   end(): void {
-    this.#ended = true;
-    this.#wake();
+    this.ended = true;
+    this.wake();
   }
 
   async next(): Promise<T | undefined> {
-    while (this.#items.length === 0 && !this.#ended)
-      await new Promise<void>((resolve) => (this.#waiter = resolve));
+    while (this.items.length === 0 && !this.ended) {
+      await new Promise<void>((resolve) => (this.waiter = resolve));
+    }
 
-    return this.#items.shift();
+    return this.items.shift();
   }
 
   async *[Symbol.asyncIterator](): AsyncGenerator<T> {
@@ -112,9 +113,9 @@ class Inbox<T> {
     }
   }
 
-  #wake(): void {
-    const waiter = this.#waiter;
-    this.#waiter = undefined;
+  private wake(): void {
+    const waiter = this.waiter;
+    this.waiter = undefined;
     waiter?.();
   }
 }
@@ -150,44 +151,46 @@ function memoryStore(session: string, history: readonly SessionStoreEntry[]) {
 }
 
 export class ClaudeCodeSession {
-  readonly #key: string;
-  #known: readonly string[] = [];
+  private readonly key: string;
+  private known: readonly string[] = [];
 
-  readonly #prompts = new Inbox<SDKUserMessage>();
-  readonly #turn = new Inbox<TurnItem>();
-  readonly #replies = new Map<string, PromiseWithResolvers<ToolReply>>();
-  readonly #server: McpSdkServerConfigWithInstance;
-  readonly #query: ReturnType<StartQuery>;
-  #tools: readonly Tool[];
-  #effort: EffortLevel | undefined;
-  #idle = true;
-  #stderr = "";
-  #failure: Error | undefined;
+  private readonly prompts = new Inbox<SDKUserMessage>();
+  private readonly turn = new Inbox<TurnItem>();
+  private readonly replies = new Map<string, PromiseWithResolvers<ToolReply>>();
+  private readonly server: McpSdkServerConfigWithInstance;
+  private readonly query: ReturnType<StartQuery>;
+  private tools: readonly Tool[];
+  private effort: EffortLevel | undefined;
+  private idle = true;
+  private stderr = "";
+  private failure: Error | undefined;
 
   constructor(launch: Launch) {
-    this.#key = launch.key;
-    this.#effort = launch.effort;
-    this.#tools = launch.tools;
-    this.#server = createSdkMcpServer({ name: NYTE_SERVER, tools: [] });
-    this.#server.instance.server.registerCapabilities({ tools: { listChanged: true } });
+    this.key = launch.key;
+    this.effort = launch.effort;
+    this.tools = launch.tools;
+    this.server = createSdkMcpServer({ name: NYTE_SERVER, tools: [] });
+    this.server.instance.server.registerCapabilities({ tools: { listChanged: true } });
 
-    this.#server.instance.server.fallbackRequestHandler = async (request, extra) => {
-      if (request.method === "tools/list")
+    this.server.instance.server.fallbackRequestHandler = async (request, extra) => {
+      if (request.method === "tools/list") {
         return {
-          tools: this.#tools.map((tool) => ({
+          tools: this.tools.map((tool) => ({
             name: tool.name,
             description: tool.description,
             inputSchema: { ...tool.parameters, type: "object" },
           })),
         };
+      }
 
-      if (request.method !== "tools/call")
+      if (request.method !== "tools/call") {
         throw new Error(`Nyte does not serve ${request.method}.`);
+      }
       const { _meta: meta } = extra;
       const id = meta?.["claudecode/toolUseId"];
 
       return Value.Check(toolUseId, id)
-        ? await this.#call(id, extra.signal)
+        ? await this.call(id, extra.signal)
         : toolError("Claude Code sent no tool use id for this Nyte tool call.");
     };
 
@@ -196,12 +199,12 @@ export class ClaudeCodeSession {
       cwd: launch.cwd,
       systemPrompt: { type: "custom", prompt: launch.system },
       includePartialMessages: true,
-      mcpServers: { [NYTE_SERVER]: this.#server },
+      mcpServers: { [NYTE_SERVER]: this.server },
       allowedTools: [`${NYTE_TOOL_PREFIX}*`],
       thinking: launch.thinking
         ? { type: "adaptive", display: "summarized" }
         : { type: "disabled" },
-      stderr: (chunk) => (this.#stderr = (this.#stderr + chunk).slice(-4_096)),
+      stderr: (chunk) => (this.stderr = (this.stderr + chunk).slice(-4096)),
     };
 
     if (launch.effort !== undefined) options.effort = launch.effort;
@@ -211,45 +214,47 @@ export class ClaudeCodeSession {
       options.sessionStore = memoryStore(launch.session, launch.history);
     }
 
-    this.#query = launch.query({ prompt: this.#prompts, options });
-    void this.#pump();
+    this.query = launch.query({ prompt: this.prompts, options });
+    void this.pump();
   }
 
   get closed(): boolean {
-    return this.#failure !== undefined;
+    return this.failure !== undefined;
   }
 
   follows(key: string, keys: readonly string[]): boolean {
     return (
       !this.closed &&
-      this.#key === key &&
-      this.#known.length < keys.length &&
-      this.#known.every((known, index) => keys[index] === known)
+      this.key === key &&
+      this.known.length < keys.length &&
+      this.known.every((known, index) => keys[index] === known)
     );
   }
 
   async configure(effort: EffortLevel | undefined): Promise<void> {
-    if (this.#effort === effort) return;
-    this.#effort = effort;
-    await this.#query.applyFlagSettings({ effortLevel: effort ?? null });
+    if (this.effort === effort) return;
+    this.effort = effort;
+    await this.query.applyFlagSettings({ effortLevel: effort ?? null });
   }
 
   expose(tools: readonly Tool[]): void {
-    if (JSON.stringify(tools) === JSON.stringify(this.#tools)) return;
-    this.#tools = tools;
-    this.#server.instance.sendToolListChanged();
+    if (JSON.stringify(tools) === JSON.stringify(this.tools)) return;
+    this.tools = tools;
+    this.server.instance.sendToolListChanged();
   }
 
   deliver(messages: readonly Message[]): void {
-    for (const message of messages)
-      if (message.role === "toolResult")
-        this.#replies.get(message.toolCallId)?.resolve(reply(message));
+    for (const message of messages) {
+      if (message.role === "toolResult") {
+        this.replies.get(message.toolCallId)?.resolve(reply(message));
+      }
+    }
   }
 
   send(content: readonly ContentBlock[]): void {
-    if (this.#idle) this.#turn.clear();
-    this.#idle = false;
-    this.#prompts.push({
+    if (this.idle) this.turn.clear();
+    this.idle = false;
+    this.prompts.push({
       type: "user",
       message: { role: "user", content: [...content] },
       parent_tool_use_id: null,
@@ -274,28 +279,30 @@ export class ClaudeCodeSession {
         let failure: string | undefined;
 
         for (;;) {
-          const item = await this.#turn.next();
+          const item = await this.turn.next();
 
-          if (item === undefined) throw this.#failure ?? new Error("Claude Code exited.");
+          if (item === undefined) throw this.failure ?? new Error("Claude Code exited.");
 
           if (item.type === "assistant") {
-            if (item.error !== undefined)
+            if (item.error !== undefined) {
               failure = item.message.content
                 .flatMap((block) => (block.type === "text" ? [block.text] : []))
                 .join("\n");
+            }
 
             continue;
           }
 
           if (item.type === "result") {
-            if (item.subtype !== "success")
+            if (item.subtype !== "success") {
               throw new Error(
                 failure ?? (item.errors.join("\n") || `Claude Code failed: ${item.subtype}`),
               );
+            }
 
             if (item.is_error) throw new Error(failure ?? item.result);
 
-            this.#idle = true;
+            this.idle = true;
 
             if (output.stopReason === "pending") output.stopReason = "stop";
             break;
@@ -304,17 +311,20 @@ export class ClaudeCodeSession {
           if (
             translator.apply(item.event) === "tool_use" &&
             output.content.some((block) => block.type === "toolCall")
-          )
+          ) {
             break;
+          }
         }
 
-        if (output.stopReason === "error")
+        if (output.stopReason === "error") {
           throw new Error(output.errorMessage ?? "Claude Code failed.");
+        }
 
-        if (output.stopReason === "aborted" || output.stopReason === "pending")
+        if (output.stopReason === "aborted" || output.stopReason === "pending") {
           throw new Error("Claude Code ended without a response.");
+        }
 
-        this.#known = [...keys, messageKey(output)];
+        this.known = [...keys, messageKey(output)];
         stream.push({ type: "done", reason: output.stopReason, message: output });
       } catch (error) {
         output.stopReason = signal?.aborted === true ? "aborted" : "error";
@@ -331,57 +341,57 @@ export class ClaudeCodeSession {
   }
 
   close(reason: Error = new Error("Claude Code closed.")): void {
-    if (this.#failure !== undefined) return;
-    this.#failure = reason;
+    if (this.failure !== undefined) return;
+    this.failure = reason;
 
-    for (const pending of this.#replies.values()) pending.resolve(toolError(reason.message));
-    this.#prompts.end();
-    this.#turn.end();
-    this.#query.close();
+    for (const pending of this.replies.values()) pending.resolve(toolError(reason.message));
+    this.prompts.end();
+    this.turn.end();
+    this.query.close();
   }
 
-  #reply(id: string): PromiseWithResolvers<ToolReply> {
-    const known = this.#replies.get(id);
+  private reply(id: string): PromiseWithResolvers<ToolReply> {
+    const known = this.replies.get(id);
 
     if (known !== undefined) return known;
     const created = Promise.withResolvers<ToolReply>();
-    this.#replies.set(id, created);
+    this.replies.set(id, created);
 
     return created;
   }
 
-  async #call(id: string, signal: AbortSignal): Promise<ToolReply> {
-    const pending = this.#reply(id);
+  private async call(id: string, signal: AbortSignal): Promise<ToolReply> {
+    const pending = this.reply(id);
     const cancel = () => pending.resolve(toolError("Request was aborted"));
     signal.addEventListener("abort", cancel, { once: true });
 
     try {
       return await pending.promise;
     } finally {
-      this.#replies.delete(id);
+      this.replies.delete(id);
       signal.removeEventListener("abort", cancel);
     }
   }
 
-  async #pump(): Promise<void> {
+  private async pump(): Promise<void> {
     try {
-      for await (const message of this.#query) this.#route(message);
-      this.close(new Error(`Claude Code exited.${this.#detail()}`));
+      for await (const message of this.query) this.route(message);
+      this.close(new Error(`Claude Code exited.${this.detail()}`));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.close(new Error(`${message}${this.#detail()}`, { cause: error }));
+      this.close(new Error(`${message}${this.detail()}`, { cause: error }));
     }
   }
 
-  #detail(): string {
-    const tail = this.#stderr.trim().slice(-500);
+  private detail(): string {
+    const tail = this.stderr.trim().slice(-500);
 
     return tail === "" ? "" : ` (${tail})`;
   }
 
-  #route(message: SDKMessage): void {
+  private route(message: SDKMessage): void {
     if (message.type === "result") {
-      this.#turn.push(message);
+      this.turn.push(message);
 
       return;
     }
@@ -389,16 +399,18 @@ export class ClaudeCodeSession {
     if (
       (message.type !== "stream_event" && message.type !== "assistant") ||
       message.parent_tool_use_id !== null
-    )
+    ) {
       return;
+    }
 
     if (
       message.type === "stream_event" &&
       message.event.type === "content_block_start" &&
       message.event.content_block.type === "tool_use" &&
       message.event.content_block.name.startsWith(NYTE_TOOL_PREFIX)
-    )
-      this.#reply(message.event.content_block.id);
-    this.#turn.push(message);
+    ) {
+      this.reply(message.event.content_block.id);
+    }
+    this.turn.push(message);
   }
 }

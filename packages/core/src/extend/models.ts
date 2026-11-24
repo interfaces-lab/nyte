@@ -141,8 +141,9 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
       return { kind: "set" };
     },
     async setListing(refs, listing) {
-      if (refs.some((ref) => models.getModel(ref.provider, ref.id) === undefined))
+      if (refs.some((ref) => models.getModel(ref.provider, ref.id) === undefined)) {
         return { kind: "unknown-model" };
+      }
 
       const target = listing === "shown" ? null : await put(kernel.store, "kv", listing);
 
@@ -366,11 +367,13 @@ export function createLogin(
     async answer(code) {
       const current = pending;
 
-      if (current === null)
+      if (current === null) {
         throw new SdkError("invalid", "No login step is waiting for an answer.");
+      }
 
-      if (current.options !== null && !current.options.includes(code))
+      if (current.options !== null && !current.options.includes(code)) {
         throw new SdkError("invalid", `${code} is not one of the options.`);
+      }
       pending = null;
       current.resolve(code);
     },
@@ -447,9 +450,11 @@ function projectModel(
 function staticPolicies(kernel: Kernel): ReadonlyMap<string, ModelContextPolicy> {
   const policies = new Map<string, ModelContextPolicy>();
 
-  for (const plugin of [...kernel.plugins.builtins, ...kernel.plugins.host])
-    for (const policy of plugin.contribute?.modelContext ?? [])
+  for (const plugin of [...kernel.plugins.builtins, ...kernel.plugins.host]) {
+    for (const policy of plugin.contribute?.modelContext ?? []) {
       policies.set(formatModelKey(policy.model), policy);
+    }
+  }
 
   return policies;
 }
@@ -538,12 +543,13 @@ function projectLoginStep(event: AuthEvent): LoginStep {
 }
 
 function promptStep(prompt: AuthPrompt): LoginStep {
-  if (prompt.type === "select")
+  if (prompt.type === "select") {
     return {
       kind: "choose",
       message: prompt.message,
       options: prompt.options.map((option) => ({ id: option.id, label: option.label })),
     };
+  }
 
   return { kind: "paste", message: prompt.message, secret: prompt.type === "secret" };
 }
@@ -562,16 +568,19 @@ export function createConfigurationResolver(kernel: Kernel, models: Models): Con
     const { agents } = contributions;
 
     if (patch !== null && "kind" in patch) {
-      if (models.getModel(patch.model.provider, patch.model.id) === undefined)
+      if (models.getModel(patch.model.provider, patch.model.id) === undefined) {
         return { kind: "unknown-model", model: patch.model };
+      }
 
-      if (patch.agent !== null && !agents.some((agent) => agent.id === patch.agent))
+      if (patch.agent !== null && !agents.some((agent) => agent.id === patch.agent)) {
         return { kind: "unknown-agent", agent: patch.agent };
+      }
 
-      if (patch.settingsVersion !== version)
+      if (patch.settingsVersion !== version) {
         return invalid([
           issue(["settingsVersion"], "The host's session settings changed since it was resolved."),
         ]);
+      }
 
       return patch;
     }
@@ -619,8 +628,9 @@ async function resolvePatch(
   const ref =
     patch.model ?? selected?.model ?? pinned?.model ?? (await defaultModel(kernel, models));
 
-  if (ref === null)
+  if (ref === null) {
     return invalid([issue(["model"], "No model was chosen and no provider is configured.")]);
+  }
   const model = models.getModel(ref.provider, ref.id);
 
   if (model === undefined) return { kind: "unknown-model", model: ref };
@@ -637,23 +647,40 @@ async function resolvePatch(
   const thinking = await selectThinkingLevel(kernel, model, patch.thinking, kept);
 
   if (thinking === null) issues.push(issue(["thinking"], `${ref.id} does not accept that level.`));
-  const settings = { ...selected?.settings, ...patch.settings };
   const definitions = sessionScoped(input.contributions.settings);
+  const modes = definitions.filter((definition) => definition.mode !== undefined);
+  const turnedOn = modes.findLast((mode) => patch.settings?.[mode.id] === true);
+  const chosen = { ...selected?.settings, ...patch.settings };
+
+  const settings = {
+    ...chosen,
+    ...(turnedOn !== undefined &&
+      Object.fromEntries(
+        modes.flatMap((mode) =>
+          mode.id !== turnedOn.id && (chosen[mode.id] ?? mode.default) === true
+            ? [[mode.id, false]]
+            : [],
+        ),
+      )),
+  };
 
   for (const [id, value] of Object.entries(settings)) {
     const definition = definitions.find((entry) => entry.id === id);
 
     if (definition === undefined) {
-      issues.push(issue(["settings", id], `No session setting is named ${id}.`));
+      if (patch.settings?.[id] !== undefined) {
+        issues.push(issue(["settings", id], `No session setting is named ${id}.`));
+      }
       continue;
     }
 
     const checked = await check(definition.schema, value);
 
-    if (checked.kind === "invalid")
+    if (checked.kind === "invalid") {
       issues.push(
         ...checked.issues.map((found) => ({ ...found, path: ["settings", id, ...found.path] })),
       );
+    }
   }
 
   if (thinking === null || issues.length > 0) return invalid(issues);
@@ -678,8 +705,9 @@ async function selectThinkingLevel(
 
   if (given !== undefined && given !== null) return accepted.includes(given) ? given : null;
 
-  if (given === undefined && kept !== undefined)
+  if (given === undefined && kept !== undefined) {
     return accepted.includes(kept) ? kept : clampThinkingLevel(model, kept);
+  }
 
   return defaultThinkingLevel(model, await readThinkingPreference(kernel.store, baseRef(model)));
 }
@@ -788,8 +816,9 @@ export function createPluginProviders(kernel: Kernel, models: MutableModels): Pl
         provider !== undefined &&
         !offered.has(provider.id) &&
         (models.getProvider(provider.id) === undefined || mine(provider.id))
-      )
+      ) {
         offered.set(provider.id, provider);
+      }
     }
 
     const removed = [...owned.keys()].filter((id) => !offered.has(id));
@@ -817,7 +846,7 @@ export function createPluginProviders(kernel: Kernel, models: MutableModels): Pl
     close: () => {
       closed = true;
 
-      for (const id of [...owned.keys()]) drop(id);
+      for (const id of owned.keys()) drop(id);
     },
   };
 }

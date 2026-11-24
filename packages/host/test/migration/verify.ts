@@ -17,6 +17,8 @@ import {
   decodeRunRecord,
   decodeSeenRecord,
   decodeSessionRecord,
+  decodeProviderCheckpointRecord,
+  decodeProviderContinuationRecord,
   decodeTrustRecord,
   decodeWorkspaceRecord,
   loggedEvent,
@@ -44,6 +46,8 @@ type Decode = (object: Json | null) => object | null;
 const DECODERS = new Map<string, Decode>(
   Object.entries({
     session: decodeSessionRecord,
+    "provider-checkpoint": decodeProviderCheckpointRecord,
+    "provider-continuation": decodeProviderContinuationRecord,
     commit: decodeCommitRecord,
     inbox: decodeInboxRecord,
     run: decodeRunRecord,
@@ -128,8 +132,9 @@ function hookDecision(
   const now = isJsonObject(after) && isJsonObject(after.body) ? after.body.result : undefined;
   const old = readOldToolDecision(result);
 
-  if (old === null)
+  if (old === null) {
     return Value.Equal(now, result) ? "kept unreadable" : "rewrote an unreadable result";
+  }
   const decided = readToolDecision(now);
 
   const same =
@@ -141,7 +146,7 @@ function hookDecision(
 }
 
 function fieldPattern(path: string): string {
-  return path.replace(/\/nested\/[^/]+/u, "/nested/*").replace(/\/\d+(?=\/|$)/gu, "/*");
+  return path.replace(/\/nested\/[^/]+/u, "/nested/*").replaceAll(/\/\d+(?=\/|$)/gu, "/*");
 }
 
 function readStamp(database: DatabaseSync, schema: string): number {
@@ -167,8 +172,9 @@ function endedRunRefs(
     .prepare(
       "SELECT session, json_extract(event, '$.run') AS run FROM before.log WHERE json_extract(event, '$.kind') = 'run' AND json_extract(event, '$.change') = 'ended' AND json_type(event, '$.run') = 'text'",
     )
-    .all())
+    .all()) {
     sessions.set(text(row.run), (sessions.get(text(row.run)) ?? new Set()).add(text(row.session)));
+  }
 
   const latest = database.prepare(
     "SELECT id, body FROM before.objects WHERE json_valid(body) AND CASE WHEN json_valid(body) THEN json_extract(body, '$.kind') = 'run' AND json_extract(body, '$.body.view.id') = ? AND json_type(body, '$.body.snapshot') = 'text' END ORDER BY json_extract(body, '$.at') DESC, id DESC LIMIT 1",
@@ -189,8 +195,9 @@ function endedRunRefs(
       refs.has(`sessions/${session}`) &&
       !refs.has(`sessions/${session}/runs/${run}`) &&
       !refs.has(name)
-    )
+    ) {
       added.set(name, text(row.id));
+    }
   }
 
   return added;
@@ -247,13 +254,15 @@ export async function verifyMigration(
     const from = readStamp(database, "before");
     const to = readStamp(database, "main");
 
-    if (to !== STORE_VERSION)
+    if (to !== STORE_VERSION) {
       problems.push(`store_meta is ${to}, not STORE_VERSION ${STORE_VERSION}`);
+    }
 
-    if (MAPPING.at(-1)?.version !== STORE_VERSION)
+    if (MAPPING.at(-1)?.version !== STORE_VERSION) {
       problems.push(
         `MAPPING ends at ${MAPPING.at(-1)?.version}, STORE_VERSION is ${STORE_VERSION}`,
       );
+    }
 
     const lostOrChanged = Number(
       database
@@ -288,8 +297,9 @@ export async function verifyMigration(
       }
 
       if (row.body === null) {
-        if (now.target !== row.target || now.revision !== row.revision)
+        if (now.target !== row.target || now.revision !== row.revision) {
           problems.push(`ref ${name} without a body moved`);
+        }
         count(outcomes, "kept (no body)");
         continue;
       }
@@ -300,19 +310,21 @@ export async function verifyMigration(
       const decision =
         from < 14 ? hookDecision(record, now.body === null ? null : decodeObject(now.body)) : null;
 
-      if (decision === "decides differently" || decision === "rewrote an unreadable result")
+      if (decision === "decides differently" || decision === "rewrote an unreadable result") {
         problems.push(`ref ${name} (before_tool hook) ${decision}`);
-      else if (decision !== null) count(hookDecisions, decision);
+      } else if (decision !== null) count(hookDecisions, decision);
 
       const kind =
         isJsonObject(record) && typeof record.kind === "string" ? record.kind : "no kind";
 
-      for (const derivedName of derivedRefs(from, name, expected))
+      for (const derivedName of derivedRefs(from, name, expected)) {
         if (!refsBefore.has(derivedName)) derived.set(derivedName, now.target);
+      }
 
       if (expected === record) {
-        if (now.target !== row.target || now.revision !== row.revision)
+        if (now.target !== row.target || now.revision !== row.revision) {
           problems.push(`ref ${name} moved with no mapped change`);
+        }
         count(outcomes, `kept ${kind}`);
         continue;
       }
@@ -326,23 +338,27 @@ export async function verifyMigration(
         continue;
       }
 
-      if (now.target !== (await objectId(expected)))
+      if (now.target !== (await objectId(expected))) {
         problems.push(`ref ${name} target is not its body's id`);
+      }
 
-      for (const path of changedPaths(record, expected))
+      for (const path of changedPaths(record, expected)) {
         count(fieldChanges, `${changeKind(record, kind)} ${fieldPattern(path)}`);
+      }
       count(outcomes, `rewritten ${kind}`);
     }
 
-    if (from < 15)
+    if (from < 15) {
       for (const [name, target] of endedRunRefs(database, refsBefore)) derived.set(name, target);
+    }
 
     const workspaces = [...refsBefore].flatMap(([name, row]) =>
       name.startsWith("workspaces/") && row.body !== null ? [decodeObject(row.body)] : [],
     );
 
-    for (const [name, record] of await folderTrustRecords(from, workspaces))
+    for (const [name, record] of await folderTrustRecords(from, workspaces)) {
       if (!refsBefore.has(name)) derived.set(name, await objectId(record));
+    }
 
     const added = new Map<string, number>();
 
@@ -350,22 +366,25 @@ export async function verifyMigration(
       if (refsBefore.has(name)) continue;
 
       if (!derived.has(name)) problems.push(`ref ${name} added outside the mapping`);
-      else if (derived.get(name) !== row.target)
+      else if (derived.get(name) !== row.target) {
         problems.push(`ref ${name} added at the wrong record`);
+      }
       const [root, second, third] = name.split("/");
       count(added, root === "waits" ? `waits/${second ?? ""}` : `${root ?? ""}/*/${third ?? ""}`);
     }
 
-    for (const name of derived.keys())
+    for (const name of derived.keys()) {
       if (!refsAfter.has(name)) problems.push(`mapped ref ${name} was not added`);
+    }
 
     const logBefore = readLog(database, "before");
     const logAfter = readLog(database, "main");
     let events = 0;
     let relogged = 0;
 
-    if (logAfter.size !== logBefore.size)
+    if (logAfter.size !== logBefore.size) {
       problems.push(`log holds ${logAfter.size} sessions, held ${logBefore.size}`);
+    }
 
     for (const [session, rows] of logBefore) {
       const now = logAfter.get(session) ?? [];
@@ -406,8 +425,9 @@ export async function verifyMigration(
         relogged += 1;
         const original = originals[index] ?? null;
 
-        for (const path of changedPaths(original, event))
+        for (const path of changedPaths(original, event)) {
           count(fieldChanges, `log ${label(original)} ${fieldPattern(path)}`);
+        }
       }
     }
 
@@ -430,7 +450,7 @@ export async function verifyMigration(
 
       if (entry === null) continue;
 
-      if (entry.kind === "session")
+      if (entry.kind === "session") {
         indexed.set(name, {
           session: entry.session,
           parent: entry.parent,
@@ -438,7 +458,7 @@ export async function verifyMigration(
           pinned: entry.pinned ? 1 : 0,
           nameFolded: entry.name?.toLowerCase() ?? null,
         });
-      else pending.set(name, entry.kind);
+      } else pending.set(name, entry.kind);
     }
 
     const indexRows = database
@@ -449,7 +469,7 @@ export async function verifyMigration(
 
     const pendingRows = database.prepare("SELECT name, kind FROM main.pending_work").all();
 
-    for (const row of indexRows)
+    for (const row of indexRows) {
       if (
         !Value.Equal(indexed.get(text(row.name)), {
           session: row.session,
@@ -459,13 +479,16 @@ export async function verifyMigration(
           nameFolded: row.name_folded,
         }) ||
         text(row.version) === ""
-      )
+      ) {
         problems.push(`session_index row ${text(row.name)} does not match its ref`);
+      }
+    }
 
-    if (indexRows.length !== indexed.size)
+    if (indexRows.length !== indexed.size) {
       problems.push(
         `session_index holds ${indexRows.length} rows, the refs project ${indexed.size}`,
       );
+    }
 
     const seqs = database
       .prepare("SELECT seq FROM main.session_index ORDER BY sort_at, session")
@@ -479,19 +502,23 @@ export async function verifyMigration(
     if (
       from < 27 &&
       (hostSeq !== seqs.length || seqs.some((seq, index) => seq !== seqs.length - index))
-    )
+    ) {
       problems.push(
         `session_index seqs ${seqs.join(",")} and host_seq ${hostSeq} do not count the roots from the least recently active`,
       );
+    }
 
-    for (const row of pendingRows)
-      if (pending.get(text(row.name)) !== row.kind)
+    for (const row of pendingRows) {
+      if (pending.get(text(row.name)) !== row.kind) {
         problems.push(`pending_work row ${text(row.name)} does not match its ref`);
+      }
+    }
 
-    if (pendingRows.length !== pending.size)
+    if (pendingRows.length !== pending.size) {
       problems.push(
         `pending_work holds ${pendingRows.length} rows, the refs project ${pending.size}`,
       );
+    }
 
     return {
       from,

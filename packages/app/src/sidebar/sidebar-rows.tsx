@@ -35,7 +35,7 @@ import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { chatWindow, useChatMark } from "../window/index.ts";
 import { sessionActions } from "../data/session-rows.ts";
 import { shellActions } from "../tabs/shell-state.ts";
-import { hideFromPanes } from "../panes/pane-context.tsx";
+import { hideFromPanes } from "../tabs/window-panes.tsx";
 import { sessionIsRunning } from "./sidebar-view.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 
@@ -141,13 +141,11 @@ function showSession(sessionId: SessionId, target: OpenIntent | "beside"): void 
 export function SessionRow({
   session,
   selected,
-  draggable,
   unreachable,
   showUpdated,
 }: {
   readonly session: SessionInfo;
   readonly selected: boolean;
-  readonly draggable: boolean;
   readonly unreachable: boolean;
   readonly showUpdated: boolean;
 }): ReactElement {
@@ -159,7 +157,7 @@ export function SessionRow({
     <SessionRowView
       session={session}
       selected={selected}
-      draggable={draggable}
+      draggable
       unreachable={unreachable}
       showUpdated={showUpdated}
       mark={mark.state}
@@ -431,14 +429,14 @@ export function NeighbourWarm({
       });
     };
 
-    if (opened.value === undefined)
+    if (opened.value === undefined) {
       leave = opened.subscribe(() => {
         if (opened.value === undefined) return;
         leave?.();
         leave = undefined;
         afterPaint();
       });
-    else afterPaint();
+    } else afterPaint();
 
     return () => {
       leave?.();

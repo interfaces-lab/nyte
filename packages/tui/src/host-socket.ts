@@ -55,8 +55,9 @@ export async function connectHostSocket(input: {
   }).catch((error: unknown) => {
     if (!(error instanceof SdkError)) throw error;
 
-    if (input.source.kind === "local")
+    if (input.source.kind === "local") {
       throw new CliError("network_error", "Couldn't connect to the running host's socket.");
+    }
 
     throw new CliError("network_error", "Couldn't connect to the host at --host-url.", {
       details: [
@@ -85,18 +86,21 @@ export function hostFailure(action: string): (error: unknown) => never {
 async function findEndpoint(
   source: HostSource,
 ): Promise<{ readonly url: string; readonly token: string }> {
-  if (source.kind === "attached")
+  if (source.kind === "attached") {
     return { url: socketUrl(source.endpoint.url), token: source.endpoint.token };
+  }
 
   const running = await findRunningHost(hostFilePath());
 
-  if (running === null)
+  if (running === null) {
     throw new CliError("host_not_running", "Can't reach a Nyte host: none is running.", {
       next: [{ label: "Start one in another terminal", argv: ["nyte", "host"] }],
     });
+  }
 
-  if (running.socket !== undefined && existsSync(running.socket))
+  if (running.socket !== undefined && existsSync(running.socket)) {
     return { url: `ws+unix://${running.socket}:/.nyte/ws`, token: running.token };
+  }
 
   return { url: socketUrl(running.url), token: running.token };
 }

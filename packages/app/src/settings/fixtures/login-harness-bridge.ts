@@ -74,8 +74,6 @@ let catalog: ModelCatalogView = {
 
 const hostView = (): HostView => ({
   id: asId<"host">("harness"),
-  link: { kind: "connected" },
-  operations: null,
   name: "Harness",
   platform: "darwin",
   version: "0",
@@ -86,6 +84,7 @@ const hostView = (): HostView => ({
   defaultWorkspace: null,
   projects: [],
   authority: new Set(["participant", "owner"]),
+  routes: [],
 });
 
 const host = viewStream(hostView());
@@ -156,7 +155,11 @@ installScripted(
 
 const bridgeHost: Pick<HostBridge, "endpoint" | "openExternal" | "setThemePreference" | "onEvent"> =
   {
-    endpoint: async () => ({ url: endpointUrl, credentials: { kind: "token", token: "harness" } }),
+    endpoint: async () => ({
+      url: endpointUrl,
+      version: "test",
+      credentials: { kind: "token", token: "harness" },
+    }),
     openExternal: async (input) => {
       calls.push({ path: "host.openExternal", input });
 

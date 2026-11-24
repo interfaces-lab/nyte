@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
-import { router, type Href } from "expo-router";
+import { router } from "expo-router";
+import type { Href } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { Keyboard } from "react-native";
 

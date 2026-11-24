@@ -1,4 +1,5 @@
-import { useState, type ReactElement } from "react";
+import { useState } from "react";
+import type { ReactElement } from "react";
 import type { RefreshControlProps } from "react-native";
 import { ActivityIndicator, RefreshControl, SectionList } from "react-native";
 import { useQuery } from "@tanstack/react-query";
@@ -27,7 +28,7 @@ type Line =
 
 type TextPatch = Extract<PatchEntry, { kind: "text" }>;
 
-type FileSection = {
+interface FileSection {
   key: string;
   path: string;
   status: "A" | "M" | "D" | "R";
@@ -37,7 +38,7 @@ type FileSection = {
   file: TextPatch;
   hunks: readonly Hunk[];
   lineCount: number;
-};
+}
 
 const LINE_LIMIT = 400;
 
@@ -410,8 +411,9 @@ function DiffSections({
         );
       }}
       renderItem={({ item }) => {
-        if (item.kind === "hunk")
+        if (item.kind === "hunk") {
           return <html.p style={[textStyles.caption, styles.hunk]}>{item.text}</html.p>;
+        }
 
         return (
           <html.div

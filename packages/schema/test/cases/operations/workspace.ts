@@ -16,6 +16,7 @@ import type { Case } from "../fixtures.ts";
 const beforeContextFiles = {
   commands: catalog.commands,
   skills: catalog.skills,
+  modes: catalog.settings,
   docs: [sharedDoc],
 };
 
@@ -88,8 +89,8 @@ export const workspaceOperations = {
   ),
   "workspace.update input": operation(
     OPERATIONS["workspace.update"].input,
-    { workspace, patch: { projectResources: false } },
-    { workspace, patch: { projectResources: "no" } },
+    { workspace, patch: { trusted: false } },
+    { workspace, patch: { trusted: "no" } },
   ),
   "workspace.update output": operation(
     OPERATIONS["workspace.update"].output,

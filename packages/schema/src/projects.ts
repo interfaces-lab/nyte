@@ -65,7 +65,7 @@ export type ProjectInput = Decoded<typeof ProjectInputType>;
 export const ProjectInfoSchema: Schema<ProjectInfo> = standard(ProjectInfoType);
 
 export const ProjectDraftInputType = Type.Object({
-  goal: Type.String({ minLength: 1, pattern: "\\S" }),
+  goal: Type.String({ minLength: 1, pattern: String.raw`\S` }),
   workspace: idSchema<"workspace">(),
   model: ModelRefType,
 });

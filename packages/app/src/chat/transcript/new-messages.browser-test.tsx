@@ -12,7 +12,7 @@ import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import { windowTabs } from "../../tabs/window-tabs.ts";
 import "../../theme/tokens.stylex.ts";
@@ -97,7 +97,7 @@ function view(count: number, last?: string): SessionView {
     seenThrough: SEEN_THROUGH,
     background: [],
     configuration: { selected: null, effective: null },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -136,7 +136,7 @@ let coldShown = false;
 const coldStream: ViewStream = {
   latest: () => (coldShown ? coldFrames.latest() : undefined),
   push: coldFrames.push,
-  watch: async function* () {
+  async *watch() {
     await coldOpened.promise;
     yield* coldFrames.watch();
   },
@@ -248,7 +248,7 @@ export async function run(): Promise<string> {
   };
 
   try {
-    await until(() => container.textContent?.includes("Answer 40.") === true, "the last answer");
+    await until(() => container.textContent?.includes("Answer 40."), "the last answer");
     await frames(10);
     const viewport = element(container, "[aria-label='Messages']");
 
@@ -264,8 +264,9 @@ export async function run(): Promise<string> {
     };
 
     const scrollUpTo = async (selector: string): Promise<void> => {
-      for (let step = 0; step < 20 && container.querySelector(selector) === null; step += 1)
+      for (let step = 0; step < 20 && container.querySelector(selector) === null; step += 1) {
         await scrollBy(-200);
+      }
     };
 
     check(distance() <= 4, "the chat opens at the end");

@@ -18,37 +18,42 @@ export function serve(server, handlers) {
   const lines = createInterface({ input: process.stdin });
 
   lines.on("close", () => process.exit(0));
-  lines.on("line", async (line) => {
-    const message = JSON.parse(line);
-
-    if (message.id === undefined) return;
-    const handler = handlers[message.method];
-
-    if (handler === undefined) {
-      send({
-        jsonrpc: "2.0",
-        id: message.id,
-        error: { code: -32601, message: `Method not found: ${message.method}` },
-      });
-
-      return;
-    }
-
-    const start = performance.timeOrigin + performance.now();
-    const result = await handler(message.params);
-
-    if (message.method === "tools/call" && process.env.NYTE_TRACE_FILE !== undefined)
-      appendFileSync(
-        process.env.NYTE_TRACE_FILE,
-        `${JSON.stringify({
-          name: "mcp.serve",
-          trace: readTrace(message.params?._meta?.traceparent),
-          start,
-          duration: performance.timeOrigin + performance.now() - start,
-          detail: { server, tool: message.params?.name ?? null, pid: process.pid },
-        })}\n`,
-      );
-
-    send({ jsonrpc: "2.0", id: message.id, result });
+  lines.on("line", (line) => {
+    void answer(server, handlers, line);
   });
+}
+
+async function answer(server, handlers, line) {
+  const message = JSON.parse(line);
+
+  if (message.id === undefined) return;
+  const handler = handlers[message.method];
+
+  if (handler === undefined) {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32_601, message: `Method not found: ${message.method}` },
+    });
+
+    return;
+  }
+
+  const start = performance.timeOrigin + performance.now();
+  const result = await handler(message.params);
+
+  if (message.method === "tools/call" && process.env.NYTE_TRACE_FILE !== undefined) {
+    appendFileSync(
+      process.env.NYTE_TRACE_FILE,
+      `${JSON.stringify({
+        name: "mcp.serve",
+        trace: readTrace(message.params?._meta?.traceparent),
+        start,
+        duration: performance.timeOrigin + performance.now() - start,
+        detail: { server, tool: message.params?.name ?? null, pid: process.pid },
+      })}\n`,
+    );
+  }
+
+  send({ jsonrpc: "2.0", id: message.id, result });
 }

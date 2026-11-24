@@ -55,7 +55,18 @@ const files = new Map([
 
 for (const name of files.keys()) await copyFile(join(directory, "1.0.1", name), join(feed, name));
 
-const server = createServer(async (request, response) => {
+const server = createServer((request, response) => void serve(request, response));
+
+server.listen(8917, "127.0.0.1", () => {
+  const app = join(directory, "1.0.0", "mac-arm64", "Nyte Update Test.app");
+  console.log(`\nServing Nyte 1.0.1 at http://localhost:8917. Ctrl+C stops the feed.`);
+  console.log(`Open 1.0.0:\nopen ${JSON.stringify(app)}`);
+  console.log("Choose Nyte Update Test › Check for Updates…, then Restart to Update.");
+  console.log("Logs: ~/Library/Application Support/Nyte Update Test/updates.log");
+  console.log(`Remove ${directory} when done.`);
+});
+
+async function serve(request, response) {
   const name = new URL(request.url ?? "/", "http://localhost").pathname;
   const type = files.get(name);
 
@@ -72,13 +83,4 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "HEAD") response.end();
   else await pipeline(createReadStream(path), response).catch(() => response.destroy());
-});
-
-server.listen(8917, "127.0.0.1", () => {
-  const app = join(directory, "1.0.0", "mac-arm64", "Nyte Update Test.app");
-  console.log(`\nServing Nyte 1.0.1 at http://localhost:8917. Ctrl+C stops the feed.`);
-  console.log(`Open 1.0.0:\nopen ${JSON.stringify(app)}`);
-  console.log("Choose Nyte Update Test › Check for Updates…, then Restart to Update.");
-  console.log("Logs: ~/Library/Application Support/Nyte Update Test/updates.log");
-  console.log(`Remove ${directory} when done.`);
-});
+}

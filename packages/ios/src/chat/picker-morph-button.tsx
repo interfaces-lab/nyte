@@ -1,18 +1,11 @@
 import { StaggeredText } from "./picker-animated-text.tsx";
-import type { PressableProps } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import type { PressableProps, ViewStyle, LayoutChangeEvent } from "react-native";
 import type { AnimationConfig } from "./picker-animated-text-types.ts";
 import type { GlassViewProps } from "expo-glass-effect";
 import { AnimatedGlass } from "./composer-glass.tsx";
 import type React from "react";
 import { useEffect, useRef } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  type ViewStyle,
-  type LayoutChangeEvent,
-} from "react-native";
 import Animated, {
   Easing,
   interpolateColor,

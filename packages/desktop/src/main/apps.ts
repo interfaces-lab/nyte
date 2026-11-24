@@ -35,8 +35,9 @@ export function besideBounds(current: Rect, workArea: Rect, minWidth: number): R
   const right = workArea.x + workArea.width - (current.x + current.width);
   const left = current.x - workArea.x;
 
-  if (right >= minWidth)
+  if (right >= minWidth) {
     return { x: current.x + current.width, y, width: Math.min(current.width, right), height };
+  }
 
   if (left >= minWidth) {
     const width = Math.min(current.width, left);

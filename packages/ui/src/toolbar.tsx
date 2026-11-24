@@ -2,10 +2,12 @@ import { Toolbar as ToolbarPrimitive } from "@base-ui/react/toolbar";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { role } from "./styles/vars.stylex.ts";
-import { Button, type ButtonProps } from "./button.tsx";
+import { Button } from "./button.tsx";
+import type { ButtonProps } from "./button.tsx";
 import { ControlGlyphs } from "./icon.tsx";
 import { glyph, space, target } from "./styles/schema.stylex.ts";
 

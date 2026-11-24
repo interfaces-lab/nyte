@@ -15,7 +15,7 @@ import type {
   WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
+import type { FolderTrust, Freshness, HeadView, LinkState } from "@nyte-ai/sdk/client";
 import type { ChatCommand } from "../lib/constants.ts";
 import type { McpAction, TrustAsk } from "./effect.ts";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
@@ -114,6 +114,7 @@ export type Intent =
       readonly kind: "set-trust";
       readonly workspace: WorkspaceId;
       readonly value: boolean | null;
+      readonly at: "folder" | "parent";
     }
   | {
       readonly kind: "apply-setting";
@@ -180,7 +181,7 @@ export type Fact =
       readonly view: HeadView;
       readonly freshness: Freshness;
     }
-  | { readonly kind: "health"; readonly health: Health }
+  | { readonly kind: "link"; readonly link: LinkState }
   | { readonly kind: "session-info"; readonly session: SessionId; readonly info: SessionInfo }
   | { readonly kind: "selection"; readonly session: SessionId; readonly selection: Selection }
   | { readonly kind: "catalog"; readonly generation: number; readonly catalog: ModelCatalogView }
@@ -269,9 +270,7 @@ export type Outcome =
       readonly kind: "trust-loaded";
       readonly workspace: WorkspaceId;
       readonly path: string;
-      readonly home: boolean;
-      readonly decision: boolean | null;
-      readonly trusted: boolean | null;
+      readonly trust: FolderTrust;
       readonly sources: readonly string[];
       readonly ask: TrustAsk;
     }

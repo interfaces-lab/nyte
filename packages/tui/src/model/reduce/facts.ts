@@ -55,8 +55,9 @@ export const factHandlers = {
   "blank-folder": (state, msg) => {
     const { chat } = state.facts;
 
-    if (chat?.kind !== "blank" || chat.id !== msg.session || chat.folder.kind === "folder")
+    if (chat?.kind !== "blank" || chat.id !== msg.session || chat.folder.kind === "folder") {
       return stay(state);
+    }
 
     const next = indexSlash(
       withFacts(state, { chat: { ...chat, folder: { kind: "folder", id: msg.workspace } } }),
@@ -68,14 +69,15 @@ export const factHandlers = {
     }));
   },
   view: followedOnly<MsgOf<"view">>((state, session, msg, now) => {
-    if (msg.view !== session.view)
+    if (msg.view !== session.view) {
       return viewArrived(state, { ...session, freshness: msg.freshness }, msg.view, now);
+    }
 
     if (msg.freshness === session.freshness) return stay(state);
 
     return stay(withFacts(state, { chat: { ...session, freshness: msg.freshness } }));
   }),
-  health: (state, msg) => stay(withFacts(state, { health: msg.health })),
+  link: (state, msg) => stay(withFacts(state, { link: msg.link })),
   "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) => {
     const next = withFacts(state, { chat: { ...session, info: msg.info } });
 
@@ -218,11 +220,13 @@ function viewArrived(state: State, session: FollowedSession, view: HeadView, now
     view.execution.kind === "idle" &&
     (before.execution.kind !== "idle" || latest !== latestRun(before.execution));
 
-  if (latest !== null && view.execution.kind !== "idle")
+  if (latest !== null && view.execution.kind !== "idle") {
     next = withLocal(next, { watchedRun: latest });
+  }
 
-  if (latest !== null && ended)
+  if (latest !== null && ended) {
     next = withLocal(next, { watchedRun: state.facts.focused ? null : latest });
+  }
   next = questionMoved(state, next);
   let step: Step = stay(next);
 
@@ -325,13 +329,14 @@ function firstView(state: State, now: number): Step {
     pending: state.local.pending.filter((op) => op.kind !== "switch"),
   });
 
-  if (switching?.kind === "switch" && switching.announce)
+  if (switching?.kind === "switch" && switching.announce) {
     next = withNotice(
       next,
       `Resumed ${shortId(session.id)} · ${String(session.view?.turns.length ?? 0)} turns`,
       "info",
       now,
     );
+  }
 
   return andThen(restoreDraft(next, session.id), deliverShells);
 }
@@ -380,8 +385,9 @@ function runEnded(before: HeadView | null, after: HeadView, next: State, now: nu
     before.execution.kind === "idle" ||
     after.execution.kind !== "idle" ||
     session === null
-  )
+  ) {
     return stay(next);
+  }
   const end = after.execution.lastRun?.end;
 
   const refresh: Step = {
@@ -389,11 +395,17 @@ function runEnded(before: HeadView | null, after: HeadView, next: State, now: nu
     effects: [{ kind: "refresh-workspace", cwd: next.facts.workspace.cwd }],
   };
 
-  if (end?.kind === "failed")
+  if (end?.kind === "failed") {
     return { ...refresh, state: withNotice(next, `Error: ${end.failure.message}`, "error", now) };
+  }
 
-  if (end?.kind !== "stopped" || next.local.draft.text.trim() !== "" || next.local.editing !== null)
+  if (
+    end?.kind !== "stopped" ||
+    next.local.draft.text.trim() !== "" ||
+    next.local.editing !== null
+  ) {
     return refresh;
+  }
   const request = unansweredRequest(after);
   const commit = after.messages.find((message) => message.id === request?.message);
 
@@ -402,8 +414,9 @@ function runEnded(before: HeadView | null, after: HeadView, next: State, now: nu
     commit?.kind !== "user" ||
     commit.status.kind !== "landed" ||
     after.messages.find((message) => message.kind === "user") === commit
-  )
+  ) {
     return refresh;
+  }
 
   return {
     state: withLocal(next, { move: { purpose: "retract", message: request.message } }),
@@ -468,8 +481,9 @@ function landHandback(next: State, now: number): Step {
     next.local.draft.text.trim() !== "" ||
     next.local.dialogs.length > 0 ||
     next.local.editing !== null
-  )
+  ) {
     return stay(next);
+  }
 
   if (
     head.unlessLanded !== null &&
@@ -480,8 +494,9 @@ function landHandback(next: State, now: number): Step {
         candidate.kind === "user" &&
         candidate.status.kind === "landed",
     )
-  )
+  ) {
     return stay(next);
+  }
 
   const dropped = withLocal(next, {
     handbacks: { ...next.local.handbacks, [session.id]: rest },
@@ -506,8 +521,9 @@ function shellReported(state: State, job: ShellJob): Step {
 
   const delivered = deliverShells(withFacts(state, { shells }));
 
-  if (job.state.kind === "running" || (known !== undefined && known.state.kind !== "running"))
+  if (job.state.kind === "running" || (known !== undefined && known.state.kind !== "running")) {
     return delivered;
+  }
 
   return {
     ...delivered,
@@ -574,18 +590,20 @@ function draftChanged(
 export function completionLookup(before: State["local"]["completion"], next: State): Step {
   const after = next.local.completion;
 
-  if (after.kind !== "open" || after.explicit !== null || after.suggestions !== null)
+  if (after.kind !== "open" || after.explicit !== null || after.suggestions !== null) {
     return stay(next);
+  }
 
   if (
     before.kind === "open" &&
     before.token.trigger === after.token.trigger &&
     before.token.query === after.token.query
-  )
+  ) {
     return stay(next);
+  }
   const { cwd } = next.facts.workspace;
 
-  if (after.token.trigger === "argument" && next.facts.chat !== null)
+  if (after.token.trigger === "argument" && next.facts.chat !== null) {
     return {
       state: next,
       effects: [
@@ -597,9 +615,11 @@ export function completionLookup(before: State["local"]["completion"], next: Sta
         },
       ],
     };
+  }
 
-  if (after.token.trigger === "@" && explicitMentionQuery(after.token.query))
+  if (after.token.trigger === "@" && explicitMentionQuery(after.token.query)) {
     return { state: next, effects: [{ kind: "resolve-mention", query: after.token.query, cwd }] };
+  }
 
   return stay(next);
 }
@@ -614,13 +634,15 @@ function scrolled(state: State, atBottom: boolean): State {
     followedSession(state)?.info ?? null,
   );
 
-  if (atBottom && model.window.end === model.rows.length)
+  if (atBottom && model.window.end === model.rows.length) {
     return withLocal(state, {
       transcript: { ...transcript, following: true, window: { kind: "tail" } },
     });
+  }
 
-  if (transcript.window.kind !== "tail")
+  if (transcript.window.kind !== "tail") {
     return withLocal(state, { transcript: { ...transcript, following: false } });
+  }
 
   return withLocal(state, {
     transcript: { ...transcript, following: false, window: anchorAt(model.rows, model.window) },

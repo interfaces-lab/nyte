@@ -138,7 +138,7 @@ describe("public relay targets", () => {
   it("normalizes dot segments and backslashes before deciding", () => {
     expect(target("/x/../sessions.list")?.path).toBe("/sessions.list");
     expect(target("/x/%2E%2E/sessions.list")?.path).toBe("/sessions.list");
-    expect(target("/x\\..\\sessions.list")?.path).toBe("/sessions.list");
+    expect(target(String.raw`/x\..\sessions.list`)?.path).toBe("/sessions.list");
     expect(target("/sessions.list/../_nyte/connect/enroll")).toBeUndefined();
     expect(target("/../../x/sessions.list")).toBeUndefined();
   });
@@ -199,8 +199,9 @@ describe("frames", () => {
       { t: "credit", ch, bytes: RELAY_WINDOW_BYTES },
       { t: "message", ch, data: "e30", fin: true },
       { t: "close", ch, code: 1008, reason: "Update the client." },
-    ])
+    ]) {
       expect(parseDesktopFrame(JSON.stringify(frame))).toEqual(frame);
+    }
 
     const socket = { t: "socket", ch, path: "/.nyte/ws?ticket=t1" };
 
@@ -250,8 +251,9 @@ describe("frames", () => {
     expect(chunks).toHaveLength(3);
     expect(encodeChunks(new Uint8Array())).toEqual([]);
 
-    for (const data of chunks)
+    for (const data of chunks) {
       expect(parseDesktopFrame(JSON.stringify({ t: "data", ch, data }))).toBeDefined();
+    }
     const decoded = chunks.map((data) => decodeChunk(data) ?? new Uint8Array());
 
     expect(Uint8Array.from(decoded.flatMap((chunk) => [...chunk]))).toEqual(bytes);

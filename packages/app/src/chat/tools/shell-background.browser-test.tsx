@@ -25,6 +25,7 @@ import { ToolCallView } from "./tool-call.tsx";
 import { TranscriptProvider } from "../transcript/transcript.tsx";
 import { BackgroundWork, listTerminals } from "../trays/terminals.tsx";
 import { useChatTasks } from "../../chats/index.ts";
+import { errorMessage } from "../../contract/errors.ts";
 
 const SESSION = asId<"session">("shell-background");
 
@@ -91,7 +92,7 @@ function view(message: Message): SessionView {
       },
     ],
     configuration: { selected: null, effective: null },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -111,12 +112,12 @@ const scriptedSet = scriptedConnection({
       id: part,
       update: async () => ({ kind: "missing" }),
       async act(action): Promise<ActOutcome<undefined>> {
-        acts.push(`${part}:${String(action)}`);
+        acts.push(`${part}:${action}`);
 
         return { kind: "ok", output: undefined };
       },
       answer: async () => null,
-      watch: async function* () {
+      async *watch() {
         yield* [];
       },
       close: async () => undefined,
@@ -194,10 +195,14 @@ function Stage({
 let renderFailure: unknown;
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
-    if (renderFailure !== undefined) throw renderFailure;
+    if (renderFailure !== undefined) {
+      throw renderFailure instanceof Error
+        ? renderFailure
+        : new Error(errorMessage(renderFailure), { cause: renderFailure });
+    }
     const value = read();
 
     if (value !== null && value !== undefined) return value;
@@ -244,8 +249,9 @@ export async function run(): Promise<string> {
   const inline = await until(() => button(stage, "Move to background"), "the inline control");
   await until(() => button(stage, "Open in terminal"), "the foreground step's terminal link");
 
-  if (stage.querySelector("button[aria-description^='Open terminals']") !== null)
+  if (stage.querySelector("button[aria-description^='Open terminals']") !== null) {
     failures.push("a foreground step shows the terminals pill");
+  }
   await nextFrame();
   await capture("shell-running-compact");
   inline.click();
@@ -266,17 +272,20 @@ export async function run(): Promise<string> {
     "the inline control to leave",
   );
 
-  if (button(stage, "Open in terminal") === undefined)
+  if (button(stage, "Open in terminal") === undefined) {
     failures.push("a step moved to the background loses the link to its job");
+  }
 
   if (pill instanceof HTMLElement) pill.click();
   await until(() => button(stage, `Stop ${COMMAND}`), "the terminal row's Stop");
 
-  if (!pill.isConnected || pill.getAttribute("aria-expanded") !== "true")
+  if (!pill.isConnected || pill.getAttribute("aria-expanded") !== "true") {
     failures.push("the terminals chip does not stay pressed while its list is open");
+  }
 
-  if (button(stage, "Move to Background") !== undefined)
+  if (button(stage, "Move to Background") !== undefined) {
     failures.push("the tray offers a background move");
+  }
   await nextFrame();
   await capture("terminals-background");
   applyDisplayMode("dark");
@@ -290,8 +299,9 @@ export async function run(): Promise<string> {
     "the chip to close the list",
   );
 
-  if (pill.getAttribute("aria-expanded") !== "false")
+  if (pill.getAttribute("aria-expanded") !== "false") {
     failures.push("the terminals chip stays pressed after closing its list");
+  }
 
   flushSync(() => root.unmount());
   views.push(view(running));
@@ -302,8 +312,9 @@ export async function run(): Promise<string> {
 
   const header = await until(() => button(stage, "Move to background"), "the card control");
 
-  if (header.parentElement !== button(stage, "Copy command")?.parentElement)
+  if (header.parentElement !== button(stage, "Copy command")?.parentElement) {
     failures.push("the card control is not beside Copy command");
+  }
   header.focus();
   await nextFrame();
   await capture("shell-running-detailed");

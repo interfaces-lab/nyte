@@ -1,5 +1,5 @@
 import { selectSession, tabPanes } from "../../../test/panes.ts";
-import "./transcript-render-counter.ts";
+import { lastCommit, renderCount, resetRenders } from "./transcript-render-counter.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -20,7 +20,7 @@ import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import { SessionConversation } from "../session-conversation.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import "../../theme/tokens.stylex.ts";
@@ -30,7 +30,6 @@ import {
   viewStream,
 } from "../../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow, settledTool } from "../../../test/view-fixtures.ts";
-import { lastCommit, renderCount, resetRenders } from "./transcript-render-counter.ts";
 import { TurnItemView } from "./turn-view.tsx";
 import { Timeline } from "./timeline.tsx";
 
@@ -135,7 +134,7 @@ const unchanged = {
   seenThrough: null,
   background: [],
   configuration: { selected: configuration, effective: configuration },
-  context: { tokens: 0, window: 1_000, lastRequest: null },
+  context: { tokens: 0, window: 1000, lastRequest: null },
   changes: [],
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 } as const satisfies Omit<SessionView, "messages">;
@@ -213,7 +212,7 @@ export async function run(): Promise<string> {
 
   try {
     await until(
-      () => container.textContent?.includes(`Question ${String(TURNS)}`) === true,
+      () => container.textContent?.includes(`Question ${String(TURNS)}`),
       "the last turn",
     );
 

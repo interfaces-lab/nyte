@@ -18,7 +18,7 @@ export type PromptOverride = Decoded<typeof PromptOverrideType>;
 
 export const PromptOverrideSchema: Schema<PromptOverride> = standard(PromptOverrideType);
 
-export type ModelRequestInput<T = string> = {
+export interface ModelRequestInput<T = string> {
   readonly model: ModelRef;
   readonly system?: string;
   readonly messages: readonly ModelMessage[];
@@ -26,7 +26,7 @@ export type ModelRequestInput<T = string> = {
   readonly output?: Schema<T>;
   readonly maxOutput?: number;
   readonly signal?: AbortSignal;
-};
+}
 
 export type ModelRequestOutcome<T = string> =
   | {

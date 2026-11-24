@@ -128,8 +128,8 @@ function context(body: Static<typeof BodySchema>) {
       continue;
     }
 
-    for (const block of blocks)
-      if (block.type === "tool_result" && block.tool_use_id !== undefined)
+    for (const block of blocks) {
+      if (block.type === "tool_result" && block.tool_use_id !== undefined) {
         messages.push({
           role: "toolResult",
           toolCallId: block.tool_use_id,
@@ -138,15 +138,18 @@ function context(body: Static<typeof BodySchema>) {
           isError: false,
           timestamp: 0,
         });
+      }
+    }
 
     const text = blocks.filter((block) => block.type === "text").map(blockText);
 
-    if (text.length > 0)
+    if (text.length > 0) {
       messages.push({
         role: "user",
         content: text.map((part) => ({ type: "text", text: part })),
         timestamp: 0,
       });
+    }
   }
 
   const system =
@@ -295,8 +298,9 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
     fallback(request) {
       const [first] = request.context.messages;
 
-      if (first?.role === "system" && first.content === TITLE_PROMPT)
+      if (first?.role === "system" && first.content === TITLE_PROMPT) {
         return { content: [{ type: "text", text: "Binary smoke" }] };
+      }
       requests.push(request);
 
       return replies.shift() ?? { error: "No reply was scripted for this request." };

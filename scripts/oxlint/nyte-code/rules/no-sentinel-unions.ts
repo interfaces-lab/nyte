@@ -91,8 +91,9 @@ function schemaCall(node: ESTree.CallExpression): string | null {
 function structured(member: ESTree.TSType): boolean {
   if (member.type === "TSArrayType" || member.type === "TSTupleType") return true;
   if (member.type === "TSTypeLiteral" || member.type === "TSMappedType") return true;
-  if (member.type === "TSTypeOperator")
+  if (member.type === "TSTypeOperator") {
     return member.typeAnnotation !== null && structured(member.typeAnnotation);
+  }
 
   return (
     member.type === "TSTypeReference" &&

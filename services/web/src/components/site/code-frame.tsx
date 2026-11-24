@@ -67,6 +67,17 @@ export function CodeFrame({ title, icon: _icon, children, className, ...props }:
 
   useMountEffect(() => () => clearTimeout(reset.current));
 
+  const copy = async () => {
+    clearTimeout(reset.current);
+    try {
+      await navigator.clipboard.writeText(body.current?.textContent ?? "");
+      setCopyStatus("copied");
+      reset.current = setTimeout(() => setCopyStatus("idle"), 1300);
+    } catch {
+      setCopyStatus("error");
+    }
+  };
+
   const code = (
     <div className="doc-code-body">
       <pre ref={body} className={className} {...props}>
@@ -76,16 +87,7 @@ export function CodeFrame({ title, icon: _icon, children, className, ...props }:
         type="button"
         className="doc-code-copy"
         aria-label={copyStatus === "copied" ? "Copied" : "Copy code"}
-        onClick={async () => {
-          clearTimeout(reset.current);
-          try {
-            await navigator.clipboard.writeText(body.current?.textContent ?? "");
-            setCopyStatus("copied");
-            reset.current = setTimeout(() => setCopyStatus("idle"), 1300);
-          } catch {
-            setCopyStatus("error");
-          }
-        }}
+        onClick={() => void copy()}
       >
         {copyStatus === "copied" ? <IconCheckmark1Small size={14} /> : <IconClipboard size={14} />}
       </button>

@@ -9,9 +9,9 @@ export function prefixEnd(prefix: string): string | null {
 
   if (last === undefined) return null;
 
-  if (last === 0x10ffff) return prefixEnd(points.join(""));
+  if (last === 0x10_ff_ff) return prefixEnd(points.join(""));
 
-  return points.join("") + String.fromCodePoint(last === 0xd7ff ? 0xe000 : last + 1);
+  return points.join("") + String.fromCodePoint(last === 0xd7_ff ? 0xe0_00 : last + 1);
 }
 
 export function mintRevision(): Revision {
@@ -43,8 +43,9 @@ export function parseRef(row: Readonly<Record<string, unknown>>): Ref {
   const revision = parseText(row.revision);
   const target = parseText(row.target);
 
-  if (name === null || revision === null)
+  if (name === null || revision === null) {
     throw new SdkError("internal", "A stored ref is malformed.");
+  }
 
   return {
     name,
@@ -59,8 +60,9 @@ export function parseStoredRecord(row: Readonly<Record<string, unknown>>): Store
   const revision = parseText(row.revision);
   const body = parseText(row.body);
 
-  if (name === null || target === null || revision === null || body === null)
+  if (name === null || target === null || revision === null || body === null) {
     throw new SdkError("internal", "A stored ref is malformed.");
+  }
 
   return { name, target: asId<"object">(target), revision, body };
 }
@@ -85,8 +87,9 @@ export function loggedRow(row: Readonly<Record<string, unknown>>): LoggedRow {
 export function parseBytes(value: unknown): Uint8Array | null {
   if (value === null || value === undefined) return null;
 
-  if (value instanceof Uint8Array)
+  if (value instanceof Uint8Array) {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
 
   throw new SdkError("internal", "A stored blob is malformed.");
 }

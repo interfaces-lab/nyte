@@ -7,7 +7,7 @@ import { createKernel } from "../src/compose.ts";
 import { repair } from "../src/drive/execution.ts";
 import { LEASE_MS, runStep } from "../src/engine/durable.ts";
 import { earliestWake, loadWaits } from "../src/engine/waits.ts";
-import { readCalls } from "../src/store/session.ts";
+import { readCalls, put } from "../src/store/session.ts";
 import { LOCAL, ALL_AUTHORITY, definePart } from "../src/index.ts";
 import {
   callRef,
@@ -22,7 +22,6 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { ActionContext, ActionOutput, Durable, ToolDefinition } from "../src/index.ts";
 import type { CallRecord } from "../src/store.ts";
 import { commit } from "../src/watch/commit.ts";
-import { put } from "../src/store/session.ts";
 import { main, setup, startRun, until } from "../src/harness.ts";
 import { toolPlugin } from "./tool-support.ts";
 
@@ -508,7 +507,7 @@ describe("waits as store facts", () => {
     const { session } = await host.sessions.start({ content: "Hi." });
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
 
-    for (const call of ["s1", "s2"])
+    for (const call of ["s1", "s2"]) {
       expect(
         await waitStep(kernel, {
           session: session.id,
@@ -516,6 +515,7 @@ describe("waits as store facts", () => {
           body: waiting({ kind: "part", part: part.id }),
         }),
       ).toEqual({ kind: "parked" });
+    }
 
     const answering = await setup({ store: kernel.store });
 
@@ -525,11 +525,12 @@ describe("waits as store facts", () => {
       kind: "ok",
       output: undefined,
     });
-    for (const call of ["s1", "s2"])
+    for (const call of ["s1", "s2"]) {
       expect(await readCall(kernel, session.id, call)).toMatchObject({
         waiting: null,
         waits: [{ kind: "part", part: part.id, answer: yes }],
       });
+    }
   });
 
   it("re-runs a part action parked across a restart once a wake written there completes its wait (ADV B N5, §33j)", async () => {
@@ -585,8 +586,9 @@ describe("waits as store facts", () => {
     const holder = await setup();
     const other = await setup({ store: holder.kernel.store });
 
-    for (const kernel of [holder.kernel, other.kernel])
+    for (const kernel of [holder.kernel, other.kernel]) {
       kernel.partDefinitions.register(gated, "plugin");
+    }
     const { session } = await holder.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(gated, {
@@ -631,8 +633,9 @@ describe("waits as store facts", () => {
     const holder = await setup();
     const other = await setup({ store: holder.kernel.store });
 
-    for (const kernel of [holder.kernel, other.kernel])
+    for (const kernel of [holder.kernel, other.kernel]) {
       kernel.partDefinitions.register(dying, "plugin");
+    }
     const { session } = await holder.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(dying, {
@@ -668,8 +671,9 @@ describe("waits as store facts", () => {
     const holder = await setup();
     const other = await setup({ store: holder.kernel.store });
 
-    for (const kernel of [holder.kernel, other.kernel])
+    for (const kernel of [holder.kernel, other.kernel]) {
       kernel.partDefinitions.register(dying, "plugin");
+    }
     const { session } = await holder.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(dying, {
@@ -793,7 +797,7 @@ describe("waits as store facts", () => {
     ]);
 
     const first = Date.now() + 60_000;
-    const second = first + 1_000;
+    const second = first + 1000;
 
     const twice = async (durable: Durable): Promise<Json> => {
       await durable.wait({ kind: "timer", until: first });

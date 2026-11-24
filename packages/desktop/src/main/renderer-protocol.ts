@@ -114,8 +114,9 @@ async function forwardMedia(
   request: Request,
   host: ((request: Request) => Promise<Response>) | undefined,
 ): Promise<Response> {
-  if (!url.pathname.startsWith(`${MEDIA_PATH}/`) || host === undefined)
+  if (!url.pathname.startsWith(`${MEDIA_PATH}/`) || host === undefined) {
     return new Response(null, { status: 404 });
+  }
   const range = request.headers.get("Range");
 
   return host(

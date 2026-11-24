@@ -74,7 +74,7 @@ export const COMMANDS = [
       "FOLDER defaults to this folder. On a terminal, lists the project files and asks first. Without one, it needs --yes.",
       "Starts a host when none runs and opens the folder in it. Chats already open reload with the change.",
       "Your home folder can't be trusted: its .nyte files are your user files.",
-      'The receipt goes to stderr. With stdout redirected or without a terminal, prints the folder\'s path there. --json prints {"folder":{"path","trusted","decision","projectSources"},"outcome"} instead, where outcome is trusted or unchanged.',
+      'The receipt goes to stderr. With stdout redirected or without a terminal, prints the folder\'s path there. --json prints {"folder":{"path","trust","projectSources"},"outcome"} instead, where outcome is trusted or unchanged.',
     ],
   },
   {
@@ -87,7 +87,7 @@ export const COMMANDS = [
     notes: [
       "Saves that the folder's skills, prompts, plugins and MCP servers don't load, even when the Project trust setting or a folder above would trust it. FOLDER defaults to this folder.",
       "Starts a host when none runs and opens the folder in it. Chats already open reload with the change.",
-      'The receipt goes to stderr. With stdout redirected or without a terminal, prints the folder\'s path there. --json prints {"folder":{"path","trusted","decision","projectSources"},"outcome"} instead, where outcome is untrusted or unchanged.',
+      'The receipt goes to stderr. With stdout redirected or without a terminal, prints the folder\'s path there. --json prints {"folder":{"path","trust","projectSources"},"outcome"} instead, where outcome is untrusted or unchanged.',
     ],
   },
   {

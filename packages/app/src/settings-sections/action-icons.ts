@@ -1,0 +1,32 @@
+import type { IconName } from "@nyte-ai/ui/icon";
+import type { clientActions } from "../contract/client-actions.ts";
+import { SETTINGS_SECTIONS } from "./sections.ts";
+import type { SettingsSection } from "./sections.ts";
+
+type ClientAction = (typeof clientActions)[keyof typeof clientActions];
+
+type IconActionId =
+  | Extract<ClientAction, { readonly palette: unknown }>["id"]
+  | typeof clientActions.search.id
+  | typeof clientActions.settings.id;
+
+export const settingsActionPages = {
+  "general-settings": "general",
+  "appearance-settings": "appearance",
+  "model-settings": "providers",
+  "profile-settings": "profile",
+} as const satisfies Partial<Record<ClientAction["id"], SettingsSection>>;
+
+export const actionIcons = {
+  "new-chat": "new-chat",
+  "open-folder": "folder-open",
+  "open-home": "folder",
+  "general-settings": SETTINGS_SECTIONS[settingsActionPages["general-settings"]].icon,
+  "appearance-settings": SETTINGS_SECTIONS[settingsActionPages["appearance-settings"]].icon,
+  "model-settings": SETTINGS_SECTIONS[settingsActionPages["model-settings"]].icon,
+  "profile-settings": SETTINGS_SECTIONS[settingsActionPages["profile-settings"]].icon,
+  "customize-settings": "customize",
+  "reload-window": "refresh",
+  search: "search",
+  settings: "settings",
+} as const satisfies Record<IconActionId, IconName>;

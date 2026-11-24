@@ -90,8 +90,9 @@ for (const { directory, manifest } of manifests) {
     for (const [name, range] of Object.entries(manifest[field] ?? {})) {
       const dependency = byName.get(name);
 
-      if (dependency?.manifest.private)
+      if (dependency?.manifest.private) {
         throw new Error(`${manifest.name} depends on private ${name}`);
+      }
 
       if (range.startsWith("workspace:") && dependency === undefined) {
         throw new Error(`${manifest.name} has unknown workspace dependency ${name}`);
@@ -160,7 +161,7 @@ writeFileSync(
         paths,
       },
       include: [join(cwd, "src/**/*.ts"), join(cwd, "src/**/*.tsx")],
-      exclude: [join(cwd, "node_modules"), dist, join(cwd, "test")],
+      exclude: [join(cwd, "node_modules"), dist, join(cwd, "test"), join(cwd, "src/**/*.view.tsx")],
     },
     null,
     2,
@@ -179,7 +180,7 @@ try {
 const result = await build({
   entrypoints: globSync(["src/**/*.ts", "src/**/*.tsx"], {
     cwd,
-    exclude: ["**/*.d.ts"],
+    exclude: ["**/*.d.ts", "**/*.view.tsx"],
   }).map((file) => join(cwd, file)),
   root: cwd,
   outdir: dist,
@@ -202,7 +203,7 @@ if (developmentJsx.length > 0) {
   throw new Error(`${manifest.name} emitted development JSX: ${developmentJsx.join(", ")}`);
 }
 
-for (const file of globSync(["src/**/LICENSE"], { cwd })) {
+for (const file of globSync(["src/**/LICENSE", "src/**/*.view.tsx"], { cwd })) {
   mkdirSync(dirname(join(dist, file)), { recursive: true });
   copyFileSync(join(cwd, file), join(dist, file));
 }

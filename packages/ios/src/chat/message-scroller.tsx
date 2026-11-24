@@ -12,7 +12,10 @@ import { spacing } from "../theme.ts";
 import { GlassButton } from "../ui/glass-button.tsx";
 import type { SendOutcome } from "./remote-chat.ts";
 
-export type MessageScrollerItem = { messageId: string; scrollAnchor: boolean };
+export interface MessageScrollerItem {
+  messageId: string;
+  scrollAnchor: boolean;
+}
 
 export function useMessageScrollerProvider({
   autoScroll,

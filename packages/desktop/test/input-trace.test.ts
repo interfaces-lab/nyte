@@ -29,11 +29,11 @@ test("render phases include the whole renderer run while key latency uses the ma
             tid: 10,
             id2: { local: "frame" },
           },
-          { name: "typing:start", ph: "I", ts: 1_000, pid: 1, tid: 10 },
+          { name: "typing:start", ph: "I", ts: 1000, pid: 1, tid: 10 },
           {
             name: "EventTiming",
             ph: "b",
-            ts: 2_000,
+            ts: 2000,
             pid: 1,
             tid: 10,
             id: "key",
@@ -42,7 +42,7 @@ test("render phases include the whole renderer run while key latency uses the ma
           {
             name: "AnimationFrame::Render",
             ph: "b",
-            ts: 3_000,
+            ts: 3000,
             pid: 1,
             tid: 10,
             id2: { local: "frame" },
@@ -50,7 +50,7 @@ test("render phases include the whole renderer run while key latency uses the ma
           {
             name: "AnimationFrame::Render",
             ph: "b",
-            ts: 4_000,
+            ts: 4000,
             pid: 2,
             tid: 10,
             id2: { local: "frame" },
@@ -58,7 +58,7 @@ test("render phases include the whole renderer run while key latency uses the ma
           {
             name: "AnimationFrame::Render",
             ph: "b",
-            ts: 4_000,
+            ts: 4000,
             pid: 1,
             tid: 20,
             id2: { local: "frame" },
@@ -66,7 +66,7 @@ test("render phases include the whole renderer run while key latency uses the ma
           {
             name: "AnimationFrame::Render",
             ph: "e",
-            ts: 7_000,
+            ts: 7000,
             pid: 1,
             tid: 10,
             id2: { local: "frame" },
@@ -89,7 +89,7 @@ test("render phases include the whole renderer run while key latency uses the ma
             tid: 10,
             id2: { local: "frame" },
           },
-          { name: "AnimationFrame::Render", ph: "X", ts: 35_000, dur: 2_500, pid: 1, tid: 10 },
+          { name: "AnimationFrame::Render", ph: "X", ts: 35_000, dur: 2500, pid: 1, tid: 10 },
           { name: "AnimationFrame::Render", ph: "B", ts: 40_000, pid: 1, tid: 10 },
           { name: "AnimationFrame::Render", ph: "E", ts: 43_000, pid: 1, tid: 10 },
           {
@@ -133,15 +133,15 @@ test("a trace without renderer phases fails instead of reporting an empty render
           {
             name: "EventTiming",
             ph: "b",
-            ts: 1_000,
+            ts: 1000,
             pid: 1,
             tid: 10,
             id: "key",
             args: { data: { type: "keydown" } },
           },
-          { name: "EventTiming", ph: "e", ts: 6_000, pid: 1, tid: 10, id: "key" },
-          { name: "typing:end", ph: "I", ts: 8_000, pid: 1, tid: 10 },
-          { name: "AnimationFrame::Render", ph: "X", ts: 2_000, dur: 1_000, pid: 2, tid: 10 },
+          { name: "EventTiming", ph: "e", ts: 6000, pid: 1, tid: 10, id: "key" },
+          { name: "typing:end", ph: "I", ts: 8000, pid: 1, tid: 10 },
+          { name: "AnimationFrame::Render", ph: "X", ts: 2000, dur: 1000, pid: 2, tid: 10 },
         ],
       }),
     );

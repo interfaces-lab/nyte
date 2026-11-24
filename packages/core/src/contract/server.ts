@@ -44,10 +44,10 @@ import type { PartDefinition } from "./parts.ts";
 import type { Receipt, SendReceipt } from "./session.ts";
 import type { BatchEntry, FilesApi, Page, PageTable } from "./workspace.ts";
 
-export type Verdict = {
+export interface Verdict {
   readonly principal: PrincipalId;
   readonly authority: ReadonlySet<Authority>;
-};
+}
 
 export interface ServerHost {
   readonly hostId: HostId;
@@ -71,6 +71,11 @@ export interface ServerHost {
   onExternalCommit(listener: () => void): Disposer;
 
   drive(coverage: ExecutionCoverage): Owned;
+
+  /** Stops starting runs, then answers whether nothing is busy. When something is, it starts runs again and answers false. */
+  retire(): Promise<boolean>;
+
+  onActivity(listener: () => void): Disposer;
 
   tick(now: number): Promise<void>;
 

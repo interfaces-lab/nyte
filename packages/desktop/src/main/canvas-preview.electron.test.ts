@@ -129,11 +129,12 @@ test.skipIf(!built)(
       if (proof !== undefined) {
         await mkdir(proof, { recursive: true });
 
-        for (const theme of ["dark", "light"])
+        for (const theme of ["dark", "light"]) {
           await copyFile(
             join(directory, `preview-${theme}.png`),
             join(proof, `preview-electron-repo-galaxy-${theme}.png`),
           );
+        }
         await copyFile(
           join(directory, "result.json"),
           join(proof, "preview-electron-repo-galaxy.json"),

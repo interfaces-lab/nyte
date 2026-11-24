@@ -35,7 +35,7 @@ it("updates sidebar rows live: a chat another client starts appears, its title l
   };
 
   try {
-    await vi.waitFor(() => expect(rows.snapshot()?.ids).toEqual([]), { timeout: 5_000 });
+    await vi.waitFor(() => expect(rows.snapshot()?.ids).toEqual([]), { timeout: 5000 });
 
     const older = await simulation.drive({ kind: "send", text: "older chat" });
     const newer = await simulation.drive({ kind: "send", text: "newer chat" });
@@ -44,14 +44,14 @@ it("updates sidebar rows live: a chat another client starts appears, its title l
 
     await vi.waitFor(
       () => expect(listed().map((row) => row.name)).toEqual(["newer chat", "older chat"]),
-      { timeout: 5_000 },
+      { timeout: 5000 },
     );
 
     await simulation.drive({ kind: "send", session: older.session, text: "bump" });
 
     await vi.waitFor(
       () => expect(listed().map((row) => row.id)).toEqual([older.session, newer.session]),
-      { timeout: 5_000 },
+      { timeout: 5000 },
     );
 
     const bumped = listed();

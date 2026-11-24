@@ -17,11 +17,10 @@ import {
 } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { MentionFile } from "../../data/files.ts";
-import type { CommandCompletion } from "@nyte-ai/sdk";
-import type { SessionCatalogView } from "@nyte-ai/sdk";
+import type { CommandCompletion, SessionCatalogView } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
-import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
+import type { ComposerCompletion, ComposerDocumentState } from "../../panes/composer-document.ts";
 import type { ComposerComboboxState, ComposerEditorHandle } from "./composer-editor.tsx";
 import {
   rememberSuggestion,
@@ -57,7 +56,7 @@ import type {
   SuggestionSources,
   SuggestionToken,
 } from "./composer-suggestion-menu.ts";
-import { useChatFolder } from "../chat-folder.ts";
+import { useChatFolder } from "../../chats/index.ts";
 import { activeEditorFile } from "../../workbench/model.ts";
 import { useWorkbenchViewKey } from "../../workbench/paths.ts";
 import { workbench } from "../../workbench/store.ts";
@@ -346,10 +345,11 @@ export function useComposerSuggestions({
   if (
     menuState.active !== undefined &&
     !suggestions.some((suggestion) => suggestion.id === menuState.active)
-  )
+  ) {
     setMenuState((current) =>
       nextMenu(current, { kind: "rows", ids: suggestions.map((suggestion) => suggestion.id) }),
     );
+  }
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- scrolls the active suggestion into view before paint
   useLayoutEffect(() => {
@@ -371,8 +371,9 @@ export function useComposerSuggestions({
     const ticket = generation.current;
 
     const settle = (result: ArgumentResult): void => {
-      if (ticket === generation.current)
+      if (ticket === generation.current) {
         setArgumentAnswer({ command: request.command, query: request.query, result });
+      }
     };
 
     timer.current = setTimeout(() => {

@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { localArea, readStored, type StorageArea, writeStored } from "../lib/storage.ts";
+import { localArea, readStored, writeStored } from "../lib/storage.ts";
+import type { StorageArea } from "../lib/storage.ts";
 
 const STORAGE_KEY = "nyte.desktop.changes-viewed.v1";
 
@@ -43,13 +44,13 @@ interface ChangesViewedOptions {
 const EMPTY_CHANGES_VIEWED: ChangesViewed = {};
 
 export function patchDigest(patch: string): string {
-  let low = 0x811c9dc5;
-  let high = 0x01000193;
+  let low = 0x81_1c_9d_c5;
+  let high = 0x01_00_01_93;
 
   for (let index = 0; index < patch.length; index += 1) {
     const code = patch.charCodeAt(index);
-    low = Math.imul(low ^ code, 0x01000193);
-    high = Math.imul(high ^ (code + index), 0x85ebca6b);
+    low = Math.imul(low ^ code, 0x01_00_01_93);
+    high = Math.imul(high ^ (code + index), 0x85_eb_ca_6b);
   }
 
   const part = (value: number): string => (value >>> 0).toString(16).padStart(8, "0");
@@ -64,34 +65,34 @@ function markState(mark: ViewedMark | undefined, digest: string): ViewedState {
 }
 
 class ChangesViewedStore {
-  readonly #storage: StorageArea | undefined;
-  readonly #now: () => number;
-  readonly #maxFiles: number;
-  readonly #retentionMs: number;
-  readonly #listeners = new Set<() => void>();
-  #viewed: ChangesViewed = EMPTY_CHANGES_VIEWED;
+  private readonly storage: StorageArea | undefined;
+  private readonly now: () => number;
+  private readonly maxFiles: number;
+  private readonly retentionMs: number;
+  private readonly listeners = new Set<() => void>();
+  private viewed: ChangesViewed = EMPTY_CHANGES_VIEWED;
 
   constructor(options: ChangesViewedOptions = {}) {
-    this.#storage = options.storage;
-    this.#now = options.now ?? Date.now;
-    this.#maxFiles = options.maxFilesPerRepository ?? MAX_FILES_PER_REPOSITORY;
-    this.#retentionMs = options.repositoryRetentionMs ?? REPOSITORY_RETENTION_MS;
+    this.storage = options.storage;
+    this.now = options.now ?? Date.now;
+    this.maxFiles = options.maxFilesPerRepository ?? MAX_FILES_PER_REPOSITORY;
+    this.retentionMs = options.repositoryRetentionMs ?? REPOSITORY_RETENTION_MS;
 
-    this.#viewed = this.#prune(
-      readStored(this.#storage, STORAGE_KEY, changesViewedSchema, EMPTY_CHANGES_VIEWED),
+    this.viewed = this.prune(
+      readStored(this.storage, STORAGE_KEY, changesViewedSchema, EMPTY_CHANGES_VIEWED),
     );
   }
 
-  getSnapshot = (): ChangesViewed => this.#viewed;
+  getSnapshot = (): ChangesViewed => this.viewed;
 
   subscribe = (listener: () => void): (() => void) => {
-    this.#listeners.add(listener);
+    this.listeners.add(listener);
 
-    return () => this.#listeners.delete(listener);
+    return () => this.listeners.delete(listener);
   };
 
   fileState(root: string, file: ViewedFile): ViewedState {
-    return markState(this.#viewed[root]?.files[file.path], file.digest);
+    return markState(this.viewed[root]?.files[file.path], file.digest);
   }
 
   markViewed(root: string, file: ViewedFile): void {
@@ -103,11 +104,11 @@ class ChangesViewedStore {
     const pending = files.filter((file) => this.fileState(root, file) !== "viewed");
 
     if (pending.length === 0) return;
-    const at = this.#now();
-    const files_ = { ...this.#viewed[root]?.files };
+    const at = this.now();
+    const marked = { ...this.viewed[root]?.files };
 
-    for (const file of pending) files_[file.path] = { digest: file.digest, at };
-    this.#commit(root, files_);
+    for (const file of pending) marked[file.path] = { digest: file.digest, at };
+    this.commit(root, marked);
   }
 
   clearViewed(root: string, path: string): void {
@@ -115,7 +116,7 @@ class ChangesViewedStore {
   }
 
   clearAllViewed(root: string, paths: readonly string[]): void {
-    const current = this.#viewed[root];
+    const current = this.viewed[root];
 
     if (current === undefined) return;
     const marked = paths.filter((path) => current.files[path] !== undefined);
@@ -124,7 +125,7 @@ class ChangesViewedStore {
     const files = { ...current.files };
 
     for (const path of marked) delete files[path];
-    this.#commit(root, files);
+    this.commit(root, files);
   }
 
   summary(root: string, files: readonly ViewedFile[]): ViewedSummary {
@@ -136,43 +137,43 @@ class ChangesViewedStore {
     return viewed === files.length ? "all" : "some";
   }
 
-  #commit(root: string, files: Record<string, ViewedMark>): void {
-    const bounded = this.#evictOldest(files);
+  private commit(root: string, files: Record<string, ViewedMark>): void {
+    const bounded = this.evictOldest(files);
 
-    const next = this.#prune({
-      ...this.#viewed,
-      [root]: { touchedAt: this.#now(), files: bounded },
+    const next = this.prune({
+      ...this.viewed,
+      [root]: { touchedAt: this.now(), files: bounded },
     });
 
-    const viewed = Object.keys(bounded).length === 0 ? this.#withoutRepository(next, root) : next;
+    const viewed = Object.keys(bounded).length === 0 ? this.withoutRepository(next, root) : next;
 
-    this.#viewed = viewed;
+    this.viewed = viewed;
 
-    for (const listener of this.#listeners) listener();
-    writeStored(this.#storage, STORAGE_KEY, viewed);
+    for (const listener of this.listeners) listener();
+    writeStored(this.storage, STORAGE_KEY, viewed);
   }
 
-  #withoutRepository(viewed: ChangesViewed, root: string): ChangesViewed {
+  private withoutRepository(viewed: ChangesViewed, root: string): ChangesViewed {
     const next = { ...viewed };
     delete next[root];
 
     return next;
   }
 
-  #evictOldest(files: Record<string, ViewedMark>): Record<string, ViewedMark> {
+  private evictOldest(files: Record<string, ViewedMark>): Record<string, ViewedMark> {
     const entries = Object.entries(files);
 
-    if (entries.length <= this.#maxFiles) return files;
+    if (entries.length <= this.maxFiles) return files;
 
     const kept = entries
       .toSorted(([, left], [, right]) => right.at - left.at)
-      .slice(0, this.#maxFiles);
+      .slice(0, this.maxFiles);
 
     return Object.fromEntries(kept);
   }
 
-  #prune(viewed: ChangesViewed): ChangesViewed {
-    const oldest = this.#now() - this.#retentionMs;
+  private prune(viewed: ChangesViewed): ChangesViewed {
+    const oldest = this.now() - this.retentionMs;
 
     const kept = Object.entries(viewed).filter(
       ([, repository]) =>

@@ -1,129 +1,99 @@
-import { setTimeout as sleep } from "node:timers/promises";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
-import { serial } from "@nyte-ai/schema/serial";
-import { requestRetire } from "@nyte-ai/service/outdated-host";
-import type { RetireRequest } from "@nyte-ai/service/outdated-host";
+import type { HostActivity } from "@nyte-ai/schema";
+import type { Live, LinkState } from "@nyte-ai/sdk/client";
 import { dialog } from "electron";
 import type { BrowserWindow, MessageBoxOptions } from "electron";
 import { ExpectedHostError } from "../shared/errors.ts";
 import { runningWork } from "../shared/update-activity.ts";
-import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
-import { processStarted } from "./host-agent.ts";
 import type { HostAgent } from "./host-agent.ts";
-import type { HostLinkState } from "../host/host-link.ts";
-import { readHostUpdate, retiresHost } from "./host-status.ts";
+import { readHostProcess } from "./host-status.ts";
 
 const RESTART_LIMIT_MS = 30_000;
-
-const RESTART_POLL_MS = 250;
 
 type ConfirmedAction = keyof typeof CONFIRMATIONS;
 
 export interface HostProcessFollower {
   state(): HostProcess;
-  linkChanged(): void;
   restart(): Promise<void>;
   confirm(action: ConfirmedAction, window: BrowserWindow | undefined): Promise<void>;
   start(): Promise<void>;
-  close(): Promise<void>;
 }
 
 export function followHostProcess(options: {
   readonly agent: HostAgent;
-  readonly appVersion: string;
-  link(): HostLinkState;
-  activity(): Promise<DesktopUpdateActivity>;
+  readonly link: Live<LinkState>;
+  activity(): Promise<HostActivity>;
   changed(state: HostProcess): void;
 }): HostProcessFollower {
-  const reads = serial();
-  let state: HostProcess = { kind: "offline" };
   let restarting = false;
-  let retire: RetireRequest | null = null;
+  let shown = readHostProcess(options.link.snapshot());
 
-  const withdraw = async (): Promise<void> => {
-    await retire?.withdraw();
-    retire = null;
-  };
+  const state = (): HostProcess =>
+    restarting ? { kind: "restarting" } : readHostProcess(options.link.snapshot());
 
-  const set = (next: HostProcess): void => {
-    if (JSON.stringify(next) === JSON.stringify(state)) return;
-    state = next;
+  const publish = (): void => {
+    const next = state();
+
+    if (JSON.stringify(next) === JSON.stringify(shown)) return;
+    shown = next;
     options.changed(next);
   };
 
-  const read = (): Promise<void> =>
-    reads.run(async () => {
-      if (restarting) return;
-      const link = options.link();
-      const serving = link.kind === "connected" ? await options.agent.serving() : null;
-      const startedAt = serving === null ? null : await processStarted(serving.pid);
-      const update = readHostUpdate({ link, appVersion: options.appVersion });
-      const job = update === "stale" ? await options.agent.pid() : null;
-
-      if (restarting || link !== options.link()) return;
-
-      if (update === "offline" || link.kind !== "connected") {
-        set({ kind: "offline" });
-
-        return;
-      }
-
-      set({ kind: update, version: link.version, startedAt });
-
-      if (retiresHost({ link, appVersion: options.appVersion, serving, job }))
-        retire = await requestRetire("launchd");
-      else await withdraw();
-    });
+  options.link.subscribe(publish);
 
   const restart = async (): Promise<void> => {
     if (restarting) return;
+    const before = options.link.snapshot();
     restarting = true;
-    set({ kind: "restarting" });
+    publish();
 
     try {
-      const before = await options.agent.serving();
       await options.agent.restart();
-      await replaced(options, before?.pid);
+      await replaced(options.link, before.kind === "open" ? before.startedAt : null);
     } finally {
       restarting = false;
-      await read();
+      publish();
     }
   };
 
   return {
-    state: () => state,
-    linkChanged: () => void read(),
+    state,
     restart,
     async confirm(action, window) {
       if (!(await confirmed(action, await options.activity(), window))) return;
 
       if (action === "restart") return restart();
       await options.agent.stop();
-      await read();
     },
     async start() {
       await options.agent.start();
     },
-    close: () => reads.run(withdraw),
   };
 }
 
-async function replaced(
-  options: { readonly agent: HostAgent; link(): HostLinkState },
-  before: number | undefined,
-): Promise<void> {
-  const deadline = Date.now() + RESTART_LIMIT_MS;
+function replaced(link: Live<LinkState>, before: number | null): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const check = (): void => {
+      const state = link.snapshot();
 
-  while (Date.now() < deadline) {
-    const serving = await options.agent.serving();
+      if (state.kind !== "open" || state.startedAt === before) return;
+      clearTimeout(timer);
+      stop();
+      resolve();
+    };
 
-    if (serving !== null && serving.pid !== before && options.link().kind === "connected") return;
-    await sleep(RESTART_POLL_MS);
-  }
+    const timer = setTimeout(() => {
+      stop();
+      reject(
+        new ExpectedHostError({
+          code: "timeout",
+          message: "It didn't come back. Start it in Settings › Server.",
+        }),
+      );
+    }, RESTART_LIMIT_MS);
 
-  throw new ExpectedHostError({
-    code: "timeout",
-    message: "It didn't come back. Start it in Settings › Server.",
+    const stop = link.subscribe(check);
+    check();
   });
 }
 
@@ -145,17 +115,18 @@ const CONFIRMATIONS = {
 
 async function confirmed(
   action: ConfirmedAction,
-  activity: DesktopUpdateActivity,
+  activity: HostActivity,
   window: BrowserWindow | undefined,
 ): Promise<boolean> {
   const copy = CONFIRMATIONS[action];
+  const running = runningWork(activity);
 
   const options: MessageBoxOptions = {
-    type: activity.kind === "busy" ? "warning" : "question",
+    type: running === undefined ? "question" : "warning",
     message: copy.message,
-    detail: activity.kind === "busy" ? copy.busy(runningWork(activity)) : copy.idle,
+    detail: running === undefined ? copy.idle : copy.busy(running),
     buttons: [copy.button, "Cancel"],
-    defaultId: activity.kind === "busy" ? 1 : 0,
+    defaultId: running === undefined ? 0 : 1,
     cancelId: 1,
     noLink: true,
   };

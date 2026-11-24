@@ -16,7 +16,7 @@ import {
   clientActionKeys,
   clientActions,
 } from "../contract/client-actions.ts";
-import { usePaneActions, usePaneLayout } from "../panes/pane-context.tsx";
+import { usePaneLayout } from "../panes/pane-context.tsx";
 import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -25,22 +25,25 @@ import {
   useForgetWorkspace,
   useHomeWorkspace,
   useWorkspaces,
-  type RailWorkspace,
 } from "../data/workspaces.ts";
-import { useHostHealth, useHostState, useServerState } from "../data/host.ts";
+import type { RailWorkspace } from "../data/workspaces.ts";
+import { useHostLink, useHostState, useServerState } from "../data/host.ts";
+import { readLinkNotices } from "../data/link-notices.ts";
 import { sessionActions, useRootRows } from "../data/session-rows.ts";
 import { groupByWorkspace, localSessions } from "../data/session-list.ts";
 import { useChats } from "../chats/index.ts";
 import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
-import { firstSettingsSection, type SettingsSection } from "../settings/index.ts";
+import { firstSettingsSection } from "../settings-sections/sections.ts";
+import type { SettingsSection } from "../settings-sections/sections.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { SidebarFooter } from "../account/account-footer.tsx";
-import { folderPicker } from "../panes/open-workspace.tsx";
+import { SidebarFooter } from "./account-footer.tsx";
+import { activateWorkspace, folderPicker } from "../panes/open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
-import { actionIcons } from "./action-icons.ts";
+import { actionIcons } from "../settings-sections/action-icons.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { ChatCardGroup } from "../components/chat-card.tsx";
 import { SidebarContent } from "./sidebar-content.tsx";
+import type { SettingsNavigationSlot } from "./sidebar-content.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
   ChatsList,
@@ -51,11 +54,11 @@ import {
   useDrafts,
   useListReveal,
   WorkspaceRow,
-  type ListContext,
-  type ListedSession,
 } from "./sidebar-lists.tsx";
+import type { ListContext, ListedSession } from "./sidebar-lists.tsx";
 import { moveSidebarFocus } from "./sidebar-navigation.ts";
-import { NeighbourWarm, type SessionPlace } from "./sidebar-rows.tsx";
+import { NeighbourWarm } from "./sidebar-rows.tsx";
+import type { SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   clearSessionFilters,
@@ -64,9 +67,8 @@ import {
   sessionsForNavigation,
   sessionsForView,
   deriveShelf,
-  type ShelfHold,
 } from "./sidebar-view.ts";
-import { activateWorkspace } from "./use-show-session.ts";
+import type { ShelfHold } from "./sidebar-view.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 
 function listedNeighbours(
@@ -91,7 +93,6 @@ function NewChatRow({
   readonly paletteOpen: boolean;
   readonly mac: boolean;
 }): ReactElement {
-  const panes = usePaneActions();
   const { drafts, activeDraftId } = useDrafts();
   const listed = listsDrafts && drafts.some((draft) => draft.id === activeDraftId);
   const current = activeDraftId !== undefined && !listed && !paletteOpen;
@@ -102,7 +103,7 @@ function NewChatRow({
       selected={current}
       aria-current={current ? "page" : undefined}
       xstyle={styles.navRow}
-      onClick={() => panes.newChat()}
+      onClick={() => windowTabs.newChat()}
     >
       <Row.Leading xstyle={styles.navLeading}>
         <Icon name={actionIcons[clientActions.newChat.id]} size="sm" />
@@ -115,9 +116,13 @@ function NewChatRow({
   );
 }
 
-export function Sidebar(): ReactElement {
+export function Sidebar({
+  renderSettingsNavigation,
+}: {
+  readonly renderSettingsNavigation: SettingsNavigationSlot;
+}): ReactElement {
   const sessionListId = useId();
-  const workspaceCollectionID = useId();
+  const workspaceCollectionId = useId();
   const host = useHostState();
   const open = host.data.workspace;
   const home = useHomeWorkspace();
@@ -137,16 +142,12 @@ export function Sidebar(): ReactElement {
       : groupByWorkspace(roots, railWorkspaces);
 
   const server = useServerState();
-  const health = useHostHealth();
+  const link = useHostLink();
 
   const unreachable =
-    workspaceGroups !== undefined
+    workspaceGroups !== undefined || link === undefined
       ? undefined
-      : health?.kind === "retrying"
-        ? "Can't load chats. Retrying…"
-        : health?.kind === "blocked"
-          ? health.error.message
-          : undefined;
+      : (readLinkNotices(link, false).sidebar ?? undefined);
 
   const forgetWorkspace = useForgetWorkspace();
   const chats = useChats((directory) => directory);
@@ -195,7 +196,7 @@ export function Sidebar(): ReactElement {
           ?.flatMap((workspaceGroup) => workspaceGroup.sessions)
           .find((session) => session.id === paneSessionId);
 
-  if (selection.kind === "blank" && listedWhenBlank === undefined && workspaceGroups)
+  if (selection.kind === "blank" && listedWhenBlank === undefined && workspaceGroups) {
     setListedWhenBlank(
       new Set(
         workspaceGroups.flatMap((workspaceGroup) =>
@@ -203,6 +204,7 @@ export function Sidebar(): ReactElement {
         ),
       ),
     );
+  }
 
   if (hold?.sessionId !== paneSession?.id) {
     setHold(
@@ -246,11 +248,8 @@ export function Sidebar(): ReactElement {
     view,
     showDrafts,
     activeSessionId,
-    openWorkspace: openPlace,
     unavailable: new Set(
-      (workspaces.data ?? []).flatMap((workspace) =>
-        workspace.available === false ? [workspace.id] : [],
-      ),
+      (workspaces.data ?? []).flatMap((workspace) => (!workspace.available ? [workspace.id] : [])),
     ),
     chats,
     unread,
@@ -372,7 +371,7 @@ export function Sidebar(): ReactElement {
         key={entry.kind === "home" ? "home" : entry.id}
         name={name}
         path={entry.kind === "home" ? name : entry.path}
-        available={entry.kind === "home" || entry.available !== false}
+        available={entry.kind === "home" || entry.available}
         active={place.workspace === openPlace}
         expanded={expanded}
         onExpandedChange={(next) => setExpanded(place.workspace, next)}
@@ -413,7 +412,7 @@ export function Sidebar(): ReactElement {
   return (
     <aside {...props(styles.rail)}>
       <ChatCardGroup placement="row">
-        <SidebarContent>
+        <SidebarContent renderSettingsNavigation={renderSettingsNavigation}>
           {activeSessionId !== undefined && (
             <NeighbourWarm
               key={[activeSessionId, ...neighbours].join(" ")}
@@ -506,7 +505,7 @@ export function Sidebar(): ReactElement {
                 <div {...props(styles.sectionHeader)}>
                   <Collapsible.Trigger
                     data-sidebar-header=""
-                    aria-controls={workspaceCollectionID}
+                    aria-controls={workspaceCollectionId}
                     xstyle={[styles.sectionToggle, focus.ringInset]}
                   >
                     <span {...props(styles.sectionLabel)}>{flat ? "Chats" : "Workspaces"}</span>
@@ -526,7 +525,7 @@ export function Sidebar(): ReactElement {
                 </div>
 
                 <Collapsible.Panel
-                  id={workspaceCollectionID}
+                  id={workspaceCollectionId}
                   {...props(styles.workspaceCollection)}
                 >
                   {unreachable !== undefined && (

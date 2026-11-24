@@ -316,12 +316,12 @@ test("the workbench journey", async ({ desktop }) => {
       ["Editor", 1],
       ["Changes", 1],
       ["Browser", 2],
-      ["Terminal", 1],
+      ["Terminal", 2],
     ] as const) {
       await expect(rows.filter({ hasText: new RegExp(`^${label}$`, "u") })).toHaveCount(count);
     }
 
-    await rows.filter({ hasText: /^Terminal$/u }).click();
+    await rows.filter({ hasText: /^Terminal$/u }).last().click();
     await expect(workbenchTabs(page).getByRole("tab")).toHaveCount(5);
 
     const terminal = workbench(page)

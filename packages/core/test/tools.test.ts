@@ -1,12 +1,11 @@
 import { asId, asSeq, standard } from "@nyte-ai/schema";
 import type { Json, ToolOutcome } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { assert, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { endRun } from "../src/engine/runs.ts";
 import { LOCAL, definePart, text, tool } from "../src/index.ts";
 import { callRef, memoryStore, partRef } from "../src/store.ts";
-import type { Kernel } from "../src/contract/kernel.ts";
-import type { Session, StoreConnection, ToolDefinition } from "../src/index.ts";
+import type { StoreConnection, ToolDefinition } from "../src/index.ts";
 import { expireLease, main, recording, setup, until } from "../src/harness.ts";
 import {
   echoes,
@@ -24,14 +23,10 @@ describe("tool calls", () => {
   it("records the intent before execute and the result after, through calling, running and settled", async () => {
     const recorded = recording(await memoryStore().open());
     const seen: { readonly phase: string; readonly result: Json }[] = [];
-    let kernel: Kernel | undefined;
-    let session: Session | undefined;
-
     const watched = {
       ...echo,
       name: "watched",
       execute: async (args: { readonly text: string }) => {
-        assert(kernel !== undefined && session !== undefined);
         const part = await toolPart(session, "c1");
         seen.push({
           phase: part.state.phase,
@@ -43,8 +38,8 @@ describe("tool calls", () => {
     } satisfies ToolDefinition<{ text: string }>;
 
     const built = await setup({ store: recorded.store, plugins: [toolPlugin([watched])] });
-    kernel = built.kernel;
-    session = (await built.host.sessions.start({ content: "Hi." })).session;
+    const kernel = built.kernel;
+    const session = (await built.host.sessions.start({ content: "Hi." })).session;
     const run = await liveRun(kernel, session.id);
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
@@ -418,8 +413,9 @@ describe("tool calls", () => {
     void first.host.execution.advance({ session: session.id, head: main });
     const run = (await first.script.started(1)).input.run.id;
 
-    for (const name of ["safe", "never"])
+    for (const name of ["safe", "never"]) {
       void call(first.kernel, { session: session.id, run, call: name, name, args: { text: "x" } });
+    }
 
     await until(() => (executions.safe === 1 && executions.never === 1 ? true : undefined));
 
@@ -459,8 +455,9 @@ describe("tool calls", () => {
     expect(wired?.definition).not.toBe(tool);
     expect(wired?.definition).toHaveProperty("onAction");
 
-    for (const definition of [definePart({ ...tool }), tool])
+    for (const definition of [definePart({ ...tool }), tool]) {
       kernel.partDefinitions.register(definition, "parts")();
+    }
 
     expect(kernel.partDefinitions.get(tool.kind)).toBe(wired);
 

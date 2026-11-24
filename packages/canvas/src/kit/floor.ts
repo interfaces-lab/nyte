@@ -4,12 +4,12 @@ import { kit } from "./index.ts";
 
 export type FloorRule = "lead" | "gap" | "inset" | "overlap" | "clip" | "overflow";
 
-export type Floor = {
+export interface Floor {
   readonly steps: number;
   readonly holds: string;
   readonly kit: string;
   readonly fix: string;
-};
+}
 
 export const LAYOUT_FLOOR = {
   lead: {
@@ -82,14 +82,17 @@ export const KIT_ROLES = new Map<string, LayoutRole>([
 const kitNames = new Map<unknown, string>();
 
 export function findKitName(type: unknown): string | undefined {
-  if (kitNames.size === 0)
+  if (kitNames.size === 0) {
     for (const [name, value] of Object.entries(kit)) {
       if (typeof value === "function") kitNames.set(value, name);
 
-      if (typeof value === "object" && value !== null)
-        for (const [part, member] of Object.entries(value))
+      if (typeof value === "object" && value !== null) {
+        for (const [part, member] of Object.entries(value)) {
           if (typeof member === "function") kitNames.set(member, `${name}.${part}`);
+        }
+      }
     }
+  }
 
   return kitNames.get(type);
 }
@@ -102,12 +105,13 @@ export function findLayoutRole(node: ReactNode): LayoutRole | undefined {
 
   if (name === undefined) return undefined;
 
-  if (name === "Code")
+  if (name === "Code") {
     return typeof node.props === "object" && node.props !== null && "block" in node.props
       ? node.props.block === true
         ? "surface"
         : undefined
       : undefined;
+  }
 
   return KIT_ROLES.get(name.split(".")[0] ?? name);
 }
@@ -120,7 +124,10 @@ const STRENGTH: readonly (LayoutRole | undefined)[] = [
   "surface",
 ];
 
-type FlowProps = { readonly children?: ReactNode; readonly direction?: unknown };
+interface FlowProps {
+  readonly children?: ReactNode;
+  readonly direction?: unknown;
+}
 
 export function findEdgeRole(node: ReactNode, edge: "start" | "end"): LayoutRole | undefined {
   const role = findLayoutRole(node);
@@ -131,8 +138,9 @@ export function findEdgeRole(node: ReactNode, edge: "start" | "end"): LayoutRole
   if (node.type !== Fragment && name !== "Stack" && name !== "Grid") return role;
   const nodes = Children.toArray(node.props.children);
 
-  if (name !== "Grid" && node.props.direction !== "row")
+  if (name !== "Grid" && node.props.direction !== "row") {
     return findEdgeRole(edge === "start" ? nodes[0] : nodes.at(-1), edge);
+  }
 
   return nodes
     .map((child) => findEdgeRole(child, edge))
@@ -157,7 +165,10 @@ export function pairFloor(
   return LAYOUT_FLOOR.gap.steps;
 }
 
-export type FlowItem = { readonly node: ReactNode; readonly space: number };
+export interface FlowItem {
+  readonly node: ReactNode;
+  readonly space: number;
+}
 
 export function flowItems(
   children: ReactNode,

@@ -18,6 +18,7 @@ import { readErrorCode } from "../fs-errors.ts";
 import type { McpService } from "../mcp-server/server.ts";
 import { sharedListeners } from "./listeners.ts";
 import type { MediaLinks } from "./media.ts";
+import type { Retirement } from "./retire.ts";
 import { serveSession } from "./socket.ts";
 import type { SocketPeer } from "./socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
@@ -30,6 +31,7 @@ export type HostListenOptions = ListenOptions & {
   readonly tailnet?: TailnetControl;
   readonly mcpServer?: McpService;
   readonly media?: MediaLinks | undefined;
+  readonly retirement?: Retirement;
 };
 
 export async function listen(host: ServedHost, options: HostListenOptions): Promise<Listener> {
@@ -89,11 +91,11 @@ export async function listen(host: ServedHost, options: HostListenOptions): Prom
   };
 }
 
-type Served = {
+interface Served {
   readonly address: string;
   disconnect(): void;
   close(): Promise<void>;
-};
+}
 
 type Admit = (request: Request) => Promise<SocketPeer>;
 
@@ -336,7 +338,7 @@ async function respond(
   if (!incoming.complete) outgoing.setHeader("Connection", "close");
 
   await write(
-    crossing && /\bgzip\b/u.test(String(incoming.headers["accept-encoding"] ?? ""))
+    crossing && /\bgzip\b/u.test(incoming.headers["accept-encoding"] ?? "")
       ? await gzipped(response)
       : response,
     outgoing,
@@ -348,13 +350,15 @@ async function gzipped(response: Response): Promise<Response> {
     response.body === null ||
     response.headers.has("Content-Encoding") ||
     response.headers.get("Content-Type") !== "application/json"
-  )
+  ) {
     return response;
+  }
   const body = new Uint8Array(await response.arrayBuffer());
   const headers = new Headers(response.headers);
 
-  if (body.byteLength < GZIP_MIN_BYTES)
+  if (body.byteLength < GZIP_MIN_BYTES) {
     return new Response(body, { status: response.status, headers });
+  }
   headers.set("Content-Encoding", "gzip");
   headers.append("Vary", "Accept-Encoding");
   headers.delete("Content-Length");
@@ -458,7 +462,7 @@ async function write(response: Response, outgoing: ServerResponse): Promise<void
 
       if (read.done) break;
 
-      if (!outgoing.write(read.value))
+      if (!outgoing.write(read.value)) {
         await new Promise<void>((drained) => {
           const done = (): void => {
             outgoing.off("drain", done);
@@ -469,6 +473,7 @@ async function write(response: Response, outgoing: ServerResponse): Promise<void
           outgoing.on("drain", done);
           outgoing.on("close", done);
         });
+      }
 
       if (outgoing.destroyed) return;
     }

@@ -3,11 +3,11 @@ title: language.codeActions
 description: Lists the quick fixes and refactorings for a range, with the diagnostics on it.
 ---
 
-Lists the server's quick fixes, refactorings and source actions for a range, sending it the diagnostics that overlap the range. Each action has a title, a kind, whether it is preferred, why it is disabled, and a token to resolve it with [`language.resolveCodeAction`](/docs/reference/operations/language/resolve-code-action). A later call makes the earlier tokens stale. A file no server handles, or whose server is `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+Lists the server's quick fixes, refactorings and source actions for a range, sending it the diagnostics that overlap the range. With `only`, it lists just the actions of those kinds and the kinds under them; some servers, such as TypeScript's, offer `source.organizeImports` only when asked this way. Each action has a title, a kind, whether it is preferred, why it is disabled, and a token to resolve it with [`language.resolveCodeAction`](/docs/reference/operations/language/resolve-code-action). A later call makes the earlier tokens stale. A file no server handles, or whose servers are `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
 
 ## When to call it
 
-For a lightbulb or an intentions menu at the caret or selection.
+For a lightbulb or an intentions menu at the caret or selection, or with `only` for an action to run on save.
 
 ## Access
 
@@ -100,6 +100,22 @@ Response:
             }
           }
         }
+      }
+    },
+    "only": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "quickfix",
+          "refactor",
+          "refactor.extract",
+          "refactor.inline",
+          "refactor.rewrite",
+          "source",
+          "source.organizeImports",
+          "source.fixAll",
+          "other"
+        ]
       }
     }
   }

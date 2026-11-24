@@ -7,6 +7,7 @@ export function languageApi(rows: Rows, workspace: WorkspaceId): LanguageApi {
     status: () => rows.call("language.status", { workspace }),
     watchStatus: () => rows.watch("language.watchStatus", { workspace }),
     open: (input) => rows.call("language.open", { workspace, ...input }),
+    install: (input) => rows.call("language.install", { workspace, ...input }),
     change: (input) => rows.call("language.change", { workspace, ...input }),
     close: (input) => rows.call("language.close", { workspace, ...input }),
     diagnostics: () => rows.watch("language.diagnostics", { workspace }),
@@ -22,7 +23,5 @@ export function languageApi(rows: Rows, workspace: WorkspaceId): LanguageApi {
     codeActions: (input) => rows.call("language.codeActions", { workspace, ...input }),
     resolveCodeAction: (input) => rows.call("language.resolveCodeAction", { workspace, ...input }),
     format: (input) => rows.call("language.format", { workspace, ...input }),
-    signatureHelp: (input) => rows.call("language.signatureHelp", { workspace, ...input }),
-    inlayHints: (input) => rows.call("language.inlayHints", { workspace, ...input }),
   };
 }

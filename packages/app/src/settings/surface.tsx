@@ -4,12 +4,13 @@ import type { ReactElement, ReactNode } from "react";
 import { hostWatch } from "../data/watches.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { SETTINGS_PAGES, type PageInfo } from "./pages.ts";
+import { SETTINGS_PAGES } from "./pages.ts";
+import type { PageInfo } from "./pages.ts";
 import { placePluginSettings } from "./plugin-pages.ts";
 import { PluginGroups } from "./plugin-settings.tsx";
-import { namesCustomSection, readCustomSection } from "./sections.ts";
-import type { OpenSection } from "./sections.ts";
-import { settingsStyles as styles } from "./settings.stylex.ts";
+import { namesCustomSection, readCustomSection } from "../settings-sections/sections.ts";
+import type { OpenSection } from "../settings-sections/sections.ts";
+import { settingsStyles as styles } from "../settings-rows/settings.stylex.ts";
 
 export function SettingsSurface(): ReactElement {
   const section: OpenSection = useParams({ from: "/settings/$section" }).section;

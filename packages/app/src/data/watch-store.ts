@@ -11,7 +11,7 @@ export interface WatchState<T> {
 
 const UNSTARTED: WatchState<never> = { value: undefined, error: undefined };
 
-const FIRST_REOPEN_MS = 1_000;
+const FIRST_REOPEN_MS = 1000;
 
 const MAX_REOPEN_MS = 30_000;
 
@@ -236,8 +236,9 @@ export class WatchStore<T> {
         const shown = source.show(last);
 
         if (shown.kind === "failed") {
-          if (shown.error !== this.state.error)
+          if (shown.error !== this.state.error) {
             this.publish({ value: this.state.value, error: shown.error });
+          }
 
           return;
         }

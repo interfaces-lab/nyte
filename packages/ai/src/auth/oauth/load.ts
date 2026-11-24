@@ -23,8 +23,9 @@ async function loadOAuthFlow(id: OAuthFlowId, specifier: string): Promise<OAuthA
   if (!registeredFlows.has(id)) await importOAuthModule(specifier);
   const flow = registeredFlows.get(id);
 
-  if (flow === undefined)
+  if (flow === undefined) {
     throw new Error(`OAuth flow module ${specifier} did not register its flow`);
+  }
 
   return flow;
 }

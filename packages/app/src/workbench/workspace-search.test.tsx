@@ -83,7 +83,7 @@ test("highlight offsets use UTF-16 columns relative to a bounded snippet", () =>
 
   assert.match(html, /1 match in 1 file/);
   assert.match(html, /<mark[^>]*>foo1234<\/mark>/);
-  assert.match(html.replace(/<[^>]*>/g, ""), /😀 foo1234 end/);
+  assert.match(html.replaceAll(/<[^>]*>/g, ""), /😀 foo1234 end/);
   assert.match(html, /line 42, column 104/);
 });
 
@@ -104,8 +104,8 @@ test("zero-width regex matches have a visible marker without consuming snippet t
     },
   });
 
-  assert.match(html, /<mark[^>]*aria-label="Zero-width match"[^>]*>\u200b<\/mark>/);
-  assert.match(html.replace(/<[^>]*>/g, ""), /\u200bhello/);
+  assert.match(html, /<mark[^>]*aria-label="Zero-width match"[^>]*>\u200B<\/mark>/);
+  assert.match(html.replaceAll(/<[^>]*>/g, ""), /\u200Bhello/);
 });
 
 test("file contents and transport errors are text, never executable markup", () => {

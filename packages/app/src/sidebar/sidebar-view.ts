@@ -1,17 +1,17 @@
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { ChatDirectory } from "../chats/index.ts";
-import {
-  STATUSES,
-  type SessionEnvironment,
-  type SessionGrouping,
-  type SessionShelf,
-  type SessionSort,
-  type SessionStatus,
-  type SessionViewSettings,
+import { STATUSES } from "../preferences/session-view.ts";
+import type {
+  SessionEnvironment,
+  SessionGrouping,
+  SessionShelf,
+  SessionSort,
+  SessionStatus,
+  SessionViewSettings,
 } from "../preferences/session-view.ts";
 
-const DAY_MS = 24 * 60 * 60 * 1_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const NO_CHATS: ChatDirectory = new Map();
 

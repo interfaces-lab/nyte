@@ -54,9 +54,7 @@ const designView = strict({
   shown: Type.Boolean(),
 });
 
-const remotePlugin = Type.Literal("cloudflare");
-
-const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
+const usageDay = Type.String({ pattern: String.raw`^\d{4}-\d{2}-\d{2}$` });
 
 const usageWindow = compile(
   strict({ sinceDay: Type.Union([usageDay, Type.Null()]), untilDay: usageDay }),
@@ -73,8 +71,9 @@ const checkedUsageWindow: typeof usageWindow = {
       return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === day;
     });
 
-    if (!valid || (window.sinceDay !== null && window.sinceDay > window.untilDay))
+    if (!valid || (window.sinceDay !== null && window.sinceDay > window.untilDay)) {
       throw new ExpectedHostError({ code: "invalid", message: "The usage window is invalid." });
+    }
 
     return window;
   },
@@ -104,27 +103,6 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.server.connect": compile(strict({ baseUrl: nonEmpty, token: nonEmpty })),
   "host.server.disconnect": compile(noInput),
   "host.remote.state": compile(noInput),
-  "host.remote.start": compile(
-    strict({
-      reach: remotePlugin,
-    }),
-  ),
-  "host.remote.stop": compile(noInput),
-  "host.remote.configure": compile(
-    strict({
-      plugin: remotePlugin,
-      hostname: Type.String({ minLength: 1, maxLength: 253 }),
-      port: Type.Integer({ minimum: 1024, maximum: 65_535 }),
-      tunnelToken: Type.String({ minLength: 1, maxLength: 4096 }),
-    }),
-  ),
-  "host.remote.clear": compile(strict({ plugin: remotePlugin })),
-  "host.remote.pair": compile(
-    strict({ plugin: remotePlugin, name: Type.String({ minLength: 1, maxLength: 64 }) }),
-  ),
-  "host.remote.revoke": compile(
-    strict({ plugin: remotePlugin, deviceId: Type.String({ minLength: 1, maxLength: 64 }) }),
-  ),
   "host.remote.configureTailnet": compile(strict({ enabled: Type.Boolean() })),
   "host.remote.signOutTailnet": compile(noInput),
   "host.connect.state": compile(noInput),
@@ -263,6 +241,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
       subject: Type.Union([ArrivalSubjectType, Type.Null()]),
     }),
   ),
+  "host.openSettings": compile(strict({ page: Type.Optional(nonEmpty) })),
 };
 
 const callRequest = compile(
@@ -362,7 +341,7 @@ export const viewedChat = Compile(
 
 export const unsavedEditsHeld = Compile(Type.Boolean());
 
-export const windowWorkspacePath = Compile(Type.Union([nonEmpty, Type.Null()]));
+export const windowWorkspace = Compile(Type.Union([SelectedWorkspaceType, Type.Null()]));
 
 export const terminalNotice = Compile(
   strict({

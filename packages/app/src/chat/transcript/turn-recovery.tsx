@@ -2,15 +2,15 @@ import type { Recovery } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { toast } from "@nyte-ai/ui/toast";
-import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../../contract/errors.ts";
 import { connected } from "../../data/connection.ts";
-import { showsSettingsSection } from "../../settings/index.ts";
+import { showsSettingsSection } from "../../settings-sections/sections.ts";
 import { SessionModelChip } from "../composer/composer-model-chip.tsx";
 import { compactSession } from "../composer/composer-send.ts";
 import { useTranscriptScope } from "./transcript.tsx";
+import { appActions } from "../../data/app-actions.ts";
 
 export function RecoveryAction({ recovery }: { readonly recovery: Recovery }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
@@ -62,13 +62,8 @@ function CompactButton({ sessionId }: { readonly sessionId: SessionId }): ReactE
 }
 
 function SignInButton(): ReactElement {
-  const navigate = useNavigate();
-
   return (
-    <Button
-      variant="text"
-      onClick={() => void navigate({ to: "/settings/$section", params: { section: "providers" } })}
-    >
+    <Button variant="text" onClick={() => appActions.run("settings.open", { page: "providers" })}>
       Sign In Again
     </Button>
   );

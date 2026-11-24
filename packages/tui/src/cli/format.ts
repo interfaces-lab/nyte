@@ -44,7 +44,7 @@ interface ErrorDocument {
   readonly reason: Reason;
   readonly message: string;
   next?: readonly JsonNextStep[];
-  data?: { readonly [key: string]: Json };
+  data?: Readonly<Record<string, Json>>;
 }
 
 const LABEL_WIDTH = 16;
@@ -52,7 +52,7 @@ const LABEL_WIDTH = 16;
 const VALUE_COLUMN = 18;
 
 export function paint(presentation: Presentation, style: Style, text: string): string {
-  return presentation.color ? `\x1b[${SGR[style]}m${text}\x1b[0m` : text;
+  return presentation.color ? `\u001B[${SGR[style]}m${text}\u001B[0m` : text;
 }
 
 export function formatRows(rows: readonly Row[], presentation: Presentation): string[] {
@@ -66,8 +66,9 @@ export function formatRows(rows: readonly Row[], presentation: Presentation): st
 
     if (row.value === "") return [`${lead}${label}`];
 
-    if (row.label.length < LABEL_WIDTH && used < VALUE_COLUMN)
+    if (row.label.length < LABEL_WIDTH && used < VALUE_COLUMN) {
       return [`${lead}${label}${" ".repeat(VALUE_COLUMN - used)}${row.value}`];
+    }
 
     return [`${lead}${label}`, `${" ".repeat(VALUE_COLUMN)}${row.value}`];
   });
@@ -144,8 +145,9 @@ export function formatErrorJson(error: CliError): string {
   if (error.next.length > 0) document["next"] = formatNextJson(error.next);
 
   if (error.data !== undefined) document["data"] = error.data;
-  else if (error.details.length > 0)
+  else if (error.details.length > 0) {
     document["data"] = Object.fromEntries(error.details.map((row) => [row.label, row.value]));
+  }
 
   return JSON.stringify(document);
 }

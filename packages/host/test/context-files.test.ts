@@ -16,8 +16,9 @@ const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYS
 const folders: string[] = [];
 
 afterEach(async () => {
-  for (const folder of folders.splice(0))
+  for (const folder of folders.splice(0)) {
     await rm(folder, { recursive: true, force: true, maxRetries: 10 });
+  }
 });
 
 async function folder(): Promise<string> {

@@ -260,7 +260,7 @@ describe("jobs", () => {
 
       const process = await started(provider.processes, 1);
 
-      if (row.awaited)
+      if (row.awaited) {
         expect(
           await parkOn(
             kernel,
@@ -269,6 +269,7 @@ describe("jobs", () => {
             async (durable) => (await durable.wait({ kind: "job", job: job.id })).kind,
           ),
         ).toEqual({ kind: "parked" });
+      }
 
       killed.kill(row.kill(session.id, job.id));
       process.emit("built\n");
@@ -356,7 +357,7 @@ describe("jobs", () => {
     const view = await until(async () => {
       const [current] = await jobs.list();
 
-      return current?.tail.endsWith("ready\n") === true ? current : undefined;
+      return current?.tail.endsWith("ready\n") ? current : undefined;
     });
     const reader = job.output()[Symbol.asyncIterator]();
     const gap = await reader.next();
@@ -468,7 +469,7 @@ describe("jobs", () => {
       vi.advanceTimersByTime(120_000);
       const state = async () =>
         (await jobs.list()).map(
-          (job) => (job.id === shell.id ? "shell" : "owned") + ":" + job.state.kind,
+          (job) => `${job.id === shell.id ? "shell" : "owned"}:${job.state.kind}`,
         );
 
       expect(await state()).toEqual(["shell:running", "owned:running"]);
@@ -848,8 +849,9 @@ describe("jobs", () => {
 
     const os = (await recorded())?.os;
 
-    if (row.holder === "gone")
+    if (row.holder === "gone") {
       await b.kernel.store.refs.set([{ name: `processes/${a.kernel.instance}`, target: null }]);
+    }
 
     await reapJobs(b.kernel);
 
@@ -864,7 +866,7 @@ describe("jobs", () => {
       os:
         row.boot === undefined
           ? null
-          : { boot: row.boot, pid: 4_000, group: 4_000, started: "fake:4000" },
+          : { boot: row.boot, pid: 4000, group: 4000, started: "fake:4000" },
       asked: row.asked && os !== undefined ? [os] : [],
       end: row.end,
       reports: row.report === null ? [] : [row.report],
@@ -907,8 +909,8 @@ describe("jobs", () => {
     const entered = Promise.withResolvers<void>();
     const attach = provider.attach.bind(provider);
 
-    provider.attach = async (target) => {
-      const attached = await attach(target);
+    provider.attach = async (target, trusted) => {
+      const attached = await attach(target, trusted);
 
       return {
         ...attached,

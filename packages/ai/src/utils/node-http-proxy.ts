@@ -100,7 +100,7 @@ function getProxyForUrl(targetUrl: string | URL, env?: ProviderEnv): string {
     return "";
   }
 
-  const protocol = parsedUrl.protocol.split(":", 1)[0]!;
+  const protocol = parsedUrl.protocol.split(":", 1)[0];
   const hostname = stripBrackets(parsedUrl.hostname || parsedUrl.host.replace(/:\d*$/, ""));
   const port = Number.parseInt(parsedUrl.port, 10) || DEFAULT_PROXY_PORTS.get(protocol) || 0;
 
@@ -137,6 +137,7 @@ export function resolveHttpProxyUrlForTarget(
   } catch (error) {
     throw new Error(
       `Invalid proxy URL ${JSON.stringify(proxy)}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 

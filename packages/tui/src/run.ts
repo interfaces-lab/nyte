@@ -29,7 +29,7 @@ export function flagConfiguration(
   const requested = flags.model ?? process.env["NYTE_MODEL"];
   const thinking = flags.effort === undefined ? {} : { thinking: flags.effort };
 
-  if (requested === undefined && flags.provider !== undefined)
+  if (requested === undefined && flags.provider !== undefined) {
     throw new CliError("invalid_arguments", "Can't use --provider without --model.", {
       next: [
         {
@@ -38,6 +38,7 @@ export function flagConfiguration(
         },
       ],
     });
+  }
 
   if (requested === undefined) return flags.effort === undefined ? undefined : thinking;
 
@@ -70,17 +71,19 @@ function resolveModel(
   const name = wanted === undefined ? requested : modelId(wanted);
   const source = flags.model === undefined ? " from NYTE_MODEL" : "";
 
-  if (found === undefined)
+  if (found === undefined) {
     throw new CliError("not_found", `Couldn't find model ${name}${source}.`, {
       next: [{ label: "See the models", argv: ["nyte", "api", "call", "models.list", "{}"] }],
     });
+  }
 
-  if (!usable.includes(found))
+  if (!usable.includes(found)) {
     throw new CliError(
       "missing_input",
       `Can't use model ${name} without signing in to ${found.ref.provider}.`,
       { next: [{ label: "Sign in", argv: ["nyte", "login", found.ref.provider] }] },
     );
+  }
 
   return wanted ?? found.ref;
 }
@@ -127,7 +130,7 @@ export async function trustFolder(
   const workspace =
     session === null ? await addFolder(connection, cwd) : (await session.info()).workspace;
 
-  const outcome = await connection.workspace(workspace).update({ projectResources: trusted });
+  const outcome = await connection.workspace(workspace).update({ trusted });
 
   if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
 }

@@ -92,7 +92,7 @@ export function useRootRows(): readonly SessionInfo[] | undefined {
 export const readSession = async (sessionId: SessionId) =>
   (await connected()).session(sessionId).info();
 
-export function sessionQuery(sessionId: SessionId) {
+function sessionQuery(sessionId: SessionId) {
   return {
     queryKey: keys.session(sessionId),
     queryFn: () => readSession(sessionId).catch(missingAsNull),
@@ -110,12 +110,12 @@ const interest = {
   changed: new Set<() => void>(),
 };
 
-export interface RowInterest {
+interface RowInterest {
   readonly rows: ReadonlyMap<SessionId, number>;
   readonly parents: ReadonlyMap<SessionId, number>;
 }
 
-export interface ListedRows {
+interface ListedRows {
   readonly all: readonly SessionInfo[] | undefined;
   readonly roots: readonly SessionInfo[] | undefined;
   readonly pinned: readonly SessionInfo[] | undefined;
@@ -241,12 +241,12 @@ function askedRows(): StoreSource<AskedRows> {
   };
 }
 
-export interface WantedReads {
+interface WantedReads {
   readonly parents: ReadonlySet<SessionId>;
   readonly unlisted: ReadonlySet<SessionId>;
 }
 
-export function wantedReads(interest: RowInterest, lists: ListedRows): WantedReads {
+function wantedReads(interest: RowInterest, lists: ListedRows): WantedReads {
   const listed = new Set(
     [
       ...(lists.all ?? []),
@@ -376,8 +376,9 @@ export function mergeSessionRows(
 ): Pick<SessionRows, "rows" | "hosted" | "roots"> {
   const merged = new Map<SessionId, SessionInfo>();
 
-  for (const list of sources.lists)
+  for (const list of sources.lists) {
     for (const session of list ?? []) if (!merged.has(session.id)) merged.set(session.id, session);
+  }
 
   const rows = new Map(
     [...merged.values()].flatMap((listed) => {

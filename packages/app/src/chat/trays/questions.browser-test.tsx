@@ -100,7 +100,7 @@ const asked: SessionView = {
   seenThrough: null,
   background: [],
   configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
-  context: { tokens: 0, window: 1_000, lastRequest: null },
+  context: { tokens: 0, window: 1000, lastRequest: null },
   changes: [],
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 };
@@ -142,7 +142,7 @@ installScripted(
           return { kind: "rejected", reason: REFUSED };
         },
         answer: async () => null,
-        watch: async function* () {
+        async *watch() {
           yield* [];
         },
         close: async () => undefined,
@@ -172,7 +172,7 @@ function AskedTray({
 }
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
     const value = read();
@@ -449,13 +449,15 @@ async function lastAnswer(): Promise<readonly string[]> {
   for (const journey of journeys) {
     const outcome = await secondQuestion(journey.step);
 
-    if (outcome.sent !== journey.sends)
+    if (outcome.sent !== journey.sends) {
       failures.push(`${journey.name} sent ${outcome.sent}, expected ${journey.sends}`);
+    }
 
-    if (outcome.question !== journey.question || outcome.chosen !== journey.chosen)
+    if (outcome.question !== journey.question || outcome.chosen !== journey.chosen) {
       failures.push(
         `${journey.name} showed question ${String(outcome.question)} with "${outcome.chosen ?? ""}" chosen, expected question ${String(journey.question)} with "${journey.chosen}"`,
       );
+    }
   }
 
   return failures;
@@ -509,8 +511,9 @@ async function askers(): Promise<readonly string[]> {
       place.sessionId !== asker.sessionId ||
       state.tabs.indexOf(child) !== state.tabs.indexOf(parent) + 1 ||
       child.view.kind !== "preview"
-    )
+    ) {
       failures.push("The name did not open the child's chat next to its parent");
+    }
 
     windowTabs.dispatch({ kind: "close-tab", tabId: child.id });
   }
@@ -550,11 +553,13 @@ export async function run(): Promise<string> {
   for (const theme of ["light", "dark"] as const) {
     const { labelLeft, titleLeft, labelCentre, chevronCentre } = await show(theme);
 
-    if (labelLeft !== titleLeft)
+    if (labelLeft !== titleLeft) {
       return `${theme}: the label starts at ${String(labelLeft)}, the title at ${String(titleLeft)}`;
+    }
 
-    if (Math.abs(labelCentre - chevronCentre) > 0.5)
+    if (Math.abs(labelCentre - chevronCentre) > 0.5) {
       return `${theme}: the chevron's centre ${String(chevronCentre)} is off the label's ${String(labelCentre)}`;
+    }
   }
 
   const failures = [...(await failedReplies()), ...(await lastAnswer()), ...(await askers())];

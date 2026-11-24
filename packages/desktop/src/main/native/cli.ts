@@ -17,12 +17,13 @@ import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import type { BundledCli } from "@nyte-ai/app/contract/bridge.ts";
+import { compareVersions } from "@nyte-ai/schema";
 
 const execute = promisify(execFile);
 
 const MACH_O_CPUS = new Map([
-  [0x0100000c, "arm64"],
-  [0x01000007, "x64"],
+  [0x01_00_00_0c, "arm64"],
+  [0x01_00_00_07, "x64"],
 ]);
 
 const ELF_MACHINES = new Map([
@@ -35,6 +36,8 @@ function commandLink(home: string): string {
 }
 
 type PathChange =
+  | { readonly kind: "found" }
+  | { readonly kind: "shadowed"; readonly path: string }
   | { readonly kind: "present"; readonly file: string }
   | { readonly kind: "added"; readonly file: string }
   | { readonly kind: "manual"; readonly line: string };
@@ -44,7 +47,7 @@ export async function stageCli(options: {
   readonly stages: string;
 }): Promise<string> {
   const version = (await readFile(join(options.resources, "nyte.version"), "utf8")).trim();
-  const directory = join(options.stages, `${version}-${process.arch}`.replace(/[^\w.-]/gu, "-"));
+  const directory = join(options.stages, `${version}-${process.arch}`.replaceAll(/[^\w.-]/gu, "-"));
   const staged = join(directory, "nyte");
 
   if ((await stat(staged).catch(() => undefined))?.isFile() === true) return staged;
@@ -73,11 +76,13 @@ export async function inspectBundledCli(options: {
   readonly packaged: boolean;
   readonly appVersion: string;
 }): Promise<BundledCli> {
-  if (!options.packaged)
+  if (!options.packaged) {
     return { kind: "unavailable", problem: "Development builds don't include the CLI." };
+  }
 
-  if (process.platform === "win32")
+  if (process.platform === "win32") {
     return { kind: "unavailable", problem: "Nyte for Windows doesn't include the CLI." };
+  }
   const path = join(options.resources, "nyte");
 
   const file = await stat(path).catch((cause: unknown) => {
@@ -86,54 +91,67 @@ export async function inspectBundledCli(options: {
     throw cause;
   });
 
-  if (file?.isFile() !== true)
+  if (file?.isFile() !== true) {
     return { kind: "unavailable", problem: `${path} is missing. Reinstall Nyte to restore it.` };
+  }
   const architecture = await nativeArchitecture(path);
 
-  if (architecture === undefined)
+  if (architecture === undefined) {
     return {
       kind: "unavailable",
       problem: `${path} isn't a native executable. Reinstall Nyte to restore it.`,
     };
+  }
 
-  if (architecture !== process.arch)
+  if (architecture !== process.arch) {
     return {
       kind: "unavailable",
       problem: `The included CLI is built for ${architecture}, but Nyte runs as ${process.arch}. Reinstall Nyte.`,
     };
+  }
 
   const ran = await execute(path, ["--version"], { timeout: 10_000 }).catch(
     (cause: unknown) => new Error(failure(cause)),
   );
 
-  if (ran instanceof Error)
+  if (ran instanceof Error) {
     return { kind: "unavailable", problem: `The included CLI doesn't run: ${ran.message}` };
+  }
   const version = ran.stdout.trim();
 
-  if (version !== options.appVersion)
+  if (version !== options.appVersion) {
     return {
       kind: "unavailable",
       problem: `The included CLI is ${version}, but Nyte is ${options.appVersion}. Reinstall Nyte to match them.`,
     };
+  }
   const signature = await codeSignature(path);
 
-  if (signature instanceof Error)
+  if (signature instanceof Error) {
     return {
       kind: "unavailable",
       problem: `The included CLI's signature isn't valid: ${signature.message}`,
     };
+  }
 
   return { kind: "ready", version, path, architecture, signature };
 }
 
 async function nativeArchitecture(path: string): Promise<string | undefined> {
   const file = await open(path);
-  const { buffer } = await file.read(Buffer.alloc(20), 0, 20, 0).finally(() => file.close());
+  const buffer = Buffer.alloc(20);
 
-  if (buffer.readUInt32BE(0) === 0xcffaedfe) return MACH_O_CPUS.get(buffer.readUInt32LE(4));
+  try {
+    await file.read(buffer, 0, 20, 0);
+  } finally {
+    await file.close();
+  }
 
-  if (buffer.readUInt32BE(0) === 0x7f454c46 && buffer[5] === 1)
+  if (buffer.readUInt32BE(0) === 0xcf_fa_ed_fe) return MACH_O_CPUS.get(buffer.readUInt32LE(4));
+
+  if (buffer.readUInt32BE(0) === 0x7f_45_4c_46 && buffer[5] === 1) {
     return ELF_MACHINES.get(buffer.readUInt16LE(18));
+  }
 
   return undefined;
 }
@@ -162,16 +180,28 @@ function failure(cause: unknown): string {
   return stderr === "" ? message : stderr;
 }
 
-export async function adoptStagedCli(home: string, staged: string): Promise<void> {
+/** Points `~/.nyte/bin/nyte` at this app's CLI when it already runs one of the app's, or when it runs an older nyte than the app's, so the newest nyte wins. A missing command stays missing until the user installs it. */
+export async function adoptStagedCli(home: string, staged: string, version: string): Promise<void> {
   const current = dirname(staged);
   const stages = dirname(current);
-  const linked = await readlink(commandLink(home)).catch(() => undefined);
+  const link = commandLink(home);
+  const linked = await readlink(link).catch(() => undefined);
 
-  if (linked?.startsWith(`${stages}/`) === true) await linkCli(home, staged);
+  if (linked?.startsWith(`${stages}/`) === true || (await runsOlderCli(link, version))) {
+    await linkCli(home, staged);
+  }
 
-  for (const entry of await readdir(stages))
-    if (join(stages, entry) !== current)
+  for (const entry of await readdir(stages)) {
+    if (join(stages, entry) !== current) {
       await rm(join(stages, entry), { recursive: true, force: true });
+    }
+  }
+}
+
+async function runsOlderCli(path: string, version: string): Promise<boolean> {
+  const ran = await execute(path, ["--version"], { timeout: 10_000 }).catch(() => undefined);
+
+  return ran !== undefined && (compareVersions(ran.stdout.trim(), version) ?? 0) < 0;
 }
 
 export async function installCli(
@@ -184,6 +214,10 @@ export async function installCli(
   const change = await addToPath(home, shell);
 
   switch (change.kind) {
+    case "found":
+      return `${link} runs this app's nyte, and your shell already finds it on your PATH.`;
+    case "shadowed":
+      return `${link} runs this app's nyte, but your shell runs ${change.path} first. Remove that one, or put ${dirname(link)} before it on your PATH.`;
     case "present":
       return `${link} runs this app's nyte, and ${change.file} puts it on your PATH.`;
     case "added":
@@ -210,7 +244,13 @@ async function linkCli(home: string, staged: string): Promise<void> {
 }
 
 async function addToPath(home: string, shell: string | undefined): Promise<PathChange> {
-  const directory = dirname(commandLink(home));
+  const link = commandLink(home);
+  const found = shell === undefined ? undefined : await findShellCommand(shell);
+
+  if (found === link) return { kind: "found" };
+
+  if (found?.startsWith("/") === true) return { kind: "shadowed", path: found };
+  const directory = dirname(link);
   const name = basename(shell ?? "sh");
   const line = name === "fish" ? `fish_add_path ${directory}` : `export PATH="${directory}:$PATH"`;
 
@@ -236,4 +276,13 @@ async function addToPath(home: string, shell: string | undefined): Promise<PathC
   }
 
   return { kind: "manual", line };
+}
+
+/** Asks an interactive login shell which `nyte` it runs, because an app opened from the Dock doesn't inherit the PATH its rc files build. Undefined when the shell finds none or doesn't answer. */
+async function findShellCommand(shell: string): Promise<string | undefined> {
+  const ran = await execute(shell, ["-ilc", "command -v nyte"], { timeout: 10_000 }).catch(
+    () => undefined,
+  );
+
+  return ran?.stdout.trim().split("\n").at(-1);
 }

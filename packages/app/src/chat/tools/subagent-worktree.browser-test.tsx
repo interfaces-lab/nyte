@@ -14,6 +14,7 @@ import "../../theme/global.css";
 import { sessionRow } from "../../../test/view-fixtures.ts";
 import { sessionList } from "../../data/directory.ts";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
+import { errorMessage } from "../../contract/errors.ts";
 
 declare global {
   interface Window {
@@ -33,8 +34,7 @@ function workspace(change: Partial<WorkspaceInfo>): WorkspaceInfo {
     target: { kind: "local", path: "/work/nyte" },
     identity: asId("folder"),
     availability: { kind: "available" },
-    projectResources: true,
-    trusted: true,
+    trust: { state: "trusted", by: { kind: "folder", path: null } },
     projectSources: [],
     addedBy: asId("local"),
     writers: [],
@@ -66,10 +66,14 @@ function Stage(): ReactElement {
 let renderFailure: unknown;
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
-    if (renderFailure !== undefined) throw renderFailure;
+    if (renderFailure !== undefined) {
+      throw renderFailure instanceof Error
+        ? renderFailure
+        : new Error(errorMessage(renderFailure), { cause: renderFailure });
+    }
     const value = read();
 
     if (value !== null && value !== undefined) return value;
@@ -139,8 +143,9 @@ export async function run(): Promise<string> {
     "the subagent's place",
   );
 
-  if (place.textContent !== BRANCH)
+  if (place.textContent !== BRANCH) {
     failures.push(`the subagent's place reads ${place.textContent}, not its branch`);
+  }
 
   await nextFrame();
   await capture("worktree-citation-light");

@@ -69,8 +69,9 @@ function fixture(
         const session = saved.get(id);
         assert.ok(session);
 
-        if (failures.has(id) || (patch.name !== undefined && failures.has(patch.name ?? "")))
+        if (failures.has(id) || (patch.name !== undefined && failures.has(patch.name ?? ""))) {
           throw new Error("Disk unavailable");
+        }
         const next = {
           ...session,
           ...(patch.archived === undefined ? {} : { archived: patch.archived }),
@@ -513,7 +514,7 @@ test.each<{
     f.release();
   }
 
-  await vi.advanceTimersByTimeAsync(2_000);
+  await vi.advanceTimersByTimeAsync(2000);
 
   assert.deepEqual(
     {

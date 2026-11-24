@@ -8,7 +8,7 @@ export const BROWSER_PAGE_DESIGN_CHANNEL = "nyte:browser-page-design";
 export const BROWSER_PAGE_BOARD_CHANNEL = "nyte:browser-page-board";
 
 /** The farthest one handed-back wheel may move, in CSS px per axis. */
-export const WHEEL_DELTA_LIMIT = 1_000;
+export const WHEEL_DELTA_LIMIT = 1000;
 
 export interface BoardMainMessage {
   readonly entered: boolean;
@@ -18,4 +18,4 @@ export type DesignMainMessage =
   | { readonly kind: "design"; readonly design: BrowserDesign }
   | { readonly kind: "captured"; readonly id: string };
 
-export const DESIGN_PICK_CHARS = { selector: 2_000, text: 2_000 } as const;
+export const DESIGN_PICK_CHARS = { selector: 2000, text: 2000 } as const;

@@ -15,7 +15,7 @@ import {
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { windowTabs } from "../../tabs/window-tabs.ts";
-import { proseStyles } from "../markdown/prose.stylex.ts";
+import { proseStyles } from "../../markdown/prose.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
 import { QuestionDockContext } from "./questions-state.ts";
@@ -64,8 +64,9 @@ function QuestionCard({
   const restoreFocus = useRef(false);
 
   const carryFocus = (form: HTMLFormElement): (() => void) => {
-    if (restoreFocus.current && !form.contains(document.activeElement))
+    if (restoreFocus.current && !form.contains(document.activeElement)) {
       form.querySelector<HTMLInputElement>("input:not(:disabled)")?.focus({ preventScroll: true });
+    }
 
     return () => {
       restoreFocus.current = form.contains(document.activeElement);
@@ -95,8 +96,9 @@ function QuestionCard({
         if (!blocked && !dock.last) void dock.advance();
       }}
       onKeyDown={(event) => {
-        if (event.defaultPrevented || blocked || event.repeat || event.nativeEvent.isComposing)
+        if (event.defaultPrevented || blocked || event.repeat || event.nativeEvent.isComposing) {
           return;
+        }
 
         if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key === "Enter") {
           event.preventDefault();

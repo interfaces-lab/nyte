@@ -17,12 +17,12 @@ import type {
 import { dev } from "../src/util/dev-log.ts";
 import { testModel } from "./fake-models.ts";
 
-type Reply = {
+interface Reply {
   readonly content?: AssistantMessage["content"];
   readonly stopReason?: "stop" | "length" | "toolUse";
   readonly error?: string;
   readonly unsent?: boolean;
-};
+}
 
 const OFFLINE = "fetch failed: getaddrinfo ENOTFOUND api.example.com";
 
@@ -48,7 +48,7 @@ const INFO: ModelInfo = {
   variants: [],
   contextWindow: MODEL.contextWindow,
   compactAt: MODEL.contextWindow,
-  maxOutput: 1_000,
+  maxOutput: 1000,
   input: ["text"],
   capabilities: { steer: true },
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -178,7 +178,7 @@ function scripted(
   const config: LoopConfig = {
     attempt: 1,
     retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 5 },
-    outage: { budgetMs: 1_000, maxDelayMs: 2 },
+    outage: { budgetMs: 1000, maxDelayMs: 2 },
     ready: async () => undefined,
     async prepareRequest(request) {
       seen.requests.push(request);
@@ -489,7 +489,7 @@ describe("agentLoop", () => {
     const limited = "429 Too Many Requests: server requested 0.2s retry delay";
 
     const within = scripted([{ error: limited }, { content: [said("Whole.")] }], {
-      retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 1_000 },
+      retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 1000 },
     });
 
     const started = Date.now();

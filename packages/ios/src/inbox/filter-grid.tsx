@@ -3,13 +3,13 @@ import { SymbolView } from "expo-symbols";
 import type { SFSymbol } from "expo-symbols";
 import { radii, spacing, useTheme } from "../theme.ts";
 
-type FilterCard<Filter extends string> = {
+interface FilterCard<Filter extends string> {
   readonly id: Filter;
   readonly label: string;
   readonly icon: SFSymbol;
   readonly tint: string;
   readonly count?: number;
-};
+}
 
 export function FilterGrid<Filter extends string>({
   cards,
@@ -24,7 +24,7 @@ export function FilterGrid<Filter extends string>({
 
   const rows = cards.reduce<FilterCard<Filter>[][]>((acc, card, index) => {
     if (index % 2 === 0) acc.push([card]);
-    else acc[acc.length - 1]?.push(card);
+    else acc.at(-1)?.push(card);
 
     return acc;
   }, []);

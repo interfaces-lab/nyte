@@ -68,8 +68,9 @@ export async function settleReceipt(
     const found = await readReceipt(kernel.store, session, id);
 
     if (found === null || found.record.outcome !== null) return false;
-    if (found.record.kind !== settlement.kind)
+    if (found.record.kind !== settlement.kind) {
       throw new SdkError("internal", `Receipt ${id} is not a ${settlement.kind}.`);
+    }
     const target = await put(kernel.store, "receipt", { ...found.record, ...settlement });
 
     const result = await commit(kernel, [
@@ -113,8 +114,9 @@ export async function known(
     found.record.kind !== kind ||
     found.record.kind === "report" ||
     found.record.digest !== digest
-  )
+  ) {
     throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+  }
 
   return true;
 }
@@ -179,13 +181,15 @@ async function landed(
       async check() {
         const current = hold.state().messages.get(message);
 
-        if (current?.kind === "user" && current.status.kind === "landed")
+        if (current?.kind === "user" && current.status.kind === "landed") {
           return { value: current.status };
+        }
         const found = await readReceipt(kernel.store, session, id);
 
         if (found === null) throw new SdkError("unknown", `No receipt has the id ${id}.`);
-        if (found.record.kind !== "send")
+        if (found.record.kind !== "send") {
           throw new SdkError("internal", `Receipt ${id} is not a send.`);
+        }
         const outcome = found.record.outcome;
 
         if (outcome === null) return null;
@@ -307,8 +311,12 @@ async function stopReceipt<O extends Json>(
     return { kind: "requested" };
   }
 
-  if (input.landed === null && (await withdraw(kernel, session, input.head, [message])).length > 0)
+  if (
+    input.landed === null &&
+    (await withdraw(kernel, session, input.head, [message])).length > 0
+  ) {
     return { kind: "requested" };
+  }
 
   const run =
     input.landed?.run ??

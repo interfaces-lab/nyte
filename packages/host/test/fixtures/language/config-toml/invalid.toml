@@ -1,0 +1,5 @@
+#:schema ./service.schema.json
+
+[service]
+name = "broken"
+port = "not-a-number"

@@ -1,0 +1,165 @@
+{
+  "language": "bash",
+  "servers": [
+    "bash-language-server"
+  ],
+  "vscode": {
+    "extension": "mads-hartmann.bash-ide-vscode",
+    "source": "https://github.com/bash-lsp/bash-language-server/blob/main/vscode-client/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "  log_in",
+          "says": "log_info"
+        },
+        {
+          "file": "deploy.sh",
+          "after": "into $",
+          "says": "DEPLOY_ENV"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "build_release_pa",
+          "says": "Build the filesystem path"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "build_release_pa",
+          "says": "release.sh"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "echo $release_pa"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "common.sh",
+          "after": "export DEPLOY_E",
+          "says": "deploy.sh"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "release.sh",
+          "says": "build_release_path"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "echo $release_pa",
+          "says": "Apply fix for SC2086"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "Provided by bash-language-server via ShellCheck quick fixes; VS Code's extension requires user-installed shellcheck on PATH, while Nyte downloads a pinned copy when absent."
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "says": "main() {\\n  local service"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "The server formats through shfmt. VS Code's extension needs one on PATH; Nyte downloads a pinned copy when there is none."
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "after": "local service="
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "release.sh",
+          "after": "build_release_pa",
+          "says": "deploy.sh"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "deploy.sh",
+          "says": "Double quote to prevent globbing and word splitting"
+        }
+      ],
+      "servers": [
+        "bash-language-server"
+      ],
+      "answers": true,
+      "vscode": true,
+      "note": "Provided by bash-language-server via ShellCheck (SC2086); VS Code's extension requires user-installed shellcheck on PATH, while Nyte downloads a pinned copy when absent."
+    }
+  }
+}

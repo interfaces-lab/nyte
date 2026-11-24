@@ -66,6 +66,8 @@ import type {
   PluginApi,
   Registries,
   Registry,
+  RuntimeCall,
+  RuntimeVerdict,
   SettingDefinition,
   SettingsRegistry,
 } from "./plugin.ts";
@@ -89,7 +91,11 @@ export interface HostChange {
   readonly sessions: readonly SessionId[];
 }
 
+import type { ProviderRunsTable, RuntimePolicyTable } from "./provider.ts";
+
 export interface Kernel {
+  readonly providerRuns: ProviderRunsTable;
+  readonly runtimePolicy: RuntimePolicyTable;
   readonly hostId: HostId;
 
   readonly instance: string;
@@ -201,7 +207,11 @@ export interface PluginHost {
 
   readonly state: PluginState;
 
+  /** The runtime serving the session's commands, parts, approvals and catalog; while a reload loads, the one it replaces. */
   runtime(session: SessionId): PluginRuntime;
+
+  /** The runtime the session's latest reload made, loading or not. A model request waits on it, so it runs with what the user last changed. */
+  newest(session: SessionId): PluginRuntime;
 
   reload(session: SessionId): Promise<void>;
 
@@ -302,6 +312,7 @@ export interface Compactor {
   }): Promise<
     | { readonly kind: "started"; readonly message: MessageId }
     | { readonly kind: "nothing-to-compact" }
+    | { readonly kind: "provider-managed" }
   >;
 }
 
@@ -392,6 +403,11 @@ export interface PluginRuntime {
 
   instance(id: string): PluginInstance | undefined;
 
+  contributions(): Contributions;
+
+  /** Asks the plugins that declare `approve` once this runtime has loaded; one that failed to load denies. */
+  approve(call: RuntimeCall, signal: AbortSignal): Promise<RuntimeVerdict>;
+
   /** The session record's plugins as of this runtime's last load; null when the session has none assigned. */
   assigned(): readonly AssignedPlugin[] | null;
 
@@ -434,12 +450,14 @@ export interface PluginState {
   viewFailures: readonly string[];
 }
 
-export type PluginFailure = {
+export interface PluginFailure {
   readonly path: string;
   readonly issues: HostView["plugins"][number]["issues"];
-};
+}
 
-export type Attached = { readonly env: ExecutionEnv | null };
+export interface Attached {
+  readonly env: ExecutionEnv | null;
+}
 
 export interface OwnedRegistry<T> extends Registry<T> {
   add(entry: T | Derive<T, "core">): Disposer;
@@ -475,10 +493,10 @@ export interface RegistrySet extends CoreRegistries {
   reload(): void;
 }
 
-export type Contributions = {
+export interface Contributions {
   readonly agents: readonly Agent[];
   readonly settings: readonly SettingDefinition[];
-};
+}
 
 export type CoreHook<Phase extends HookTable[keyof HookTable]["phase"]> = {
   [N in HookName<"core">]: HookTable[N & keyof HookTable]["phase"] extends Phase ? N : never;
@@ -562,4 +580,6 @@ export interface ExecutionState {
   closing: AbortController;
   streams: AbortController;
   paused: PromiseWithResolvers<void> | null;
+  retiring: boolean;
+  readonly settles: Set<() => void>;
 }

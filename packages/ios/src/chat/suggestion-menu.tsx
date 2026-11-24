@@ -1,18 +1,14 @@
 import { StyleSheet, useWindowDimensions } from "react-native";
 import { LegendList } from "@legendapp/list/react-native";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import { css, html } from "react-strict-dom";
 import { controls, menu, spacing, textStyles, tokens, typography } from "../theme.ts";
 import { CompletionIcon } from "../ui/completion-icon.tsx";
 import { GlassSurface } from "./composer-glass.tsx";
-import {
-  suggestionKey,
-  suggestionLabel,
-  suggestionNotice,
-  type Completion,
-  type Suggestion,
-} from "./completions.ts";
+import { suggestionKey, suggestionLabel, suggestionNotice } from "./completions.ts";
+import type { Completion, Suggestion } from "./completions.ts";
 
 export function SuggestionMenu({
   completion,

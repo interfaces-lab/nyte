@@ -132,8 +132,9 @@ export function keyStrokes(command: ChatCommand): readonly KeyStrokeInput[] {
 
     const part = parsed?.parts[0];
 
-    if (part === undefined || parsed?.parts.length !== 1 || parsed.nextIndex !== input.length)
+    if (part === undefined || parsed?.parts.length !== 1 || parsed.nextIndex !== input.length) {
       throw new Error(`Expected a single key stroke for ${command}: ${input}`);
+    }
 
     return part.stroke;
   });
@@ -147,11 +148,12 @@ const KEYCAP_NAMES: ReadonlyMap<string, string> = new Map([
 export function keycap(command: ChatCommand, style?: "symbol"): string {
   const [primary = ""] = CHAT_KEYBINDS[command].split(",");
 
-  if (style === "symbol")
-    return primary.replace(
+  if (style === "symbol") {
+    return primary.replaceAll(
       /up|down|left|right|return/gu,
       (name) => ({ up: "↑", down: "↓", left: "←", right: "→", return: "↵" })[name] ?? name,
     );
+  }
 
   return primary.replace(/[^+]+$/u, (name) => KEYCAP_NAMES.get(name) ?? name);
 }

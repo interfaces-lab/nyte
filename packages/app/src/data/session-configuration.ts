@@ -9,19 +9,21 @@ import type {
   SessionView,
   Thinking,
 } from "@nyte-ai/sdk";
+import type { Json } from "@nyte-ai/schema";
 import { connection } from "./connection.ts";
 import { chatStore } from "./chat-store.ts";
 import { queryClient } from "./query-client.ts";
 
 const CONFIGURE_PATCH = compile(withJson(ConfigurationPatchType));
 
-export type ConfigureSessionPatch = Pick<ConfigurationPatch, "model" | "thinking">;
+export type ConfigureSessionPatch = Pick<ConfigurationPatch, "model" | "thinking" | "settings">;
 
 export type PendingConfiguration = MutationState<void, Error, ConfigureSessionPatch>;
 
 interface SessionChoice {
   readonly model: ModelRef | undefined;
   readonly thinking: Thinking | undefined;
+  readonly settings: Readonly<Record<string, Json>>;
 }
 
 export function projectSessionChoice(
@@ -37,8 +39,9 @@ export function projectSessionChoice(
         mutation.variables?.thinking === undefined
           ? current.thinking
           : (mutation.variables.thinking ?? undefined),
+      settings: { ...current.settings, ...mutation.variables?.settings },
     }),
-    { model: stored?.model, thinking: stored?.thinking },
+    { model: stored?.model, thinking: stored?.thinking, settings: stored?.settings ?? {} },
   );
 }
 
@@ -55,20 +58,23 @@ export function pendingConfigurations(
     });
 }
 
-export function showsChoice(
+function showsChoice(
   view: Pick<SessionView, "configuration">,
-  selected: Pick<Configuration, "model" | "thinking">,
+  selected: Pick<Configuration, "model" | "thinking" | "settings">,
 ): boolean {
   const shown = projectSessionChoice(view, []);
 
   return (
     shown.model?.provider === selected.model.provider &&
     shown.model.id === selected.model.id &&
-    shown.thinking === selected.thinking
+    shown.thinking === selected.thinking &&
+    Object.entries(selected.settings).every(
+      ([id, value]) => JSON.stringify(shown.settings[id]) === JSON.stringify(value),
+    )
   );
 }
 
-const SHOWN_WITHIN_MS = 2_000;
+const SHOWN_WITHIN_MS = 2000;
 
 const waits = new Map<SessionId, AbortController>();
 
@@ -79,8 +85,9 @@ export function sessionConfigurationOptions({ sessionId }: { readonly sessionId:
     mutationFn: async (patch: ConfigureSessionPatch) => {
       const outcome = await connection().session(sessionId).configure(patch);
 
-      if (outcome.kind !== "configured")
-        throw new Error("That model setting is no longer available");
+      if (outcome.kind !== "configured") {
+        throw new Error("That setting is no longer available");
+      }
       waits.get(sessionId)?.abort();
       const bound = new AbortController();
       waits.set(sessionId, bound);

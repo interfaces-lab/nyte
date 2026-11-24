@@ -22,8 +22,9 @@ export async function verifyLinkProof(
   const thumbprint = await keyThumbprint(input.publicKey);
   const method = input.request.method;
 
-  if (method !== "GET" && method !== "POST" && method !== "DELETE")
+  if (method !== "GET" && method !== "POST" && method !== "DELETE") {
     throw new Refusal("unauthorized");
+  }
   let claims: ProofClaims;
 
   try {

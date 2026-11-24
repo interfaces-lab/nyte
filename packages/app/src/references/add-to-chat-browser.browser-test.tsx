@@ -11,8 +11,8 @@ import { ComposerEditor } from "../chat/composer/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
 import type { BrowserDesignChange, BrowserSurfaceState } from "../contract/bridge.ts";
-import { BrowserPanel } from "../workbench/browser/browser-panel.tsx";
-import { applyBrowserEvent, applyBrowserPick } from "../workbench/browser/browser-surfaces.ts";
+import { BrowserPanel } from "../browser/browser-panel.tsx";
+import { applyBrowserEvent, applyBrowserPick } from "../browser/browser-surfaces.ts";
 
 declare global {
   interface Window {
@@ -43,7 +43,7 @@ function check(condition: boolean, message: string): void {
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);

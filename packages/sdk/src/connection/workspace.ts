@@ -94,7 +94,7 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
 
 function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
   const upload = async (source: AsyncIterable<Uint8Array>): Promise<BlobId> =>
-    rows.upload("files.upload", { workspace }, await collectBytes(source, rows.link.signal));
+    rows.upload("files.upload", { workspace }, await collectBytes(source, rows.link.closed));
 
   const plan = (pending: readonly Pending[]): FileBatch => ({
     put: (input) => plan([...pending, { kind: "put", ...input }]),

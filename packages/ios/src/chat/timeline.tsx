@@ -8,13 +8,14 @@ import { spacing } from "../theme.ts";
 import type { AskedQuestion } from "../view-helpers.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import type { ConversationLayout } from "./conversation-layout.ts";
-import { MessageRow, type QueuedActions } from "./messages.tsx";
+import { MessageRow } from "./messages.tsx";
+import type { QueuedActions } from "./messages.tsx";
 import { MessageScroller } from "./message-scroller.tsx";
 import { conversationRows } from "./transcript-rows.ts";
 import { WaitingSelection } from "./waiting-selection.tsx";
 import { ToolActivitySheet, useActivitySheet } from "./tool-activity-sheet.tsx";
 
-type TimelineProps = {
+interface TimelineProps {
   state: HeadView;
   mark: TaskState;
   sessionId: SessionId;
@@ -28,7 +29,7 @@ type TimelineProps = {
   onReport: (part: PartId, message: string) => void;
   layout: ConversationLayout;
   headerHeight: number;
-};
+}
 
 export function Timeline({
   state,

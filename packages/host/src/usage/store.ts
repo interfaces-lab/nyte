@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import {
   decodeObject,
@@ -266,7 +267,7 @@ export function readNyteUsage(
   let database: DatabaseSync | undefined;
 
   try {
-    database = new DatabaseSync(path, { readOnly: true, timeout: 5_000 });
+    database = new DatabaseSync(path, { readOnly: true, timeout: 5000 });
     database.exec("BEGIN");
     const workspaces = new Map<string, string | null>();
 
@@ -288,13 +289,14 @@ export function readNyteUsage(
       if (name === null || body === null || !name.startsWith("workspaces/")) continue;
       const workspace = decodeWorkspaceRecord(decodeObject(body));
 
-      if (workspace !== null)
+      if (workspace !== null) {
         workspaces.set(
           workspace.id,
           workspace.target.kind === "local" && "path" in workspace.target
             ? parseText(workspace.target.path)
             : null,
         );
+      }
     }
 
     for (const row of refs) {

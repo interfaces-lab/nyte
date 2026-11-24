@@ -7,8 +7,9 @@ export type DesktopApp = (typeof DESKTOP_APPS)[number];
 export function parseDesktopApp(argument: string | undefined): DesktopApp {
   const app = DESKTOP_APPS.find((candidate) => candidate === argument);
 
-  if (app === undefined)
+  if (app === undefined) {
     throw new Error("The main process names the app of every window it opens.");
+  }
 
   return app;
 }

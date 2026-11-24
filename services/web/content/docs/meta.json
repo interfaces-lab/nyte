@@ -5,6 +5,7 @@
     "cli/print-mode",
     "remote-access",
     "environment-variables",
+    "usage-data",
     "agents",
     "---Desktop app---",
     "desktop/editor",

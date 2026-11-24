@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { ConnectBridge } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
-import { SettingsSection, SettingsSwitchRow } from "../settings/rows.tsx";
+import { SettingsSection, SettingsSwitchRow } from "../settings-rows/rows.tsx";
 import {
   linkedStanding,
   noticeNote,
@@ -122,8 +122,9 @@ export function NyteConnection({
     );
   }
 
-  if (view.kind === "linked" && !trayOpen)
+  if (view.kind === "linked" && !trayOpen) {
     return <LinkedConnection view={view} connect={connect} />;
+  }
 
   return (
     <SettingsSection title={TITLE}>

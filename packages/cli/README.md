@@ -17,7 +17,7 @@ npm install --global nyte-ai
 nyte
 ```
 
-Once `nyte` runs, `nyte doctor` checks the install and `nyte triage` starts an agent on what
+Once `nyte` runs, `nyte doctor` checks the install. `nyte triage` starts an agent on what
 `nyte doctor` finds.
 
 ## How it works

@@ -4,14 +4,12 @@ import type { EnvironmentSummary } from "@nyte-ai/connect";
 import { describe, expect, it, vi } from "vitest";
 import { parseAccountConfig } from "../src/account/account-config.ts";
 import { releaseCopy } from "../src/account/account-copy.ts";
-import {
-  connectEnvironment,
-  createDeviceSecret,
-  type DeviceCrypto,
-} from "../src/account/enrollment.ts";
+import { connectEnvironment, createDeviceSecret } from "../src/account/enrollment.ts";
+import type { DeviceCrypto } from "../src/account/enrollment.ts";
 import { releaseDevice, releaseOnHost } from "../src/account/revocation.ts";
 import { createConnectionStore } from "../src/connection/connection-store.ts";
-import { serializeConnection, type ManagedConnection } from "../src/connection/connection.ts";
+import { serializeConnection } from "../src/connection/connection.ts";
+import type { ManagedConnection } from "../src/connection/connection.ts";
 import type { ConnectFailure } from "../src/connection/connect-copy.ts";
 
 const ORIGIN = "https://connect.example.com";
@@ -42,13 +40,13 @@ const sha256Url = (text: string) => createHash("sha256").update(text, "utf8").di
 
 const key = (host: string) => `pk_test_${btoa(host)}`;
 
-type Seen = {
+interface Seen {
   readonly method: string;
   readonly url: string;
   readonly authorization: string | null;
   readonly credentials: RequestCredentials | undefined;
   readonly body: string | undefined;
-};
+}
 
 function network(scenario: {
   readonly enroll?: (body: unknown) => Response | Promise<Response>;
@@ -79,14 +77,16 @@ function network(scenario: {
 
     if (origin !== ORIGIN) return new Response(null, { status: 404 });
 
-    if (method === "POST" && pathname === `/v1/environments/${MAC.id}/devices`)
+    if (method === "POST" && pathname === `/v1/environments/${MAC.id}/devices`) {
       return (
         scenario.enroll?.(JSON.parse(body ?? "null")) ??
         Response.json({ environmentId: MAC.id, deviceId: DEVICE_ID }, { status: 201 })
       );
+    }
 
-    if (method === "DELETE" && pathname.startsWith("/v1/environments/"))
+    if (method === "DELETE" && pathname.startsWith("/v1/environments/")) {
       return scenario.revoke?.() ?? new Response(null, { status: 204 });
+    }
 
     const relayed = /^\/r\/[0-9a-f-]{36}(\/.*)$/u.exec(pathname)?.[1];
 
@@ -96,8 +96,9 @@ function network(scenario: {
       return scenario.list?.(lists) ?? Response.json(PAGE);
     }
 
-    if (relayed === "/_nyte/connect/device" && method === "DELETE")
+    if (relayed === "/_nyte/connect/device" && method === "DELETE") {
       return scenario.release?.() ?? new Response(null, { status: 204 });
+    }
 
     return new Response(null, { status: 404 });
   };
@@ -150,7 +151,7 @@ function enrollment(input: {
     verify: async () => verification,
     save: input.store.save,
     signal: input.signal ?? new AbortController().signal,
-    readiness: { windowMs: input.windowMs ?? 2_000, intervalMs: 5 },
+    readiness: { windowMs: input.windowMs ?? 2000, intervalMs: 5 },
   });
 }
 
@@ -167,7 +168,7 @@ describe("parseAccountConfig", () => {
   it("refuses publishable keys ClerkProvider would throw on", () => {
     for (const publishableKey of [
       "pk_test_",
-      "sk_test_" + btoa("clerk.example.com$"),
+      `sk_test_${btoa("clerk.example.com$")}`,
       "pk_test_abc",
       key("clerk.example.com"),
       key("https://clerk.example.com$"),
@@ -175,8 +176,9 @@ describe("parseAccountConfig", () => {
       key("localhost$"),
       key("clerk.example.com:443$"),
       `pk_test_${btoa("clerk.example.com$").replace("=", "_")}_`,
-    ])
+    ]) {
       expect(parseAccountConfig({ ...valid, publishableKey })).toBeUndefined();
+    }
   });
 });
 
@@ -211,8 +213,9 @@ describe("connectEnvironment", () => {
 
     const snapshot = store.getSnapshot();
 
-    if (snapshot.kind !== "saved" || snapshot.saved.kind !== "managed")
+    if (snapshot.kind !== "saved" || snapshot.saved.kind !== "managed") {
       throw new Error("expected a saved account connection");
+    }
     const { connection, binding } = snapshot.saved;
 
     expect(connection).toMatchObject({ name: MAC.name, url: MAC_URL });
@@ -406,7 +409,7 @@ describe("releaseDevice", () => {
       saved,
       broker: broker(net.fetch),
       fetch: net.fetch,
-      timeoutMs: 1_000,
+      timeoutMs: 1000,
     });
 
     expect(report).toEqual({ host: "removed", broker: "removed" });
@@ -434,7 +437,7 @@ describe("releaseDevice", () => {
       const net = network({ release: () => new Response(null, { status }) });
 
       expect(
-        await releaseOnHost({ connection: saved.connection, fetch: net.fetch, timeoutMs: 1_000 }),
+        await releaseOnHost({ connection: saved.connection, fetch: net.fetch, timeoutMs: 1000 }),
         String(status),
       ).toBe(expected);
     }
@@ -449,7 +452,7 @@ describe("releaseDevice", () => {
       saved,
       broker: broker(net.fetch),
       fetch: net.fetch,
-      timeoutMs: 1_000,
+      timeoutMs: 1000,
     });
 
     expect(report).toEqual({ host: "removed", broker: "unconfirmed" });
@@ -473,7 +476,7 @@ describe("releaseDevice", () => {
     });
 
     expect(report).toEqual({ host: "unconfirmed", broker: "unconfirmed" });
-    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(Date.now() - started).toBeLessThan(1000);
     expect(releaseCopy(MAC.name, report)).not.toMatch(/removed|stops/u);
   });
 });

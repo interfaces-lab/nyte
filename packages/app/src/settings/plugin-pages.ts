@@ -1,6 +1,6 @@
 import type { HostView, SettingInfo } from "@nyte-ai/sdk";
-import { namesSettingsSection, showsSettingsSection } from "./sections.ts";
-import type { SettingsSection } from "./sections.ts";
+import { namesSettingsSection, showsSettingsSection } from "../settings-sections/sections.ts";
+import type { SettingsSection } from "../settings-sections/sections.ts";
 
 type PluginInfo = HostView["plugins"][number];
 
@@ -15,18 +15,6 @@ export interface PlacedSettings {
   readonly preset: ReadonlyMap<SettingsSection, readonly PluginGroup[]>;
   /** The pages plugins named themselves, by title, in the order first named. */
   readonly custom: ReadonlyMap<string, readonly PluginGroup[]>;
-}
-
-/** Whether the app has a field for the setting: a menu, a masked secret, a switch, a text field or a number field. */
-export function drawsField(setting: SettingInfo): boolean {
-  return (
-    (setting.choices ?? []).length > 0 ||
-    setting.secret === true ||
-    setting.schema.type === "boolean" ||
-    setting.schema.type === "string" ||
-    setting.schema.type === "number" ||
-    setting.schema.type === "integer"
-  );
 }
 
 /**
@@ -67,7 +55,15 @@ export function placePluginSettings(
   };
 
   for (const setting of settings) {
-    if (setting.scope !== "host" || !drawsField(setting)) continue;
+    const drawsField =
+      (setting.choices ?? []).length > 0 ||
+      setting.secret === true ||
+      setting.schema.type === "boolean" ||
+      setting.schema.type === "string" ||
+      setting.schema.type === "number" ||
+      setting.schema.type === "integer";
+
+    if (setting.scope !== "host" || !drawsField) continue;
 
     if (setting.page === undefined) {
       if (installed.has(setting.owner)) place(preset, "general", setting);

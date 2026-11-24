@@ -32,10 +32,22 @@ export const UsageType = Type.Object({
 
 export type Usage = Decoded<typeof UsageType>;
 
+export const ContextOccupancyType = Type.Union([
+  Type.Object({
+    kind: Type.Literal("measured"),
+    usedTokens: Type.Number({ minimum: 0 }),
+    windowTokens: nullable(Type.Number({ minimum: 1 })),
+  }),
+  Type.Object({ kind: Type.Literal("unknown") }),
+]);
+
+export type ContextOccupancy = Decoded<typeof ContextOccupancyType>;
+
 export const ContextViewType = Type.Object({
   tokens: Type.Number(),
   window: Type.Number(),
   lastRequest: nullable(UsageType),
+  occupancy: Type.Optional(ContextOccupancyType),
 });
 
 export type ContextView = Decoded<typeof ContextViewType>;

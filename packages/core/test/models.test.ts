@@ -5,7 +5,6 @@ import type { AuthCheck } from "@nyte-ai/ai";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import { calculateUsage } from "../src/agent/request.ts";
-import { collectContributions } from "../src/engine/contributions.ts";
 import { createLogin, modelInfo, settingsVersion } from "../src/extend/models.ts";
 import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
@@ -118,7 +117,7 @@ describe("models", () => {
     fake.reply({
       content: [{ type: "text", text: "Hi." }],
       limits: [
-        { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 },
+        { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1000 },
         { id: "seven_day", label: "Weekly", usedPercent: 5 },
       ],
     });
@@ -129,7 +128,7 @@ describe("models", () => {
     });
 
     expect((await host.models.list()).providers[0].limits).toEqual([
-      { label: "5-hour", used: 40, limit: 100, resetsAt: 1_000 },
+      { label: "5-hour", used: 40, limit: 100, resetsAt: 1000 },
       { label: "Weekly", used: 5, limit: 100, resetsAt: null },
     ]);
   });
@@ -139,7 +138,7 @@ describe("models", () => {
     await using host = await open(fake);
     const { session } = await host.sessions.start({ content: "Hi." });
     const messages = [{ role: "user" as const, content: "Hi.", timestamp: 0 }];
-    const window = { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 };
+    const window = { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1000 };
     const generation = () => host.kernel.host.current().catalog;
 
     await until(async () => ((await session.view()).catalog.tools.length > 0 ? true : undefined));
@@ -169,7 +168,7 @@ describe("models", () => {
 
     expect(generation()).not.toBe(limited);
     expect((await host.models.list()).providers[0].limits).toEqual([
-      { label: "5-hour", used: 45, limit: 100, resetsAt: 1_000 },
+      { label: "5-hour", used: 45, limit: 100, resetsAt: 1000 },
     ]);
   });
 
@@ -210,7 +209,7 @@ describe("models", () => {
         head: main,
         selected: null,
         patch: null,
-        contributions: collectContributions(host.kernel.plugins.runtime(session.id)),
+        contributions: host.kernel.plugins.runtime(session.id).contributions(),
       }),
     ).toMatchObject({ model: smart, thinking: "low" });
   });
@@ -430,12 +429,12 @@ describe("models", () => {
     expect(last.at(-1)).toEqual({ kind: "failed", reason: "Organisation two has no access." });
 
     const accounts = await host.models.accounts("test");
-    const work = accounts.find((account) => account.label === "Account 1");
+    const work = accounts.find((account) => account.label === "Default");
     assert(work !== undefined);
 
     expect(accounts.map((account) => [account.label, account.method.kind, account.active])).toEqual(
       [
-        ["Account 1", "key", false],
+        ["Default", "key", false],
         ["Personal", "oauth", true],
       ],
     );
@@ -446,18 +445,18 @@ describe("models", () => {
     expect(host.kernel.host.current().catalog).not.toBe(generation);
     expect((await host.models.list()).providers[0].credential).toBe("configured");
     expect((await host.models.accounts("test")).find((account) => account.active)?.label).toBe(
-      "Account 1",
+      "Default",
     );
     expect((await host.models.usage())[0]).toMatchObject({
       provider: "test",
-      account: { id: work.id, label: "Account 1" },
+      account: { id: work.id, label: "Default" },
       state: { kind: "unavailable", reason: "unsupported" },
     });
     await host.models.logout("test");
 
     expect(
       (await host.models.accounts()).map((account) => [account.label, account.active]),
-    ).toEqual([["Personal", false]]);
+    ).toEqual([["Personal", true]]);
     expect((await host.models.usage())[0].state).toMatchObject({
       kind: "unavailable",
       reason: "unsupported",
@@ -513,7 +512,7 @@ describe("models", () => {
       if (step.kind === "failed") throw new Error(step.reason);
     }
 
-    expect((await host.models.accounts()).map((account) => account.label)).toEqual(["Account 1"]);
+    expect((await host.models.accounts()).map((account) => account.label)).toEqual(["Default"]);
   });
 });
 
@@ -532,11 +531,11 @@ describe("resolveConfiguration", () => {
         head: main,
         selected,
         patch,
-        contributions: collectContributions(host.kernel.plugins.runtime(session.id)),
+        contributions: host.kernel.plugins.runtime(session.id).contributions(),
       });
 
     const version = await settingsVersion(
-      collectContributions(host.kernel.plugins.runtime(session.id)).settings,
+      host.kernel.plugins.runtime(session.id).contributions().settings,
     );
 
     const base = await resolve(null);
@@ -622,8 +621,9 @@ describe("request", () => {
     const events: string[] = [];
 
     host.kernel.bus.subscribe(session.id, (event) => {
-      if (event.kind === "request")
+      if (event.kind === "request") {
         events.push(`${event.step}:${event.head}:${event.context.tokens}`);
+      }
     });
 
     fake.reply(

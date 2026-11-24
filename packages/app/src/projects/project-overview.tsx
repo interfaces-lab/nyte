@@ -18,10 +18,11 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { toast } from "@nyte-ai/ui/toast";
 import { useChatTasks, useChats } from "../chats/index.ts";
 import { composerMessageContent } from "../chat/composer/composer-plan.ts";
-import { endedDraft } from "../chat/composer/composer-draft.ts";
+import { endedDraft } from "../panes/composer-draft.ts";
 import { deliver } from "../chat/composer/composer-send.ts";
 import type { ChatDirectory, ChildTask } from "../chats/index.ts";
-import { Prose } from "../chat/markdown/prose.tsx";
+import { AgentCitationContext, Prose } from "../markdown/prose.tsx";
+import { citeSubagent } from "../chat/tools/subagent-call.tsx";
 import { answerQuestion } from "../chat/trays/questions-state.ts";
 import { ChangeStats } from "../components/change-stats.tsx";
 import { TaskMark } from "../components/task-mark.tsx";
@@ -34,7 +35,7 @@ import { useWorkspaceCatalog } from "../data/plugins.ts";
 import { useProject } from "../data/projects.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { useWorkspaces } from "../data/workspaces.ts";
-import { settingsStyles as page } from "../settings/settings.stylex.ts";
+import { settingsStyles as page } from "../settings-rows/settings.stylex.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns as patterns } from "../theme/settings-patterns.stylex.ts";
@@ -44,19 +45,21 @@ import { startProjectChat } from "./start-project-chat.ts";
 export function ProjectOverview({ id }: { readonly id: ProjectId }): ReactElement {
   const result = useProject(id);
 
-  if (result.kind === "loading")
+  if (result.kind === "loading") {
     return (
       <div {...props(page.content, styles.placeholder)}>
         <Loader />
       </div>
     );
+  }
 
-  if (result.kind === "missing")
+  if (result.kind === "missing") {
     return (
       <div {...props(page.content, styles.placeholder)}>
         <p {...props(text.base, styles.quiet)}>Project not found.</p>
       </div>
     );
+  }
 
   return <ProjectPage project={result.project} />;
 }
@@ -99,7 +102,7 @@ function ProjectPage({ project }: { readonly project: ProjectInfo }): ReactEleme
                     variant="solid"
                     tone="primary"
                     onClick={() =>
-                      startProjectChat(project, "").catch((cause: unknown) =>
+                      void startProjectChat(project, "").catch((cause: unknown) =>
                         toast.add({ type: "error", title: errorMessage(cause) }),
                       )
                     }
@@ -388,7 +391,11 @@ function Reply({ id }: { readonly id: SessionId }): ReactNode {
 
   return (
     <div {...props(styles.reply)}>
-      {reply.lead !== "" && <Prose markdown={reply.lead} />}
+      {reply.lead !== "" && (
+        <AgentCitationContext value={citeSubagent}>
+          <Prose markdown={reply.lead} />
+        </AgentCitationContext>
+      )}
       {reply.files > 0 && (
         <span {...props(text.sm, styles.changes)}>
           {`${String(reply.files)} ${reply.files === 1 ? "file" : "files"}`}
@@ -413,7 +420,7 @@ function readReply(view: ChatView) {
 function Setup({ project }: { readonly project: ProjectInfo }): ReactNode {
   const docs = useWorkspaceCatalog(project.workspace).data?.docs ?? [];
 
-  if (project.instructions.trim() === "" && project.skills.length === 0 && docs.length === 0)
+  if (project.instructions.trim() === "" && project.skills.length === 0 && docs.length === 0) {
     return (
       <Section title="Setup">
         <Entry title="No instructions or skills yet">
@@ -423,6 +430,7 @@ function Setup({ project }: { readonly project: ProjectInfo }): ReactNode {
         </Entry>
       </Section>
     );
+  }
 
   return (
     <Section title="Setup">

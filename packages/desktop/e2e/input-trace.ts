@@ -79,10 +79,11 @@ export async function readInputTrace(
   const starts = markTimes(events, marks.start);
   const ends = markTimes(events, marks.end);
 
-  if (starts.length === 0 || starts.length !== ends.length)
+  if (starts.length === 0 || starts.length !== ends.length) {
     throw new Error(
       `The trace has ${String(starts.length)} start and ${String(ends.length)} end marks`,
     );
+  }
 
   const windows = starts.map((start, index) => ({ start, end: ends[index] ?? start }));
   const begins = new Map<string, TraceEvent>();
@@ -100,14 +101,16 @@ export async function readInputTrace(
     if (
       begin?.args?.data?.type === "keydown" &&
       windows.some((window) => begin.ts >= window.start && begin.ts <= window.end)
-    )
-      keydowns.push({ event: begin, durationMs: (event.ts - begin.ts) / 1_000 });
+    ) {
+      keydowns.push({ event: begin, durationMs: (event.ts - begin.ts) / 1000 });
+    }
   }
 
   const main = keydowns[0]?.event;
 
-  if (main === undefined)
+  if (main === undefined) {
     throw new Error("The trace has no keydown Event Timing in the marked windows");
+  }
 
   const thread = events
     .filter((event) => event.pid === main.pid && event.tid === main.tid)
@@ -120,7 +123,7 @@ export async function readInputTrace(
     if (event.name !== "AnimationFrame::Render") continue;
 
     if (event.ph === "X" && event.dur !== undefined) {
-      renderingMs.push(event.dur / 1_000);
+      renderingMs.push(event.dur / 1000);
 
       continue;
     }
@@ -136,13 +139,14 @@ export async function readInputTrace(
     if (event.ph !== "e" && event.ph !== "E") continue;
     const begin = renderBegins.get(key)?.pop();
 
-    if (begin !== undefined) renderingMs.push((event.ts - begin) / 1_000);
+    if (begin !== undefined) renderingMs.push((event.ts - begin) / 1000);
   }
 
-  if (renderingMs.length === 0)
+  if (renderingMs.length === 0) {
     throw new Error(
       "The trace has no complete AnimationFrame::Render phases on the renderer thread",
     );
+  }
 
   const first = windows[0]?.start ?? 0;
   const last = windows.at(-1)?.end ?? 0;
@@ -158,7 +162,7 @@ export async function readInputTrace(
       const sum = (name: string) =>
         inside
           .filter((event) => event.name === name)
-          .reduce((total, event) => total + (event.dur ?? 0) / 1_000, 0);
+          .reduce((total, event) => total + (event.dur ?? 0) / 1000, 0);
       const scripts = new Map<string, number>();
 
       for (const event of inside) {
@@ -169,12 +173,12 @@ export async function readInputTrace(
             ? "(anonymous)"
             : data.functionName;
         const source = `${name} ${data?.url ?? ""}:${String(data?.lineNumber ?? 0)}`;
-        scripts.set(source, (scripts.get(source) ?? 0) + (event.dur ?? 0) / 1_000);
+        scripts.set(source, (scripts.get(source) ?? 0) + (event.dur ?? 0) / 1000);
       }
 
       return {
-        startMs: (task.ts - first) / 1_000,
-        durationMs: (task.dur ?? 0) / 1_000,
+        startMs: (task.ts - first) / 1000,
+        durationMs: (task.dur ?? 0) / 1000,
         layoutMs: sum("Layout"),
         styleMs: sum("UpdateLayoutTree"),
         scripts: [...scripts]

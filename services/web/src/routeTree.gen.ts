@@ -21,6 +21,7 @@ import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SiteLandingRouteImport } from './routes/_site/_landing'
 import { Route as SiteLegalRouteImport } from './routes/_site/_legal'
+import { Route as SiteDataRouteImport } from './routes/_site/data'
 import { Route as ApiSearchRouteImport } from './routes/api/search'
 import { Route as ApiSearchRecordsRouteImport } from './routes/api/search-records'
 import { Route as DesignIndexRouteImport } from './routes/design/index'
@@ -89,6 +90,11 @@ const SiteLandingRoute = SiteLandingRouteImport.update({
 } as any)
 const SiteLegalRoute = SiteLegalRouteImport.update({
   id: '/_legal',
+  getParentRoute: () => SiteRoute,
+} as any)
+const SiteDataRoute = SiteDataRouteImport.update({
+  id: '/data',
+  path: '/data',
   getParentRoute: () => SiteRoute,
 } as any)
 const ApiSearchRoute = ApiSearchRouteImport.update({
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/opengraph-image.png': typeof OpengraphImageDotpngRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/data': typeof SiteDataRoute
   '/api/search': typeof ApiSearchRoute
   '/api/search-records': typeof ApiSearchRecordsRoute
   '/design/$': typeof DesignSplatRoute
@@ -185,6 +192,7 @@ export interface FileRoutesByTo {
   '/opengraph-image.png': typeof OpengraphImageDotpngRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/data': typeof SiteDataRoute
   '/api/search': typeof ApiSearchRoute
   '/api/search-records': typeof ApiSearchRecordsRoute
   '/design/$': typeof DesignSplatRoute
@@ -211,6 +219,7 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/_site/_landing': typeof SiteLandingRouteWithChildren
   '/_site/_legal': typeof SiteLegalRouteWithChildren
+  '/_site/data': typeof SiteDataRoute
   '/api/search': typeof ApiSearchRoute
   '/api/search-records': typeof ApiSearchRecordsRoute
   '/design/$': typeof DesignSplatRoute
@@ -237,6 +246,7 @@ export interface FileRouteTypes {
     | '/opengraph-image.png'
     | '/robots.txt'
     | '/sitemap.xml'
+    | '/data'
     | '/api/search'
     | '/api/search-records'
     | '/design/$'
@@ -259,6 +269,7 @@ export interface FileRouteTypes {
     | '/opengraph-image.png'
     | '/robots.txt'
     | '/sitemap.xml'
+    | '/data'
     | '/api/search'
     | '/api/search-records'
     | '/design/$'
@@ -284,6 +295,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/_site/_landing'
     | '/_site/_legal'
+    | '/_site/data'
     | '/api/search'
     | '/api/search-records'
     | '/design/$'
@@ -399,6 +411,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof SiteLegalRouteImport
+      parentRoute: typeof SiteRoute
+    }
+    '/_site/data': {
+      id: '/_site/data'
+      path: '/data'
+      fullPath: '/data'
+      preLoaderRoute: typeof SiteDataRouteImport
       parentRoute: typeof SiteRoute
     }
     '/api/search': {
@@ -533,6 +552,7 @@ const SiteLegalRouteWithChildren = SiteLegalRoute._addFileChildren(
 interface SiteRouteChildren {
   SiteLandingRoute: typeof SiteLandingRouteWithChildren
   SiteLegalRoute: typeof SiteLegalRouteWithChildren
+  SiteDataRoute: typeof SiteDataRoute
   SiteDesktopSignedInRoute: typeof SiteDesktopSignedInRoute
   SiteDocsSplatRoute: typeof SiteDocsSplatRoute
 }
@@ -540,6 +560,7 @@ interface SiteRouteChildren {
 const SiteRouteChildren: SiteRouteChildren = {
   SiteLandingRoute: SiteLandingRouteWithChildren,
   SiteLegalRoute: SiteLegalRouteWithChildren,
+  SiteDataRoute: SiteDataRoute,
   SiteDesktopSignedInRoute: SiteDesktopSignedInRoute,
   SiteDocsSplatRoute: SiteDocsSplatRoute,
 }

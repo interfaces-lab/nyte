@@ -11,7 +11,7 @@ import type {
   ProviderHeaders,
   ProviderStreams,
 } from "./types.ts";
-import { type Provider } from "./models-types.ts";
+import type { Provider } from "./models-types.ts";
 
 export interface CreateProviderOptions<TApi extends Api = Api> {
   id: string;

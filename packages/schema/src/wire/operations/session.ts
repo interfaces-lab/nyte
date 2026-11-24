@@ -99,7 +99,11 @@ export const SESSION_OPERATIONS = {
     ...PARTICIPANT,
     summary: "Starts a new chat with a session's history up to a commit, by default its latest.",
     kind: "command",
-    input: wireObject({ ...SESSION, from: Type.Optional(idSchema<"commit">()) }),
+    input: wireObject({
+      ...SESSION,
+      from: Type.Optional(idSchema<"commit">()),
+      workspace: Type.Optional(idSchema<"workspace">()),
+    }),
     output: ForkOutcomeSchema,
   },
   "session.remove": {
@@ -233,6 +237,7 @@ export const SESSION_OPERATIONS = {
         Type.Object({ kind: Type.Literal("started"), message: idSchema<"message">() }),
         Type.Object({ kind: Type.Literal("busy"), run: idSchema<"run">() }),
         Type.Object({ kind: Type.Literal("nothing-to-compact") }),
+        Type.Object({ kind: Type.Literal("provider-managed") }),
       ]),
     ),
   },

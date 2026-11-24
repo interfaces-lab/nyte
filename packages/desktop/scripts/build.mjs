@@ -22,7 +22,7 @@ const desktopRoot = join(import.meta.dirname, "..");
 
 const args = process.argv.slice(2);
 
-const packageIndex = args.findIndex((argument) => argument === "--package");
+const packageIndex = args.indexOf("--package");
 
 const shouldPackage = packageIndex !== -1;
 
@@ -45,7 +45,7 @@ const builderArgs =
     ? [...requestedBuilderArgs, ...hostDesktopFlags()]
     : requestedBuilderArgs;
 
-const assetsIndex = args.findIndex((argument) => argument === "--assets");
+const assetsIndex = args.indexOf("--assets");
 
 const assets = assetsIndex === -1 ? undefined : args[assetsIndex + 1];
 
@@ -68,7 +68,7 @@ if (assetsIndex !== -1) {
 
 const turboStream = process.env.TURBO_HASH !== undefined && process.env.TURBO_IS_TUI === undefined;
 
-const live = process.stdout.isTTY === true && !turboStream;
+const live = process.stdout.isTTY && !turboStream;
 
 const githubActions = process.env.GITHUB_ACTIONS === "true";
 
@@ -109,8 +109,9 @@ if (shouldPackage && !compiled) {
     );
   }
 
-  if (bundlesCli)
+  if (bundlesCli) {
     stages.push({ title: "nyte CLI", tail: true, run: () => pnpm("--dir", "../tui", "build") });
+  }
 }
 
 if (compiled && !existsSync(join(desktopRoot, "..", "app", "dist", "index.html"))) {
@@ -123,11 +124,12 @@ if (compiled && !existsSync(join(desktopRoot, "..", "canvas", "dist", "shell", "
   process.exit(1);
 }
 
-for (const name of ["nyte", "nyte-tailnet"])
+for (const name of ["nyte", "nyte-tailnet"]) {
   if (compiled && bundlesCli && !existsSync(join(desktopRoot, "..", "tui", "dist", name))) {
     failure(`packages/tui/dist/${name} is missing. Run \`pnpm build:tui\` first.`);
     process.exit(1);
   }
+}
 
 if (shouldPackage) {
   stages.push({

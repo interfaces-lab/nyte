@@ -222,8 +222,9 @@ async function browser(input: {
   });
   const lookup: unknown = await looked.json();
 
-  if (!Value.Check(LinkTransactionLookup, lookup))
+  if (!Value.Check(LinkTransactionLookup, lookup)) {
     throw new Error(`lookup ${String(looked.status)}`);
+  }
   const decided = await workerd.fetch(
     `${workerd.origin}/v1/link-transactions/${lookup.transactionId}/${input.decision}`,
     {
@@ -319,7 +320,7 @@ test("a denied or expired transaction fails the link and leaves no environment",
   const runtime = start();
   const linking = runtime.link();
   await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
-  await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "deny" });
+  await browser({ userId: "user_alice", userCode: opened[0].userCode, decision: "deny" });
   const view = await linking;
   assert.equal(view.kind, "unlinked");
 
@@ -350,7 +351,7 @@ test("cancelling tells the broker and forgets the transaction; a late approval c
       authorization: `Bearer ${await workerd.sessionToken({ userId: "user_alice" })}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ userCode: opened[0]!.userCode }),
+    body: JSON.stringify({ userCode: opened[0].userCode }),
   });
   assert.equal(late.status, 404);
 });
@@ -363,7 +364,7 @@ test("a completion answer the host lost is recovered by its next completion, not
   const kept = (await file()).linkKey;
 
   if (kept?.kind !== "transaction" || kept.transaction === null) throw new Error("unreachable");
-  await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
+  await browser({ userId: "user_alice", userCode: opened[0].userCode, decision: "approve" });
   const completion = await hostCall(kept.key, kept.transaction.id, "complete");
   assert.equal(row(completion, "state"), "consumed");
   const view = await linking;
@@ -405,7 +406,7 @@ test("a cancel the broker never heard is settled before a new transaction; a com
 
   if (replacement?.kind !== "transaction") throw new Error("unreachable");
   assert.notEqual(replacement.key.x, kept.key.x);
-  await browser({ userId: "user_alice", userCode: opened[1]!.userCode, decision: "approve" });
+  await browser({ userId: "user_alice", userCode: opened[1].userCode, decision: "approve" });
   const view = await again;
   assert.equal(view.kind, "linked");
   assert.deepEqual(
@@ -426,7 +427,7 @@ test("a lost completion answer keeps the intent: the retry recovers the same lin
 
   if (kept?.kind !== "transaction" || kept.transaction === null) throw new Error("unreachable");
   faults.drop.push(`POST /v1/link-transactions/${kept.transaction.id}/complete`);
-  await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
+  await browser({ userId: "user_alice", userCode: opened[0].userCode, decision: "approve" });
   const failed = await linking;
   assert.equal(failed.kind, "unlinked");
 
@@ -452,7 +453,7 @@ test("a lost open answer replays the same operation and code instead of opening 
 
   const linking = runtime.link();
   await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
-  await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
+  await browser({ userId: "user_alice", userCode: opened[0].userCode, decision: "approve" });
   assert.equal((await linking).kind, "linked");
   assert.equal((await transactions()).length, 1);
 });
@@ -491,7 +492,7 @@ test("a link or pending intent made with another broker is unavailable here, nev
 
   const resumed = start();
   const again = resumed.link();
-  await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
+  await browser({ userId: "user_alice", userCode: opened[0].userCode, decision: "approve" });
   assert.equal((await again).kind, "linked");
   const link = (await file()).link;
 
@@ -562,7 +563,7 @@ test("close joins an unlink acknowledgement already being written", async () => 
   const runtime = start();
   const linking = runtime.link();
   await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
-  await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
+  await browser({ userId: "user_alice", userCode: opened[0].userCode, decision: "approve" });
   assert.equal((await linking).kind, "linked");
   const queued = holdNextWrite(storePath);
   const unlinking = runtime.unlink();
@@ -612,7 +613,7 @@ test("a cancel while the completed link is being written still wins: the link is
   const linking = runtime.link();
   await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   const write = holdNextWrite(storePath);
-  await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
+  await browser({ userId: "user_alice", userCode: opened[0].userCode, decision: "approve" });
   await write.reached;
   faults.block.push("DELETE /v1/environments/");
   const cancelling = runtime.cancel();

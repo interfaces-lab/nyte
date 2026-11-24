@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Command } from "@nyte-ai/ui/command";
-import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
 import { formatTimeAgo } from "../lib/format.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 import { TaskMark } from "../components/task-mark.tsx";
@@ -18,21 +19,22 @@ import { useChatWindow } from "../window/index.ts";
 
 import { amongOptions, chatMark, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionSearch } from "../data/sessions.ts";
-import { PaletteLegend } from "./palette-legend.tsx";
-import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
-import { settingsSectionGroups } from "../settings/index.ts";
+import { PaletteLegend } from "../components/palette-legend.tsx";
+import { paletteTabStyles as styles } from "../components/palette-tabs.stylex.ts";
+import { settingsSectionGroups } from "../settings-sections/sections.ts";
 import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
 import type { AppAction } from "../contract/client-actions.ts";
 import { appActions } from "../data/app-actions.ts";
 import { nyte } from "../contract/nyte.ts";
-import { actionIcons, settingsActionPages } from "./action-icons.ts";
+import { actionIcons, settingsActionPages } from "../settings-sections/action-icons.ts";
 
 const TABS = ["all", "agents", "actions", "settings"] as const;
 
 type PaletteTab = (typeof TABS)[number];
 
 interface SearchPaletteProps {
-  readonly trigger: ReactElement;
+  /** The control that opens it. Without one, only its key and `open` do. */
+  readonly trigger?: ReactElement;
   readonly open: boolean;
   readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
@@ -140,22 +142,18 @@ export function SearchPalette({
     : (recentSessions ?? []);
 
   const mac = nyte.platform === "darwin";
-  const settingsSections = settingsSectionGroups().flat();
+  const settingsSections = new Set(settingsSectionGroups().flat());
 
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
     if (!("palette" in action)) return [];
 
-    if (
-      action.id === "model-settings" &&
-      !settingsSections.includes(settingsActionPages[action.id])
-    )
+    if (action.id === "model-settings" && !settingsSections.has(settingsActionPages[action.id])) {
       return [];
+    }
 
-    if (
-      action.id === "profile-settings" &&
-      !settingsSections.includes(settingsActionPages[action.id])
-    )
+    if (action.id === "profile-settings" && !settingsSections.has(settingsActionPages[action.id])) {
       return [];
+    }
 
     if (action.id === "open-folder" && nyte.host.pickWorkspace === undefined) return [];
 
@@ -201,8 +199,9 @@ export function SearchPalette({
   const emptyMessage = (): string => {
     if (includesAgents && chatsPending) return "Loading chats…";
 
-    if (tab === "agents")
+    if (tab === "agents") {
       return searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet";
+    }
 
     if (tab === "all") return `Nothing matches "${query.trim()}"`;
 
@@ -235,7 +234,7 @@ export function SearchPalette({
 
   return (
     <Command.Root open={open} onOpenChange={onOpenChange}>
-      <Command.Trigger render={trigger} />
+      {trigger !== undefined && <Command.Trigger render={trigger} />}
       <Command.Popup
         title="Search chats and actions"
         items={rows}

@@ -134,7 +134,7 @@ describe("localExec over pipes", () => {
         kind: "settled",
         outcome: { reason: "terminated" },
       });
-      expect(Date.now() - before).toBeGreaterThanOrEqual(1_900);
+      expect(Date.now() - before).toBeGreaterThanOrEqual(1900);
     },
     10_000,
   );
@@ -189,7 +189,7 @@ describe("localExec over pipes", () => {
       [
         process.execPath,
         "-e",
-        "process.stderr.write('warming up\\n'); process.stdout.write('x'.repeat(3 * 1024 * 1024)); process.stdout.write('END')",
+        String.raw`process.stderr.write('warming up\n'); process.stdout.write('x'.repeat(3 * 1024 * 1024)); process.stdout.write('END')`,
       ],
       { stdio: "protocol" },
     );
@@ -343,7 +343,7 @@ describe.skipIf(windows)("the local machine", () => {
 
   it("tells a process gone once it exited, and this host's own process running", async () => {
     const finished = await started("sleep 0.2");
-    await vi.waitFor(() => expect(running(finished.pid)).toBe(false), { timeout: 5_000 });
+    await vi.waitFor(() => expect(running(finished.pid)).toBe(false), { timeout: 5000 });
     const self = await localMachine.self();
 
     expect({
@@ -354,7 +354,7 @@ describe.skipIf(windows)("the local machine", () => {
 
   it("signals nothing when the leader exited and its group still runs, and answers gone once nothing does", async () => {
     const orphaned = await started("sleep 30 & sleep 0.3");
-    await vi.waitFor(() => expect(running(orphaned.pid)).toBe(false), { timeout: 5_000 });
+    await vi.waitFor(() => expect(running(orphaned.pid)).toBe(false), { timeout: 5000 });
 
     expect({ leader: running(orphaned.pid), group: running(-orphaned.group) }).toEqual({
       leader: false,
@@ -364,7 +364,7 @@ describe.skipIf(windows)("the local machine", () => {
     expect(running(-orphaned.group)).toBe(true);
 
     const finished = await started("sleep 0.2");
-    await vi.waitFor(() => expect(running(finished.pid)).toBe(false), { timeout: 5_000 });
+    await vi.waitFor(() => expect(running(finished.pid)).toBe(false), { timeout: 5000 });
 
     expect(await localMachine.end(finished)).toBe("gone");
   });
@@ -383,10 +383,11 @@ describe("localExec where the pty module does not load (§41a)", () => {
     for (const loadPty of [failing, () => ({})]) {
       const exec = localExec(root, { loadPty });
 
-      for (const command of [[], "echo hi"])
+      for (const command of [[], "echo hi"]) {
         await expect(exec(command, { pty: { columns: 80, rows: 24 } })).rejects.toMatchObject({
           code: "unavailable",
         });
+      }
     }
 
     expect(
@@ -514,7 +515,7 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
       await job.write(new TextEncoder().encode("printf 'nyte$ '; sleep 30\r"));
       await until(() => text.includes("\r\nnyte$ "));
 
-      await vi.waitFor(async () => expect(await job.idle()).toBe(false), { timeout: 5_000 });
+      await vi.waitFor(async () => expect(await job.idle()).toBe(false), { timeout: 5000 });
     } finally {
       await job.stop();
     }
@@ -522,7 +523,7 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
 
   it("does not mistake a command's OSC 133 prompt markers for an idle shell", async () => {
     const job = await localExec(await folder())(
-      "printf '\\033]133;A\\007$ '; sleep 0.5; printf '\\033]133;C\\007'; sleep 2",
+      String.raw`printf '\033]133;A\007$ '; sleep 0.5; printf '\033]133;C\007'; sleep 2`,
       { pty: { columns: 80, rows: 24 } },
     );
 
@@ -531,7 +532,7 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
 
     expect(await job.idle()).toBe(false);
 
-    for (let text = ""; !text.includes("\u001b]133;C");) {
+    for (let text = ""; !text.includes("\u001B]133;C");) {
       const next = await reader.next();
 
       if (next.done === true) break;

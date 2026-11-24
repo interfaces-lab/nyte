@@ -24,8 +24,9 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
 
-  for (const made of folders.splice(0))
+  for (const made of folders.splice(0)) {
     await rm(made, { recursive: true, force: true, maxRetries: 10 });
+  }
 });
 
 async function folder(): Promise<string> {
@@ -43,7 +44,7 @@ function sh(cwd: string, ...args: string[]): string {
   });
 }
 
-type Pull = {
+interface Pull {
   readonly number: number;
   readonly title: string;
   readonly url: string;
@@ -52,16 +53,16 @@ type Pull = {
   readonly headRefName: string;
   readonly baseRefName: string;
   readonly statusCheckRollup: readonly Readonly<Record<string, string | null>>[];
-};
+}
 
-type Scenario = {
+interface Scenario {
   readonly auth: "ready" | "signed_out" | "invalid";
   readonly login?: string;
   readonly cli?: "old";
   readonly api?: "fail";
   readonly create?: "fail";
   readonly pulls?: Readonly<Record<string, Pull>>;
-};
+}
 
 async function scenario(value: Scenario): Promise<void> {
   await writeFile(scenarioFile, JSON.stringify({ login: "octocat", ...value }));
@@ -405,7 +406,7 @@ describe("localGitHub", () => {
 
     await writeFile(`${scenarioFile}.approved`, "");
     await vi.waitFor(async () => expect(await account.account()).toMatchObject({ kind: "ready" }), {
-      timeout: 5_000,
+      timeout: 5000,
     });
     expect(await github(root).state()).toMatchObject({ repository: HELLO });
 

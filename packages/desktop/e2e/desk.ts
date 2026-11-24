@@ -82,8 +82,9 @@ export const test = base.extend<DeskFixtures>({
     const prepared = await prepareHome(parent);
     await cp(SAMPLE, join(prepared.home, "design"), { recursive: true });
 
-    for (const [path, source] of Object.entries(project))
+    for (const [path, source] of Object.entries(project)) {
       await cp(source, join(prepared.home, path), { recursive: true });
+    }
 
     const launched = await launchDesktop({ home: prepared.home, parentDirectory: parent });
     stack.defer(() => launched.close());
@@ -91,12 +92,13 @@ export const test = base.extend<DeskFixtures>({
     const problems = [collectErrors(launched.page)];
     const pages = new Map<DeskApp, Page>([["Nyte", launched.page]]);
 
-    if (await screenLocked())
+    if (await screenLocked()) {
       testInfo.annotations.push({
         type: "captures",
         description:
           "The screen is locked, so captures are of the page alone: no material, traffic lights or shadow.",
       });
+    }
 
     const capture = async (shown: Page, name: string): Promise<string> => {
       const path = testInfo.outputPath(`${name}.png`);
@@ -136,8 +138,9 @@ export const test = base.extend<DeskFixtures>({
       await session.send("Emulation.setFocusEmulationEnabled", { enabled: true });
       await expect.poll(() => shown.evaluate(() => document.hasFocus())).toBe(true);
 
-      if (!(await shown.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()))
+      if (!(await shown.getByRole("button", { name: "Show sidebar", exact: true }).isVisible())) {
         return;
+      }
       const size = await shown.evaluate(() => ({ width: innerWidth, height: innerHeight }));
 
       await shown.mouse.move(size.width - 8, size.height / 2);
@@ -147,8 +150,9 @@ export const test = base.extend<DeskFixtures>({
     const setDeskTheme = async (theme: "light" | "dark"): Promise<void> => {
       await setTheme({ application, page: page("Nyte") }, theme);
 
-      for (const shown of application.windows())
+      for (const shown of application.windows()) {
         await expect(shown.locator("html")).toHaveAttribute("data-display-mode", theme);
+      }
     };
 
     const tile = async (): Promise<void> => {
@@ -210,13 +214,15 @@ export const test = base.extend<DeskFixtures>({
       tile,
     });
 
-    if (testInfo.status !== testInfo.expectedStatus)
+    if (testInfo.status !== testInfo.expectedStatus) {
       for (const app of DESK_APPS) {
         const shown = pages.get(app);
 
-        if (shown !== undefined && !shown.isClosed())
+        if (shown !== undefined && !shown.isClosed()) {
           await capture(shown, `failed-${app.toLowerCase()}`).catch(() => undefined);
+        }
       }
+    }
 
     for (const found of problems) {
       expect(found.pageErrors, "uncaught page errors").toEqual([]);
@@ -315,8 +321,9 @@ export async function wheelTo(
 
   await page.mouse.move(box.x + box.width / 2, (top + Math.min(box.y + box.height, height)) / 2);
 
-  for (let step = 0; step < 40 && !(await target.isVisible()); step += 1)
+  for (let step = 0; step < 40 && !(await target.isVisible()); step += 1) {
     await page.mouse.wheel(0, delta);
+  }
 
   await expect(target).toBeVisible();
 }
@@ -371,5 +378,5 @@ async function frames(page: Page): Promise<void> {
 }
 
 function startsWith(name: string): RegExp {
-  return new RegExp(`^${name.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\b`, "u");
+  return new RegExp(`^${name.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)}\\b`, "u");
 }

@@ -40,8 +40,9 @@ export function locationPlace(router: AppRouter): Place | undefined {
   const params: unknown = router.options.parseSearch(search);
   const { customize } = Value.Check(pageSearch, params) ? params : {};
 
-  if (customize !== undefined)
+  if (customize !== undefined) {
     return { kind: "customize", section: customize, sessionId: undefined };
+  }
 
   const project = /^\/project\/([^/]+)$/.exec(pathname)?.[1];
 
@@ -62,19 +63,21 @@ export function locationPlace(router: AppRouter): Place | undefined {
 }
 
 export function samePlaceAt(place: Place, location: Place): boolean {
-  if (place.kind === "customize" || location.kind === "customize")
+  if (place.kind === "customize" || location.kind === "customize") {
     return (
       place.kind === "customize" &&
       location.kind === "customize" &&
       pageSection(place) === pageSection(location)
     );
+  }
 
-  if (place.kind === "project" || location.kind === "project")
+  if (place.kind === "project" || location.kind === "project") {
     return (
       place.kind === "project" &&
       location.kind === "project" &&
       place.projectId === location.projectId
     );
+  }
 
   return sameSelection(place, location);
 }

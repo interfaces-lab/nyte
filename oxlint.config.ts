@@ -1,6 +1,8 @@
 import { defineConfig } from "oxlint";
 import type { OxlintOverride } from "oxlint";
 
+import { nyteRules } from "./scripts/oxlint/nyte-rules.ts";
+
 const rendererCoreImports = [
   {
     name: "@nyte-ai/core",
@@ -83,6 +85,11 @@ const reflectGlobal = {
     "Use typed property access or direct invocation. Suppress this rule only for genuine reflection.",
 };
 
+const canvasKitImport = {
+  name: "nyte/canvas",
+  message: "nyte/canvas only resolves in the canvas runtime. Import it only from *.view.tsx files.",
+};
+
 export default defineConfig({
   ignorePatterns: [
     "output/**",
@@ -96,7 +103,17 @@ export default defineConfig({
     "**/.local/**",
     "packages/host/test/fixtures/language/**",
   ],
-  plugins: ["react", "eslint", "typescript", "unicorn", "import", "oxc"],
+  plugins: [
+    "react",
+    "eslint",
+    "typescript",
+    "unicorn",
+    "import",
+    "oxc",
+    "jsx-a11y",
+    "promise",
+    "vitest",
+  ],
   jsPlugins: [
     "./packages/app/lint/design-scale.js",
     "./packages/app/lint/interactions.js",
@@ -107,10 +124,10 @@ export default defineConfig({
     "./scripts/oxlint/nyte-code/index.ts",
   ],
   categories: {
-    correctness: "error",
+    correctness: "off",
   },
   rules: {
-    "oxc/no-accumulating-spread": "error",
+    ...nyteRules,
     "eslint/no-restricted-globals": [
       "error",
       reflectGlobal,
@@ -120,28 +137,11 @@ export default defineConfig({
       "error",
       { paths: runtimeLoadImports, patterns: uiLibraryImports },
     ],
-    "react/rules-of-hooks": "error",
-    "react/no-unstable-nested-components": "error",
     "react/todo": "warn",
-    "typescript/no-explicit-any": "error",
-    "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
-    "unicorn/prefer-includes": "error",
-    "eslint/max-lines": ["error", { max: 1000, skipBlankLines: false, skipComments: false }],
-    "landmines-style/no-comments": "error",
-    "landmines-testing/no-fixed-sleep": "error",
-    "landmines-testing/no-unsignaled-poll": "error",
-    "nyte-code/declarative-comments": "error",
-    "nyte-code/no-cross-package-relative-imports": "error",
-    "nyte-code/no-direct-effect": "error",
-    "nyte-code/no-is-helper-names": "error",
-    "nyte-code/no-lab-imports": "error",
-    "nyte-code/no-of-lookup-names": "error",
-    "nyte-code/no-one-off-boolean-helpers": "error",
-    "nyte-code/no-sentinel-unions": "error",
-    "nyte-code/require-suppression-reason": "error",
   },
   options: {
     typeAware: true,
+    reportUnusedDisableDirectives: "error",
   },
   settings: {
     "react-hooks": { additionalEffectHooks: "(useMountEffect)" },
@@ -197,6 +197,33 @@ export default defineConfig({
       },
     },
     {
+      files: ["**/*.test.{ts,tsx}", "**/*.browser-test.tsx", "**/test/**", "**/e2e/**"],
+      rules: { "typescript/no-non-null-assertion": "off" },
+    },
+    {
+      files: ["**/*.{js,mjs,cjs,jsx}"],
+      rules: { "typescript/use-unknown-in-catch-callback-variable": "off" },
+    },
+    {
+      files: [
+        "**/*.config.{ts,mts,js,mjs}",
+        "**/lint/*.js",
+        "**/fixtures/**",
+        "**/design-sample/**",
+        "scripts/oxlint/**",
+        "scripts/release-guard.mjs",
+        "packages/app/src/lib/deferred-urls.ts",
+        "packages/canvas/test/probes/**",
+        "packages/examples/**",
+        "packages/ios/src/app/**",
+        "packages/plugin/src/**",
+        "packages/tui/src/{codemode-wasm,docs-files,photon-wasm}.ts",
+        "services/connect-broker/src/index.ts",
+        "services/metrics/src/index.ts",
+      ],
+      rules: { "import/no-default-export": "off" },
+    },
+    {
       files: ["packages/tui/src/**/*.tsx"],
       rules: {
         "react/refs": "off",
@@ -228,40 +255,15 @@ export default defineConfig({
     {
       files: ["packages/tui/**", "packages/plugin/**"],
       rules: {
-        "eslint/block-scoped-var": "error",
-        "eslint/no-extend-native": "error",
-        "eslint/no-extra-bind": "error",
-        "eslint/no-implied-eval": "error",
-        "eslint/no-new": "error",
         "eslint/no-shadow": "error",
         "eslint/no-underscore-dangle": ["error", { allow: ["_exhaustive"] }],
         "eslint/no-unmodified-loop-condition": "error",
         "eslint/no-unexpected-multiline": "error",
-        "eslint/no-unneeded-ternary": "error",
         "eslint/no-useless-call": "error",
-        "eslint/no-useless-concat": "error",
-        "eslint/no-useless-constructor": "error",
-        "eslint/preserve-caught-error": "error",
         "typescript/consistent-return": "error",
-        "typescript/no-confusing-non-null-assertion": "error",
-        "typescript/no-misused-promises": "error",
-        "typescript/no-unnecessary-boolean-literal-compare": "error",
-        "typescript/no-unnecessary-template-expression": "error",
-        "typescript/no-unnecessary-type-arguments": "error",
-        "typescript/no-unnecessary-type-assertion": "error",
-        "typescript/no-unnecessary-type-parameters": "error",
-        "typescript/no-unsafe-enum-comparison": "error",
         "unicorn/consistent-function-scoping": "error",
-        "unicorn/no-accessor-recursion": "error",
-        "unicorn/no-array-fill-with-reference-type": "error",
         "unicorn/no-array-reverse": "error",
         "unicorn/no-array-sort": "error",
-        "unicorn/no-confusing-array-with": "error",
-        "unicorn/no-instanceof-builtins": "error",
-        "unicorn/prefer-add-event-listener": "error",
-        "unicorn/prefer-array-find": "error",
-        "import/no-absolute-path": "error",
-        "import/no-self-import": "error",
         "import/no-unassigned-import": "error",
       },
     },
@@ -441,9 +443,22 @@ export default defineConfig({
       },
     },
     {
+      files: ["packages/plugin/src/**"],
+      excludeFiles: ["packages/plugin/src/**/*.view.tsx"],
+      rules: {
+        "eslint/no-restricted-imports": [
+          "error",
+          { paths: [...runtimeLoadImports, canvasKitImport], patterns: uiLibraryImports },
+        ],
+      },
+    },
+    {
       files: ["packages/plugin/src/codemode-runtime.ts"],
       rules: {
-        "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
+        "eslint/no-restricted-imports": [
+          "error",
+          { paths: [canvasKitImport], patterns: uiLibraryImports },
+        ],
       },
     },
     {

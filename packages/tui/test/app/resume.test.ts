@@ -9,7 +9,7 @@ import { openTestHost } from "../fixture/host.ts";
 import { footerShows, startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
 
-const TURNS = 1_000;
+const TURNS = 1000;
 
 const TAIL = 200;
 

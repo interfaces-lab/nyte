@@ -45,8 +45,9 @@ export const transcriptHandlers = {
   "whole-tools": (state, msg) => {
     const local = state.local.transcript;
 
-    if (followedSession(state)?.id !== msg.session || local.toolOutput === "collapsed")
+    if (followedSession(state)?.id !== msg.session || local.toolOutput === "collapsed") {
       return stay(state);
+    }
 
     return stay(
       withLocal(state, {
@@ -85,10 +86,11 @@ function reveal(state: State, direction: "earlier" | "later"): Step {
 
   const session = state.facts.chat;
 
-  if (direction === "earlier" && current.start === 0)
+  if (direction === "earlier" && current.start === 0) {
     return session === null
       ? stay(state)
       : { state, effects: [{ kind: "load-earlier", session: session.id }] };
+  }
 
   if (direction === "later" && current.end === rows.length) return stay(state);
 

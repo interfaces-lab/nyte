@@ -10,11 +10,11 @@ import type { Surface } from "./browser-surface.ts";
 const PROGRESS_INTERVAL_MS = 250;
 
 export class BrowserDownloads {
-  readonly #items = new Map<string, DownloadItem>();
-  readonly #emit: (surface: Surface, event: HostEvent) => void;
+  private readonly items = new Map<string, DownloadItem>();
+  private readonly emit: (surface: Surface, event: HostEvent) => void;
 
   constructor(emit: (surface: Surface, event: HostEvent) => void) {
-    this.#emit = emit;
+    this.emit = emit;
   }
 
   start(surface: Surface, item: DownloadItem): void {
@@ -27,10 +27,10 @@ export class BrowserDownloads {
     );
 
     item.setSavePath(path);
-    this.#items.set(id, item);
+    this.items.set(id, item);
 
     const report = (state: BrowserDownload["state"]): void => {
-      this.#emit(surface, {
+      this.emit(surface, {
         kind: "browser_download",
         surface: surface.id,
         download: {
@@ -55,12 +55,12 @@ export class BrowserDownloads {
       report(state);
     });
     item.once("done", (_event, state) => {
-      this.#items.delete(id);
+      this.items.delete(id);
       report(state);
     });
   }
 
   cancel(id: string): void {
-    this.#items.get(id)?.cancel();
+    this.items.get(id)?.cancel();
   }
 }

@@ -74,12 +74,14 @@ export async function rawConnect(listener: Listener, token: string) {
       throw new Error(`The socket ended before answering ${id}.`);
     },
     async closing(): Promise<{ readonly code: number; readonly reason: string }> {
-      for (let frame = await nextFrame(); frame !== null; frame = await nextFrame())
-        if (frame.opcode === 8)
+      for (let frame = await nextFrame(); frame !== null; frame = await nextFrame()) {
+        if (frame.opcode === 8) {
           return {
             code: frame.payload.readUInt16BE(0),
             reason: frame.payload.subarray(2).toString("utf8"),
           };
+        }
+      }
 
       return { code: 0, reason: "ended" };
     },

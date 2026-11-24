@@ -151,7 +151,7 @@ function capture() {
     result: (text) => void (streams.stdout += text),
     json: (value) => void (streams.stdout += `${JSON.stringify(value)}\n`),
     say: (text) => void (streams.stderr += `${text}\n`),
-    rows: (rows) => void (streams.stderr += formatRows(rows, mode.stderr).join("\n") + "\n"),
+    rows: (rows) => void (streams.stderr += `${formatRows(rows, mode.stderr).join("\n")}\n`),
     status: (gutter, text) =>
       void (streams.stderr += `${formatStatus(gutter, text, mode.stderr)}\n`),
     progress: (phase) => void (streams.stderr += `${phase}\n`),

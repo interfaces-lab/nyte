@@ -13,8 +13,8 @@ import { errorMessage } from "../contract/errors.ts";
 import { nyte } from "../contract/nyte.ts";
 import { keys } from "../data/query-client.ts";
 import { useServerState } from "../data/host.ts";
-import { SettingsField, SettingsFormDialog } from "../settings/dialog.tsx";
-import { SettingsSection } from "../settings/rows.tsx";
+import { SettingsField, SettingsFormDialog } from "../settings-rows/dialog.tsx";
+import { SettingsSection } from "../settings-rows/rows.tsx";
 import { ConnectionStatus, FactRow } from "../components/connection-list.tsx";
 
 const styles = create({
@@ -80,7 +80,7 @@ function ConnectDialog({ onOpenChange }: { readonly onOpenChange: (open: boolean
     <SettingsFormDialog
       open
       title="Connect to Host"
-      description="List another Nyte host's chats in the sidebar. For a host behind Cloudflare Tunnel, copy both from the pairing link under Pair in its Settings > Server. A host on your tailnet ignores the token, so enter any text."
+      description="List another Nyte host's chats in the sidebar. A deployed host takes its NYTE_TOKEN. A host on your tailnet ignores the token, so enter any text."
       submitLabel="Connect"
       canSubmit={address.trim() !== "" && token.trim() !== ""}
       pending={connect.isPending}

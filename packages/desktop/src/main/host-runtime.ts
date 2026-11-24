@@ -5,23 +5,19 @@ import { app, dialog, MessageChannelMain, shell } from "electron";
 import type { MessagePortMain } from "electron";
 import type { ConnectRuntime } from "@nyte-ai/connect/host";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
-import { servePort } from "../shared/host-port.ts";
-import type { PortEnd } from "../shared/host-port.ts";
+import { servePort, HOST_PORT_ORIGIN } from "../shared/host-port.ts";
+import type { PortEnd, DialSocket } from "../shared/host-port.ts";
 import { DesktopHost } from "../host/desktop-host.ts";
 import type { DesktopHostDependencies } from "../host/desktop-host.ts";
-import { CloudflareTunnelPlugin } from "../host/connections/cloudflare-tunnel.ts";
 import { hostAgent } from "./host-agent.ts";
 import type { AgentRegistration, HostAgent } from "./host-agent.ts";
 import type { SessionId } from "@nyte-ai/sdk";
 import { connect, createSendJournal } from "@nyte-ai/sdk/client";
+import type { ClientConnection, Live, LinkState } from "@nyte-ai/sdk/client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserAgent } from "../shared/browser-agent.ts";
 import { appSocket, offerAppActions } from "../shared/host-client.ts";
-import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
-import type { DialSocket } from "../shared/host-port.ts";
-import { HostLink } from "../host/host-link.ts";
-import type { HostLinkState } from "../host/host-link.ts";
 import { socketDial, socketFetch } from "./host-socket.ts";
 import { followHostProcess } from "./host-process.ts";
 import type { HostProcessFollower } from "./host-process.ts";
@@ -35,7 +31,7 @@ export interface HostRoute {
 export interface HostRuntime {
   readonly agent: HostAgent;
   readonly route: HostRoute;
-  readonly link: HostLink;
+  readonly link: Live<LinkState>;
   readonly hostProcess: HostProcessFollower;
   readonly desktop: DesktopHost;
   resume(): void;
@@ -56,7 +52,7 @@ export type HostRuntimeOptions = Pick<
   readonly preview: CanvasPreviewer;
   previewSignal(): AbortSignal;
   openChat(session: SessionId): void;
-  readonly linkChanged?: (state: HostLinkState) => void;
+  readonly linkChanged?: (state: LinkState) => void;
   readonly hostProcessChanged?: (state: HostProcess) => void;
   readonly registrationChanged?: (registration: AgentRegistration) => void;
 };
@@ -74,28 +70,26 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
 
   const socket = join(options.nyteHome, "host.sock");
   const route: HostRoute = { fetch: socketFetch(socket), dial: socketDial(socket) };
-  const link = new HostLink(
-    () =>
-      connect({
-        url: HOST_PORT_ORIGIN,
-        credentials: { kind: "custom", headers: () => ({}) },
-        client: { kind: "app", name: "Nyte", version: app.getVersion() },
-        journal: createSendJournal(),
-        transport: {
-          fetch: (url, init) => route.fetch(new Request(url, init)),
-          socket: appSocket(socket),
-        },
-      }),
-    (state) => {
-      options.linkChanged?.(state);
-      hostProcess.linkChanged();
+  const stop = new AbortController();
+
+  const connection = connect({
+    url: HOST_PORT_ORIGIN,
+    credentials: { kind: "custom", headers: () => ({}) },
+    client: { kind: "app", name: "Nyte", version: app.getVersion() },
+    journal: createSendJournal(),
+    transport: {
+      fetch: (url, init) => route.fetch(new Request(url, init)),
+      socket: appSocket(socket),
     },
-  );
+    wait: stop.signal,
+  });
+
+  const link = connectedLink(connection);
+  link.subscribe(() => options.linkChanged?.(link.snapshot()));
 
   const hostProcess = followHostProcess({
     agent,
-    appVersion: app.getVersion(),
-    link: () => link.state,
+    link,
     activity: () => desktop.updateActivity(),
     changed: (state) => options.hostProcessChanged?.(state),
   });
@@ -107,24 +101,23 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     },
     (cause: unknown) => dialog.showErrorBox("Nyte couldn't start its host", describe(cause)),
   );
-  link.start();
 
-  const withdraw = link.attach((connection) =>
-    offerAppActions(connection, {
-      agent: options.agent,
-      preview: options.preview,
-      signal: () => options.previewSignal(),
-      openChat: (session) => options.openChat(session),
-    }),
+  const offered = connection.then(
+    (opened) =>
+      offerAppActions(opened, {
+        agent: options.agent,
+        preview: options.preview,
+        signal: () => options.previewSignal(),
+        openChat: (session) => options.openChat(session),
+      }),
+    () => () => undefined,
   );
 
   const desktop = new DesktopHost({
     home: options.home,
-    link,
+    connection,
+    appVersion: app.getVersion(),
     usageScan: new UsageScanWorker(options.home, options.usageWorker),
-    remoteAccessPlugins: {
-      cloudflare: new CloudflareTunnelPlugin({ home: join(options.home, ".nyte") }),
-    },
     connect: options.connect,
     mediaOrigin: options.mediaOrigin,
     emitHostEvent: options.emitHostEvent,
@@ -141,15 +134,47 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     hostProcess,
     desktop,
     resume() {
-      link.retry();
+      void connection.then((opened) => opened.retry());
       desktop.resume();
       options.hostProcessChanged?.(hostProcess.state());
     },
     async close() {
-      withdraw();
-      link.close();
-      await hostProcess.close();
+      stop.abort();
+      (await offered)();
       await desktop.close();
+      await connection.then(
+        (opened) => opened.close(),
+        () => undefined,
+      );
+    },
+  };
+}
+
+function connectedLink(connection: Promise<ClientConnection>): Live<LinkState> {
+  const listeners = new Set<() => void>();
+  let opened: ClientConnection | null = null;
+
+  void connection.then(
+    (ready) => {
+      opened = ready;
+
+      for (const listener of listeners) ready.link.subscribe(listener);
+
+      for (const listener of listeners) listener();
+    },
+    () => undefined,
+  );
+
+  return {
+    snapshot: () => opened?.link.snapshot() ?? { kind: "connecting" },
+    subscribe(listener) {
+      listeners.add(listener);
+      const stop = opened?.link.subscribe(listener);
+
+      return () => {
+        listeners.delete(listener);
+        stop?.();
+      };
     },
   };
 }
@@ -189,10 +214,11 @@ function announce(registration: AgentRegistration): void {
         noLink: true,
       })
       .then(({ response }) => {
-        if (response === 0)
+        if (response === 0) {
           void shell.openExternal(
             "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
           );
+        }
       });
 
     return;

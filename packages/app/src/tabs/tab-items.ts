@@ -1,12 +1,10 @@
 import type { IconName } from "@nyte-ai/ui/icon";
 import { taskLabel } from "@nyte-ai/plugin/client/presentation";
-import type { ProjectInfo } from "@nyte-ai/sdk";
+import type { ProjectInfo, SessionId } from "@nyte-ai/sdk";
 import { chatTitle, NEW_CHAT_TITLE } from "../chats/index.ts";
-import type { ChatDirectory } from "../chats/index.ts";
+import type { ChatDirectory, ChatMark } from "../chats/index.ts";
 import { tabPlace, tabPlaces } from "./model.ts";
 import type { Place, Tab, WindowState } from "./model.ts";
-import type { ChatMark } from "../window/index.ts";
-import type { WindowTabItem } from "./window-tab-strip.tsx";
 
 const PLACE_ICONS = {
   blank: "new-chat",
@@ -14,6 +12,20 @@ const PLACE_ICONS = {
   customize: "customize",
   project: "layers",
 } satisfies Record<Place["kind"], IconName>;
+
+export type WindowTabSplit = "right" | "down";
+
+export interface WindowTabItem {
+  readonly id: string;
+  readonly title: string;
+  readonly tooltip: string;
+  readonly sessions: readonly SessionId[];
+  readonly parent?: SessionId;
+  readonly chat: SessionId | undefined;
+  readonly glyph: IconName | undefined;
+  readonly preview: boolean;
+  readonly split: WindowTabSplit | undefined;
+}
 
 export function windowTabItems(
   state: WindowState,

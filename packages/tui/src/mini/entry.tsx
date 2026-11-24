@@ -18,7 +18,7 @@ export function EntryView(props: {
     marginTop: props.gap ? 1 : 0,
   };
 
-  if (entry.kind === "user")
+  if (entry.kind === "user") {
     return (
       <box {...layout} flexDirection="row">
         <text fg={props.theme.dim} flexShrink={0} wrapMode="none">{`${entry.mark} `}</text>
@@ -27,6 +27,7 @@ export function EntryView(props: {
         </text>
       </box>
     );
+  }
 
   return (
     <text {...layout} wrapMode="word">

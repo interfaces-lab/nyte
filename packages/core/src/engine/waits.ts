@@ -124,8 +124,9 @@ export function createWaitRegistry(
       const target = current.waiting;
       const withdrawn = await withdrawReport(kernel.store, outcome);
 
-      if (slot === null || target.kind !== "all")
+      if (slot === null || target.kind !== "all") {
         return completion(session, current, outcome, withdrawn);
+      }
 
       if ((current.partial.at(slot) ?? null) !== null) return null;
 
@@ -135,8 +136,9 @@ export function createWaitRegistry(
 
       const outcomes = partial.flatMap((found) => (found === null ? [] : [found]));
 
-      if (outcomes.length === target.targets.length)
+      if (outcomes.length === target.targets.length) {
         return completion(session, current, { kind: "all", outcomes }, withdrawn);
+      }
 
       const on = waitingOn(target, partial);
       const filled = { ...current, partial };
@@ -341,8 +343,9 @@ export function createWaitRegistry(
         if (until > now) break;
         const entry = readIndexed(ref.name);
 
-        if (entry !== null)
+        if (entry !== null) {
           due.push(offer(entry, entry.target === null ? { kind: "deadline" } : { kind: "timer" }));
+        }
       }
 
       dev("waits", "tick", { due: due.length });
@@ -376,8 +379,9 @@ export function createWaitRegistry(
           if (
             found !== null &&
             (callPhase(found.record).kind === "settled" || lapsed(kernel, found.record))
-          )
+          ) {
             resumer.resume();
+          }
         }),
       );
     },
@@ -385,10 +389,11 @@ export function createWaitRegistry(
       const resumer = resumers.get(formatWaitKey(session, call));
 
       if (resumer !== undefined) resumer.resume();
-      else
+      else {
         void rerunAction(session, call).catch((error: unknown) =>
           fault("waits", "rerun failed", { call, error: String(error) }),
         );
+      }
     },
     onReceipt(session, id, listener) {
       const key = `${session}/${id}`;
@@ -476,8 +481,9 @@ export async function jobOutcome(kernel: Kernel, id: JobId): Promise<JobEnd | nu
 
 function wake(kernel: Kernel, session: SessionId, record: CallRecord): void {
   if (record.head === null && lapsed(kernel, record)) kernel.waits.rerun(session, record.id);
-  else if (record.head !== null && callPhase(record).kind === "woken")
+  else if (record.head !== null && callPhase(record).kind === "woken") {
     kernel.wakes.notify(session, record.head);
+  }
 }
 
 export async function earliestWake(

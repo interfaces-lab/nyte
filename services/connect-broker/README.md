@@ -1,8 +1,8 @@
 # @nyte-ai/connect-broker
 
-The Nyte Connect broker, a Cloudflare Worker over D1. It links desktops to Clerk accounts, signs the short leases that decide which phones a desktop serves, and relays phone requests to each desktop over a WebSocket the desktop opened. Desktops need no inbound port and no tunnel.
+The Nyte Connect broker is a Cloudflare Worker over D1. It links desktops to Clerk accounts and signs the short leases that decide which phones a desktop serves. It relays phone requests to each desktop over a WebSocket the desktop opened. Desktops need no inbound port and no tunnel.
 
-Each linked desktop gets one relay Durable Object, which holds that environment's devices, policy and proofs in its own SQLite. The wire contract lives in [`@nyte-ai/connect`](../../packages/connect/README.md), and `packages/connect/src/relay.ts` describes the relay protocol: frames, flow control, close codes and limits. This package implements the broker side.
+Each linked desktop gets one relay Durable Object. That object holds the environment's devices, policy and proofs in its own SQLite. The wire contract lives in [`@nyte-ai/connect`](../../packages/connect/README.md). `packages/connect/src/relay.ts` describes the relay protocol, including frames, flow control, close codes and limits. This package implements the broker side.
 
 The broker is served at `https://nyte-connect.daniel-fu90.workers.dev` through `workers_dev`, with no custom domain. Every step under [Operator setup](#operator-setup) is manual.
 
@@ -16,8 +16,8 @@ The broker is served at `https://nyte-connect.daniel-fu90.workers.dev` through `
 | `POST /v1/environments/:id/lease` | Environment proof, body `{}` | Signs a 60 second allowlist. |
 | `GET /v1/environments/:id/relay` | First frame is an environment proof | The desktop's relay WebSocket. |
 | `POST /v1/environments/:id/devices` | Owner JWT | Enrolls a phone's token digest through the relay. Answers 201 only once the device is active. |
-| `DELETE /v1/environments/:id/devices/:deviceId` | Owner JWT or environment proof | Strong revocation. Also denies and revokes the enrolling Clerk session. Answers 204. |
-| `POST /v1/environments/:id/devices/:deviceId/release` | Environment proof only, body exactly `{}` | Weak end. The device stops and its Clerk session is left alone. Answers 204. |
+| `DELETE /v1/environments/:id/devices/:deviceId` | Owner JWT or environment proof | Strong revocation. Denies and revokes the enrolling Clerk session. Answers 204. |
+| `POST /v1/environments/:id/devices/:deviceId/release` | Environment proof only, body exactly `{}` | Weak end. Stops the device and leaves its Clerk session alone. Answers 204. |
 | `POST /v1/link-transactions` | Proof by the key being linked | Opens a link transaction for a host without a browser and answers its code. |
 | `POST /v1/link-transactions/lookup` | Clerk JWT | Names the host a code belongs to and its key fingerprint. Creates nothing. |
 | `POST /v1/link-transactions/:id/approve`, `/deny` | Clerk JWT | The owner approves or refuses the link. |
@@ -37,9 +37,9 @@ Another owner's environment or device answers 404, the same as one that doesn't 
 
 `CONNECT_WEB_ORIGINS` is an explicit comma-separated allowlist of exact canonical origins. Each origin must use HTTPS, except HTTP `localhost` and `127.0.0.1`. Paths, credentials, queries, fragments, noncanonical forms, duplicates and empty entries are invalid. An empty string turns browser access off. The broker fails closed on bad configuration.
 
-The checked-in configuration allows `https://app.nyte.sh`, `http://localhost:5179` and `http://127.0.0.1:5179`, matching the web app's `APP_ORIGINS`. The two dev origins are on in the hosted broker on purpose, so a local web app can reach real linked desktops through the public relay. The broker also trusts other software served at those exact local origins for CORS, but that software still needs Clerk or device bearer authentication.
+The checked-in configuration allows `https://app.nyte.sh`, `http://localhost:5179` and `http://127.0.0.1:5179`. That matches the web app's `APP_ORIGINS`. The two dev origins are on in the hosted broker on purpose, so a local web app can reach real linked desktops through the public relay. The broker also trusts other software served at those exact local origins for CORS. That software still needs Clerk or device bearer authentication.
 
-To keep development out of production, remove both dev entries from `CONNECT_WEB_ORIGINS` and `CLERK_AUTHORIZED_PARTIES`, and put them in a separate development broker's `.dev.vars`. The shared client requires an HTTPS broker origin even during development.
+To keep development out of production, remove both dev entries from `CONNECT_WEB_ORIGINS` and `CLERK_AUTHORIZED_PARTIES`. Put them in a separate development broker's `.dev.vars`. The shared client requires an HTTPS broker origin even during development.
 
 Only these route and method pairs get CORS and unauthenticated OPTIONS preflights:
 
@@ -65,7 +65,7 @@ Only these route and method pairs get CORS and unauthenticated OPTIONS preflight
 
 Desktop linking, leases, relay socket upgrades, machine-key releases, the webhook and JWKS publication get no CORS. The broker refuses browser requests that carry `nyte-proof` without CORS, even on the shared DELETE paths. Before frames reach the desktop, the relay strips `Origin`, cookies, `Referer`, `Sec-Fetch` headers and forwarding headers. Only the request headers listed under [Routes](#routes) remain. The desktop still applies its own Origin, host and bearer checks.
 
-The browser token risks, the required strict CSP and the browser client API are in the [`@nyte-ai/connect` README](../../packages/connect/README.md#browser-client). Cloudflare and the broker see all relayed traffic, browser traffic included.
+The browser token risks, the required strict CSP and the browser client API are in the [`@nyte-ai/connect` README](../../packages/connect/README.md#browser-client). Cloudflare and the broker see all relayed traffic, including browser traffic.
 
 ## How it works
 
@@ -80,25 +80,25 @@ The broker verifies a Clerk session JWT offline with `CLERK_JWT_KEY`. It then re
 - `sts`, when present, is `active`.
 - There is no `act` claim.
 
-The `owners` table records what Clerk says. Banned or locked users are `disabled`, and deleted users are `deleted` for good. The broker applies a webhook update only when it is newer than the table's row, by Clerk's `updated_at`. After D1 commits, the broker pushes the standing D1 holds to every relay of the owner. If a relay can't be reached, the delivery fails so Clerk retries it. A ban or lock also ends the owner's open relay channels but keeps every link.
+The `owners` table records what Clerk says. Banned or locked users are `disabled`, and deleted users are `deleted` for good. The broker applies a webhook update only when Clerk's `updated_at` is newer than the table's row. After D1 commits, the broker pushes the standing D1 holds to every relay of the owner. If a relay can't be reached, the delivery fails so Clerk retries it. A ban or lock also ends the owner's open relay channels, but it keeps every link.
 
 ### Owner standing
 
-Linking looks the owner up in the Clerk Backend API. The lookup also supplies the owner label, the first available of primary email, username, name, a session `email` claim and the user id. A banned, locked or unknown user links nothing. While Clerk can't answer, linking answers 503. The lookup records nothing.
+Linking looks the owner up in the Clerk Backend API. The lookup also supplies the owner label. It picks the first available of primary email, username, name, a session `email` claim and the user id. A banned, locked or unknown user links nothing. While Clerk can't answer, linking answers 503. The lookup records nothing.
 
-Only the webhook and the cron write an owner's standing, and no request waits on Clerk for its answer. Every sweep asks Clerk about each owner who holds an active environment, 100 at a time, applies Clerk's answer as current and pushes it to the owner's relays. So the sweep catches a webhook Clerk stopped retrying within five minutes. The sweep disables a user Clerk doesn't return, but never deletes one. Only the webhook deletes.
+Only the webhook and the cron write an owner's standing. No request waits on Clerk for its answer. Every sweep asks Clerk about each owner who holds an active environment, 100 at a time. It applies Clerk's answer as current and pushes it to the owner's relays. The sweep catches a webhook Clerk stopped retrying within five minutes. It disables a user Clerk doesn't return, but it never deletes one. Only the webhook deletes.
 
 ### Environments
 
 Each owner has at most three active environments, enforced by one conditional `INSERT`. A revoked row is a tombstone, and its key and id never return. A desktop told `revoked` must generate a new machine key before it links again.
 
-D1 indexes environments by owner, key thumbprint, name and slot. Everything else about an environment lives in its relay, which copies the identity from D1 the first time its desktop or owner reaches it. An environment lists as online while its relay socket is authenticated and its last lease is within 90 seconds. The list asks the owner's relays in parallel.
+D1 indexes environments by owner, key thumbprint, name and slot. Everything else about an environment lives in its relay. The relay copies the identity from D1 the first time its desktop or owner reaches it. An environment lists as online while its relay socket is authenticated and its last lease is within 90 seconds. The list asks the owner's relays in parallel.
 
 ### Relay
 
-The desktop's first frame proves its machine key for `GET` on its relay route. The relay spends the proof's `jti` in its SQLite before it forwards anything. Unproven sockets close after 5 seconds, and at most four wait at once. A newer proven socket replaces the old one, which closes with code 4409 and resets its channels.
+The desktop's first frame proves its machine key for `GET` on its relay route. The relay spends the proof's `jti` in its SQLite before it forwards anything. Unproven sockets close after 5 seconds. At most four wait at once. A newer proven socket replaces the old one. The old socket closes with code 4409 and resets its channels.
 
-The Worker checks a phone request's route, method, size and bearer shape, and that its `Origin` is absent or allowed. The relay then checks that the bearer's SHA-256 matches an active device of its active environment before it opens a channel. No phone request reads D1. The desktop still checks the digest and its current lease on every request. A phone that disconnects resets its channel. Socket state lives in hibernation attachments, and no credential is stored there.
+The Worker checks a phone request's route, method, size and bearer shape. It also checks that `Origin` is absent or allowed. The relay then checks that the bearer's SHA-256 matches an active device of its active environment before opening a channel. No phone request reads D1. The desktop still checks the digest and its current lease on every request. A phone that disconnects resets its channel. Socket state lives in hibernation attachments, and no credential is stored there.
 
 ### Devices
 
@@ -110,19 +110,19 @@ To enroll a device, the relay:
 4. Reads D1 for a denial of the enrolling session.
 5. With no await in between, compare-and-sets the row active.
 
-The set fails if the device was revoked or released meanwhile, the grant lapsed, the environment or owner stopped being active, or D1 or a strong revocation in this environment denies the session. A reservation that never activates is never in a lease, and the next enrollment revokes it once its grant lapses.
+The set fails if the device was revoked or released meanwhile, or if the grant lapsed. It also fails if the environment or owner stopped being active, or if D1 or a strong revocation in this environment denies the session. A reservation that never activates is never in a lease. The next enrollment revokes it once its grant lapses.
 
 ### Leases
 
-The relay answers a lease from its own SQLite, without D1 or Clerk. Every activation, revocation, release, replacement and lifecycle change bumps the environment's `policy` in the same transaction. `policy` starts from the clock when the relay first loads, because a desktop refuses a lease whose policy is lower than one it accepted. `generation` is always 1, because a revoked environment issues no lease.
+The relay answers a lease from its own SQLite, without D1 or Clerk. Every activation, revocation, release, replacement and lifecycle change bumps the environment's `policy` in the same transaction. `policy` starts from the clock when the relay first loads. A desktop refuses a lease whose policy is lower than one it accepted. `generation` is always 1, because a revoked environment issues no lease.
 
 A lease carries `policy`, `generation`, the proof's `jti` as `req`, and the active device ids, read together. Revocation and release also reset the device's open relay channels at once. When that notice is lost, the 60 second lease is the bound.
 
 ### Revocation strengths
 
-`DELETE device` denies the enrolling Clerk session in D1 and asks Clerk to revoke it. In one transaction, the relay ends the device and records the denial it owes D1. It writes the denial before it answers, and answers 500 if D1 refused. Its alarm retries from that outbox.
+`DELETE device` denies the enrolling Clerk session in D1 and asks Clerk to revoke it. In one transaction, the relay ends the device and records the denial it owes D1. It writes the denial before it answers. It answers 500 if D1 refused. Its alarm retries from that outbox.
 
-Removing an environment owes D1 its retired slot the same way, but answers 204 once serving has stopped. Revocation applies even to a device that a release or replacement already ended, and upgrades the reason to `revoked`, so a phone can't race a weak release ahead of it.
+Removing an environment owes D1 its retired slot the same way, but it answers 204 once serving has stopped. Revocation applies even to a device that a release or replacement already ended. It upgrades the reason to `revoked`, so a phone can't race a weak release ahead of it.
 
 A denial lasts until Clerk confirms the revocation, plus 24 hours. The cron retries Clerk with backoff up to 30 times. After that, the denial never lapses. A release never creates or clears a denial.
 
@@ -158,19 +158,19 @@ The Clerk keys, the webhook secret and the broker private keys are Worker secret
 
 | Kind | Name | What it holds |
 | --- | --- | --- |
-| var | `CONNECT_ORIGIN` | The Worker's `workers.dev` origin, `https://nyte-connect.daniel-fu90.workers.dev`. It is also the Clerk `aud` claim. |
+| var | `CONNECT_ORIGIN` | The Worker's `workers.dev` origin, `https://nyte-connect.daniel-fu90.workers.dev`. Also the Clerk `aud` claim. |
 | var | `CONNECT_WEB_ORIGINS` | Comma-separated exact canonical browser origins. See [Browser access](#browser-access). |
 | var | `CLERK_ISSUER` | The Clerk Frontend API URL, compared exactly to `iss`. |
-| var | `CLERK_AUTHORIZED_PARTIES` | Comma-separated `azp` values accepted when present. It must include `nyte-desktop://account`, or the broker refuses desktop links. |
+| var | `CLERK_AUTHORIZED_PARTIES` | Comma-separated `azp` values accepted when present. Must include `nyte-desktop://account`, or the broker refuses desktop links. |
 | secret | `CLERK_JWT_KEY` | The Clerk instance's PEM public key, for offline verification. |
 | secret | `CLERK_SECRET_KEY` | The Clerk instance's Secret Key, for Backend API calls. |
 | secret | `CLERK_WEBHOOK_SIGNING_SECRET` | The webhook endpoint's `whsec_…` secret. |
-| secret | `BROKER_SIGNING_KEYS` | A JSON array of Ed25519 private JWKs, each with a `kid`. The first key signs, and every key is published. |
+| secret | `BROKER_SIGNING_KEYS` | A JSON array of Ed25519 private JWKs, each with a `kid`. The first key signs. Every key is published. |
 | binding | `DB` | The D1 database, with the migrations in `migrations/`. |
-| binding | `RELAY` | The `EnvironmentRelay` Durable Object namespace. It is SQLite-backed, as the Free plan requires. Each object holds one host's socket through the WebSocket Hibernation API and answers pings without waking. |
+| binding | `RELAY` | The `EnvironmentRelay` Durable Object namespace. SQLite-backed, as the Free plan requires. Each object holds one host's socket through the WebSocket Hibernation API and answers pings without waking. |
 | cron | `*/5 * * * *` | The sweep under [Cleanup](#cleanup). |
 
-Set secrets with `wrangler secret put <NAME>`. Never commit a value, and never put one in a `vars` block.
+Set secrets with `wrangler secret put <NAME>`. Never commit a value. Never put a secret in a `vars` block.
 
 ### Broker signing keys
 
@@ -180,7 +180,7 @@ Generate a key set:
 node -e 'const { generateKeyPairSync, randomUUID } = require("node:crypto"); const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" }); console.log(JSON.stringify([{ ...jwk, kid: randomUUID() }]))'
 ```
 
-Hosts store the published key set from `/.well-known/jwks.json` when they link, and fetch it again only when a token names an unknown `kid`. To rotate, put the new key first and keep the old one second until no token it signed can still be valid, which takes one minute.
+Hosts store the published key set from `/.well-known/jwks.json` when they link. They fetch it again only when a token names an unknown `kid`. To rotate, put the new key first and keep the old one second until no token it signed can still be valid. That takes one minute.
 
 ## Operator setup
 
@@ -200,11 +200,11 @@ Run these steps from `services/connect-broker`. `wrangler` is a dev dependency o
    CLOUDFLARE_API_TOKEN=<token> pnpm run deploy
    ```
 
-`pnpm run deploy` builds the Worker and hashes the bundle, `wrangler.jsonc` and the migrations. When the live version already carries that hash as its tag, it stops. Otherwise it runs the typecheck and tests, applies pending migrations, and deploys with the hash as the tag. It refuses to run without `CLOUDFLARE_API_TOKEN`, so every deploy uses a token given for it rather than a stored login: create one from the Edit Cloudflare Workers template with D1 Edit added, and let it expire. A deploy restarts every relay, so desktops reconnect.
+`pnpm run deploy` builds the Worker and hashes the bundle, `wrangler.jsonc` and the migrations. When the live version already carries that hash as its tag, it stops. Otherwise it runs the typecheck and tests, applies pending migrations, and deploys with the hash as the tag. It refuses to run without `CLOUDFLARE_API_TOKEN`, so every deploy uses a given token rather than a stored login. Create one from the Edit Cloudflare Workers template with D1 Edit added, and let it expire. A deploy restarts every relay, so desktops reconnect.
 
 A migration and the code that needs it must land together. Between the two, requests that touch the changed tables fail.
 
-For `wrangler dev`, copy `.dev.vars.example` to `.dev.vars`, which git ignores, and fill in the secrets it lists.
+For `wrangler dev`, copy `.dev.vars.example` to `.dev.vars` and fill in the secrets it lists. Git ignores `.dev.vars`.
 
 ## Development
 
@@ -216,6 +216,6 @@ pnpm --dir services/connect-broker typecheck
 The tests use real signatures everywhere. Only Clerk's Backend API is fake, and no test reads `.dev.vars`. There are two kinds:
 
 - Most run the broker in Node against a local D1 from wrangler's `getPlatformProxy`, configured by `test/wrangler.jsonc`. They run under a fake `Date`, with each relay's real `EnvironmentRecord` over `node:sqlite` and a fake desktop that answers enrollments.
-- The `relay-*.test.ts` files and `host-link.test.ts` run the whole Worker, the relay Durable Object and D1 in local workerd through wrangler's `createTestHarness`, configured by `test/workerd.ts` and `test/workerd.jsonc`, with real WebSockets and HTTP. They cover browser CORS, preflights, HTTP and SSE forwarding, enrollment through a real socket, and native behavior.
+- The `relay-*.test.ts` files and `host-link.test.ts` run the whole Worker, the relay Durable Object and D1 in local workerd through wrangler's `createTestHarness`. They are configured by `test/workerd.ts` and `test/workerd.jsonc`, with real WebSockets and HTTP. They cover browser CORS, preflights, HTTP and SSE forwarding, enrollment through a real socket, and native behavior.
 
-When the relay closes a client socket that never sent a frame, local workerd leaves that socket in CLOSING, so the tests observe its close as leaving OPEN. Production doesn't rely on this.
+When the relay closes a client socket that never sent a frame, local workerd leaves that socket in CLOSING. The tests observe its close as leaving OPEN. Production doesn't rely on this.

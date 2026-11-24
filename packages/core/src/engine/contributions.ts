@@ -1,6 +1,6 @@
 import { SdkError } from "@nyte-ai/schema";
 import type { Configuration, ConfigureOutcome, HeadName, SessionId } from "@nyte-ai/schema";
-import type { Contributions, Kernel, PluginRuntime } from "../contract/kernel.ts";
+import type { Contributions, Kernel } from "../contract/kernel.ts";
 import { requireSession } from "../store/session.ts";
 
 export type Refusal = Exclude<ConfigureOutcome, { readonly kind: "configured" }>;
@@ -39,16 +39,12 @@ export async function resolveHeadConfiguration(
     head,
     selected: entry.selected,
     patch: null,
-    contributions: collectContributions(kernel.plugins.runtime(session)),
+    contributions: kernel.plugins.runtime(session).contributions(),
   });
 
   if (result.kind === "exact") return result;
 
   throw refusalError(result);
-}
-
-export function collectContributions(runtime: PluginRuntime): Contributions {
-  return { agents: runtime.registries.agents.list(), settings: runtime.registries.settings.list() };
 }
 
 export function staticContributions(kernel: Kernel): Contributions {

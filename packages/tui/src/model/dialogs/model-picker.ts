@@ -78,11 +78,12 @@ export function withModels(dialog: ModelDialog, list: ModelList): ModelDialog {
   const drafts = new Map(dialog.drafts);
   const row = list.rows.find((candidate) => modelId(candidate.ref) === current);
 
-  if (!drafts.has(current))
+  if (!drafts.has(current)) {
     drafts.set(current, {
       effort: dialog.effort,
       modes: row === undefined ? [] : (selectedModes(row.info, dialog.current) ?? []),
     });
+  }
 
   return { ...dialog, models: { kind: "ready", list }, highlighted, drafts };
 }
@@ -122,7 +123,9 @@ export function nextField(dialog: ModelDialog, row: ModelRow): ModelField | null
   const fields = modelFields(row);
   const active = activeField(dialog, row);
 
-  return fields[(fields.findIndex((field) => field === active) + 1) % fields.length] ?? null;
+  if (active === null) return null;
+
+  return fields[(fields.indexOf(active) + 1) % fields.length] ?? null;
 }
 
 function unchanged(dialog: ModelDialog): DialogStep<ModelDialog> {
@@ -139,19 +142,16 @@ function change(dialog: ModelDialog, delta: -1 | 1): ModelDialog {
   const draft = rowDraft(dialog, row);
   const drafts = new Map(dialog.drafts);
 
-  if (field !== "effort")
+  if (field !== "effort") {
     drafts.set(modelId(row.ref), {
       ...draft,
       modes: availableModes(row.info).filter((mode) =>
         mode === field ? delta === 1 : draft.modes.includes(mode),
       ),
     });
-  else {
+  } else {
     const levels = row.info.thinking;
-    const index = Math.max(
-      0,
-      Math.min(levels.length - 1, levels.findIndex((level) => level === draft.effort) + delta),
-    );
+    const index = Math.max(0, Math.min(levels.length - 1, levels.indexOf(draft.effort) + delta));
     drafts.set(modelId(row.ref), { ...draft, effort: levels[index] ?? draft.effort });
   }
 
@@ -165,7 +165,7 @@ function confirm(dialog: ModelDialog): DialogStep<ModelDialog> {
   const draft = rowDraft(dialog, row);
   const model = modelWithModes(row.info, draft.modes);
 
-  if (modelId(model) === modelId(dialog.current) && draft.effort === dialog.effort)
+  if (modelId(model) === modelId(dialog.current) && draft.effort === dialog.effort) {
     return {
       dialog: null,
       intents: [
@@ -177,6 +177,7 @@ function confirm(dialog: ModelDialog): DialogStep<ModelDialog> {
       ],
       push: null,
     };
+  }
 
   return {
     dialog: null,

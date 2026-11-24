@@ -36,6 +36,14 @@ export const RepairPageType = Type.Object({
 
 export type RepairPage = Decoded<typeof RepairPageType>;
 
+/** What keeps the host from closing without cutting work off: runs it is driving, live or retrying, and jobs still working, which counts a terminal only while a command runs in it. */
+export const HostActivityType = Type.Object({
+  runs: Type.Integer({ minimum: 0 }),
+  jobs: Type.Integer({ minimum: 0 }),
+});
+
+export type HostActivity = Decoded<typeof HostActivityType>;
+
 export const PrincipalViewWireType = Type.Object({
   id: idSchema<"principal">(),
   label: Type.String(),
@@ -183,6 +191,8 @@ export const ExecutionCoverageSchema: Schema<ExecutionCoverage> = standard(Execu
 export const AdvanceReportSchema: Schema<AdvanceReport> = standard(AdvanceReportType);
 
 export const RepairPageSchema: Schema<RepairPage> = standard(RepairPageType);
+
+export const HostActivitySchema: Schema<HostActivity> = standard(HostActivityType);
 
 export const PrincipalViewWireSchema: Schema<PrincipalViewWire> = standard(PrincipalViewWireType);
 

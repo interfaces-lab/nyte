@@ -20,8 +20,9 @@ export function releaseReplaced(input: {
 }): void {
   const { replaced } = input;
 
-  if (replaced?.kind !== "managed" || replaced.connection.token === input.next.connection.token)
+  if (replaced?.kind !== "managed" || replaced.connection.token === input.next.connection.token) {
     return;
+  }
   void releaseOnHost({
     connection: replaced.connection,
     fetch: input.fetch,

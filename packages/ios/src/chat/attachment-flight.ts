@@ -5,12 +5,17 @@ import {
   useSharedValue,
   withDelay,
   withTiming,
-  type SharedValue,
 } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { useMountEffect } from "../use-mount-effect.ts";
 
-export type AttachmentFrame = { x: number; y: number; width: number; height: number };
+export interface AttachmentFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 const EMPTY_FRAME: AttachmentFrame = { x: 0, y: 0, width: 0, height: 0 };
 

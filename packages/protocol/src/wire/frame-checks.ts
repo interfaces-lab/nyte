@@ -3,6 +3,7 @@ import {
   ErrorFrameType,
   EventFrameType,
   FragmentFrameType,
+  RefusedFrameType,
   ResultFrameType,
   TextFrameType,
   WelcomeFrameType,
@@ -20,6 +21,8 @@ export const welcomes = checkOnly(compile(withJson(WelcomeFrameType)));
 export const results = checkOnly(
   compile(Type.Object({ ...ResultFrameType.properties, output: Type.Unsafe<Json>({}) })),
 );
+
+export const refusals = checkOnly(compile(RefusedFrameType));
 
 export const errors = checkOnly(compile(withJson(ErrorFrameType)));
 

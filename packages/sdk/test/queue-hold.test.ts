@@ -228,7 +228,7 @@ describe("holding a queued message", () => {
     await session.hold(third.message);
     first.open.resolve();
     await running.reached.promise;
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5000);
 
     expect(await outcome.lost).toEqual({ kind: "sent" });
 
@@ -258,7 +258,7 @@ describe("holding a queued message", () => {
       return response;
     });
 
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5000);
     await renewed.promise;
     await quiet();
     const renewing = Promise.withResolvers<void>();
@@ -271,13 +271,13 @@ describe("holding a queued message", () => {
       return unanswered.promise;
     });
 
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5000);
     await renewing.promise;
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(lost).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5000);
 
     expect(await outcome.lost).toEqual({ kind: "lapsed" });
     expect(await outcome.save("Second, edited.")).toEqual({ kind: "revised" });
@@ -325,12 +325,12 @@ describe("holding a queued message", () => {
 
     first.open.resolve();
     await receipt.settled();
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5000);
     await quiet();
 
     expect(lost).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5000);
 
     expect(await outcome.lost).toEqual({ kind: "lapsed" });
     expect(statuses(await host.view(session.id))).toEqual([
@@ -397,7 +397,7 @@ describe("holding a queued message", () => {
       assert(outcome.kind === "held");
       await using held = outcome;
 
-      return held.save("Second, edited.");
+      return await held.save("Second, edited.");
     };
 
     expect(await edit()).toEqual({ kind: "revised" });

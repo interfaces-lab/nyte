@@ -128,10 +128,11 @@ async function startConfiguration(
   const effective = (await invocation.session.head(invocation.head).view({ tail: 0 })).configuration
     .effective;
 
-  if (model === undefined)
+  if (model === undefined) {
     return effective === null
       ? undefined
       : { model: effective.model, thinking: effective.thinking };
+  }
 
   const matches = matchModels(enabledModels(await invocation.host.models.list()), model);
   const [only, ...others] = matches;

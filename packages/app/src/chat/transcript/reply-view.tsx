@@ -11,7 +11,7 @@ import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
 import { forkChat } from "../../data/session-actions.ts";
 import { useNowMinute } from "../../lib/use-now-minute.ts";
 import { conversation } from "../../theme/schema.stylex.ts";
-import { Prose } from "../markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { stepGroupStyles } from "./step-group.stylex.ts";
 import { useTranscriptScope } from "./transcript.tsx";
 import { replyAge } from "./transcript-presentation.ts";

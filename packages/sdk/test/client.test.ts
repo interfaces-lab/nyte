@@ -239,13 +239,9 @@ describe("client", () => {
 
     await expect(connection.sessions.list()).rejects.toMatchObject({ code: "unauthenticated" });
 
-    const closed = await until(
-      { [Symbol.asyncIterator]: () => views },
-      (view) => view.link.kind === "closed",
-    );
+    while ((await views.next()).done !== true);
 
-    expect(closed.link).toEqual({ kind: "closed", reason: "revoked" });
-    await expect(connection.workspaces.list()).rejects.toMatchObject({ code: "unavailable" });
+    await expect(connection.workspaces.list()).rejects.toMatchObject({ code: "unauthenticated" });
   });
 
   it("aborts an upload on close", async () => {
@@ -281,8 +277,9 @@ describe("client", () => {
     let injected = false;
 
     host.intercept(async (request, next) => {
-      if (readOperation(request) === "workspace.watch")
+      if (readOperation(request) === "workspace.watch") {
         streamId = request.headers.get(STREAM_HEADER);
+      }
       const response = await next(request);
 
       if (readOperation(request) !== CHANNEL_PATH || response.body === null) return response;
@@ -335,7 +332,7 @@ describe("client", () => {
 
     expect(await watching.next()).toEqual({ done: true, value: undefined });
     expect(opens).toBe(2);
-    await expect(connection.sessions.list()).rejects.toMatchObject({ code: "unavailable" });
+    await expect(connection.sessions.list()).rejects.toMatchObject({ code: "unauthenticated" });
   });
 
   it("stops a wait backing off across link loss as soon as its signal aborts, posting nothing more (ADV C 8)", async () => {

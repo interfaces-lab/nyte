@@ -14,7 +14,14 @@ import type { ServerHost } from "@nyte-ai/core/server";
 import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import approvals from "@nyte-ai/plugin/core/approvals";
-import { acpAgents } from "@nyte-ai/plugin/core/acp";
+import modes from "@nyte-ai/plugin/core/modes";
+import {
+  acpAgents,
+  antigravityProfile,
+  claudeProfile,
+  copilotProfile,
+  devinProfile,
+} from "@nyte-ai/plugin/core/acp";
 import type { AcpAgent } from "@nyte-ai/plugin/core/acp";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import type { ClientActions } from "@nyte-ai/plugin/core/browser-client";
@@ -44,15 +51,17 @@ import { createMediaLinks } from "./serve/media.ts";
 import { localGitHubAccount } from "./local/git/github.ts";
 import { localMachine } from "./local/process/machine.ts";
 import { localProvider } from "./local/provider.ts";
-import { importLegacyTrust } from "./local/migrations/legacy-trust.ts";
-import { migrateLocalWorkspaceIdentities } from "./local/migrations/workspace-identities.ts";
 import { listen } from "./serve/listen.ts";
+import type { Supervisor } from "./serve/build-match.ts";
+import { openRetirement } from "./serve/retire.ts";
+import type { Retirement } from "./serve/retire.ts";
 import { nodeImages } from "./images/node.ts";
 import { createMcpHub } from "./mcp-client/hub.ts";
 import type { ClientMetadataFetch } from "./mcp-server/client-metadata.ts";
+import { agentToolServices } from "./mcp-server/agent-tools.ts";
 import { openMcpServer } from "./mcp-server/server.ts";
 import { createViewCompiler } from "./plugins/views.ts";
-import { performFor, performOffered, sharedClients } from "./serve/clients.ts";
+import { findOffering, performFor, performOffered, sharedClients } from "./serve/clients.ts";
 import { createPluginLoader } from "./plugins/loader.ts";
 import type { PluginImport } from "./plugins/loader.ts";
 import { defaultSecrets } from "./keys/secrets.ts";
@@ -65,9 +74,83 @@ declare const NYTE_BUILT_VERSION: string | undefined;
 const STORE_POLL_MS = 500;
 
 const ACP_AGENTS: readonly AcpAgent[] = [
-  { id: "antigravity", name: "Google Antigravity", command: "agy", args: ["acp"], env: {} },
-  { id: "grok", name: "Grok", command: "grok", args: ["agent", "stdio"], env: {} },
-  { id: "fx", name: "fx", command: "fx", args: ["acp"], env: {}, mode: "ask" },
+  {
+    id: "antigravity",
+    name: "Google Antigravity",
+    command: "agy",
+    env: {},
+    behavior: antigravityProfile,
+    launch: { args: ["acp"] },
+    unattended: { args: ["--dangerously-skip-permissions", "acp"] },
+  },
+  {
+    id: "grok",
+    name: "Grok",
+    command: "grok",
+    env: {},
+    auth: "grok.com",
+    launch: { args: ["--permission-mode", "default", "agent", "stdio"] },
+    unattended: { args: ["agent", "--always-approve", "stdio"] },
+  },
+  {
+    id: "kiro",
+    name: "Kiro",
+    command: "kiro-cli",
+    env: {},
+    launch: { args: ["acp", "--agent-engine=v3", "--auth-method=cli"] },
+  },
+  {
+    id: "fx",
+    name: "fx",
+    command: "fx",
+    env: {},
+    launch: { args: ["acp"], mode: "ask" },
+    unattended: { args: ["acp"], mode: "full-access" },
+  },
+  {
+    id: "devin",
+    name: "Devin",
+    command: "devin",
+    env: {},
+    behavior: devinProfile,
+    launch: { args: ["acp"] },
+    unattended: { args: ["acp"], mode: "bypass" },
+  },
+  {
+    id: "copilot-cli",
+    name: "Copilot CLI",
+    command: "copilot",
+    env: {},
+    behavior: copilotProfile,
+    launch: { args: ["--acp"] },
+  },
+  { id: "kimi-code", name: "Kimi Code", command: "kimi", env: {}, launch: { args: ["acp"] } },
+  {
+    id: "droid",
+    name: "Factory Droid",
+    command: "droid",
+    env: {},
+    launch: { args: ["exec", "--output-format", "acp-daemon"] },
+  },
+  {
+    id: "opencode-cli",
+    name: "OpenCode",
+    command: "opencode",
+    env: {},
+    launch: { args: ["acp"] },
+  },
+  {
+    id: "claude-agent",
+    name: "Claude Agent",
+    command: "claude-agent-acp",
+    env: {},
+    behavior: claudeProfile,
+    launch: { args: [] },
+    unattended: { args: [], mode: "bypassPermissions" },
+  },
+  { id: "glm", name: "GLM Agent", command: "glm-acp-agent", env: {}, launch: { args: [] } },
+  { id: "mistral-vibe", name: "Mistral Vibe", command: "vibe-acp", env: {}, launch: { args: [] } },
+  { id: "omp", name: "Oh My Pi", command: "omp", env: {}, launch: { args: ["acp"] } },
 ];
 
 export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models" | "plugins"> & {
@@ -79,8 +162,8 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly shell?: () => string | null;
   readonly label?: string;
   readonly onRevoked?: () => void;
-  /** Called before the default store migrates existing data, which blocks this thread until it ends. */
-  readonly onStoreMigration?: () => void;
+  readonly supervisor?: Supervisor | null;
+  readonly onReplaced?: () => void;
   /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
   readonly pluginImport?: PluginImport;
   readonly tailnet?: { readonly binary: string };
@@ -101,38 +184,34 @@ export async function openHost(options: OpenHostOptions = {}): Promise<Host> {
   }
 }
 
-async function defaultStore(home: string, onMigrate?: () => void): Promise<Store> {
+async function defaultStore(home: string): Promise<Store> {
   const path = storePath(home);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await (await open(path, "a", 0o600)).close();
 
   for (const file of [path, `${path}-wal`, `${path}-shm`]) await chmod(file, 0o600).catch(missing);
 
-  return sqliteStore({ path, onMigrate });
+  return sqliteStore({ path });
 }
 
 async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStack): Promise<Host> {
   const home = options.home ?? homedir();
   const workspace = options.workspace ?? { kind: "local", path: process.cwd() };
 
-  const store =
-    options.store ??
-    opened.adopt(await defaultStore(home, options.onStoreMigration), (owned) => owned.close());
+  const store = options.store ?? opened.adopt(await defaultStore(home), (owned) => owned.close());
 
   const secrets = options.secrets ?? defaultSecrets(home);
   const description = hostDescription();
   let server: ServerHost | null = null;
+  let retirement: Retirement | null = null;
 
   const actions: ClientActions = {
-    offered: (action) =>
-      server !== null &&
-      sharedClients(server)
-        .rows()
-        .some((row) => row.actions.some((declared) => declared.name === action)),
-    perform: (action, input, timeoutMs) =>
+    offered: (action, principal) =>
+      server !== null && findOffering(server, action, principal) !== undefined,
+    perform: (action, input, timeoutMs, principal) =>
       server === null
         ? Promise.reject(new SdkError("unavailable", "The host is still opening.", { retry: true }))
-        : performOffered(server, { action, input, timeoutMs }),
+        : performOffered(server, { action, input, timeoutMs, principal }),
   };
 
   const given = [...(options.plugins ?? []), ...(options.clientPlugins?.(actions) ?? [])];
@@ -141,12 +220,6 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
   const [models, settings] = await Promise.all([
     options.models ?? nyteModels({ store, secrets, home }),
     settingsSeed(home),
-    usesLocalProvider
-      ? store.open().then(async (connection) => {
-          await migrateLocalWorkspaceIdentities(connection);
-          await importLegacyTrust(connection, home);
-        })
-      : undefined,
   ]);
 
   const builtins = [
@@ -167,8 +240,9 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     canvas,
     designGuide,
     languageTools,
+    modes,
     claudeCodeSdk().plugin,
-    ...acpAgents(ACP_AGENTS),
+    ...acpAgents(ACP_AGENTS, agentToolServices),
   ];
 
   const plugins = [
@@ -227,7 +301,10 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
       machine: localMachine,
       capabilities: given.some((plugin) => plugin.id === browserTools.id) ? [browserTools.id] : [],
     },
-    revoked: options.onRevoked,
+    revoked() {
+      void retirement?.announce("restarting");
+      options.onRevoked?.();
+    },
   });
 
   opened.defer(() => host.close());
@@ -235,7 +312,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
 
   projectDirs = async () =>
     (await host.workspaces.list()).flatMap((entry) =>
-      entry.trusted === true && "path" in entry.target
+      entry.trust.state === "trusted" && "path" in entry.target
         ? [join(entry.target.path, ".nyte", "plugins")]
         : [],
     );
@@ -273,12 +350,24 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     for (const listener of listeners) await listener.close();
   });
 
+  const retiring = openRetirement(host.server, {
+    supervisor: options.supervisor ?? null,
+    replaced: () => options.onReplaced?.(),
+  });
+
+  retirement = retiring;
+  opened.defer(async () => {
+    retiring.close();
+    await retiring.announce("stopping");
+  });
+
   const attach = async (listenOptions: ListenOptions): Promise<Listener> => {
     const listener = await listen(host, {
       describe: () => description,
       tailnet,
       mcpServer,
       media,
+      retirement: retiring,
       ...listenOptions,
       identity: listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, home))),
     });

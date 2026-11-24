@@ -169,8 +169,9 @@ export async function agentLoop<P extends PreparedRequest>(
       signal,
     );
 
-    if (prepared.kind === "failed")
+    if (prepared.kind === "failed") {
       return { reason: "failed", failure: prepared.failure, response: overflow?.response ?? null };
+    }
 
     if (overflow !== null) {
       attempt = next;
@@ -229,8 +230,9 @@ export async function agentLoop<P extends PreparedRequest>(
           ? assistantRetryDelayMs(config.retry, retries + 1, failure.retryAfterMs)
           : null;
 
-        if (delay === null || retries >= config.retry.maxRetries)
+        if (delay === null || retries >= config.retry.maxRetries) {
           return { reason: "failed", failure, response };
+        }
         retries += 1;
         attempt += 1;
         const until = Date.now() + delay;
@@ -281,7 +283,9 @@ export async function agentLoop<P extends PreparedRequest>(
         input.source.kind === "answer",
     );
 
-    if (calls.length === 0 && !asked) return { reason: "done", usage };
+    if (calls.length === 0 && !asked && message.providerBoundary === undefined) {
+      return { reason: "done", usage };
+    }
   }
 }
 
@@ -322,10 +326,11 @@ async function respond<P extends PreparedRequest>(
 
   const usage = prepared.usage(final);
 
-  if (final.stopReason === "aborted")
+  if (final.stopReason === "aborted") {
     return signal.aborted ? { kind: "stopped", usage } : { kind: "interrupted", usage };
+  }
 
-  if (final.stopReason === "error")
+  if (final.stopReason === "error") {
     return overflowsContext(final)
       ? { kind: "overflow", failure: buildContextOverflowFailure(final), usage }
       : {
@@ -335,9 +340,11 @@ async function respond<P extends PreparedRequest>(
           unsent: requestUnsent(final),
           usage,
         };
+  }
 
-  if (final.stopReason === "length" && stoppedShort(final, prepared.info.maxOutput))
+  if (final.stopReason === "length" && stoppedShort(final, prepared.info.maxOutput)) {
     return { kind: "overflow", failure: buildContextOverflowFailure(final), usage };
+  }
   const message = final.stopReason === "length" ? failCutOffCalls(final) : final;
 
   return {

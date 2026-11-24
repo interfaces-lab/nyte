@@ -92,7 +92,7 @@ describe("GitHub Copilot device sign-in", () => {
 
     assert.equal(credential.access, SESSION_TOKEN);
     assert.equal(credential.refresh, "gh-token");
-    assert.equal(credential.expires, Math.floor(Date.now() / 1000) * 1000 + 3600_000);
+    assert.equal(credential.expires, Math.floor(Date.now() / 1000) * 1000 + 3_600_000);
     assert.deepEqual(credential.availableModelIds, ["gpt-4.1"]);
     const auth = await oauth.toAuth(credential);
     assert.equal(auth.apiKey, SESSION_TOKEN);
@@ -206,10 +206,11 @@ describe("GitHub Copilot device sign-in", () => {
     });
     let aborted = false;
     const observing: typeof globalThis.fetch = (input, init) => {
-      if (typeof input === "string" && input.endsWith("/access_token"))
+      if (typeof input === "string" && input.endsWith("/access_token")) {
         init?.signal?.addEventListener("abort", () => {
           aborted = true;
         });
+      }
       return transport.fetch(input, init);
     };
     const started = Date.now();
@@ -346,7 +347,7 @@ describe("GitHub Copilot device sign-in", () => {
 
   test("a hostile device-code response is bounded and normalized before display", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
-    const rawVerificationUri = "https://github.com/login/\x1b]8;;evil";
+    const rawVerificationUri = "https://github.com/login/\u001B]8;;evil";
     const transport = fakeFetch({
       [DEVICE]: () =>
         deviceCode({ expires_in: -5, interval: "soon", verification_uri: rawVerificationUri }),
@@ -362,7 +363,7 @@ describe("GitHub Copilot device sign-in", () => {
     assert.equal(shown.intervalSeconds, undefined);
     assert.equal(shown.expiresInSeconds, 900);
     assert.equal(shown.verificationUri, new URL(rawVerificationUri).href);
-    assert.ok(!shown.verificationUri.includes("\x1b"));
+    assert.ok(!shown.verificationUri.includes("\u001B"));
     await vi.advanceTimersByTimeAsync(5000);
     assert.equal((await login).access, SESSION_TOKEN);
   });
@@ -545,11 +546,7 @@ const testCopilotAccessToken =
   "tid=test;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;";
 const testCopilotModelsUrl = "https://api.individual.githubcopilot.com/models";
 
-function jsonResponse(
-  body: unknown,
-  status: number = 200,
-  headers?: Record<string, string>,
-): Response {
+function jsonResponse(body: unknown, status = 200, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -585,7 +582,7 @@ describe("GitHub Copilot OAuth device flow", () => {
       vi.fn(async (input: unknown): Promise<Response> => {
         const url = getUrl(input);
         if (url.includes("/copilot_internal/v2/token")) {
-          return jsonResponse({ token: testCopilotAccessToken, expires_at: 9999999999 });
+          return jsonResponse({ token: testCopilotAccessToken, expires_at: 9_999_999_999 });
         }
         if (url === testCopilotModelsUrl) {
           catalogRequestCount += 1;

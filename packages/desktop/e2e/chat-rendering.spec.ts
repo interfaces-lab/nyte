@@ -77,8 +77,9 @@ async function observeFrames(page: Page): Promise<void> {
       footer === undefined ||
       dock === null ||
       dock === undefined
-    )
+    ) {
       throw new Error("A completed chat is required to observe its layout");
+    }
     const pinned = initial.querySelector("[data-sticky-active='true']");
     let active = true;
     let frame = 0;
@@ -145,10 +146,11 @@ async function observeFrames(page: Page): Promise<void> {
 
       gap = Math.max(gap, bottom - edge);
 
-      if (probe.coverage && bottom > top && gap > 1)
+      if (probe.coverage && bottom > top && gap > 1) {
         fail(
           `uncovered ${gap.toFixed(1)}px at scroll ${viewport.scrollTop.toFixed(1)}: ${visible.map((row) => row.key).join(",")}`,
         );
+      }
 
       const anchor = probe.anchor;
 
@@ -156,16 +158,18 @@ async function observeFrames(page: Page): Promise<void> {
         anchor !== null &&
         (!anchor.element.isConnected ||
           Math.abs(anchor.element.getBoundingClientRect().top - anchor.top) > 1)
-      )
+      ) {
         fail("editing moved or replaced the prompt");
+      }
 
       const footers = [...viewport.querySelectorAll<HTMLElement>("[data-row-key^='changes:']")];
 
       if (
         viewport.querySelector("[data-sticky-user-message] [aria-busy='true']") !== null &&
         footers.some((footer) => footer.querySelector("section") !== null)
-      )
+      ) {
         fail("an edit submission retained the completed changes card");
+      }
       const handoff = probe.handoff;
 
       if (handoff === null) return;
@@ -192,8 +196,9 @@ async function observeFrames(page: Page): Promise<void> {
 
       if (footer !== handoff.footer) fail("completion replaced the pending footer");
 
-      if (footer.getBoundingClientRect().height + 1 < handoff.height)
+      if (footer.getBoundingClientRect().height + 1 < handoff.height) {
         fail("the pending reservation collapsed below the previous ready footer");
+      }
 
       const running =
         viewport
@@ -203,8 +208,9 @@ async function observeFrames(page: Page): Promise<void> {
       if (running) {
         probe.pendingFrames += 1;
 
-        if (footer.querySelector("section") !== null)
+        if (footer.querySelector("section") !== null) {
           fail("a running turn exposed the previous card");
+        }
       }
     };
 
@@ -296,12 +302,14 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
     await phase(page, "native history scrolling");
     await log.hover();
 
-    for (let turn = 0; turn < 6; turn += 1)
+    for (let turn = 0; turn < 6; turn += 1) {
       await observeAction(page, `history up ${String(turn + 1)}`, () => page.mouse.wheel(0, -600));
+    }
     await capture(desktop, testInfo, "04-scrolled-up");
 
-    for (let turn = 0; turn < 6; turn += 1)
+    for (let turn = 0; turn < 6; turn += 1) {
       await observeAction(page, `history down ${String(turn + 1)}`, () => page.mouse.wheel(0, 600));
+    }
     const bottom = chatPane(page).getByRole("button", { name: "Scroll to bottom", exact: true });
 
     if (await bottom.isVisible()) await bottom.click();

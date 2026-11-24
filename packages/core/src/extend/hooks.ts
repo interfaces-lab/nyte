@@ -27,13 +27,13 @@ import { readCall } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { stepPluginApi } from "./plugin-api.ts";
 
-type Base = {
+interface Base {
   readonly api: PluginApi<"core">;
   readonly signal: AbortSignal;
   readonly session: SessionId | null;
   readonly head: HeadName | null;
   readonly run: RunId | null;
-};
+}
 
 interface Handler<N extends HookName<"core">> {
   readonly plugin: string;
@@ -151,7 +151,7 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
 
       return () => {
         const list = handlers[name];
-        const index = list.findIndex((candidate) => candidate === handler);
+        const index = list.indexOf(handler);
 
         if (index >= 0) list.splice(index, 1);
       };
@@ -200,8 +200,12 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
       const decider = deciders[name];
       const chain = ordered(name);
 
-      if (chain.length === 0 && (await readCall(kernel.store, context.session, step.call)) === null)
+      if (
+        chain.length === 0 &&
+        (await readCall(kernel.store, context.session, step.call)) === null
+      ) {
         return { kind: "done", value: CONTINUE };
+      }
 
       return runStep<Decision<HookEvent<typeof name>>>(kernel, {
         session: context.session,

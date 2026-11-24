@@ -16,31 +16,27 @@ export interface Attachment {
   detach(): void;
 }
 
-export type FreshnessCell = {
+export interface FreshnessCell {
   readonly current: () => Freshness;
   readonly stale: (error: SdkError | null) => boolean;
   readonly fresh: (seq: number) => boolean;
-};
+}
 
-export type Retries = {
+export interface Retries {
   readonly failed: (run: () => void) => void;
   readonly reset: () => void;
-};
+}
 
-const HELD_REVISION = 27;
-
-const RETRY_BASE_MS = 1_000;
+const RETRY_BASE_MS = 250;
 
 const RETRY_MAX_MS = 30_000;
 
-export function socketRetryDelay(attempt: number): number {
-  const ceiling = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt);
-
-  return ceiling / 2 + (Math.random() * ceiling) / 2;
+export function retryDelay(attempt: number): number {
+  return jittered(Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt));
 }
 
-export async function takesHeld(socket: HostSocket): Promise<boolean> {
-  return (await socket.welcome).api_server_revision >= HELD_REVISION;
+export function jittered(ceiling: number): number {
+  return ceiling / 2 + (Math.random() * ceiling) / 2;
 }
 
 export function freshnessCell(): FreshnessCell {
@@ -71,7 +67,7 @@ export function readRetries(): Retries {
     failed: (run) => {
       failures += 1;
       clearTimeout(timer);
-      timer = setTimeout(run, socketRetryDelay(failures));
+      timer = setTimeout(run, retryDelay(failures));
     },
     reset: () => {
       failures = 0;
@@ -137,26 +133,46 @@ export function sameJson<T>(left: T, right: T): boolean {
   return left === right || JSON.stringify(left) === JSON.stringify(right);
 }
 
-export type Listeners = {
+export interface Listeners {
   readonly subscribe: (listener: () => void) => Disposer;
   readonly notify: () => void;
+  readonly size: () => number;
   readonly clear: () => void;
-};
+}
 
 export function listenerSet(): Listeners {
-  const listeners = new Set<() => void>();
+  const listeners = new Map<() => void, number>();
+  let changes = 0;
+  let queued = false;
+
+  const flush = (): void => {
+    queued = false;
+
+    for (const [listener, since] of listeners) {
+      if (since === changes) continue;
+
+      queueMicrotask(() => {
+        if (listeners.get(listener) === since) listener();
+      });
+    }
+  };
 
   return {
     subscribe: (listener) => {
-      listeners.add(listener);
+      listeners.set(listener, changes);
 
       return () => {
         listeners.delete(listener);
       };
     },
     notify: () => {
-      for (const listener of listeners) listener();
+      changes += 1;
+
+      if (queued) return;
+      queued = true;
+      queueMicrotask(flush);
     },
+    size: () => listeners.size,
     clear: () => listeners.clear(),
   };
 }

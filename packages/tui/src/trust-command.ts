@@ -1,3 +1,5 @@
+import type { FolderTrust } from "@nyte-ai/sdk/client";
+import { ownDecision } from "./lib/trust.ts";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -20,8 +22,7 @@ interface TrustInput {
 
 interface Folder {
   readonly path: string;
-  readonly decision: boolean | null;
-  readonly trusted: boolean | null;
+  readonly trust: FolderTrust | null;
   readonly sources: readonly string[];
 }
 
@@ -40,7 +41,7 @@ export async function trustCommand(input: TrustInput): Promise<void> {
   const yes = args.has("yes");
   const shown = printable(path);
 
-  if (!yes && !out.mode.interactive)
+  if (!yes && !out.mode.interactive) {
     throw new CliError(
       "missing_input",
       `Can't trust ${shown} without --yes in non-interactive mode.`,
@@ -53,11 +54,12 @@ export async function trustCommand(input: TrustInput): Promise<void> {
         ],
       },
     );
+  }
 
   const host = await input.connection();
   const before = await readFolder(host, path);
 
-  if (before.decision === true) return unchanged(out, args.has("json"), before, "trusted");
+  if (decided(before) === true) return unchanged(out, args.has("json"), before, "trusted");
 
   if (!yes) {
     showPreview(out, before);
@@ -82,7 +84,7 @@ export async function untrustCommand(input: TrustInput): Promise<void> {
   const host = await input.connection();
   const before = await readFolder(host, path);
 
-  if (before.decision === false) return unchanged(out, args.has("json"), before, "untrusted");
+  if (decided(before) === false) return unchanged(out, args.has("json"), before, "untrusted");
 
   const after = await decide(host, before, false);
 
@@ -102,14 +104,16 @@ async function resolveFolder(
   const real = await realpath(absolute).catch(() => null);
   const directory = real !== null && (await stat(real)).isDirectory();
 
-  if (real === null || !directory)
+  if (real === null || !directory) {
     throw new CliError("not_found", `Can't find a folder at ${printable(absolute)}.`);
+  }
 
-  if (real === (await realpath(homedir())))
+  if (real === (await realpath(homedir()))) {
     throw new CliError(
       "invalid_arguments",
       `Can't ${verb} your home folder. Nyte reads its .nyte files as your user files.`,
     );
+  }
 
   return real;
 }
@@ -118,26 +122,26 @@ async function readFolder(host: Connection, path: string): Promise<Folder> {
   const seen = await host.workspaces.inspect({ kind: "local", path });
   const info = seen.registered === null ? null : await host.workspace(seen.registered).info();
 
-  return {
-    path,
-    decision: info?.projectResources ?? null,
-    trusted: info?.trusted ?? null,
-    sources: seen.projectSources,
-  };
+  return { path, trust: info?.trust ?? null, sources: seen.projectSources };
 }
 
 async function decide(host: Connection, folder: Folder, trusted: boolean): Promise<Folder> {
   const workspace = host.workspace(await addFolder(host, folder.path));
-  const outcome = await workspace.update({ projectResources: trusted });
+  const outcome = await workspace.update({ trusted });
 
-  if (outcome.kind === "missing")
+  if (outcome.kind === "missing") {
     throw new CliError(
       "failed",
       `Couldn't save the decision. Nyte forgot ${printable(folder.path)} meanwhile.`,
     );
+  }
   const info = await workspace.info();
 
-  return { ...folder, decision: info.projectResources, trusted: info.trusted };
+  return { ...folder, trust: info.trust };
+}
+
+function decided(folder: Folder): boolean | null {
+  return folder.trust === null ? null : ownDecision(folder.trust, folder.path);
 }
 
 function showPreview(out: Output, folder: Folder): void {
@@ -181,8 +185,7 @@ function answer(out: Output, json: boolean, folder: Folder, outcome: Outcome): v
     out.json({
       folder: {
         path: folder.path,
-        trusted: folder.trusted,
-        decision: folder.decision,
+        trust: folder.trust,
         projectSources: folder.sources,
       },
       outcome,

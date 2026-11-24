@@ -3,7 +3,7 @@ import { asId } from "@nyte-ai/schema";
 import type { Static } from "typebox";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { Prose } from "../src/chat/markdown/prose.tsx";
+import { Prose } from "../src/markdown/prose.tsx";
 import { messageScrollerStyles } from "../src/chat/transcript/transcript.stylex.ts";
 import { reduceLayout } from "../src/panes/layout.ts";
 import type { Layout, PaneId, SplitChild } from "../src/panes/layout.ts";
@@ -122,8 +122,9 @@ function rowLayout(panes: readonly PaneId[]): Layout<PaneContent> {
   const second = children[1];
   const focused = panes[0];
 
-  if (first === undefined || second === undefined || focused === undefined)
+  if (first === undefined || second === undefined || focused === undefined) {
     throw new Error("A drag needs two panes.");
+  }
 
   return {
     root: {

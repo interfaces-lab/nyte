@@ -5,20 +5,20 @@ import type { Disposer, GitStatus } from "@nyte-ai/schema";
 import type { FeedSink } from "../feed.ts";
 import { createIgnores, watchTree } from "../files/tree.ts";
 
-export type Repository = {
+export interface Repository {
   readonly root: string;
   readonly gitDir: string;
   readonly commonDir: string;
   readonly prefix: string;
-};
+}
 
-export type GitWatcher = {
+export interface GitWatcher {
   subscribe(listener: (status: GitStatus) => void, fail: FeedSink<GitStatus>["fail"]): Disposer;
-};
+}
 
 const WATCH_DELAY_MS = 250;
 
-const POLL_MS = 2_000;
+const POLL_MS = 2000;
 
 const GIT_STATE = new Set([
   "HEAD",
@@ -117,14 +117,16 @@ export function createWatcher(
             continue;
           }
 
-          if (path.endsWith(".gitignore"))
+          if (path.endsWith(".gitignore")) {
             ignores.forget(`${repo.prefix}${path}`.split("/").slice(0, -1).join("/"));
+          }
 
           if (found !== "none") continue;
           const directory = (await lstat(join(cwd, path)).catch(() => null))?.isDirectory();
 
-          if (!(await ignores.ignored(`${repo.prefix}${path}`, directory === true)))
+          if (!(await ignores.ignored(`${repo.prefix}${path}`, directory === true))) {
             found = "status";
+          }
         }
 
         return found;
@@ -147,8 +149,9 @@ export function createWatcher(
 
       if (insideGitDir === null) watchGitDir(repo.gitDir);
 
-      if (repo.commonDir !== repo.gitDir && pathInside(cwd, repo.commonDir) === null)
+      if (repo.commonDir !== repo.gitDir && pathInside(cwd, repo.commonDir) === null) {
         watchGitDir(repo.commonDir);
+      }
     });
 
     return () => {

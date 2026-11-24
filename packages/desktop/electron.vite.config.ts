@@ -1,10 +1,13 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig, MainConfigFactory, type UserConfig } from "electron-vite";
+import { defineConfig, MainConfigFactory } from "electron-vite";
+import type { UserConfig } from "electron-vite";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { resolvePhotonWasmPath } from "@nyte-ai/host/images";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
-import { build, defaultClientConditions, type Plugin } from "vite";
+import { assertSingleFilePartView, partViewFiles } from "@nyte-ai/plugin/part-view-files";
+import { build, defaultClientConditions } from "vite";
+import type { Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 import {
@@ -53,7 +56,7 @@ const renderer = {
     dedupe: ["react", "react-dom"],
   },
   build: {
-    chunkSizeWarningLimit: 6_000,
+    chunkSizeWarningLimit: 6000,
     manifest: true,
     minify: true,
     target: "chrome152",
@@ -76,6 +79,73 @@ const HOST_ENTRIES = {
   "image-worker": resolve("src/workers/image-worker.ts"),
 };
 
+const PART_VIEW_TOKEN = "nyte-part-view:";
+
+function partViews(): Plugin {
+  const emitted = new Set<string>();
+
+  return {
+    name: "nyte:part-views",
+    async transform(code, id) {
+      if (id.includes("?")) return null;
+
+      const views = partViewFiles(code, id);
+
+      if (views.length === 0) return null;
+
+      const references = await Promise.all(
+        views.map(async (view) => {
+          const source = await readFile(view.path, "utf8");
+          await assertSingleFilePartView(view.path, source);
+
+          const reference = this.emitFile({
+            type: "asset",
+            name: basename(view.path),
+            source,
+          });
+
+          emitted.add(reference);
+
+          return { view, reference };
+        }),
+      );
+
+      return {
+        code: references.reduce(
+          (text, entry) =>
+            text.replace(
+              entry.view.expression,
+              `new URL("${PART_VIEW_TOKEN}${entry.reference}", import.meta.url)`,
+            ),
+          code,
+        ),
+        map: null,
+      };
+    },
+    renderChunk(code, chunk) {
+      if (!code.includes(PART_VIEW_TOKEN)) return null;
+
+      return {
+        code: [...emitted].reduce((text, reference) => {
+          const target = relative(dirname(chunk.fileName), this.getFileName(reference)).replaceAll(
+            "\\",
+            "/",
+          );
+
+          const specifier =
+            target.startsWith("./") || target.startsWith("../") ? target : `./${target}`;
+
+          const token = `${PART_VIEW_TOKEN}${reference}`;
+          const quoted = JSON.stringify(specifier);
+
+          return text.replaceAll(`"${token}"`, quoted).replaceAll(`'${token}'`, quoted);
+        }, code),
+        map: null,
+      };
+    },
+  };
+}
+
 const main = (mode: string, host: boolean) =>
   ({
     define: {
@@ -83,6 +153,7 @@ const main = (mode: string, host: boolean) =>
         process.env["NYTE_RELEASE_VERSION"] ?? packageMetadata.version,
       ),
       NYTE_BUILT_CONNECT_ORIGIN: JSON.stringify(process.env["NYTE_CONNECT_ORIGIN"] ?? ""),
+      NYTE_BUILT_METRICS_ORIGIN: JSON.stringify(process.env["NYTE_METRICS_ORIGIN"] ?? ""),
     },
     plugins: host
       ? [
@@ -96,6 +167,7 @@ const main = (mode: string, host: boolean) =>
               });
             },
           } satisfies Plugin,
+          partViews(),
           {
             name: "nyte:photon-wasm",
             async generateBundle() {

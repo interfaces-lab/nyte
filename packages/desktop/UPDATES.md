@@ -8,7 +8,7 @@ Packaged apps check 30 seconds after startup, then every six hours on the stable
 
 - Nyte is up to date.
 - The check or the download failed.
-- The new version is ready, with **Restart to Update** and **Later**. If tasks or terminal commands are running, the dialog names them and defaults to **Later**.
+- The new version is ready, with **Restart to Update** and **Later**. If tasks or terminal commands are running, the dialog says they keep running through the restart.
 
 Updating restarts the host once nothing runs on it. Nyte's host is a background job that outlives the app, so after an update the new app finds it still on the old build and asks it to retire. A host the app's launch agent started keeps serving until no run is live or retrying and no task or terminal command is running. Then it exits, and launchd starts it again on the app's new build. A host that a `nyte` command started ignores the app's request, and a newer `nyte` asks it to retire instead. A host started by hand with `nyte host` never retires. Until the host restarts, **Settings > Server** shows it as **Newer host available** with **Restart Host…**, next to the host's version, its uptime and **Stop Host…**.
 

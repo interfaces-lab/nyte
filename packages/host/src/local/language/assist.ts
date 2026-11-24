@@ -3,6 +3,7 @@ import { isJson } from "@nyte-ai/schema";
 import type {
   Json,
   CodeAction,
+  CodeActionKind,
   CodeActionOutcome,
   CodeActionResolveToken,
   CompletionItem,
@@ -14,7 +15,6 @@ import type {
 } from "@nyte-ai/schema";
 import {
   comparePositions,
-  readCodeAction,
   readCodeActions,
   readCommand,
   readCompletionAnswer,
@@ -24,24 +24,22 @@ import {
   toLspPosition,
   toLspRange,
 } from "./lsp.ts";
+import { findProvider } from "./capabilities.ts";
 import { LspError } from "./rpc.ts";
+import { ask, findProviders } from "./route.ts";
 import type { Run, Servers } from "./state.ts";
 
 const DETAIL_ROWS = 24;
 
 const DETAIL_BUDGET_MS = 300;
 
-/** Lists completions; a newer completion anywhere in the workspace cancels this one, which then answers empty. Callable rows without parameters get them from a resolve, as many as answer within a short budget. */
 export async function completion(
   servers: Servers,
   input: LanguagePosition & { readonly trigger: CompletionTrigger },
 ): Promise<CompletionList> {
   const empty: CompletionList = { items: [], incomplete: false };
   const aborted = servers.claimCompletion();
-  const synced = await servers.sync(input.path);
-
-  if (synced === null || aborted.aborted) return empty;
-  const slot = synced.slot;
+  const completers = await findProviders(servers, input.path, "completion");
   const trigger = input.trigger;
 
   const context: Json =
@@ -49,50 +47,65 @@ export async function completion(
       ? { triggerKind: 2, triggerCharacter: trigger.character }
       : { triggerKind: trigger.kind === "invoked" ? 1 : 3 };
 
-  const answer = await synced.run.rpc
-    .request(
-      "textDocument/completion",
-      {
-        textDocument: { uri: servers.uri(synced.document.path) },
-        position: toLspPosition(input.position),
-        context,
-      },
-      aborted,
-    )
-    .catch((error: unknown) => {
-      if (error instanceof LspError) return undefined;
-      throw error;
-    });
+  const lists = await Promise.all(
+    completers.map(async (asked): Promise<CompletionList> => {
+      const target = asked.target;
 
-  if (answer === undefined || aborted.aborted) return empty;
-  const read = readCompletionAnswer(answer);
-  slot.answers += 1;
-  const number = slot.answers;
+      const answer = aborted.aborted
+        ? undefined
+        : await target.run.rpc
+            .request(
+              "textDocument/completion",
+              {
+                textDocument: { uri: asked.uri },
+                position: toLspPosition(input.position),
+                context,
+              },
+              aborted,
+            )
+            .catch((error: unknown) => {
+              if (error instanceof LspError) return undefined;
+              throw error;
+            });
 
-  slot.completion = {
-    run: synced.run.id,
-    answer: number,
-    items: read.items,
-    defaults: read.defaults,
-  };
+      if (answer === undefined || aborted.aborted) return empty;
+      const read = readCompletionAnswer(answer);
+      target.slot.answers += 1;
+      const number = target.slot.answers;
 
-  const items = read.items.flatMap((raw, index): CompletionItem[] => {
-    const item = readCompletionItem(raw, read.defaults);
+      target.slot.completion = {
+        answer: number,
+        items: read.items,
+        defaults: read.defaults,
+      };
 
-    return item === null
-      ? []
-      : [
-          {
-            ...item,
-            resolve: { kind: "completion", server: synced.run.id, answer: number, item: index },
-          },
-        ];
-  });
+      const items = read.items.flatMap((raw, index): CompletionItem[] => {
+        const item = readCompletionItem(raw, read.defaults);
 
-  if (synced.run.capabilities.resolvesCompletion)
-    await resolveDetails(synced.run, items, read.items, read.defaults);
+        return item === null
+          ? []
+          : [
+              {
+                ...item,
+                resolve: { kind: "completion", server: target.run.id, answer: number, item: index },
+              },
+            ];
+      });
 
-  return { items, incomplete: read.incomplete };
+      if (asked.provider.resolveProvider === true) {
+        await resolveDetails(target.run, items, read.items, read.defaults);
+      }
+
+      return { items, incomplete: read.incomplete };
+    }),
+  );
+
+  return aborted.aborted
+    ? empty
+    : {
+        items: lists.flatMap((list) => list.items),
+        incomplete: lists.some((list) => list.incomplete),
+      };
 }
 
 export async function resolveCompletion(
@@ -103,14 +116,18 @@ export async function resolveCompletion(
   const found = servers.findRun(token.server);
   const answer = found?.slot.completion;
 
-  if (found === null || answer === null || answer === undefined || answer.answer !== token.answer)
+  if (found === null || answer === null || answer === undefined || answer.answer !== token.answer) {
     return null;
+  }
   const raw = answer.items[token.item];
   const original = readCompletionItem(raw, answer.defaults);
 
   if (!isJson(raw) || original === null) return null;
 
-  if (!found.run.capabilities.resolvesCompletion) return { ...original, resolve: token };
+  if (findProvider(found.run, "completion", null)?.resolveProvider !== true) {
+    return { ...original, resolve: token };
+  }
+
   servers.touch(found.slot);
 
   const resolved = await found.run.rpc
@@ -129,45 +146,52 @@ export async function resolveCompletion(
 
 export async function codeActions(
   servers: Servers,
-  input: { readonly path: string; readonly range: TextRange },
+  input: {
+    readonly path: string;
+    readonly range: TextRange;
+    readonly only?: readonly CodeActionKind[];
+  },
 ): Promise<readonly CodeAction[]> {
-  const synced = await servers.sync(input.path);
+  const offered = await Promise.all(
+    (await findProviders(servers, input.path, "codeActions")).map(async (asked) => {
+      const target = asked.target;
 
-  if (synced === null) return [];
+      const overlapping = servers.reported(target.slot, asked.document.path).filter((raw) => {
+        const range = readDiagnostics([raw], servers.place)[0]?.range;
 
-  const overlapping = servers.published(synced.document.path).filter((raw) => {
-    const range = readDiagnostics([raw], servers.place)[0]?.range;
+        return (
+          range !== undefined &&
+          comparePositions(range.start, input.range.end) <= 0 &&
+          comparePositions(input.range.start, range.end) <= 0
+        );
+      });
 
-    return (
-      range !== undefined &&
-      comparePositions(range.start, input.range.end) <= 0 &&
-      comparePositions(input.range.start, range.end) <= 0
-    );
-  });
+      const asking = await ask(servers, target, "textDocument/codeAction", {
+        textDocument: { uri: asked.uri },
+        range: toLspRange(input.range),
+        context: {
+          diagnostics: overlapping,
+          triggerKind: 1,
+          ...(input.only === undefined ? {} : { only: [...input.only] }),
+        },
+      });
 
-  const answer = await synced.run.rpc
-    .request("textDocument/codeAction", {
-      textDocument: { uri: servers.uri(synced.document.path) },
-      range: toLspRange(input.range),
-      context: { diagnostics: overlapping, triggerKind: 1 },
-    })
-    .catch((error: unknown) => {
-      if (error instanceof LspError) return null;
-      throw error;
-    });
+      const plans = asking instanceof LspError ? [] : readCodeActions(asking.answer);
+      target.slot.answers += 1;
+      const number = target.slot.answers;
+      target.slot.actions = { answer: number, plans };
 
-  const plans = readCodeActions(answer);
-  synced.slot.answers += 1;
-  const number = synced.slot.answers;
-  synced.slot.actions = { run: synced.run.id, answer: number, plans };
+      return plans.map((plan, index): CodeAction => ({
+        title: plan.title,
+        kind: plan.kind,
+        preferred: plan.preferred,
+        disabled: plan.disabled,
+        token: { kind: "codeAction", server: target.run.id, answer: number, item: index },
+      }));
+    }),
+  );
 
-  return plans.map((plan, index) => ({
-    title: plan.title,
-    kind: plan.kind,
-    preferred: plan.preferred,
-    disabled: plan.disabled,
-    token: { kind: "codeAction", server: synced.run.id, answer: number, item: index },
-  }));
+  return offered.flat();
 }
 
 export async function resolveCodeAction(
@@ -188,10 +212,12 @@ export async function resolveCodeAction(
   const raw = plan.raw;
 
   const action =
-    plan.resolvable && run.capabilities.resolvesCodeAction && isJson(raw)
+    plan.resolvable &&
+    findProvider(run, "codeActions", null)?.resolveProvider === true &&
+    isJson(raw)
       ? ((await run.rpc
           .request("codeAction/resolve", raw)
-          .then(readCodeAction)
+          .then((answer) => readCodeActions([answer])[0] ?? null)
           .catch(() => null)) ?? plan)
       : plan;
 

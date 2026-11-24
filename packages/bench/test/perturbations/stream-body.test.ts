@@ -66,7 +66,7 @@ it("serves a shared stream whose request body arrives after its headers", async 
 
       return null;
     })(),
-    new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 3_000)),
+    new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 3000)),
   ]);
 
   expect(first).toMatchObject({ kind: "chunk", stream });

@@ -70,8 +70,9 @@ export function QuestionCallView({
 
   const asked = part === undefined ? null : readQuestion(part);
 
-  if (part === undefined || asked === null)
+  if (part === undefined || asked === null) {
     return <ToolLineView message={message} toolClass={toolClass} cwd={cwd} />;
+  }
 
   const phase = asked.phase;
   const ended = part.status.kind === "failed";

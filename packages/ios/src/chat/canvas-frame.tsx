@@ -44,7 +44,10 @@ function inject(view: WebView<unknown> | null, message: ShellBound): void {
   view?.injectJavaScript(shellScript(message));
 }
 
-type Frame = { readonly height: number; readonly scrolls: boolean };
+interface Frame {
+  readonly height: number;
+  readonly scrolls: boolean;
+}
 
 type CanvasSize =
   | (Frame & { readonly kind: "fit"; readonly onResize: (frame: Frame) => void })

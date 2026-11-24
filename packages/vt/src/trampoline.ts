@@ -106,7 +106,7 @@ export async function installTrampolines(
   callbackNames.forEach((_, index) => {
     const trampoline = instance.exports[String(index)];
 
-    if (!(trampoline instanceof Function)) throw new Error(`trampoline ${index} is missing`);
+    if (typeof trampoline !== "function") throw new Error(`trampoline ${index} is missing`);
     table.set(base + index, trampoline);
   });
 

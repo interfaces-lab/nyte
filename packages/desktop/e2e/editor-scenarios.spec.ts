@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { collectErrors } from "@nyte-ai/app/e2e/errors";
-import { FIXTURES, prepareHome } from "./baseline.ts";
+import { FIXTURES, prepareHome, trustedProject } from "./baseline.ts";
 import { caretStatus, closeWindow, editor, goTo } from "./desk.ts";
 import { readInputTrace } from "./input-trace.ts";
 import { launchDesktop } from "./launch.ts";
@@ -27,7 +27,7 @@ const TYPED = " /* the quick brown fox jumps over the lazy dog */";
 
 const MARKS = { start: "nyte:scenario-typing:start", end: "nyte:scenario-typing:end" } as const;
 
-const SETTLE_MS = 8_000;
+const SETTLE_MS = 8000;
 
 const SWITCH_ROUNDS = 3;
 
@@ -74,8 +74,8 @@ const SCENARIOS: readonly Scenario[] = [
       "xtools/go/ssa/func.go",
     ],
     largest: "xtools/internal/stdlib/manifest.go",
-    typing: { path: "cobra/command.go", line: 1_000 },
-    typingLargest: { line: 9_000 },
+    typing: { path: "cobra/command.go", line: 1000 },
+    typingLargest: { line: 9000 },
     jumps: {
       path: "cobra/command.go",
       warm: ["return commandFound, a, legacyArgs(", "legacyArgs"],
@@ -118,16 +118,18 @@ const SCENARIOS: readonly Scenario[] = [
 test.skip(OUT === undefined, "A bench: set NYTE_PIERRE_OUT to run it.");
 test.skip(process.platform !== "darwin", "Memory is macOS's phys_footprint.");
 
-for (const scenario of SCENARIOS)
+for (const scenario of SCENARIOS) {
   // oxlint-disable-next-line eslint/no-empty-pattern -- Playwright reads a test's fixtures from this pattern, and the bench launches its own app
   test(`the Code window on a ${scenario.name} project`, async ({}, testInfo) => {
     test.setTimeout(900_000);
     await using stack = new AsyncDisposableStack();
     const parent = await realpath(await mkdtemp(join(tmpdir(), "nyte-e2e-scenario-")));
     stack.defer(() => rm(parent, { recursive: true, force: true }));
-    const home = (await prepareHome(parent)).home;
+    const prepared = await prepareHome(parent);
+    const home = prepared.home;
+    const project = await trustedProject(prepared, "code");
 
-    await prepareProject(home, scenario);
+    await prepareProject(home, project, scenario);
     const launched = await launchDesktop({ home, parentDirectory: parent, background: true });
     stack.defer(() => launched.close());
     const application = launched.application;
@@ -192,9 +194,11 @@ for (const scenario of SCENARIOS)
     await session.send("Profiler.disable");
     const switches = [];
 
-    for (let round = 0; round < SWITCH_ROUNDS; round += 1)
-      for (const path of [...scenario.tabs, scenario.largest])
+    for (let round = 0; round < SWITCH_ROUNDS; round += 1) {
+      for (const path of [...scenario.tabs, scenario.largest]) {
         switches.push(await switchTimed(code, path));
+      }
+    }
 
     await switchTimed(code, scenario.typing.path);
     const typing = await typeTimed(
@@ -215,7 +219,7 @@ for (const scenario of SCENARIOS)
     const scrollingLargest = await scrollTimed(code);
 
     const floor = await floorTimed(code, testInfo.outputPath(`${scenario.name}-floor`));
-    const jumps = await timeJumps(code, home, scenario);
+    const jumps = await timeJumps(code, project, scenario);
 
     await code.waitForTimeout(SETTLE_MS / 2);
     const worked = await memory(application, session, pid);
@@ -267,13 +271,15 @@ for (const scenario of SCENARIOS)
       ).toEqual([]);
     }
   });
+}
 
-async function prepareProject(home: string, scenario: Scenario): Promise<void> {
-  for (const [name, source] of Object.entries(scenario.copy))
-    await cp(source, join(home, name), {
+async function prepareProject(home: string, project: string, scenario: Scenario): Promise<void> {
+  for (const [name, source] of Object.entries(scenario.copy)) {
+    await cp(source, join(project, name), {
       recursive: true,
       filter: (path) => !path.includes("/.git"),
     });
+  }
 
   const tool = (name: string): string =>
     execFileSync("mise", ["which", name], { encoding: "utf8" }).trim();
@@ -294,10 +300,10 @@ async function prepareProject(home: string, scenario: Scenario): Promise<void> {
   );
 
   if (scenario.copy["ts"] !== undefined) {
-    await mkdir(join(home, "ts", "node_modules"), { recursive: true });
+    await mkdir(join(project, "ts", "node_modules"), { recursive: true });
     await symlink(
       join(REPOSITORY, "node_modules", "typescript"),
-      join(home, "ts", "node_modules", "typescript"),
+      join(project, "ts", "node_modules", "typescript"),
     );
   }
 }
@@ -332,11 +338,11 @@ async function armPainted(
                       );
                     }),
                   )
-              )
+              ) {
                 done(performance.now() - started);
-              else if (performance.now() - started > 20_000)
+              } else if (performance.now() - started > 20_000) {
                 fail(new Error(`${armed.path} never drew`));
-              else requestAnimationFrame(tick);
+              } else requestAnimationFrame(tick);
             };
 
             requestAnimationFrame(tick);
@@ -386,7 +392,7 @@ async function switchTimed(
   path: string,
 ): Promise<{ readonly path: string; readonly ms: number }> {
   const tab = editor(page).getByRole("tab", {
-    name: new RegExp(`^${path.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`, "u"),
+    name: new RegExp(`^${path.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)}`, "u"),
   });
 
   const armed = await armPainted(page, path, "pointerdown");
@@ -415,8 +421,9 @@ async function typeTimed(page: Page, session: CDPSession, line: number, prefix: 
   await session.send("Profiler.disable");
   await writeFile(`${prefix}.cpuprofile`, JSON.stringify(profile));
 
-  for (let index = 0; index < TYPED.length * 2 + 12; index += 1)
+  for (let index = 0; index < TYPED.length * 2 + 12; index += 1) {
     await page.keyboard.press("Meta+z");
+  }
   await expect(caretStatus(page)).toBeVisible();
 
   return {
@@ -445,7 +452,7 @@ function busyMs(profile: {
   for (let index = 1; index < samples.length; index += 1) {
     const name = names.get(samples[index] ?? -1);
 
-    if (name !== "(idle)" && name !== "(program)") total += (deltas[index] ?? 0) / 1_000;
+    if (name !== "(idle)" && name !== "(program)") total += (deltas[index] ?? 0) / 1000;
   }
 
   return total;
@@ -509,8 +516,12 @@ async function scrollTimed(page: Page) {
   };
 }
 
-async function timeJumps(page: Page, home: string, scenario: Scenario): Promise<readonly number[]> {
-  const text = await readFile(join(home, scenario.jumps.path), "utf8");
+async function timeJumps(
+  page: Page,
+  project: string,
+  scenario: Scenario,
+): Promise<readonly number[]> {
+  const text = await readFile(join(project, scenario.jumps.path), "utf8");
 
   await switchTimed(page, scenario.jumps.path);
   const warm = find(text, scenario.jumps.warm[0], scenario.jumps.warm[1]);
@@ -522,7 +533,7 @@ async function timeJumps(page: Page, home: string, scenario: Scenario): Promise<
     await expect(editor(page).getByRole("tab", { selected: true })).toHaveAccessibleName(
       scenario.jumps.lands,
       {
-        timeout: 3_000,
+        timeout: 3000,
       },
     );
   }).toPass({ timeout: 180_000 });
@@ -555,9 +566,9 @@ async function timeJumps(page: Page, home: string, scenario: Scenario): Promise<
                   const shown = status();
 
                   if (shown !== from && shown !== "") done(performance.now() - started);
-                  else if (performance.now() - started > 10_000)
+                  else if (performance.now() - started > 10_000) {
                     fail(new Error(`⌘B from ${from} landed nowhere`));
-                  else requestAnimationFrame(tick);
+                  } else requestAnimationFrame(tick);
                 };
 
                 requestAnimationFrame(tick);
@@ -583,9 +594,9 @@ async function memory(application: ElectronApplication, session: CDPSession, pid
   const window = await megabytes(pid);
 
   await session.send("HeapProfiler.collectGarbage");
-  await new Promise((done) => setTimeout(done, 1_000));
+  await new Promise((done) => setTimeout(done, 1000));
   await session.send("HeapProfiler.collectGarbage");
-  await new Promise((done) => setTimeout(done, 2_000));
+  await new Promise((done) => setTimeout(done, 2000));
   const heap = await session.send("Runtime.getHeapUsage");
   const afterGc = await megabytes(pid);
   const own = await application.evaluate((electron) =>
@@ -678,8 +689,9 @@ function find(
   if (index < 0 || word === null) throw new Error(`"${line}" isn't in the file.`);
   let column = 0;
 
-  for (const character of found.slice(0, start + word.index))
+  for (const character of found.slice(0, start + word.index)) {
     column = character === "\t" ? column + TAB_COLUMNS - (column % TAB_COLUMNS) : column + 1;
+  }
 
   return { line: index + 1, column: column + 1 };
 }

@@ -29,8 +29,9 @@ export async function publishViews(kernel: Kernel): Promise<void> {
       built.map(async (entry): Promise<View | undefined> => {
         const build = entry.build;
 
-        if (build.kind === "failed")
+        if (build.kind === "failed") {
           return published.find((view) => view.kind === entry.kind && view.plugin === entry.plugin);
+        }
 
         return {
           kind: entry.kind,
@@ -75,8 +76,9 @@ export async function publishViews(kernel: Kernel): Promise<void> {
         before.blob !== view.blob
       );
     })
-  )
+  ) {
     kernel.host.update({ views });
+  }
 }
 
 function reportFailures(
@@ -93,11 +95,13 @@ function reportFailures(
       : { id, source: known.source, path: known.path };
   };
 
-  for (const id of kernel.plugins.state.viewFailures)
+  for (const id of kernel.plugins.state.viewFailures) {
     if (!failures.has(id)) kernel.host.report({ ...row(id), issues: [] });
+  }
 
-  for (const [id, entries] of failures)
+  for (const [id, entries] of failures) {
     kernel.host.report({ ...row(id), issues: entries.map((entry) => entry.issue) });
+  }
 
   kernel.plugins.state.viewFailures = [...failures.keys()];
 }

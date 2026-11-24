@@ -13,21 +13,21 @@ import { TRACE_CATEGORIES } from "./main-thread.ts";
 import { messages, send } from "./ui.ts";
 import { percentile } from "./work-counts.ts";
 
-const IDLE_MB = 1_500;
+const IDLE_MB = 1500;
 
-const WORKING_MB = 2_500;
+const WORKING_MB = 2500;
 
-const HEAVY_MB = 4_000;
+const HEAVY_MB = 4000;
 
 const WINDOW_MB = 300;
 
 const KEY_P95_MS = 50;
 
-const DRAIN_MS = 8_000;
+const DRAIN_MS = 8000;
 
-const SETTLE_MS = 4_000;
+const SETTLE_MS = 4000;
 
-const HEAVY_FRAMES = 1_000;
+const HEAVY_FRAMES = 1000;
 
 const HUGE_LINES = 100_000;
 
@@ -275,7 +275,7 @@ function hugeGo(lines: number): string {
 function heavyDesign(frames: number): string {
   const screens = Array.from({ length: frames }, (_, index) =>
     [
-      `      <div data-frame="Heavy ${String(index)}" data-x="${String((index % 20) * 450)}" data-y="${String(1_000 + Math.floor(index / 20) * 920)}" className="tonight">`,
+      `      <div data-frame="Heavy ${String(index)}" data-x="${String((index % 20) * 450)}" data-y="${String(1000 + Math.floor(index / 20) * 920)}" className="tonight">`,
       '        <div className="tonight-column">',
       "          <PhaseCard />",
       '          <div className="row wide">',

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-const COPIED_MS = 2_000;
+const COPIED_MS = 2000;
 
 export function useCopyConfirmation() {
   const [copied, setCopied] = useState(false);

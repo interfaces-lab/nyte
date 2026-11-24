@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable } from "react-native";
-import { Link, type Href } from "expo-router";
+import { Link } from "expo-router";
+import type { Href } from "expo-router";
 import { css, html } from "react-strict-dom";
 import { controls, radii, textStyles, tokens } from "../theme.ts";
 

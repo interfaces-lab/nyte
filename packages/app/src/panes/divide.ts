@@ -25,11 +25,12 @@ export function divide(specs: readonly ChildSpec[]): readonly Piecewise[] {
   const fixed = entries.filter((entry) => entry.spec.px !== undefined);
   const shared = entries.filter((entry) => entry.spec.px === undefined);
 
-  if (fixed.length === 0 || shared.length === 0)
+  if (fixed.length === 0 || shared.length === 0) {
     return waterFill(
       specs.map((spec) => (spec.px === undefined ? spec.weight : fixedSize(spec))),
       specs.map((spec) => spec.min),
     );
+  }
 
   const fixedLength = sum(fixed.map((entry) => fixedSize(entry.spec)));
   const fixedMin = sum(fixed.map((entry) => entry.spec.min));

@@ -30,8 +30,9 @@ export function supportedThinkingLevel(
 
   if (requested !== undefined && levels.includes(requested)) return requested;
 
-  if (option !== undefined && levels.includes(option.defaultThinking))
+  if (option !== undefined && levels.includes(option.defaultThinking)) {
     return option.defaultThinking;
+  }
 
   return levels[0] ?? "off";
 }

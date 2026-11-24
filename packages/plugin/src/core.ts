@@ -23,6 +23,7 @@ export type {
   SearchResult,
   Setting,
   SettingDefinition,
+  SettingMode,
   Skill,
   ToolDefinition,
   ToolInvocation,

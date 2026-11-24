@@ -43,7 +43,7 @@ export function writePatch(path: string, status: FileStatus, hunks: readonly Hun
     for (const line of hunk.lines) {
       lines.push(`${MARKS[line.kind]}${line.text}`);
 
-      if (line.noNewline === true) lines.push("\\ No newline at end of file");
+      if (line.noNewline === true) lines.push(String.raw`\ No newline at end of file`);
     }
   }
 

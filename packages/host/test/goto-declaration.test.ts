@@ -8,25 +8,30 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { localExec, localFiles } from "../src/index.ts";
 import { localLanguage } from "../src/local/language/manager.ts";
 import { findExecutable } from "../src/local/process/command.ts";
+import { localEnv } from "./language-harness.ts";
 
 /** A spot in a fixture file: the first line holding `line`, at the word `name` in it. */
-type Spot = { readonly file: string; readonly line: string; readonly name: string };
+interface Spot {
+  readonly file: string;
+  readonly line: string;
+  readonly name: string;
+}
 
 /** Where a navigation must land: a fixture file, or a standard library file under GOROOT's `src`. */
-type Place = {
+interface Place {
   readonly file: string;
   readonly line: string;
   readonly name: string;
   readonly root?: "goroot";
-};
+}
 
-type Case = {
+interface Case {
   readonly name: string;
   readonly query: "definition" | "typeDefinition" | "references";
   readonly at: Spot;
   readonly lands: readonly Place[];
   readonly edit?: { readonly file: string; readonly prefix: string };
-};
+}
 
 const at = (file: string, line: string, name: string): Spot => ({ file, line, name });
 
@@ -219,13 +224,16 @@ describe.skipIf((await findExecutable("gopls")) === null)(
     beforeAll(async () => {
       root = await realpath(ROOT);
       goSource = join(execFileSync("go", ["env", "GOROOT"], { encoding: "utf8" }).trim(), "src");
-      language = localLanguage({
-        identity: asId("goto"),
-        cwd: root,
-        files: localFiles(root),
-        exec: localExec(root),
-        close: async () => undefined,
-      });
+      language = localLanguage(
+        {
+          identity: asId("goto"),
+          cwd: root,
+          files: localFiles(root),
+          exec: localExec(root),
+          close: async () => undefined,
+        },
+        { trusted: async () => true },
+      );
     });
 
     afterAll(async () => {
@@ -236,12 +244,13 @@ describe.skipIf((await findExecutable("gopls")) === null)(
       const text = await readFile(join(root, entry.at.file), "utf8");
       const shift = entry.edit?.prefix.split("\n").length ?? 1;
 
-      if (entry.edit !== undefined)
+      if (entry.edit !== undefined) {
         await language.open({
           path: entry.edit.file,
           text: `${entry.edit.prefix}${text}`,
           version: 1,
         });
+      }
 
       try {
         const position = spot(text, entry.at);
@@ -269,6 +278,60 @@ describe.skipIf((await findExecutable("gopls")) === null)(
         expect(found.map(described).toSorted()).toEqual(wanted.toSorted());
       } finally {
         if (entry.edit !== undefined) await language.close({ path: entry.edit.file });
+      }
+    });
+  },
+);
+
+const TYPESCRIPT_CASES: readonly Case[] = [
+  {
+    name: "an imported class lands on its declaration, not on the import",
+    query: "definition",
+    at: at("src/index.ts", "new Hub()", "Hub"),
+    lands: [at("src/hub.ts", "export class Hub", "Hub")],
+  },
+  {
+    name: "an imported class's usages include the other file",
+    query: "references",
+    at: at("src/index.ts", "new Hub()", "Hub"),
+    lands: [
+      at("src/hub.ts", "export class Hub", "Hub"),
+      at("src/index.ts", "import { Hub", "Hub"),
+      at("src/index.ts", "new Hub()", "Hub"),
+    ],
+  },
+];
+
+const TYPESCRIPT_ROOT = join(import.meta.dirname, "fixtures", "language", "notifyhub-ts");
+
+describe.skipIf((await findExecutable("typescript-language-server")) === null)(
+  "Go to Declaration lands on typescript-language-server",
+  () => {
+    it.each(TYPESCRIPT_CASES)("$name", { timeout: 60_000 }, async (entry) => {
+      const root = await realpath(TYPESCRIPT_ROOT);
+      const language = localLanguage(localEnv(root), { trusted: async () => true });
+      const text = await readFile(join(root, entry.at.file), "utf8");
+      const query = { path: entry.at.file, position: spot(text, entry.at) };
+
+      try {
+        await language.open({ path: entry.at.file, text, version: 1 });
+
+        const found =
+          entry.query === "references"
+            ? await language.references({ ...query, includeDeclaration: true })
+            : await language[entry.query](query);
+
+        const wanted = await Promise.all(
+          entry.lands.map(async (place) => {
+            const landed = spot(await readFile(join(root, place.file), "utf8"), place);
+
+            return `${place.file}:${String(landed.line + 1)}:${String(landed.utf16Column + 1)}`;
+          }),
+        );
+
+        expect(found.map(described).toSorted()).toEqual(wanted.toSorted());
+      } finally {
+        await language.shutdown();
       }
     });
   },

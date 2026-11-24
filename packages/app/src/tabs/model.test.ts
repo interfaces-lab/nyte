@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import { WindowDrafts } from "../chat/composer/drafts.ts";
+import { WindowDrafts } from "../drafts/drafts.ts";
 import { planPane } from "../panes/pane-commands.ts";
 import type { PaneCommand } from "../panes/pane-commands.ts";
 import { chatContent, chatPanes } from "../panes/pane-layout.ts";

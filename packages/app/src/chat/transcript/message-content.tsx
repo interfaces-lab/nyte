@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import type { UserContent } from "@nyte-ai/sdk";
 import { ComposerReadOnly } from "../composer/composer-surface.tsx";
-import { ImagePlaceholder, ImagePreview } from "../markdown/image-preview.tsx";
+import { ImagePlaceholder, ImagePreview } from "../../markdown/image-preview.tsx";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
 import { connection } from "../../data/connection.ts";
 
@@ -39,8 +39,9 @@ export function BlobImage({
   const blob = useBlobUrl(["blob", file.blob], () => connection().blob(file.blob));
   const src = blob.data;
 
-  if (src === undefined)
+  if (src === undefined) {
     return <ImagePlaceholder name={file.name} failed={blob.isError} compact={compact} />;
+  }
 
   return <ImagePreview src={src} name={file.name} compact={compact} />;
 }

@@ -50,8 +50,6 @@ describe("secrets", () => {
           },
         )
       ).text,
-    );
-    answers.push(
       (
         await harness.send({
           method: "GET",
@@ -59,18 +57,10 @@ describe("secrets", () => {
           headers: { authorization: "Bearer x.y.z" },
         })
       ).text,
-    );
-    answers.push(
       (await harness.removeEnvironment({ as: "owner", userId: "user_bob" }, desktop.environmentId))
         .text,
-    );
-    answers.push(
       (await harness.removeEnvironment({ as: "desktop", desktop }, desktop.environmentId)).text,
-    );
-    answers.push(
       (await harness.webhook({ type: "user.deleted", data: {} }, { secret: "whsec_AAAA" })).text,
-    );
-    answers.push(
       (
         await harness.send({
           method: "GET",

@@ -148,14 +148,13 @@ function gray(hex: string): string {
   const linear = [1, 3, 5].map((at) => {
     const value = Number.parseInt(hex.slice(at, at + 2), 16) / 255;
 
-    return value <= 0.040_45 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   });
 
   const [red = 0, green = 0, blue = 0] = linear;
   const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 
-  const level =
-    luminance <= 0.003_130_8 ? 12.92 * luminance : 1.055 * luminance ** (1 / 2.4) - 0.055;
+  const level = luminance <= 0.0031308 ? 12.92 * luminance : 1.055 * luminance ** (1 / 2.4) - 0.055;
 
   const channel = Math.round(level * 255)
     .toString(16)

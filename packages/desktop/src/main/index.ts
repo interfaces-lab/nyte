@@ -41,7 +41,7 @@ import {
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
-import { machineName } from "@nyte-ai/connect/host";
+import { machineName, ConnectRuntime } from "@nyte-ai/connect/host";
 import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
@@ -65,7 +65,6 @@ import type { CallRoute } from "../shared/ipc-call.ts";
 import { localFonts } from "./native/fonts.ts";
 import { registerAccount } from "./account/account.ts";
 import type { AccountSession } from "@nyte-ai/connect/host";
-import { ConnectRuntime } from "@nyte-ai/connect/host";
 import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { defaultSecrets } from "@nyte-ai/host/secrets";
 import { AccountStore } from "./account/account-store.ts";
@@ -75,7 +74,8 @@ import { canvasShellUrl, mediaOrigin, registerRenderer } from "./renderer-protoc
 import { ACCOUNT_CHANNELS } from "../shared/account/protocol.ts";
 import { readConnectConfig } from "../shared/connect-config.ts";
 import type { ConnectConfig } from "../shared/connect-config.ts";
-import { adoptStagedCli, inspectBundledCli, installCli, stageCli } from "./native/cli.ts";
+import { adoptStagedCli, inspectBundledCli, stageCli } from "./native/cli.ts";
+import { confirmExternal, installStagedCli, pickFolder } from "./dialogs.ts";
 import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
 import { findPackagedBuild } from "../shared/desktop-builds.ts";
 import { throwForRenderer } from "../host/desktop-host.ts";
@@ -99,11 +99,12 @@ import {
   themePreference,
   unsavedEditsHeld,
   viewedChat,
-  windowWorkspacePath,
+  windowWorkspace,
 } from "../shared/ipc-inputs.ts";
 import { createWindowWorkspaces } from "../shared/window-workspace.ts";
 
 interface NyteWindow {
+  readonly windowId: string;
   readonly app: DesktopApp;
   readonly window: BrowserWindow;
   readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
@@ -139,8 +140,9 @@ app.setPath(
     join(app.getPath("appData"), build?.name ?? "Nyte Dev"),
 );
 
-if (build === null ? process.env["NYTE_HOME"] === undefined : build.homeInUserData)
+if (build === null ? process.env["NYTE_HOME"] === undefined : build.homeInUserData) {
   process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
+}
 
 const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-state.json"));
 
@@ -261,7 +263,7 @@ const openWith = createOpenWith({
   windows: () => [...windows].flatMap(([id, entry]) => (entry.app === "code" ? [id] : [])),
   workspace: (window) => windowWorkspaces.workspace(window),
   send: (window, path) => windows.get(window)?.menuCommands.dispatch({ kind: "open-file", path }),
-  open: (opening) => createWindow(opening.kind === "file" ? "code" : "nyte", { opening }),
+  open: (opening) => createWindow("code", { opening }),
   failed: (path, message) => dialog.showErrorBox(`Couldn't open ${basename(path)}`, message),
 });
 
@@ -300,47 +302,10 @@ function startedHost(): DesktopHost {
   return desktopHost;
 }
 
-async function confirmExternal(url: string, id: HostWindow) {
-  const window = windows.get(id)?.window;
-
-  const options: Electron.MessageBoxOptions = {
-    type: "question",
-    message: "Do you want Nyte to open the external website?",
-    detail: url,
-    buttons: ["Open", "Copy", `Always Open ${new URL(url).host}`, "Cancel"],
-    defaultId: 0,
-    cancelId: 3,
-    noLink: true,
-  };
-
-  const { response } =
-    window === undefined
-      ? await dialog.showMessageBox(options)
-      : await dialog.showMessageBox(window, options);
-
-  return (["open", "copy", "trust", "cancel"] as const)[response] ?? "cancel";
-}
-
-async function pickFolder(id: HostWindow): Promise<string | undefined> {
-  const window = windows.get(id)?.window;
-
-  const options: Electron.OpenDialogOptions = {
-    properties: ["openDirectory", "createDirectory"],
-    message: "Open a workspace folder",
-  };
-
-  const result =
-    window === undefined
-      ? await dialog.showOpenDialog(options)
-      : await dialog.showOpenDialog(window, options);
-
-  return result.canceled ? undefined : result.filePaths[0];
-}
-
 const mainCalls: CallTable = {
   "host.fonts": () => localFonts(),
   "host.pickWorkspace": async (window) => {
-    const picked = await pickFolder(window);
+    const picked = await pickFolder(windows.get(window)?.window);
 
     if (picked === undefined) return { kind: "cancelled" };
 
@@ -348,7 +313,7 @@ const mainCalls: CallTable = {
       .call(window, "host.openWorkspace", { path: picked })
       .catch(throwForRenderer);
   },
-  "host.pickFolder": (window) => pickFolder(window),
+  "host.pickFolder": (window) => pickFolder(windows.get(window)?.window),
   "host.updates.state": async () => updates?.state() ?? { kind: "idle" },
   "host.updates.check": async () => updates?.click(),
   "host.updates.channel": async () => {
@@ -359,8 +324,9 @@ const mainCalls: CallTable = {
   "host.updates.setChannel": async (_window, { channel }) => {
     await updatesReady.promise;
 
-    if (updates === undefined)
+    if (updates === undefined) {
       throw new ExpectedHostError({ code: "unavailable", message: "Updates are not ready." });
+    }
 
     return updates.setChannel(channel);
   },
@@ -375,7 +341,8 @@ const mainCalls: CallTable = {
       appVersion: app.getVersion(),
     }),
   "host.openExternal": async (_window, { url }) => void shell.openExternal(safeExternalUrl(url)),
-  "host.confirmExternal": (window, { url }) => confirmExternal(safeExternalUrl(url), window),
+  "host.confirmExternal": (window, { url }) =>
+    confirmExternal(safeExternalUrl(url), windows.get(window)?.window),
   "host.revealPath": async (_window, { path }) => shell.showItemInFolder(path),
   "host.openInBrowser": async (_window, { path }) => openInBrowser(path),
   "host.openPluginsFolder": async () => {
@@ -403,6 +370,12 @@ const mainCalls: CallTable = {
   "host.browser.attach": async (window, input) => browserSurfaces.attach(input, window),
   "host.browser.setEntered": async (window, input) => browserSurfaces.setEntered(input, window),
   "host.switchApp": async (window, input) => switchApp(window, input),
+  "host.openSettings": async (_window, input) => {
+    const shown =
+      [...windows.values()].findLast((entry) => entry.app === "nyte") ?? createWindow("nyte");
+
+    shown.menuCommands.dispatch({ kind: "action", action: "settings.open", input });
+  },
 } satisfies { readonly [P in MainCallPath]: CallHandler<P> };
 
 const mainRoute: CallRoute = (window, path, input) => callTable(mainCalls, window, path, input);
@@ -411,18 +384,6 @@ const hostRoute: CallRoute = (window, path, input) =>
   startedHost().call(window, path, input).catch(throwForRenderer);
 
 const mainPaths: ReadonlySet<string> = new Set(MAIN_OPERATION_PATHS);
-
-async function installStagedCli(staged: Promise<string>): Promise<void> {
-  try {
-    const detail = await installCli(home, await staged, process.env["SHELL"]);
-    await dialog.showMessageBox({ type: "info", message: "Installed the nyte command.", detail });
-  } catch (cause) {
-    dialog.showErrorBox(
-      "Couldn't install the nyte command",
-      cause instanceof Error ? cause.message : String(cause),
-    );
-  }
-}
 
 function startHost(): DesktopHost {
   const runtime = startHostRuntime({
@@ -452,7 +413,7 @@ function startHost(): DesktopHost {
     badge: (count) => alerts.badge(count),
     linkChanged: (state) => {
       hostTray?.refresh();
-      openWith.reachable(state.kind === "connected");
+      openWith.reachable(state.kind === "open");
     },
     hostProcessChanged: (state) => emitHostEvent({ kind: "host_process_changed", state }),
     registrationChanged: () => hostTray?.refresh(),
@@ -571,12 +532,14 @@ function registerIpc(): void {
     if (unsavedEditsHeld.Check(held)) unsavedEdits.report(event.sender.id, held);
   });
 
-  ipcMain.on(WINDOW_WORKSPACE_CHANNEL, (event, path) => {
+  ipcMain.on(WINDOW_WORKSPACE_CHANNEL, (event, shown) => {
     const entry = senderWindow(event);
 
-    if (!windowWorkspacePath.Check(path)) return;
-    windowWorkspaces.shown(event.sender.id, path ?? undefined);
-    entry.window.setTitle(windowTitle(entry.app, path ?? undefined));
+    if (!windowWorkspace.Check(shown)) return;
+    const workspace = shown ?? undefined;
+    windowWorkspaces.shown(event.sender.id, workspace?.path);
+    entry.window.setTitle(windowTitle(entry.app, workspace?.path));
+    launchState.keepWindow(entry.windowId, entry.app, workspace);
   });
 
   ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
@@ -611,7 +574,7 @@ function onScreen(bounds: Electron.Rectangle): boolean {
     );
 }
 
-const FIRST_FRAME_LIMIT_MS = 4_000;
+const FIRST_FRAME_LIMIT_MS = 4000;
 
 const MIN_WIDTH = 500;
 
@@ -633,7 +596,7 @@ function createWindow(
     onScreen,
   });
 
-  launchState.keepWindow(windowId, app, opening);
+  launchState.keepWindow(windowId, app, opening?.workspace);
 
   const options: Electron.BrowserWindowConstructorOptions = {
     ...frame.bounds,
@@ -667,10 +630,12 @@ function createWindow(
   const created = new BrowserWindow(options);
   const id = created.webContents.id;
 
-  if (process.platform === "win32")
+  if (process.platform === "win32") {
     created.setAppDetails(windowsAppDetails(app, build?.appId ?? "ai.nyte.dev", process.execPath));
+  }
 
   const entry: NyteWindow = {
+    windowId,
     app,
     window: created,
     menuCommands: createMenuCommandDelivery({
@@ -687,8 +652,9 @@ function createWindow(
 
       if (frame.fullscreen) created.setFullScreen(true);
 
-      if (performance.getEntriesByName("nyte:window-shown").length === 0)
+      if (performance.getEntriesByName("nyte:window-shown").length === 0) {
         performance.mark("nyte:window-shown");
+      }
       entry.shown = true;
     },
     shown: false,
@@ -836,7 +802,7 @@ function confirmQuit(): boolean {
   return quitting;
 }
 
-const SHUTDOWN_LIMIT_MS = 5_000;
+const SHUTDOWN_LIMIT_MS = 5000;
 
 let shuttingDown: Promise<void> | undefined;
 
@@ -935,7 +901,7 @@ if (!hasSingleInstanceLock) {
 
     const updateItem = menu.getMenuItemById("check-for-updates");
 
-    if (updateItem !== null)
+    if (updateItem !== null) {
       updates = await registerUpdates({
         publish: (state) => broadcast({ kind: "update_changed", state }),
         publishChannel: (channel) => broadcast({ kind: "update_channel_changed", channel }),
@@ -948,6 +914,7 @@ if (!hasSingleInstanceLock) {
           return shutdown();
         },
       });
+    }
 
     updatesReady.resolve();
     showHostTray();
@@ -966,12 +933,12 @@ if (!hasSingleInstanceLock) {
 
     if (cli !== undefined && cliItem !== null) {
       cliItem.visible = true;
-      cliItem.click = () => void installStagedCli(cli);
+      cliItem.click = () => void installStagedCli(home, cli);
     }
 
     Menu.setApplicationMenu(menu);
     void cli
-      ?.then((staged) => adoptStagedCli(home, staged))
+      ?.then((staged) => adoptStagedCli(home, staged, app.getVersion()))
       .catch((cause: unknown) => retainDiagnostic({ correlationId: "desktop-cli-stage", cause }));
   });
 

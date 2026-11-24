@@ -1,6 +1,7 @@
 import { createContext, use, useRef } from "react";
 import type { ReactNode } from "react";
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { ClerkProvider, isClerkAPIResponseError, useAuth, useClerk, useUser } from "@clerk/expo";
 import { releaseCopy } from "./account-copy.ts";
 import { useHostedAuth } from "@clerk/expo/hosted-auth";
@@ -11,15 +12,13 @@ import type { BrokerClient, EnvironmentSummary } from "@nyte-ai/connect";
 import type { ManagedConnection } from "../connection/connection.ts";
 import { connectionStore, verifyHost } from "../connection/host.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { readAccountConfig, type AccountConfig } from "./account-config.ts";
+import { readAccountConfig } from "./account-config.ts";
+import type { AccountConfig } from "./account-config.ts";
 import { CLIENT_NAME, deviceCrypto, forgetClientId, readClientId } from "./device.ts";
-import { connectEnvironment, type ConnectEnding } from "./enrollment.ts";
-import {
-  RELEASE_TIMEOUT_MS,
-  releaseDevice,
-  releaseOnHost,
-  type ReleaseReport,
-} from "./revocation.ts";
+import { connectEnvironment } from "./enrollment.ts";
+import type { ConnectEnding } from "./enrollment.ts";
+import { RELEASE_TIMEOUT_MS, releaseDevice, releaseOnHost } from "./revocation.ts";
+import type { ReleaseReport } from "./revocation.ts";
 import { toast } from "../ui/toast.tsx";
 
 type AccountStatus =
@@ -40,7 +39,10 @@ export type SignInEnding =
   | { readonly kind: "unregisteredApp" }
   | { readonly kind: "failed" };
 
-type Released = { readonly name: string; readonly report: ReleaseReport };
+interface Released {
+  readonly name: string;
+  readonly report: ReleaseReport;
+}
 
 export type SignOutEnding =
   | { readonly kind: "signedOut"; readonly released: Released | undefined }
@@ -126,7 +128,10 @@ async function forgetOwnedMac({
     : { name: removed.saved.connection.name, report: removed.released };
 }
 
-type Epoch = { readonly ownerId: string | null; readonly controller: AbortController };
+interface Epoch {
+  readonly ownerId: string | null;
+  readonly controller: AbortController;
+}
 
 function AccountBridge({ config, children }: { config: AccountConfig; children: ReactNode }) {
   const clerk = useClerk();
@@ -157,11 +162,12 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
           releaseOnHost({ connection: saved.connection, fetch, timeoutMs: RELEASE_TIMEOUT_MS }),
       });
 
-      if (removed !== undefined)
+      if (removed !== undefined) {
         toast.show(
           "Switched accounts",
           releaseCopy(removed.saved.connection.name, { host: removed.released, broker: "skipped" }),
         );
+      }
     } catch {
       toast.error(
         "Couldn't forget the other account's Mac",
@@ -223,16 +229,18 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
       if (
         isClerkAPIResponseError(cause) &&
         cause.errors.some((error) => error.code === "resource_missmatch")
-      )
+      ) {
         return { kind: "unregisteredApp" };
+      }
 
       return { kind: "failed" };
     }
 
     const ownerId = clerk.user?.id;
 
-    if (created === null || ownerId === undefined)
+    if (created === null || ownerId === undefined) {
       return { kind: clerk.loaded ? "cancelled" : "unavailable" };
+    }
     enter(ownerId);
 
     return { kind: "signedIn" };

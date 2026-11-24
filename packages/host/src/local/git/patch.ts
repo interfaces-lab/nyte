@@ -4,7 +4,7 @@ import type { FileStatus, LineStat, PatchEntry } from "@nyte-ai/schema";
 import { sha256 } from "../../hash.ts";
 import type { Ran } from "../process/command.ts";
 
-type DiffSection = {
+interface DiffSection {
   readonly oldPath: string | null;
   readonly newPath: string | null;
   readonly binary: boolean;
@@ -12,7 +12,7 @@ type DiffSection = {
   readonly added: number;
   readonly removed: number;
   readonly text: string;
-};
+}
 
 export const PATCH_LIMIT = 1024 * 1024;
 
@@ -28,11 +28,11 @@ const ESCAPES = new Map([
   ["\\", 92],
 ]);
 
-export type Changed = {
+export interface Changed {
   readonly path: string;
   readonly status: FileStatus;
   readonly from?: string;
-};
+}
 
 function splitDiff(output: string): readonly DiffSection[] {
   const lines = output.split("\n");
@@ -69,11 +69,11 @@ function splitDiff(output: string): readonly DiffSection[] {
       else if (hunked) continue;
       else if (line.startsWith("--- ")) oldPath = sidePath(line.slice(4), "a/");
       else if (line.startsWith("+++ ")) newPath = sidePath(line.slice(4), "b/");
-      else if (/^(?:rename|copy) from /u.test(line))
+      else if (/^(?:rename|copy) from /u.test(line)) {
         oldPath = unquote(line.replace(/^(?:rename|copy) from /u, ""));
-      else if (/^(?:rename|copy) to /u.test(line))
+      } else if (/^(?:rename|copy) to /u.test(line)) {
         newPath = unquote(line.replace(/^(?:rename|copy) to /u, ""));
-      else if (line.startsWith("new file mode ")) oldPath = null;
+      } else if (line.startsWith("new file mode ")) oldPath = null;
       else if (line.startsWith("deleted file mode ")) newPath = null;
       else if (line.startsWith("Binary files ") || line === "GIT binary patch") binary = true;
     }
@@ -97,8 +97,9 @@ function sectionEntry(path: string, status: FileStatus, section: DiffSection): P
 
   if (section.binary) return { path, status, digest, kind: "binary" };
 
-  if (section.text.length > PATCH_LIMIT)
+  if (section.text.length > PATCH_LIMIT) {
     return { path, status, digest, kind: "too-large", limit: PATCH_LIMIT };
+  }
 
   if (!section.hunked) return { path, status, digest, kind: "empty" };
 
@@ -159,8 +160,9 @@ export async function readPatches(
 
   const together = await read(files, PATCH_LIMIT * files.length + 4096).catch(() => null);
 
-  if (together !== null && !together.truncated && (together.code === 0 || together.code === 1))
+  if (together !== null && !together.truncated && (together.code === 0 || together.code === 1)) {
     return settle(files, together);
+  }
   const entries: PatchEntry[] = [];
 
   for (const file of files) {
@@ -177,7 +179,7 @@ export async function readPatches(
     );
 
     if (typeof alone === "string") entries.push(failed(alone));
-    else if (alone.truncated)
+    else if (alone.truncated) {
       entries.push({
         path: file.path,
         status: file.status,
@@ -185,9 +187,9 @@ export async function readPatches(
         kind: "too-large",
         limit: PATCH_LIMIT,
       });
-    else if (alone.code !== 0 && alone.code !== 1)
+    } else if (alone.code !== 0 && alone.code !== 1) {
       entries.push(failed(alone.stderr.trim() || "git diff failed"));
-    else entries.push(...settle([file], alone));
+    } else entries.push(...settle([file], alone));
   }
 
   return entries;

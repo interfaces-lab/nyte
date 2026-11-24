@@ -79,13 +79,15 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const onPageError = (error: Error): number => pageErrors.push(error.message);
 
       const onConsole = (message: { type(): string; text(): string }): void => {
-        if (message.type() === "error" && !message.text().startsWith("DEV:"))
+        if (message.type() === "error" && !message.text().startsWith("DEV:")) {
           consoleErrors.push(message.text());
+        }
       };
 
       const onResponse = (response: { status(): number; url(): string }): void => {
-        if (response.status() >= 400)
+        if (response.status() >= 400) {
           failedResponses.push(`${String(response.status())} ${response.url()}`);
+        }
       };
 
       page.on("pageerror", onPageError);

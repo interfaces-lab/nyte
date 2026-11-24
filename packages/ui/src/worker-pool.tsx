@@ -21,34 +21,34 @@ class OnDemandWorker extends EventTarget implements Worker {
 
   onerror: ((this: AbstractWorker, event: ErrorEvent) => void) | null = null;
 
-  #worker: Worker | undefined;
+  private worker: Worker | undefined;
 
-  readonly #setup: WorkerRequest[] = [];
+  private readonly setup: WorkerRequest[] = [];
 
-  readonly #replayed = new Set<string>();
+  private readonly replayed = new Set<string>();
 
-  #rendering: string | undefined;
+  private rendering: string | undefined;
 
   postMessage(request: WorkerRequest): void {
     const render = request.type === "file" || request.type === "diff";
 
-    if (render) this.#rendering = request.id;
-    else this.#setup.push(request);
+    if (render) this.rendering = request.id;
+    else this.setup.push(request);
 
-    if (this.#worker !== undefined) {
-      this.#worker.postMessage(request);
+    if (this.worker !== undefined) {
+      this.worker.postMessage(request);
 
       return;
     }
 
     if (render) {
-      this.#start().postMessage(request);
+      this.start().postMessage(request);
 
       return;
     }
 
     queueMicrotask(() =>
-      this.#deliver({
+      this.deliver({
         type: "success",
         requestType: request.type,
         id: request.id,
@@ -58,31 +58,31 @@ class OnDemandWorker extends EventTarget implements Worker {
   }
 
   terminate(): void {
-    this.#worker?.terminate();
-    this.#worker = undefined;
+    this.worker?.terminate();
+    this.worker = undefined;
   }
 
-  #start(): Worker {
+  private start(): Worker {
     const worker = new Worker(PierreDiffWorkerUrl, { type: "module" });
 
     worker.addEventListener("message", (event: MessageEvent<WorkerResponse>) => {
       const response = event.data;
 
-      if (!this.#replayed.delete(response.id)) {
-        if (response.id === this.#rendering) this.#rendering = undefined;
-        this.#deliver(response);
+      if (!this.replayed.delete(response.id)) {
+        if (response.id === this.rendering) this.rendering = undefined;
+        this.deliver(response);
 
         return;
       }
 
-      if (response.type !== "error" || this.#worker !== worker) return;
+      if (response.type !== "error" || this.worker !== worker) return;
       worker.terminate();
-      this.#worker = undefined;
-      this.#replayed.clear();
-      const rendering = this.#rendering;
-      this.#rendering = undefined;
+      this.worker = undefined;
+      this.replayed.clear();
+      const rendering = this.rendering;
+      this.rendering = undefined;
 
-      if (rendering !== undefined) this.#deliver({ ...response, id: rendering });
+      if (rendering !== undefined) this.deliver({ ...response, id: rendering });
     });
 
     worker.addEventListener("error", (event) => {
@@ -92,17 +92,17 @@ class OnDemandWorker extends EventTarget implements Worker {
       this.onerror?.call(this, copy);
     });
 
-    for (const request of this.#setup) {
-      this.#replayed.add(request.id);
+    for (const request of this.setup) {
+      this.replayed.add(request.id);
       worker.postMessage(request);
     }
 
-    this.#worker = worker;
+    this.worker = worker;
 
     return worker;
   }
 
-  #deliver(data: WorkerResponse): void {
+  private deliver(data: WorkerResponse): void {
     const event = new MessageEvent("message", { data });
 
     this.dispatchEvent(event);
@@ -216,8 +216,9 @@ function retain(): () => void {
   return () => {
     entry.surfaces -= 1;
 
-    if (entry.surfaces === 0)
+    if (entry.surfaces === 0) {
       entry.idle = window.setTimeout(() => releaseIdle(entry), POOL_IDLE_MS);
+    }
   };
 }
 

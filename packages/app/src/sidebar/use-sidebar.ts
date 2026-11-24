@@ -1,7 +1,7 @@
 import { preferences, useSetting } from "../preferences/index.ts";
 import { shellActions } from "../tabs/shell-state.ts";
 
-export type SidebarState = "expanded" | "collapsed";
+type SidebarState = "expanded" | "collapsed";
 
 export interface SidebarControl {
   readonly state: SidebarState;

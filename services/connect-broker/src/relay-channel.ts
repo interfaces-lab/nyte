@@ -23,20 +23,20 @@ export class RelayChannel {
   readonly session: string;
   readonly deviceId: string | undefined;
   readonly response: Promise<Response>;
-  readonly #send: (frame: RelayFrame) => void;
-  readonly #onDone: () => void;
-  #answer: (response: Response) => void = () => undefined;
-  #phase: ResponsePhase = "head";
-  #closed = false;
-  #sendCredit = RELAY_WINDOW_BYTES;
-  #creditArrived: (() => void) | undefined;
-  #reader: ReadableStreamBYOBReader | undefined;
-  #requestEnded = false;
-  #receiveCredit = RELAY_WINDOW_BYTES;
-  readonly #queue: Uint8Array[] = [];
-  #responseEnded = false;
-  #controller: ReadableStreamDefaultController<Uint8Array> | undefined;
-  #readable: (() => void) | undefined;
+  private readonly send: (frame: RelayFrame) => void;
+  private readonly onDone: () => void;
+  private answer: (response: Response) => void = () => undefined;
+  private phase: ResponsePhase = "head";
+  private closed = false;
+  private sendCredit = RELAY_WINDOW_BYTES;
+  private creditArrived: (() => void) | undefined;
+  private reader: ReadableStreamBYOBReader | undefined;
+  private requestEnded = false;
+  private receiveCredit = RELAY_WINDOW_BYTES;
+  private readonly queue: Uint8Array[] = [];
+  private responseEnded = false;
+  private controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  private readable: (() => void) | undefined;
 
   constructor(input: {
     readonly id: string;
@@ -48,10 +48,10 @@ export class RelayChannel {
     this.id = input.id;
     this.session = input.session;
     this.deviceId = input.deviceId;
-    this.#send = input.send;
-    this.#onDone = input.onDone;
+    this.send = input.send;
+    this.onDone = input.onDone;
     this.response = new Promise((resolve) => {
-      this.#answer = resolve;
+      this.answer = resolve;
     });
   }
 
@@ -61,87 +61,89 @@ export class RelayChannel {
     readonly headers: RelayRequestHeaders;
     readonly body: ReadableStream<Uint8Array> | null;
   }): void {
-    this.#send({
+    this.send({
       t: "open",
       ch: this.id,
       method: input.method,
       path: input.path,
       headers: input.headers,
     });
-    void this.#pump(input.body);
+    void this.pump(input.body);
   }
 
   onHead(frame: Head): boolean {
-    if (this.#closed) return true;
+    if (this.closed) return true;
 
-    if (this.#phase !== "head") return false;
+    if (this.phase !== "head") return false;
     const headers = new Headers();
 
-    for (const [name, value] of Object.entries(frame.headers))
+    for (const [name, value] of Object.entries(frame.headers)) {
       if (value !== undefined) headers.set(name, value);
+    }
 
     if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
 
     if (hasNullBody(frame.status)) {
-      this.#phase = "bodyless";
-      this.#answer(new Response(null, { status: frame.status, headers }));
+      this.phase = "bodyless";
+      this.answer(new Response(null, { status: frame.status, headers }));
 
       return true;
     }
 
-    this.#phase = "body";
+    this.phase = "body";
     const body = new ReadableStream<Uint8Array>(
       {
         start: (controller) => {
-          this.#controller = controller;
+          this.controller = controller;
         },
-        pull: (controller) => this.#deliver(controller),
+        pull: (controller) => this.deliver(controller),
         cancel: () => this.cancel(),
       },
       { highWaterMark: 0 },
     );
 
-    this.#answer(new Response(body, { status: frame.status, headers }));
+    this.answer(new Response(body, { status: frame.status, headers }));
 
     return true;
   }
 
   onData(bytes: Uint8Array): boolean {
-    if (this.#closed) return true;
+    if (this.closed) return true;
 
-    if (this.#phase !== "body" || this.#responseEnded || bytes.byteLength > this.#receiveCredit)
+    if (this.phase !== "body" || this.responseEnded || bytes.byteLength > this.receiveCredit) {
       return false;
-    this.#receiveCredit -= bytes.byteLength;
-    this.#queue.push(bytes);
-    this.#readable?.();
+    }
+    this.receiveCredit -= bytes.byteLength;
+    this.queue.push(bytes);
+    this.readable?.();
 
     return true;
   }
 
   onEnd(): boolean {
-    if (this.#closed) return true;
+    if (this.closed) return true;
 
-    if (this.#phase === "head" || this.#responseEnded) return false;
-    this.#responseEnded = true;
+    if (this.phase === "head" || this.responseEnded) return false;
+    this.responseEnded = true;
 
-    if (this.#phase === "bodyless") this.#complete();
-    else this.#readable?.();
+    if (this.phase === "bodyless") this.complete();
+    else this.readable?.();
 
     return true;
   }
 
   onCredit(bytes: number): boolean {
-    if (this.#closed) return true;
+    if (this.closed) return true;
 
-    if (this.#sendCredit + bytes > RELAY_WINDOW_BYTES) return false;
-    this.#sendCredit += bytes;
-    this.#creditArrived?.();
+    if (this.sendCredit + bytes > RELAY_WINDOW_BYTES) return false;
+    this.sendCredit += bytes;
+    this.creditArrived?.();
 
     return true;
   }
 
   onReset(): void {
-    this.#fail("closed");
+    this.fail("closed");
   }
 
   cancel(): void {
@@ -149,96 +151,94 @@ export class RelayChannel {
   }
 
   reset(code: RelayRefusalCode): void {
-    if (this.#closed) return;
-    this.#send({ t: "reset", ch: this.id });
-    this.#fail(code);
+    if (this.closed) return;
+    this.send({ t: "reset", ch: this.id });
+    this.fail(code);
   }
 
   fail(code: RelayRefusalCode): void {
-    this.#fail(code);
+    if (this.closed) return;
+    this.closed = true;
+
+    if (this.phase === "head") this.answer(relayRefusal(code));
+    else if (this.phase === "body" && this.controller !== undefined) {
+      this.controller.error(new Error("The relayed exchange was reset"));
+    }
+    this.finish();
   }
 
-  #fail(code: RelayRefusalCode): void {
-    if (this.#closed) return;
-    this.#closed = true;
+  private complete(): void {
+    if (this.closed) return;
 
-    if (this.#phase === "head") this.#answer(relayRefusal(code));
-    else if (this.#phase === "body" && this.#controller !== undefined)
-      this.#controller.error(new Error("The relayed exchange was reset"));
-    this.#finish();
+    if (!this.requestEnded) this.send({ t: "reset", ch: this.id });
+    this.closed = true;
+    this.finish();
   }
 
-  #complete(): void {
-    if (this.#closed) return;
-
-    if (!this.#requestEnded) this.#send({ t: "reset", ch: this.id });
-    this.#closed = true;
-    this.#finish();
+  private finish(): void {
+    this.queue.length = 0;
+    this.creditArrived?.();
+    this.readable?.();
+    this.reader?.cancel().catch(() => undefined);
+    this.onDone();
   }
 
-  #finish(): void {
-    this.#queue.length = 0;
-    this.#creditArrived?.();
-    this.#readable?.();
-    this.#reader?.cancel().catch(() => undefined);
-    this.#onDone();
-  }
-
-  async #deliver(controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> {
+  private async deliver(controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> {
     for (;;) {
-      if (this.#closed) return;
-      const chunk = this.#queue.shift();
+      if (this.closed) return;
+      const chunk = this.queue.shift();
 
       if (chunk !== undefined) {
         controller.enqueue(chunk);
-        this.#receiveCredit += chunk.byteLength;
-        this.#send({ t: "credit", ch: this.id, bytes: chunk.byteLength });
+        this.receiveCredit += chunk.byteLength;
+        this.send({ t: "credit", ch: this.id, bytes: chunk.byteLength });
 
         return;
       }
 
-      if (this.#responseEnded) {
+      if (this.responseEnded) {
         controller.close();
-        this.#complete();
+        this.complete();
 
         return;
       }
 
       await new Promise<void>((resolve) => {
-        this.#readable = resolve;
+        this.readable = resolve;
       });
-      this.#readable = undefined;
+      this.readable = undefined;
     }
   }
 
-  async #credit(): Promise<number> {
-    while (this.#sendCredit === 0 && !this.#closed)
+  private async credit(): Promise<number> {
+    while (this.sendCredit === 0 && !this.closed) {
       await new Promise<void>((resolve) => {
-        this.#creditArrived = resolve;
+        this.creditArrived = resolve;
       });
-    this.#creditArrived = undefined;
+    }
+    this.creditArrived = undefined;
 
-    return this.#sendCredit;
+    return this.sendCredit;
   }
 
-  async #pump(body: ReadableStream<Uint8Array> | null): Promise<void> {
+  private async pump(body: ReadableStream<Uint8Array> | null): Promise<void> {
     if (body !== null) {
       let total = 0;
 
       try {
         const reader = body.getReader({ mode: "byob" });
 
-        this.#reader = reader;
+        this.reader = reader;
 
         for (;;) {
-          const credit = await this.#credit();
+          const credit = await this.credit();
 
-          if (this.#closed) return;
+          if (this.closed) return;
           const { done, value } = await reader.read(
             new Uint8Array(Math.min(credit, RELAY_CHUNK_BYTES)),
           );
 
-          if (this.#closed) return;
+          if (this.closed) return;
 
           if (done) break;
           total += value.byteLength;
@@ -250,8 +250,8 @@ export class RelayChannel {
           }
 
           if (value.byteLength === 0) continue;
-          this.#sendCredit -= value.byteLength;
-          this.#send({ t: "data", ch: this.id, data: base64Url(value) });
+          this.sendCredit -= value.byteLength;
+          this.send({ t: "data", ch: this.id, data: base64Url(value) });
         }
       } catch {
         this.reset("closed");
@@ -260,8 +260,8 @@ export class RelayChannel {
       }
     }
 
-    if (this.#closed) return;
-    this.#requestEnded = true;
-    this.#send({ t: "end", ch: this.id });
+    if (this.closed) return;
+    this.requestEnded = true;
+    this.send({ t: "end", ch: this.id });
   }
 }

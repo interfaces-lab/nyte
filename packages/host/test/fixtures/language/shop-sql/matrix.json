@@ -1,0 +1,153 @@
+{
+  "language": "sql",
+  "servers": [
+    "postgres-language-server"
+  ],
+  "vscode": {
+    "extension": "mtxr.sqltools",
+    "source": "https://github.com/mtxr/vscode-sqltools/blob/main/packages/extension/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "queries.sql",
+          "after": "SELECT p.",
+          "says": "sku"
+        }
+      ],
+      "servers": [
+        "postgres-language-server"
+      ],
+      "answers": false,
+      "vscode": true,
+      "note": "SQLTools returns SQL keywords offline via its gethue parser (and schema items when connected). postgres-language-server returns completions only when connected to a PostgreSQL database."
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "queries.sql",
+          "after": "FROM prod"
+        }
+      ],
+      "servers": [
+        "postgres-language-server"
+      ],
+      "answers": false,
+      "vscode": false,
+      "note": "postgres-language-server declares hoverProvider, but returns hover information only when connected to a PostgreSQL database."
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "queries.sql",
+          "after": "FROM prod"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "queries.sql",
+          "after": "FROM prod"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "schema.sql",
+          "after": "CREATE TABLE cust"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "schema.sql"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "migration.sql",
+          "after": "DROP COL",
+          "says": "Execute Statement"
+        }
+      ],
+      "servers": [
+        "postgres-language-server"
+      ],
+      "answers": true,
+      "vscode": false,
+      "note": "postgres-language-server offers statement code actions; SQLTools does not implement textDocument/codeAction."
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "queries.sql"
+        }
+      ],
+      "servers": [
+        "postgres-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "queries.sql",
+          "after": "ORDER BY order_total"
+        }
+      ],
+      "servers": [
+        "postgres-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "queries.sql",
+          "after": "FROM prod"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "broken.sql",
+          "says": "syntax error"
+        },
+        {
+          "file": "migration.sql",
+          "says": "Dropping a column"
+        }
+      ],
+      "servers": [
+        "postgres-language-server"
+      ],
+      "answers": true,
+      "vscode": false,
+      "note": "postgres-language-server reports libpg_query syntax errors and static migration lint diagnostics offline; SQLTools does not publish diagnostics."
+    }
+  }
+}

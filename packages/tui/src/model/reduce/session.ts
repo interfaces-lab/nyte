@@ -1,6 +1,7 @@
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../../lib/catalog.ts";
 import { shortId } from "../../lib/format.ts";
+import { ownDecision } from "../../lib/trust.ts";
 import type { AuthDialog } from "../dialogs/auth.ts";
 import { snapshot } from "../draft.ts";
 import { chatFolder, followedSession } from "../state.ts";
@@ -35,14 +36,17 @@ export const sessionHandlers = {
     const followed = state.facts.chat;
     const { pending } = state.local;
 
-    if (pending.some((op) => op.kind === "switch"))
+    if (pending.some((op) => op.kind === "switch")) {
       return refuse(state, "A chat switch is already in progress", now);
+    }
 
-    if (followed !== null && msg.session === followed.id)
+    if (followed !== null && msg.session === followed.id) {
       return refuse(state, `Already in ${shortId(followed.id)}`, now, "info");
+    }
 
-    if (followed?.kind === "blank" && msg.session === "new")
+    if (followed?.kind === "blank" && msg.session === "new") {
       return refuse(state, "Already in a new chat", now, "info");
+    }
     const draft = snapshot(state.local.draft);
 
     const drafts =
@@ -149,8 +153,9 @@ export const sessionHandlers = {
     ],
   }),
   "mcp-login": (state, msg, now) => {
-    if (state.local.pending.some((op) => op.kind === "auth"))
+    if (state.local.pending.some((op) => op.kind === "auth")) {
       return refuse(state, "An authentication command is already running.", now);
+    }
     const minted = mint(state, "dialog");
     const { id } = minted;
     const provider = `mcp:${msg.server}`;
@@ -173,7 +178,7 @@ export const sessionHandlers = {
   },
   "set-trust": (state, msg) => ({
     state: withLocal(state, { settlingTrust: [...state.local.settlingTrust, msg.workspace] }),
-    effects: [{ kind: "set-trust", workspace: msg.workspace, value: msg.value }],
+    effects: [{ kind: "set-trust", workspace: msg.workspace, value: msg.value, at: msg.at }],
   }),
   "trust-settled": (state, msg) => stay(trustSettled(state, msg.workspace)),
   "apply-setting": (state, msg) => {
@@ -207,7 +212,7 @@ export const sessionHandlers = {
 
     if (supported.length < 2) return stay(state);
 
-    const current = supported.findIndex((level) => level === followed.selection.effort);
+    const current = supported.indexOf(followed.selection.effort);
     const next = supported[(current + 1) % supported.length];
 
     return next === undefined ? stay(state) : configure(state, { effort: next }, now);
@@ -292,7 +297,7 @@ export const sessionHandlers = {
   "trust-loaded": (current, msg, now, reduce) => {
     const state = msg.ask === "always" ? current : trustSettled(current, msg.workspace);
 
-    if (msg.home)
+    if (msg.trust.state === "home") {
       return msg.ask === "always"
         ? stay(
             withNotice(
@@ -303,18 +308,33 @@ export const sessionHandlers = {
             ),
           )
         : stay(state);
+    }
 
     const folder = state.facts.chat === null ? null : chatFolder(state.facts.chat);
 
-    if (
-      msg.ask !== "always" &&
-      (msg.trusted !== null ||
-        msg.sources.length === 0 ||
-        folder?.kind !== "folder" ||
-        folder.id !== msg.workspace)
-    )
-      return stay(state);
-    const { workspace, path, decision, sources } = msg;
+    const notice =
+      msg.trust.state === "undecided" || msg.trust.state === "untrusted" ? msg.trust.notice : null;
+
+    if (msg.ask !== "always") {
+      if (folder?.kind !== "folder" || folder.id !== msg.workspace) return stay(state);
+
+      if (notice === "tell") {
+        return stay(
+          withNotice(
+            state,
+            "This folder isn't trusted, so its skills, plugins and MCP servers didn't load. /trust loads them.",
+            "info",
+            now,
+          ),
+        );
+      }
+
+      if (notice !== "ask") return stay(state);
+    }
+    const { workspace, path, sources } = msg;
+    const decision = ownDecision(msg.trust, path);
+    const parent =
+      msg.trust.state === "undecided" || msg.trust.state === "untrusted" ? msg.trust.parent : null;
 
     return openDialog(
       state,
@@ -325,6 +345,7 @@ export const sessionHandlers = {
           workspace,
           path,
           decision,
+          parent,
           sources,
           gate: msg.ask === "at-launch",
         },
@@ -337,7 +358,7 @@ export const sessionHandlers = {
 
 function trustSettled(state: State, workspace: WorkspaceId): State {
   const { settlingTrust } = state.local;
-  const index = settlingTrust.findIndex((pending) => pending === workspace);
+  const index = settlingTrust.indexOf(workspace);
 
   return index < 0 ? state : withLocal(state, { settlingTrust: settlingTrust.toSpliced(index, 1) });
 }
@@ -358,11 +379,12 @@ function configure(state: State, selection: Partial<Selection>, now: number): St
 }
 
 function released(state: State, effect: string): State {
-  if (effect === "resolve-paste" || effect === "read-clipboard")
+  if (effect === "resolve-paste" || effect === "read-clipboard") {
     return withLocal(state, {
       pasting: Math.max(0, state.local.pasting - 1),
       sendAfterPaste: null,
     });
+  }
   const kind = HELD_BY_EFFECT.get(effect);
 
   return kind === undefined ? state : finished(state, kind);

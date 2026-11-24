@@ -1,6 +1,7 @@
 import type { ToolCall } from "@nyte-ai/schema/model";
 import { parse as partialParse } from "partial-json";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
 const ToolArgumentsSchema = Type.Record(Type.String(), Type.Unknown());
@@ -10,15 +11,15 @@ const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t"]);
 function escapeControlCharacter(char: string): string {
   switch (char) {
     case "\b":
-      return "\\b";
+      return String.raw`\b`;
     case "\f":
-      return "\\f";
+      return String.raw`\f`;
     case "\n":
-      return "\\n";
+      return String.raw`\n`;
     case "\r":
-      return "\\r";
+      return String.raw`\r`;
     case "\t":
-      return "\\t";
+      return String.raw`\t`;
     default:
       return `\\u${char.codePointAt(0)?.toString(16).padStart(4, "0") ?? "0000"}`;
   }
@@ -51,7 +52,7 @@ export function repairJson(json: string): string {
       const nextChar = json[index + 1];
 
       if (nextChar === undefined) {
-        repaired += "\\\\";
+        repaired += String.raw`\\`;
         continue;
       }
 
@@ -71,7 +72,7 @@ export function repairJson(json: string): string {
         continue;
       }
 
-      repaired += "\\\\";
+      repaired += String.raw`\\`;
       continue;
     }
 

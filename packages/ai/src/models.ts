@@ -4,11 +4,11 @@ import { AccountLimitsCache } from "./account-limits-cache.ts";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";
 import { InMemoryCredentialStore } from "./auth/credential-store.ts";
 import {
-  type AuthResolutionOverrides,
   DEFAULT_OAUTH_REFRESH_TIMEOUT_MS,
   ModelsError,
   resolveProviderAuth,
 } from "./auth/resolve.ts";
+import type { AuthResolutionOverrides } from "./auth/resolve.ts";
 import type {
   AuthCheck,
   AuthContext,
@@ -22,7 +22,8 @@ import type {
   CredentialInfo,
   CredentialStore,
 } from "./auth/types.ts";
-import { InMemoryModelsStore, type ModelsStore } from "./models-store.ts";
+import { InMemoryModelsStore } from "./models-store.ts";
+import type { ModelsStore } from "./models-store.ts";
 import { baseModel, providerRequest, withModeVariants } from "./model-variants.ts";
 import type {
   AccountLimits,
@@ -374,10 +375,11 @@ class ModelsImpl implements MutableModels {
     const scope = this.accountLimits.scope(providerId);
     const fetchLimits = provider?.fetchAccountLimits;
 
-    if (!fetchLimits)
+    if (!fetchLimits) {
       return scope.fetch(this.activeAccounts.get(providerId) ?? undefined, async () => undefined, {
         signal,
       });
+    }
 
     const accounts = await this.listAccounts(providerId, { signal });
     const account = accounts.find((entry) => entry.active);
@@ -385,12 +387,13 @@ class ModelsImpl implements MutableModels {
     if (
       (accounts.length > 0 && !account) ||
       (!account && (await this.checkAuth(providerId, { signal })) === undefined)
-    )
+    ) {
       return {
         kind: "unavailable",
         reason: "unconfigured",
         message: "Sign in to view account usage.",
       };
+    }
 
     return scope.fetch(
       account?.id,
@@ -419,11 +422,12 @@ class ModelsImpl implements MutableModels {
         providerId === undefined ? rows : rows.filter((row) => row.providerId === providerId);
       const providers = providerId === undefined ? this.providers.keys() : [providerId];
 
-      for (const provider of providers)
+      for (const provider of providers) {
         this.activeAccounts.set(
           provider,
           selected.find((row) => row.providerId === provider && row.active)?.id ?? null,
         );
+      }
 
       return selected;
     } catch (error) {
@@ -443,15 +447,17 @@ class ModelsImpl implements MutableModels {
     const signal = operationSignal(options?.signal);
     signal.throwIfAborted();
 
-    if (!this.providers.has(providerId))
+    if (!this.providers.has(providerId)) {
       throw new ModelsError("provider", `Unknown provider: ${providerId}`);
+    }
     let changed = false;
 
     await this.credentials.modify(
       providerId,
       async (current) => {
-        if (!current?.accounts.some((account) => account.id === accountId))
+        if (!current?.accounts.some((account) => account.id === accountId)) {
           throw new ModelsError("auth", `Unknown account for ${providerId}: ${accountId}`);
+        }
 
         if (current.active === accountId) return undefined;
         changed = true;
@@ -481,16 +487,18 @@ class ModelsImpl implements MutableModels {
 
     if (name === "") throw new ModelsError("auth", "Enter an account name.");
 
-    if (!this.providers.has(providerId))
+    if (!this.providers.has(providerId)) {
       throw new ModelsError("provider", `Unknown provider: ${providerId}`);
+    }
 
     await this.credentials.modify(
       providerId,
       async (current) => {
         const account = current?.accounts.find((entry) => entry.id === accountId);
 
-        if (!current || !account)
+        if (!current || !account) {
           throw new ModelsError("auth", `Unknown account for ${providerId}: ${accountId}`);
+        }
 
         if (account.label === name) return undefined;
 
@@ -520,8 +528,9 @@ class ModelsImpl implements MutableModels {
 
       if (stored?.type === "oauth") return this.checkOAuthAuth(provider, signal);
 
-      if (stored?.type === "api_key" && provider.auth.apiKey?.check === undefined)
+      if (stored?.type === "api_key" && provider.auth.apiKey?.check === undefined) {
         return provider.auth.apiKey ? { source: "stored credential", type: "api_key" } : undefined;
+      }
 
       const current =
         stored === undefined ? undefined : await this.readAccounts(providerId, signal);
@@ -673,7 +682,8 @@ class ModelsImpl implements MutableModels {
     }
 
     const accounts = await this.listAccounts(providerId, { signal });
-    const name = label?.trim() || `Account ${accounts.length + 1}`;
+    const name =
+      label?.trim() || (accounts.length === 0 ? "Default" : `Account ${accounts.length + 1}`);
 
     const loginOperation: Promise<Credential> = method.login({ ...interaction, signal });
     const credential = await raceWithAbortSignal(loginOperation, signal);
@@ -682,8 +692,9 @@ class ModelsImpl implements MutableModels {
       credential.type === "api_key" &&
       credential.key !== undefined &&
       credential.key.trim() === ""
-    )
+    ) {
       throw new ModelsError("auth", "Enter an API key.");
+    }
 
     let mutationStarted = false;
     let markMutationStarted: (() => void) | undefined;
@@ -751,10 +762,11 @@ class ModelsImpl implements MutableModels {
         providerId,
         async (current) => {
           if (!current?.accounts.some((account) => account.id === id)) return undefined;
+          const accounts = current.accounts.filter((account) => account.id !== id);
 
           return {
-            active: current.active === id ? null : current.active,
-            accounts: current.accounts.filter((account) => account.id !== id),
+            active: current.active === id ? (accounts[0]?.id ?? null) : current.active,
+            accounts,
           };
         },
         { signal },

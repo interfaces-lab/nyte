@@ -184,7 +184,7 @@ describe("enrolling a device", () => {
     expect((await harness.lease(desktop)).answer.status).toBe(200);
     const storage = harness.relay.storages.get(desktop.environmentId);
 
-    for (let index = 0; index < 20; index += 1)
+    for (let index = 0; index < 20; index += 1) {
       storage?.sql.exec(
         `INSERT INTO devices (id, client_id, client_name, digest, session_id, state, grant_id,
            nonce, grant_expires_at, created_at)
@@ -194,6 +194,7 @@ describe("enrolling a device", () => {
         "d".repeat(43),
         `grant-${index}-000000000000000000`,
       );
+    }
     const answer = await harness.enroll({
       userId: "user_alice",
       environmentId: desktop.environmentId,
@@ -210,7 +211,7 @@ describe("enrolling a device", () => {
     expect((await harness.lease(desktop)).answer.status).toBe(200);
     const storage = harness.relay.storages.get(desktop.environmentId);
 
-    for (let index = 0; index < 20; index += 1)
+    for (let index = 0; index < 20; index += 1) {
       storage?.sql.exec(
         `INSERT INTO devices (id, client_id, client_name, digest, session_id, state, grant_id,
            nonce, grant_expires_at, created_at)
@@ -221,6 +222,7 @@ describe("enrolling a device", () => {
         `grant-${index}-000000000000000000`,
         Date.now() - 60_000,
       );
+    }
     const answer = await harness.enroll({
       userId: "user_alice",
       environmentId: desktop.environmentId,
@@ -283,7 +285,7 @@ describe("enrolling a device", () => {
     const desktop = await linked();
     const statuses: number[] = [];
 
-    for (let index = 0; index < 11; index += 1)
+    for (let index = 0; index < 11; index += 1) {
       statuses.push(
         (
           await harness.enroll({
@@ -293,6 +295,7 @@ describe("enrolling a device", () => {
           })
         ).status,
       );
+    }
 
     expect(statuses.slice(0, 10)).toEqual(Array.from({ length: 10 }, () => 201));
     expect(statuses[10]).toBe(429);

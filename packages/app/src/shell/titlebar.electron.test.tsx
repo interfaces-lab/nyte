@@ -76,8 +76,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await application?.close();
 
-  if (process.platform === "darwin")
+  if (process.platform === "darwin") {
     spawnSync("launchctl", ["bootout", `gui/${String(process.getuid?.() ?? 0)}/${label}`]);
+  }
 
   if (directory !== undefined) await rm(directory, { recursive: true, force: true });
 });

@@ -13,17 +13,12 @@ import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { LimitCards } from "./usage-limits.tsx";
 import { ModelColumns, TopModels } from "./usage-models.tsx";
-import {
-  Empty,
-  Notice,
-  PinnedModel,
-  SectionHead,
-  UsageFocusContext,
-  type UsageFocus,
-} from "./usage-parts.tsx";
+import { Empty, Notice, PinnedModel, SectionHead, UsageFocusContext } from "./usage-parts.tsx";
+import type { UsageFocus } from "./usage-parts.tsx";
 import { usageStyles as styles } from "./usage-settings.stylex.ts";
 import { SpendBone, SpendCard, UsageFigures } from "./usage-spend.tsx";
-import { MODEL_DETAILS, ModelTable, ShareRows, type ModelDetail } from "./usage-tables.tsx";
+import { MODEL_DETAILS, ModelTable, ShareRows } from "./usage-tables.tsx";
+import type { ModelDetail } from "./usage-tables.tsx";
 import {
   defaultGrain,
   deriveTools,
@@ -35,11 +30,8 @@ import {
   USAGE_RANGE_LABELS,
   USAGE_RANGES,
   windowLabel,
-  type ListPrice,
-  type UsageGrain,
-  type UsageMeasure,
-  type UsageRange,
 } from "./usage-view.ts";
+import type { ListPrice, UsageGrain, UsageMeasure, UsageRange } from "./usage-view.ts";
 
 const RANGE_OPTIONS = ["30d", "7d", "90d", "all"] as const satisfies readonly UsageRange[];
 

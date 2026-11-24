@@ -16,8 +16,9 @@ export async function sweep(context: Context): Promise<void> {
     [
       "sessions",
       async () => {
-        for (const pending of await pendingSessionRevocations(context.db, { now, limit: BATCH }))
+        for (const pending of await pendingSessionRevocations(context.db, { now, limit: BATCH })) {
           await settleSessionRevocation(context, pending);
+        }
       },
     ],
     ["owners", () => reconcileOwners(context)],

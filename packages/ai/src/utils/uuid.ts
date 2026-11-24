@@ -1,4 +1,4 @@
-const MAX_UUID_V7_TIMESTAMP = 0xffffffffffff;
+const MAX_UUID_V7_TIMESTAMP = 0xff_ff_ff_ff_ff_ff;
 
 const MAX_SEQUENCE = (1n << 41n) - 1n;
 

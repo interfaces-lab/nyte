@@ -97,7 +97,7 @@ export function findChromium(): string | undefined {
       "/usr/bin/chromium",
       "/usr/bin/chromium-browser",
       join(
-        process.env["PROGRAMFILES"] ?? "C:\\Program Files",
+        process.env["PROGRAMFILES"] ?? String.raw`C:\Program Files`,
         "Google/Chrome/Application/chrome.exe",
       ),
     ].find((path) => existsSync(path))
@@ -128,62 +128,63 @@ function read<S extends TSchema>(schema: S, value: unknown, what: string) {
 }
 
 class Pipe {
-  readonly #write: Writable;
-  readonly #waiting = new Map<
+  private readonly write: Writable;
+  private readonly waiting = new Map<
     number,
     { resolve(value: unknown): void; reject(error: Error): void }
   >();
-  readonly #listeners = new Set<(method: string, params: Record<string, unknown>) => void>();
-  #next = 0;
-  #buffer = "";
-  #closed: Error | undefined;
+  private readonly listeners = new Set<(method: string, params: Record<string, unknown>) => void>();
+  private next = 0;
+  private buffer = "";
+  private closed: Error | undefined;
 
   constructor(write: Writable, readable: Readable) {
-    this.#write = write;
+    this.write = write;
     readable.setEncoding("utf8");
-    readable.on("data", (chunk: string) => this.#receive(chunk));
+    readable.on("data", (chunk: string) => this.receive(chunk));
     readable.on("close", () => this.close(new Error("Chromium closed its DevTools pipe.")));
     write.on("error", (error: Error) => this.close(error));
   }
 
   send(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<unknown> {
-    if (this.#closed !== undefined) return Promise.reject(this.#closed);
-    this.#next += 1;
-    const id = this.#next;
+    if (this.closed !== undefined) return Promise.reject(this.closed);
+    this.next += 1;
+    const id = this.next;
 
     return new Promise((resolve, reject) => {
-      this.#waiting.set(id, { resolve, reject });
-      this.#write.write(`${JSON.stringify({ id, method, params, sessionId })}\0`);
+      this.waiting.set(id, { resolve, reject });
+      this.write.write(`${JSON.stringify({ id, method, params, sessionId })}\0`);
     });
   }
 
   listen(listener: (method: string, params: Record<string, unknown>) => void): void {
-    this.#listeners.add(listener);
+    this.listeners.add(listener);
   }
 
   close(error: Error): void {
-    this.#closed ??= error;
+    this.closed ??= error;
 
-    for (const waiting of this.#waiting.values()) waiting.reject(error);
-    this.#waiting.clear();
+    for (const waiting of this.waiting.values()) waiting.reject(error);
+    this.waiting.clear();
   }
 
-  #receive(chunk: string): void {
-    this.#buffer += chunk;
-    const messages = this.#buffer.split("\0");
-    this.#buffer = messages.pop() ?? "";
+  private receive(chunk: string): void {
+    this.buffer += chunk;
+    const messages = this.buffer.split("\0");
+    this.buffer = messages.pop() ?? "";
 
     for (const text of messages) {
       const message: unknown = JSON.parse(text);
 
       if (Value.Check(Reply, message)) {
-        const waiting = this.#waiting.get(message.id);
-        this.#waiting.delete(message.id);
+        const waiting = this.waiting.get(message.id);
+        this.waiting.delete(message.id);
 
         if (message.error === undefined) waiting?.resolve(message.result ?? {});
         else waiting?.reject(new Error(message.error.message));
-      } else if (Value.Check(Event, message))
-        for (const listener of this.#listeners) listener(message.method, message.params);
+      } else if (Value.Check(Event, message)) {
+        for (const listener of this.listeners) listener(message.method, message.params);
+      }
     }
   }
 }
@@ -267,8 +268,9 @@ async function previewIn(
         "an evaluation",
       );
 
-      if (answer.exceptionDetails !== undefined)
+      if (answer.exceptionDetails !== undefined) {
         throw new Error(`The preview page threw: ${answer.exceptionDetails.text}`);
+      }
 
       return answer.result.value;
     },
@@ -323,11 +325,12 @@ export function chromiumCanvasPreview(
   return async (request, signal) => {
     const path = executable();
 
-    if (path === undefined)
+    if (path === undefined) {
       return {
         kind: "unavailable",
         reason: "No Chrome or Chromium was found on this machine.",
       };
+    }
     const profile = await mkdtemp(join(tmpdir(), "nyte-canvas-preview-"));
     const child = spawn(
       path,
@@ -358,8 +361,9 @@ export function chromiumCanvasPreview(
     const [, , , input, output] = child.stdio;
 
     try {
-      if (!(input instanceof Writable) || !(output instanceof Readable))
+      if (!(input instanceof Writable) || !(output instanceof Readable)) {
         return { kind: "unavailable", reason: "Chromium did not open its DevTools pipe." };
+      }
       const pipe = new Pipe(input, output);
       child.once("error", (error) => pipe.close(error));
       const stopped = Promise.withResolvers<never>();

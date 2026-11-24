@@ -4,7 +4,8 @@ import { SiteMobileNav } from "~/components/site-nav/mobile-menu";
 import { SiteSearch } from "~/components/site-nav/search";
 import { SiteNavSections } from "~/components/site-nav/sections";
 import { ThemeToggle } from "~/components/site-nav/theme-toggle";
-import { docsNav, type NavSection } from "~/lib/docs";
+import { docsNav } from "~/lib/docs";
+import type { NavSection } from "~/lib/docs";
 import { designRoute, githubUrl } from "~/lib/shared";
 import { products } from "~/lib/products";
 

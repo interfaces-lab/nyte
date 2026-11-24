@@ -42,8 +42,8 @@ export function openQuestion(view: HeadView): OpenQuestion | undefined {
   return openQuestions(view)[0];
 }
 
-export type AskedQuestion = {
+export interface AskedQuestion {
   session: SessionId;
   origin: string | undefined;
   question: OpenQuestion;
-};
+}

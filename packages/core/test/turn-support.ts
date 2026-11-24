@@ -108,6 +108,11 @@ export function sent(fake: FakeModels, index: number): readonly string[] {
         return `assistant:${message.content.map((block) => (block.type === "text" ? block.text : block.type === "thinking" ? `(${block.thinking})` : `${block.name}()`)).join("|")}`;
       case "toolResult":
         return `result:${message.content.map((block) => (block.type === "text" ? block.text : "")).join("")}`;
+      default: {
+        const exhaustive: never = message;
+
+        return exhaustive;
+      }
     }
   });
 }

@@ -59,7 +59,9 @@ const DEFAULT_MODEL = "";
 
 type Draft = Omit<ProjectInput, "workspace"> & { readonly workspace: WorkspaceId | undefined };
 
-type Opened = { readonly project: ProjectId | null };
+interface Opened {
+  readonly project: ProjectId | null;
+}
 
 let opened: Opened | undefined;
 
@@ -159,18 +161,20 @@ function ProjectDialog({ project }: { readonly project: ProjectInfo | null }): R
         saved.coordinator !== null &&
         model !== null &&
         JSON.stringify(model) !== JSON.stringify(project.models.coordinator)
-      )
+      ) {
         await (await connected()).session(saved.coordinator).configure({ model });
+      }
 
       return saved;
     },
     onSuccess: (saved) => {
       closeProjectDialog();
 
-      if (project === null)
+      if (project === null) {
         startProjectChat(saved, goal).catch((cause: unknown) =>
           toast.add({ type: "error", title: errorMessage(cause) }),
         );
+      }
     },
     onError: (cause) => toast.add({ type: "error", title: errorMessage(cause) }),
   });
@@ -332,12 +336,13 @@ function ProjectDialog({ project }: { readonly project: ProjectInfo | null }): R
                 }
                 loading={drafting.isPending}
                 onClick={() => {
-                  if (draft.workspace !== undefined && model !== null)
+                  if (draft.workspace !== undefined && model !== null) {
                     drafting.mutate({
                       workspace: draft.workspace,
                       model,
                       lastName: drafting.data?.name ?? drafting.variables?.lastName,
                     });
+                  }
                 }}
               >
                 {drafting.isSuccess ? "Draft Again" : "Draft Setup"}
@@ -561,11 +566,13 @@ function McpTab({
   const mcp = useWatch(draft.workspace === undefined ? undefined : mcpWatch(draft.workspace));
   const servers = mcp.value?.servers ?? [];
 
-  if (mcp.value === undefined && mcp.error === undefined)
+  if (mcp.value === undefined && mcp.error === undefined) {
     return <Notice>Loading MCP servers…</Notice>;
+  }
 
-  if (servers.length === 0)
+  if (servers.length === 0) {
     return <Notice>No MCP servers in this folder. Add them in Customize.</Notice>;
+  }
 
   return (
     <div {...props(styles.switches)}>

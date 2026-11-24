@@ -126,8 +126,9 @@ export class FakeDesktop {
       lifetime: ENROLLMENT_LIFETIME_SECONDS,
     });
 
-    if (grant.sub !== this.owner || this.consumed.has(grant.jti))
+    if (grant.sub !== this.owner || this.consumed.has(grant.jti)) {
       return Response.json({}, { status: 409 });
+    }
     this.consumed.add(grant.jti);
     this.recorded.push(grant);
     await this.beforeReceipt?.();
@@ -247,7 +248,9 @@ export class FakeRelay {
       try {
         outcome = await operation(record);
       } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "The relay failed");
+        throw new Error(error instanceof Error ? error.message : "The relay failed", {
+          cause: error,
+        });
       }
 
       for (const effect of outcome.effects) this.calls.push(this.effectCall(name, effect));
@@ -295,8 +298,9 @@ export class FakeRelay {
   private async fetch(name: string, request: Request): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.origin !== RELAY_INTERNAL_ORIGIN)
+    if (url.origin !== RELAY_INTERNAL_ORIGIN) {
       throw new Error("The broker addressed a relay wrongly");
+    }
 
     if (url.pathname === RELAY_OPERATIONS.reset) {
       this.calls.push({ operation: url.pathname, environmentId: name, deviceId: null, path: null });
@@ -304,8 +308,9 @@ export class FakeRelay {
       return new Response(null, { status: 204 });
     }
 
-    if (url.pathname !== RELAY_OPERATIONS.forward)
+    if (url.pathname !== RELAY_OPERATIONS.forward) {
       throw new Error(`The fake relay has no ${url.pathname}`);
+    }
     const path = request.headers.get(RELAY_HEADERS.path);
     const admitted = await this.record(name).admit({
       bearer: bearerToken(request.headers),
@@ -638,13 +643,14 @@ export async function createHarness(): Promise<Harness> {
     },
 
     async link(input) {
-      if (!clerkApi.users.has(input.userId))
+      if (!clerkApi.users.has(input.userId)) {
         clerkApi.users.set(input.userId, {
           banned: false,
           locked: false,
           updated_at: 1,
           email: `${input.userId}@example.com`,
         });
+      }
       const desktop = input.desktop ?? (await harness.newDesktop());
       const body = JSON.stringify({
         publicKey: desktop.publicKey,
@@ -667,8 +673,9 @@ export async function createHarness(): Promise<Harness> {
         body,
       });
 
-      if (answer.status !== 201 || !Value.Check(LinkResponse, answer.body))
+      if (answer.status !== 201 || !Value.Check(LinkResponse, answer.body)) {
         return { answer, desktop };
+      }
       desktop.environmentId = answer.body.environment.id;
       desktop.owner = answer.body.owner.id;
       relay.desktops.set(desktop.environmentId, desktop);

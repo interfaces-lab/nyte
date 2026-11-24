@@ -17,8 +17,8 @@ import type { SessionActivity } from "../../data/session-activity.ts";
 import type { WatchStore } from "../../data/watch-store.ts";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { CHANGES_VISIBLE_FILES } from "../../diff/change-tree.ts";
-import { conversationTurns } from "./turns.ts";
-import type { TurnMessages } from "./turns.ts";
+import { conversationTurns } from "../../chats/index.ts";
+import type { TurnMessages } from "../../chats/index.ts";
 import { displayTranscriptParts, transcriptSlot } from "./transcript-presentation.ts";
 import type {
   StepMessage,
@@ -254,13 +254,14 @@ function turnRows(
         message,
       });
 
-      if (turn.clipped && index === 0)
+      if (turn.clipped && index === 0) {
         rows.push({
           kind: "earlier",
           key: `${EARLIER_ROW}${turn.info.id}`,
           ...at(),
           sticky: false,
         });
+      }
       continue;
     }
 
@@ -316,7 +317,7 @@ function turnRows(
     }
   }
 
-  if (state.kind === "ended" && state.end.kind === "failed")
+  if (state.kind === "ended" && state.end.kind === "failed") {
     rows.push({
       kind: "failure",
       key: `failure:${turn.info.id}`,
@@ -324,6 +325,7 @@ function turnRows(
       sticky: false,
       failure: state.end.failure,
     });
+  }
 
   return rows;
 }
@@ -395,8 +397,9 @@ export function transcriptRows({
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
 
-  if (loading && turns.length === 0 && prompts.length === 0)
+  if (loading && turns.length === 0 && prompts.length === 0) {
     rows.push({ kind: "skeleton", key: "row:skeleton", ...OUTSIDE });
+  }
 
   if (failed) rows.push({ kind: "error", key: "row:error", ...OUTSIDE });
   const last = turns.at(-1);
@@ -438,8 +441,9 @@ export function transcriptRows({
     });
   }
 
-  if (retrying !== undefined)
+  if (retrying !== undefined) {
     rows.push({ kind: "retry", key: "row:retry", ...OUTSIDE, message: retrying });
+  }
 
   const state: LiveRowState = !working
     ? "idle"
@@ -458,7 +462,7 @@ export function transcriptRows({
     awaiting: live.awaiting,
   });
 
-  if (owner !== undefined)
+  if (owner !== undefined) {
     rows.push({
       kind: "changes",
       key: `changes:${owner}`,
@@ -466,6 +470,7 @@ export function transcriptRows({
       state: working ? "pending" : "ready",
       files: changes,
     });
+  }
 
   return rows;
 }
@@ -717,8 +722,9 @@ function streamed(
     after.queue !== before.queue ||
     after.reportsHeld !== before.reportsHeld ||
     after.messages.length !== before.messages.length
-  )
+  ) {
     return undefined;
+  }
 
   const run = runState(before);
   const next = runState(after);
@@ -738,8 +744,9 @@ function streamed(
       message.id !== known.id ||
       message.turn !== known.turn ||
       message.status.kind !== known.status.kind
-    )
+    ) {
       return undefined;
+    }
     const slot = transcriptSlot(message);
 
     if (slot.kind !== transcriptSlot(known).kind) return undefined;

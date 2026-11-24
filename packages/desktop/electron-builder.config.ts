@@ -29,8 +29,8 @@ const MACH_O = Buffer.from("cffaedfe", "hex");
 const ELF = Buffer.from("7f454c46", "hex");
 
 const MACH_O_CPUS = new Map([
-  [0x0100000c, "arm64"],
-  [0x01000007, "x64"],
+  [0x01_00_00_0c, "arm64"],
+  [0x01_00_00_07, "x64"],
   [12, "arm"],
   [7, "x86"],
 ]);
@@ -43,8 +43,9 @@ const ELF_MACHINES = new Map([
 ]);
 
 function* offsets(bytes: Buffer, magic: Buffer, length: number): Generator<number> {
-  for (let at = 0; at + length <= bytes.length; at++)
+  for (let at = 0; at + length <= bytes.length; at++) {
     if (bytes[at] === magic[0] && bytes.subarray(at, at + magic.length).equals(magic)) yield at;
+  }
 }
 
 function nativeImages(bytes: Buffer): { readonly offset: number; readonly arch: string }[] {
@@ -60,13 +61,15 @@ function nativeImages(bytes: Buffer): { readonly offset: number; readonly arch: 
     const width = bytes[at + 4];
     const order = bytes[at + 5];
 
-    if ((width !== 1 && width !== 2) || (order !== 1 && order !== 2) || bytes[at + 6] !== 1)
+    if ((width !== 1 && width !== 2) || (order !== 1 && order !== 2) || bytes[at + 6] !== 1) {
       continue;
+    }
     const little = order === 1;
     const machine = little ? bytes.readUInt16LE(at + 18) : bytes.readUInt16BE(at + 18);
 
-    if ((little ? bytes.readUInt32LE(at + 20) : bytes.readUInt32BE(at + 20)) === 1)
+    if ((little ? bytes.readUInt32LE(at + 20) : bytes.readUInt32BE(at + 20)) === 1) {
       images.push({ offset: at, arch: ELF_MACHINES.get(machine) ?? `machine ${String(machine)}` });
+    }
   }
 
   return images.toSorted((left, right) => left.offset - right.offset);
@@ -86,16 +89,18 @@ async function verifyBundledCli(context: AfterPackContext): Promise<void> {
 
     if (images[0]?.offset !== 0) throw new Error(`The bundled ${cli} is not a native executable.`);
 
-    if (wrong.length > 0)
+    if (wrong.length > 0) {
       throw new Error(
         `The bundled ${cli} must hold only ${arch} code, but has ${wrong.map((image) => `${image.arch} at byte ${String(image.offset)}`).join(", ")}.`,
       );
+    }
     const reported = execFileSync(cli, ["--version"], { encoding: "utf8" }).trim();
 
-    if (stated !== version || reported !== version)
+    if (stated !== version || reported !== version) {
       throw new Error(
         `The bundled ${name} is ${reported} and its nyte.version says ${stated}, but Nyte is ${version}.`,
       );
+    }
   }
 }
 
@@ -214,6 +219,7 @@ const mac = {
     ...CLI,
     { from: "build/Assets.car", to: "Assets.car" },
     { from: "resources/icon.png", to: "icon.png" },
+    { from: "resources/icon-day.png", to: "icon-day.png" },
     { from: "resources/trayTemplate.png", to: "trayTemplate.png" },
     { from: "resources/trayTemplate@2x.png", to: "trayTemplate@2x.png" },
   ],
@@ -223,8 +229,9 @@ const mac = {
       optionsForFile: (file) => {
         const defaults = options.optionsForFile?.(file) ?? {};
 
-        if (file === join(options.app, "Contents", "Resources", "nyte"))
+        if (file === join(options.app, "Contents", "Resources", "nyte")) {
           return { ...defaults, entitlements: CLI_ENTITLEMENTS };
+        }
 
         return file === join(options.app, "Contents", "Resources", "nyte-tailnet")
           ? { ...defaults, entitlements: [] }

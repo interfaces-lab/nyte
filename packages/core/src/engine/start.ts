@@ -102,8 +102,9 @@ export async function discardSession(
   if (
     inbox !== null &&
     refs.find((ref) => ref.name === inboxRef(session, MAIN))?.revision !== inbox.ref?.revision
-  )
+  ) {
     return false;
+  }
 
   const outcome = await commit(kernel, [
     ...refs.map((ref): RefUpdate => ({ name: ref.name, target: null, expect: ref.revision })),
@@ -175,8 +176,9 @@ async function admitDecided(
 
   if (input === null) return;
 
-  if ((await readmitDeciding(kernel, context, session, input, stop)) === null)
+  if ((await readmitDeciding(kernel, context, session, input, stop)) === null) {
     throw new SdkError("invalid", STOPPED);
+  }
 }
 
 async function findDeciding(

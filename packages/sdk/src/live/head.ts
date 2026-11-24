@@ -12,15 +12,7 @@ import { asSdkError, openSessionStore } from "@nyte-ai/protocol";
 import type { HostSocket, SessionRows, SessionStore, SocketEvent } from "@nyte-ai/protocol";
 import type { Catalogs } from "./catalogs.ts";
 import { activations, sessionChanges, sessionsChanges } from "../event-checks.ts";
-import {
-  freshnessCell,
-  keepRows,
-  listenerSet,
-  readRetries,
-  request,
-  sameJson,
-  takesHeld,
-} from "./store.ts";
+import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./store.ts";
 import type { Freshness, Join, Live } from "./store.ts";
 
 type RowIn<T> = T extends ReadonlyMap<string, infer Row> ? Row : never;
@@ -43,11 +35,11 @@ export interface HeadStore extends Live<HeadSnapshot | null> {
   close(): void;
 }
 
-type Held = {
+interface Held {
   readonly store: SessionStore;
   activation: Activation;
   built: readonly MessageId[] | null;
-};
+}
 
 type Table = keyof SessionRows;
 
@@ -127,7 +119,7 @@ export function openHeadStore(
         () => {
           if (socket === live && held === current && !reading) settle(live, current, NO_TABLE);
         },
-        (error) => {
+        (error: unknown) => {
           if (wanted === id) wanted = null;
 
           if (socket === live) stale(asSdkError(error));
@@ -144,12 +136,7 @@ export function openHeadStore(
 
     try {
       const subscribing = subscribe();
-      const point = held?.store.describe();
-
-      const resume =
-        point?.held === undefined || (await takesHeld(live))
-          ? point
-          : { seq: point.seq, from: point.from };
+      const resume = held?.store.describe();
 
       const window = await request(live, "head.read", {
         session: input.session,
@@ -191,8 +178,9 @@ export function openHeadStore(
         event.kind === "change" &&
         sessionsChanges.Check(event) &&
         event.tables.sessions?.drop.includes(input.session) === true
-      )
+      ) {
         void read(live);
+      }
 
       return;
     }
@@ -282,8 +270,9 @@ function rebuild(
     activation === previous.activation &&
     catalog === previous.catalog &&
     source.leadingPrompt === previous.leadingPrompt
-  )
+  ) {
     return previous;
+  }
 
   return { head, order, leadingPrompt: source.leadingPrompt, activation, rows, catalog };
 }

@@ -17,19 +17,23 @@ import type { Import, Star } from "./graph.ts";
 
 export type Rgb = readonly [number, number, number];
 
-export type Palette = {
+export interface Palette {
   readonly layers: readonly Rgb[];
   readonly ink: Rgb;
   readonly dark: boolean;
-};
+}
 
-export type Orbit = { yaw: number; pitch: number; distance: number };
+export interface Orbit {
+  yaw: number;
+  pitch: number;
+  distance: number;
+}
 
 export const HOME: Orbit = { yaw: 0.6, pitch: 0.5, distance: 29 };
 
 const FIELD_OF_VIEW = 38;
 
-export type Frame = {
+export interface Frame {
   readonly orbit: Orbit;
   readonly width: number;
   readonly height: number;
@@ -39,17 +43,21 @@ export type Frame = {
   readonly position: Float32Array;
   readonly emphasis: Float32Array;
   readonly focus: number | null;
-};
+}
 
-export type Projected = { readonly x: number; readonly y: number; readonly w: number };
+export interface Projected {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+}
 
-export type Galaxy = {
+export interface Galaxy {
   readonly detail: string;
   draw(frame: Frame): void;
   project(frame: Frame, id: number): Projected;
   screenRadius(frame: Frame, star: Star, w: number): number;
   dispose(): void;
-};
+}
 
 const POINT_VERTEX = `
 attribute vec4 tint;
@@ -129,7 +137,7 @@ function edgeColor(frame: Frame, edge: Import): readonly [number, number, number
 
 export function createGalaxy(canvas: HTMLCanvasElement): Galaxy {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setClearColor(0x000000, 0);
+  renderer.setClearColor(0x00_00_00, 0);
   const scene = new Scene();
   const camera = new PerspectiveCamera(FIELD_OF_VIEW, 1, 0.5, 120);
   const lineGeometry = new BufferGeometry();
@@ -262,8 +270,9 @@ export function createGalaxy(canvas: HTMLCanvasElement): Galaxy {
         sparks.material,
         stars.geometry,
         stars.material,
-      ])
+      ]) {
         disposable.dispose();
+      }
       renderer.dispose();
       renderer.forceContextLoss();
     },

@@ -63,8 +63,9 @@ export async function submit(
     await Promise.allSettled(scope.pastes);
     const { chat: current } = read().facts;
 
-    if (current?.kind === "session" && current.id === followed.id)
+    if (current?.kind === "session" && current.id === followed.id) {
       await trustAnswered(current.info.workspace, context);
+    }
 
     if (context.signal.aborted) return;
 
@@ -120,8 +121,9 @@ export async function submit(
 
     dispatch({ kind: "sent", submission: submission.id, message: sending.message });
     void sending.delivered.then((end) => {
-      if (end.kind === "refused")
+      if (end.kind === "refused") {
         refuse(`Message not sent: ${end.reason}. It is back in the composer.`);
+      }
     });
   } catch (error) {
     refuse(`Message not sent: ${errorMessage(error)}. It is back in the composer.`);
@@ -150,8 +152,9 @@ async function start(
     if (
       context.signal.aborted ||
       !read().local.submissions.some((sent) => sent.id === submission.id)
-    )
+    ) {
       return false;
+    }
     const port = ports.host.workspace(workspace);
 
     const content = await prepare(submission.snapshot, {
@@ -205,8 +208,9 @@ export async function startWithPrompt(
     if (started.kind === "refused") throw new Error(`The chat didn't start: ${started.reason}`);
     await follow(chat.id, false, context);
 
-    if (started.kind === "taken")
+    if (started.kind === "taken") {
       throw new Error("This chat had already started. Run the command again.");
+    }
 
     return true;
   });
@@ -233,23 +237,26 @@ async function startChat(
   const { dispatch, ports, read } = context;
   const current = read().facts.chat;
 
-  if (current?.kind !== "blank" || current.id !== chat.id)
+  if (current?.kind !== "blank" || current.id !== chat.id) {
     return { kind: "refused", reason: "The chat changed before the message was sent." };
+  }
 
   const catalog = read().facts.catalog.catalog ?? (await ports.host.listModels());
 
   const selection = current.unresolved === true ? defaultSelection(catalog) : current.selection;
 
-  if (selection === null)
+  if (selection === null) {
     return { kind: "refused", reason: "No models are available. /login connects a provider." };
+  }
 
   if (current.unresolved === true) dispatch({ kind: "selection", session: chat.id, selection });
 
-  if (findModel(availableModels(catalog), selection.model) === undefined)
+  if (findModel(availableModels(catalog), selection.model) === undefined) {
     return {
       kind: "refused",
       reason: `${selection.model.id} isn't available. ctrl+p picks another.`,
     };
+  }
 
   return ports.host.start({ id: chat.id, workspace, selection, content });
 }

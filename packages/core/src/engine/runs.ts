@@ -40,6 +40,7 @@ import { callPhase } from "./call-phase.ts";
 import { deliverReport } from "./reports.ts";
 import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
+import { settledCheckpoint } from "./provider-checkpoint.ts";
 import { clipText } from "../util/clip.ts";
 
 export async function newRun(
@@ -118,7 +119,14 @@ export async function endRun(
       ...current.record,
       lastActivityAt: endedAt,
       heads: current.record.heads.map((entry) =>
-        entry.name === head ? { ...entry, lastRun, response: found.record.response } : entry,
+        entry.name === head
+          ? {
+              ...entry,
+              lastRun,
+              response: found.record.response,
+              contextOccupancy: found.record.contextOccupancy,
+            }
+          : entry,
       ),
     };
 
@@ -184,6 +192,10 @@ export async function endRun(
       ...receipts.flat(),
       ...(await abandonedCalls(kernel.store, session, run)),
       ...(report === null ? [] : [report.update]),
+      ...(final.kind === "completed"
+        ? await settledCheckpoint(kernel, session, head, run, found.record.providerSeal)
+        : []),
+      ...(await kernel.providerRuns.retire(session, run)),
     ]);
 
     return outcome.kind === "set"
@@ -212,8 +224,9 @@ export async function endRun(
 
   const woke = await kernel.waits.runEnded(session, run, ended.end);
 
-  if (!woke && ended.report !== null)
+  if (!woke && ended.report !== null) {
     await deliverReport(kernel, ended.report.session, ended.report.id);
+  }
 
   if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
 }
@@ -318,8 +331,9 @@ function extractRunAnswer(state: FoldState, run: RunId): string {
   return (
     messages
       .flatMap((message) => {
-        if (message.kind !== "part" || message.partKind !== "text" || message.turn !== turn)
+        if (message.kind !== "part" || message.partKind !== "text" || message.turn !== turn) {
           return [];
+        }
         const part = state.parts.get(message.part)?.state;
 
         return isJsonObject(part) && typeof part.markdown === "string" && part.markdown !== ""

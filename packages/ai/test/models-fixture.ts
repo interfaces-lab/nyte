@@ -13,7 +13,7 @@ export function testModel(provider: string, id: string): Model<Api> {
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 10000,
+    contextWindow: 10_000,
     maxTokens: 1000,
   };
 }

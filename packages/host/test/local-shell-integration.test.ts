@@ -40,7 +40,7 @@ const zsh = ["/bin/zsh", "/usr/bin/zsh"].find((path) => existsSync(path));
 
 const bash = ["/bin/bash", "/usr/bin/bash"].find((path) => existsSync(path));
 
-type Terminal = {
+interface Terminal {
   readonly job: Job;
   readonly home: string;
   text(): string;
@@ -50,7 +50,7 @@ type Terminal = {
   until(found: () => boolean, what: string): Promise<void>;
   shows(text: string): Promise<void>;
   close(): Promise<void>;
-};
+}
 
 async function openTerminal(
   shell: string,
@@ -74,17 +74,19 @@ async function openTerminal(
   let text = "";
 
   const drained = (async () => {
-    for await (const frame of job.output())
+    for await (const frame of job.output()) {
       if (frame.kind === "bytes") text += decoder.decode(frame.data, { stream: true });
+    }
   })();
 
   const until = (found: () => boolean, what: string): Promise<void> =>
     vi.waitFor(
       () => {
-        if (!found())
+        if (!found()) {
           throw new Error(
             `Timed out waiting for ${what}; output ends ${JSON.stringify(text.slice(-400))}`,
           );
+        }
       },
       { timeout: WAIT_MS, interval: 20 },
     );
@@ -127,10 +129,10 @@ const inheritedHex = (): number =>
 
 const fakeMarkers = [
   "spoof-start",
-  "\x1b]633;A\x07\x1b]633;B\x07\x1b]633;D;0\x07\x1b]633;P;Cwd=/\x07\x1b]633;E;ls;nonce\x07",
-  "\x1b]133;A\x07",
-  "\x1b]633;Nyte;1;A;0\x07",
-  `\x1b]633;Nyte;1;${"f".repeat(64)};A;0\x1b\\`,
+  "\u001B]633;A\u0007\u001B]633;B\u0007\u001B]633;D;0\u0007\u001B]633;P;Cwd=/\u0007\u001B]633;E;ls;nonce\u0007",
+  "\u001B]133;A\u0007",
+  "\u001B]633;Nyte;1;A;0\u0007",
+  `\u001B]633;Nyte;1;${"f".repeat(64)};A;0\u001B\\`,
   "spoof-end",
 ].join("");
 
@@ -181,7 +183,7 @@ trap '__mark_preexec "$_"' DEBUG
   },
 ];
 
-for (const shell of shells)
+for (const shell of shells) {
   describe.skipIf(!ptyLoads || shell.path === undefined)(
     `an integrated ${shell.name} terminal`,
     () => {
@@ -294,7 +296,7 @@ for (const shell of shells)
             await terminal.shows("spoof-end");
 
             expect(await terminal.job.idle()).toBe(false);
-            expect(terminal.text()).toContain("spoof-start\x1b]133;A\x07spoof-end");
+            expect(terminal.text()).toContain("spoof-start\u001B]133;A\u0007spoof-end");
             expect(terminal.text()).not.toContain("633;");
             await interrupt(terminal);
             await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
@@ -402,6 +404,7 @@ for (const shell of shells)
       );
     },
   );
+}
 
 describe.skipIf(!ptyLoads || zsh === undefined)("an integrated zsh terminal's startup", () => {
   const shell = zsh ?? "";
@@ -466,7 +469,7 @@ describe.skipIf(!ptyLoads || zsh === undefined)("an integrated zsh terminal's st
           ),
         );
 
-        expect(seen).toEqual(Array(3).fill([`ZDOTDIR=${terminal.home}`]));
+        expect(seen).toEqual(Array.from({ length: 3 }, () => [`ZDOTDIR=${terminal.home}`]));
       } finally {
         await terminal.close();
       }

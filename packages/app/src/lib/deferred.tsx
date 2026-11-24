@@ -129,17 +129,17 @@ function injectEntry(name: DeferredName): Promise<void> {
 
     const timeout = window.setTimeout(fail, LOAD_TIMEOUT_MS);
 
-    script.onload = () => {
+    script.addEventListener("load", () => {
       window.clearTimeout(timeout);
 
       if (readDeferred(name) === undefined) fail();
       else resolve();
-    };
+    });
 
-    script.onerror = () => {
+    script.addEventListener("error", () => {
       window.clearTimeout(timeout);
       fail();
-    };
+    });
 
     document.head.append(script);
   });

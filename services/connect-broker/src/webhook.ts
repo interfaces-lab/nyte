@@ -54,8 +54,9 @@ export async function handleWebhook(context: Context, request: Request): Promise
     }
 
     case "user.deleted": {
-      if (!Value.Check(DeletedUser, event.data) || !Value.Check(Timestamp, event.timestamp))
+      if (!Value.Check(DeletedUser, event.data) || !Value.Check(Timestamp, event.timestamp)) {
         throw new Refusal("invalid");
+      }
       await deleteOwner(context.db, {
         userId: event.data.id,
         version: event.timestamp,

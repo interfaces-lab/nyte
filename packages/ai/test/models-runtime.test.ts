@@ -3,21 +3,12 @@ import { storedAccounts } from "./credential-fixture.ts";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import type { ApiKeyAuth } from "../src/auth/types.ts";
 import { calculateCost, createModels, createProvider } from "../src/models.ts";
-import {
-  InMemoryModelsStore,
-  type ModelsStore,
-  type ModelsStoreEntry,
-} from "../src/models-store.ts";
+import { InMemoryModelsStore } from "../src/models-store.ts";
+import type { ModelsStore, ModelsStoreEntry } from "../src/models-store.ts";
 import type { Usage } from "../src/types.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
-import {
-  testModel,
-  type ProviderCall,
-  testProvider,
-  context,
-  envKeyAuth,
-  testOAuth,
-} from "./models-fixture.ts";
+import { testModel, testProvider, context, envKeyAuth, testOAuth } from "./models-fixture.ts";
+import type { ProviderCall } from "./models-fixture.ts";
 
 describe("Models runtime", () => {
   it("enumerates credential metadata without exposing secrets", async () => {
@@ -136,7 +127,7 @@ describe("Models runtime", () => {
       cacheWrite: 6.25,
       tiers: [
         {
-          inputTokensAbove: 272000,
+          inputTokensAbove: 272_000,
           input: 10,
           output: 45,
           cacheRead: 1,
@@ -145,11 +136,11 @@ describe("Models runtime", () => {
       ],
     };
     const createUsage = (cacheWrite: number): Usage => ({
-      input: 200000,
-      output: 100000,
-      cacheRead: 72000,
+      input: 200_000,
+      output: 100_000,
+      cacheRead: 72_000,
       cacheWrite,
-      totalTokens: 372000 + cacheWrite,
+      totalTokens: 372_000 + cacheWrite,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     });
 

@@ -165,8 +165,9 @@ describe("leases", () => {
     const desktop = await linked();
     const statuses: number[] = [];
 
-    for (let index = 0; index < 21; index += 1)
+    for (let index = 0; index < 21; index += 1) {
       statuses.push((await harness.lease(desktop)).answer.status);
+    }
 
     expect(statuses.slice(0, 20).every((status) => status === 200)).toBe(true);
     expect(statuses[20]).toBe(429);

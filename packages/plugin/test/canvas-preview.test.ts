@@ -51,14 +51,16 @@ it("drives a shell page: installs the harness, captures at the chat width, then 
   let captured = 0;
   const page: CanvasPreviewPage = {
     async evaluate(expression) {
-      if (expression.endsWith("?.check() ?? []"))
+      if (expression.endsWith("?.check() ?? []")) {
         return width === CANVAS_PREVIEW_WIDTHS.chat ? [finding(-4)] : [finding(-90)];
-      if (expression.startsWith("globalThis.__nytePreview.settle"))
+      }
+      if (expression.startsWith("globalThis.__nytePreview.settle")) {
         return {
           height: heights.shift() ?? 0,
           errors: [],
           console: [{ level: "log", text: "hi" }],
         };
+      }
       expect(expression).toContain('"method":"nyte/notifications/render"');
 
       return true;

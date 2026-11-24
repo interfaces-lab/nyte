@@ -73,10 +73,11 @@ export async function loginProvider(input: {
 
   const first = provider.methods[0];
 
-  if (first === undefined)
+  if (first === undefined) {
     throw new CliError("invalid_arguments", `Can't sign in to ${provider.name} with nyte login.`, {
       details: [{ label: "Methods", value: "None" }],
     });
+  }
 
   const kind =
     input.method ??
@@ -90,7 +91,7 @@ export async function loginProvider(input: {
 
   const method = provider.methods.find((candidate) => candidate.kind === kind);
 
-  if (method === undefined)
+  if (method === undefined) {
     throw new CliError(
       "invalid_arguments",
       `Can't sign in to ${provider.name} with ${kind === "key" ? "an API key" : "a browser"}.`,
@@ -105,6 +106,7 @@ export async function loginProvider(input: {
         ],
       },
     );
+  }
 
   const label =
     input.label ??
@@ -144,11 +146,12 @@ export async function runLogin(login: Login, driver: LoginDriver, name: string):
     for (;;) {
       const next = await Promise.race([steps.next(), failure.promise]);
 
-      if (next.done === true)
+      if (next.done === true) {
         throw new CliError(
           "failed",
           `Couldn't sign in to ${name}. The host stopped waiting for it.`,
         );
+      }
       const step = next.value;
       prompt.abort();
       prompt = new AbortController();
@@ -165,7 +168,7 @@ export async function runLogin(login: Login, driver: LoginDriver, name: string):
             : driver.choose(step.message, step.options, signal)
           )
             .then((answer) => (signal.aborted ? undefined : login.answer(answer)))
-            .catch((error) => {
+            .catch((error: unknown) => {
               if (!signal.aborted) failure.reject(error);
             });
           break;
@@ -207,10 +210,11 @@ export async function logoutProvider(input: {
     )
     .map((provider) => ({ id: provider.id, label: provider.name }));
 
-  if (input.providerId === undefined && choices.length === 0)
+  if (input.providerId === undefined && choices.length === 0) {
     throw new CliError("not_found", "Can't remove a saved login. No provider has one.", {
       next: [SEE_CREDENTIALS],
     });
+  }
 
   const only = choices.length === 1 ? choices[0] : undefined;
 
@@ -224,23 +228,26 @@ export async function logoutProvider(input: {
   const active = accounts.find((account) => account.active);
   const inactive = accounts.filter((account) => !account.active).map((account) => account.label);
 
-  if (active === undefined && inactive.length > 0)
+  if (active === undefined && inactive.length > 0) {
     throw new CliError(
       "conflict",
       `Can't remove ${provider.name}'s saved login. None of its saved logins is active.`,
       { details: [{ label: "Saved", value: quoteLabels(inactive) }] },
     );
+  }
 
-  if (active === undefined)
+  if (active === undefined) {
     throw new CliError("not_found", `Can't remove ${provider.name}'s saved login. It has none.`, {
       details: (await stillSignedIn(connection, provider.id)) ? [EXTERNAL] : [],
       next: [SEE_CREDENTIALS],
     });
+  }
 
   await connection.models.logout(provider.id);
 
-  if (inactive.length > 0)
+  if (inactive.length > 0) {
     return { provider, removed: active.label, left: { kind: "saved", labels: inactive } };
+  }
 
   return {
     provider,

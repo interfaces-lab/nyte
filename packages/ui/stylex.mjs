@@ -58,7 +58,7 @@ function constWrappers(ltr) {
 function renameComponentClasses(file, atomic, types) {
   const names = new Set(atomic.map(([name]) => name));
   const pattern = new RegExp(`\\b(?:${[...names].join("|")})\\b`, "g");
-  const rename = (text) => text.replace(pattern, (name) => `nyte${name.slice(1)}`);
+  const rename = (text) => text.replaceAll(pattern, (name) => `nyte${name.slice(1)}`);
 
   for (const rule of atomic) {
     rule[0] = rename(rule[0]);

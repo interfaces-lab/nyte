@@ -18,12 +18,12 @@ import {
   replaceComposerText,
   restoreComposerDocument,
   sameComposerDocument,
-} from "./composer-document.ts";
+} from "../../panes/composer-document.ts";
 import type {
   ComposerCompletion,
   ComposerDocumentState,
   ComposerSubmission,
-} from "./composer-document.ts";
+} from "../../panes/composer-document.ts";
 import {
   ComposerSurfaceContent,
   editorContentStyle,
@@ -225,10 +225,11 @@ export function ComposerEditor({
         caret.offsetNode instanceof Text &&
         caret.offsetNode.parentElement?.isContentEditable === true &&
         view.dom.contains(caret.offsetNode)
-      )
+      ) {
         tr.setSelection(
           TextSelection.create(tr.doc, view.posAtDOM(caret.offsetNode, caret.offset)),
         );
+      }
 
       for (const reference of references) insertComposerReference(tr, reference);
       view.dispatch(closeHistory(tr).scrollIntoView());
@@ -237,10 +238,11 @@ export function ComposerEditor({
       signal?.throwIfAborted();
       const pending = onFilesSelectedRef.current?.(files, signal);
 
-      if (pending === undefined)
+      if (pending === undefined) {
         throw new Error(
           "The composer cannot accept images right now. Finish the question, then try again.",
         );
+      }
 
       const error = await pending;
       signal?.throwIfAborted();
@@ -483,7 +485,7 @@ export function ComposerEditor({
         data-composer-caret=""
         {...props(composerStyles.editorCaret)}
       >
-        {String.fromCodePoint(0x200b)}
+        {String.fromCodePoint(0x20_0b)}
       </span>
     </div>
   );

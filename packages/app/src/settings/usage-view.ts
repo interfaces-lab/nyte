@@ -1,3 +1,4 @@
+import { formatResetsIn } from "@nyte-ai/plugin/client/presentation";
 import type { ModelInfo, ProviderUsage } from "@nyte-ai/sdk";
 import type { IconName } from "@nyte-ai/ui/icon";
 import type { UsageSnapshot } from "../contract/bridge.ts";
@@ -35,7 +36,7 @@ export type UsageMeasure = "cost" | "tokens";
 
 export type ListPrice = ModelInfo["cost"];
 
-export interface CacheUse {
+interface CacheUse {
   readonly ratio: number | undefined;
   readonly cached: number;
   readonly uncached: number;
@@ -75,12 +76,12 @@ export interface UsageBucket {
   readonly values: readonly number[];
 }
 
-export interface PacePoint {
+interface PacePoint {
   readonly day: string;
   readonly value: number;
 }
 
-export interface UsagePace {
+interface UsagePace {
   readonly points: readonly PacePoint[];
   readonly forecast: PacePoint | undefined;
   readonly days: readonly string[];
@@ -574,8 +575,9 @@ function shareValue(
   totals: Pick<UsageTotals, "cost" | "tokens">,
   measure: UsageMeasure,
 ): Pick<ShareRow, "value" | "absent"> {
-  if (measure === "tokens")
+  if (measure === "tokens") {
     return { value: `${formatTokens(totals.tokens)} tokens`, absent: false };
+  }
 
   return totals.cost === 0
     ? { value: "No price", absent: true }
@@ -667,8 +669,9 @@ function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
 
   const history = report[tool];
 
-  if (history.kind === "missing")
+  if (history.kind === "missing") {
     return { absent: "Not found", meta: `No local history in ${USAGE_TOOL_HOMES[tool]}` };
+  }
 
   if (history.kind === "failed") return { absent: "Couldn't read", meta: history.message };
 
@@ -769,28 +772,6 @@ export interface AccountLimits {
   readonly failed: boolean;
 }
 
-const MINUTE_MS = 60_000;
-
-const HOUR_MS = 60 * MINUTE_MS;
-
-const DAY_MS = 24 * HOUR_MS;
-
-function formatResetsIn(at: number, now: number): string {
-  const left = at - now;
-
-  if (left < MINUTE_MS) return "now";
-  const days = Math.floor(left / DAY_MS);
-  const hours = Math.floor((left % DAY_MS) / HOUR_MS);
-  const minutes = Math.floor((left % HOUR_MS) / MINUTE_MS);
-
-  if (days > 0) return hours === 0 ? `${String(days)}d` : `${String(days)}d ${String(hours)}h`;
-
-  if (hours > 0)
-    return minutes === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(minutes)}m`;
-
-  return `${String(minutes)}m`;
-}
-
 export function deriveAccount(usage: ProviderUsage, now: number): AccountLimits | null {
   const base = {
     key: usage.provider,
@@ -799,10 +780,11 @@ export function deriveAccount(usage: ProviderUsage, now: number): AccountLimits 
     account: usage.account?.label,
   };
 
-  if (usage.state.kind === "unavailable")
+  if (usage.state.kind === "unavailable") {
     return usage.state.reason === "failed"
       ? { ...base, meters: [], message: usage.state.message, failed: true }
       : null;
+  }
 
   const meters = usage.state.limits.map((window) => ({
     key: window.label,

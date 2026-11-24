@@ -24,7 +24,7 @@ type StreamEvent = Extract<SDKMessage, { type: "stream_event" }>["event"];
 
 type Transport = Parameters<McpSdkServerConfigWithInstance["instance"]["connect"]>[0];
 
-type JsonObject = { readonly [key: string]: Json };
+type JsonObject = Readonly<Record<string, Json>>;
 
 interface Claude {
   readonly options: Options;
@@ -237,8 +237,9 @@ function fakeClaude(script: (claude: Claude) => Promise<void>) {
       start: async () => undefined,
       close: async () => undefined,
       send: async (message) => {
-        if (Value.Check(response, message) && isJson(message.result))
+        if (Value.Check(response, message) && isJson(message.result)) {
           replies.get(message.id)?.(message.result);
+        }
       },
     };
 
@@ -381,7 +382,7 @@ it("answers Claude Code with the rejection when Nyte's gate rejects one of its c
     for (const [id, pinned] of [
       ["toolu_hi", "hi"],
       ["toolu_secret", "secret"],
-    ])
+    ]) {
       called.push(
         await fake.mcp("tools/call", {
           name: "note",
@@ -389,6 +390,7 @@ it("answers Claude Code with the rejection when Nyte's gate rejects one of its c
           _meta: { "claudecode/toolUseId": id },
         }),
       );
+    }
 
     fake.emit(begin(), ...text(0, "Kept the secret."), ...end("end_turn"), finished());
   });

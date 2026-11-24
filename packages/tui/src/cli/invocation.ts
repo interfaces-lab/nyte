@@ -53,16 +53,18 @@ export function createInvocation(output: Output): Invocation {
         end.kind === "error" &&
         end.error instanceof CliError &&
         errorClass(end.error.reason) === "canceled"
-      )
+      ) {
         report(end.error, json);
+      }
 
       return exitStatus(received);
     }
 
     if (end.kind === "error") return report(end.error, json);
 
-    if (cleanupFailed)
+    if (cleanupFailed) {
       return report(new CliError("failed", "Couldn't clean up before exiting."), json);
+    }
 
     return end.code;
   };

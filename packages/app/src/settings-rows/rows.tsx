@@ -1,0 +1,302 @@
+import { Input } from "@nyte-ai/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
+import { Slider } from "@nyte-ai/ui/slider";
+import { SwitchField } from "@nyte-ai/ui/switch";
+import type { SwitchFieldProps } from "@nyte-ai/ui/switch";
+import {
+  NumberField,
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from "@nyte-ai/ui/number-field";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+import { props } from "@stylexjs/stylex";
+import type { ReactElement, ReactNode } from "react";
+import { useSetting } from "../preferences/index.ts";
+import type { Setting } from "../preferences/index.ts";
+import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
+import { available } from "../settings-sections/capability.ts";
+import type { Capability } from "../settings-sections/capability.ts";
+import { settingsStyles } from "./settings.stylex.ts";
+
+const ROW_MARK = { "data-settings-row": "" } as const;
+
+export function SettingsSection({
+  title,
+  description,
+  preview,
+  note,
+  actions,
+  children,
+}: {
+  readonly title?: string;
+  readonly description?: string;
+  readonly preview?: ReactNode;
+  readonly note?: ReactNode;
+  readonly actions?: ReactNode;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <section {...props(settingsPatterns.section, settingsStyles.section)}>
+      {(title !== undefined || description !== undefined) && (
+        <div {...props(settingsPatterns.sectionHeader)}>
+          {title !== undefined && <h2 {...props(settingsPatterns.sectionTitle)}>{title}</h2>}
+          {description !== undefined && (
+            <p {...props(settingsPatterns.sectionDescription)}>{description}</p>
+          )}
+        </div>
+      )}
+      <div {...props(settingsPatterns.group)}>
+        {preview !== undefined && (
+          <div inert data-settings-preview {...props(settingsPatterns.preview, hairline.ringAfter)}>
+            {preview}
+          </div>
+        )}
+        {children}
+      </div>
+      {(note !== undefined || actions !== undefined) && (
+        <div {...props(settingsPatterns.under)}>
+          {note !== undefined && <p {...props(settingsPatterns.note)}>{note}</p>}
+          {actions !== undefined && <div {...props(settingsPatterns.actions)}>{actions}</div>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function SettingsRow({
+  title,
+  description,
+  controlWidth = "standard",
+  detail,
+  children,
+}: {
+  readonly title: ReactNode;
+  readonly description?: string;
+  readonly controlWidth?: "standard" | "wide";
+  readonly detail?: ReactNode;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <div
+      {...ROW_MARK}
+      {...props(
+        settingsPatterns.rowRule,
+        settingsPatterns.row,
+        settingsPatterns.rowMinHeight,
+        detail !== undefined && settingsPatterns.rowDetailed,
+      )}
+    >
+      <span {...props(settingsPatterns.rowCopy)}>
+        <span {...props(settingsPatterns.rowTitle)}>{title}</span>
+        {description !== undefined && (
+          <span {...props(settingsPatterns.rowDescription)}>{description}</span>
+        )}
+      </span>
+      <span
+        {...props(
+          settingsPatterns.rowControl,
+          controlWidth === "wide" && settingsPatterns.rowControlWide,
+        )}
+      >
+        {children}
+      </span>
+      {detail !== undefined && <div {...props(settingsPatterns.rowDetail)}>{detail}</div>}
+    </div>
+  );
+}
+
+export function SettingsSwitchRow({
+  title,
+  ...rest
+}: Omit<SwitchFieldProps, "label" | "xstyle"> & { readonly title: string }): ReactElement {
+  return (
+    <div {...ROW_MARK} {...props(settingsPatterns.rowRule, settingsPatterns.rowFrame)}>
+      <SwitchField {...rest} label={title} xstyle={settingsPatterns.row} />
+    </div>
+  );
+}
+
+interface Copy {
+  readonly title: string;
+  readonly description?: string;
+}
+
+interface Bound<T> extends Copy {
+  readonly setting: Setting<T>;
+  readonly needs?: readonly Capability[];
+}
+
+function hidden<T>(input: Bound<T>): boolean {
+  return !input.setting.available() || !available(input.needs ?? []);
+}
+
+export function SwitchRow(input: Bound<boolean>): ReactElement | null {
+  const value = useSetting(input.setting);
+
+  if (hidden(input)) return null;
+
+  return (
+    <SettingsSwitchRow
+      title={input.title}
+      description={input.description}
+      checked={value ?? false}
+      disabled={value === undefined}
+      onCheckedChange={(checked) => input.setting.set(checked)}
+    />
+  );
+}
+
+interface Option<T extends string> {
+  readonly value: T;
+  readonly label: string;
+}
+
+export function SelectRow<T extends string>(
+  input: Bound<T> & {
+    readonly options: readonly [Option<NoInfer<T>>, ...Option<NoInfer<T>>[]];
+    readonly controlWidth?: "standard" | "wide";
+  },
+): ReactElement | null {
+  const value = useSetting(input.setting);
+
+  if (hidden(input)) return null;
+
+  return (
+    <SettingsRow
+      title={input.title}
+      description={input.description}
+      controlWidth={input.controlWidth}
+    >
+      <Select
+        items={input.options}
+        value={value ?? null}
+        disabled={value === undefined}
+        onValueChange={(next) => {
+          if (next !== null) input.setting.set(next);
+        }}
+      >
+        <SelectTrigger
+          xstyle={settingsStyles.valueField}
+          aria-label={input.title}
+          width={input.controlWidth === "wide" ? "wide" : undefined}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {input.options.map((option) => (
+            <SelectItem key={option.value} value={option.value} label={option.label}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingsRow>
+  );
+}
+
+export function NumberRow(
+  input: Bound<number> & { readonly min: number; readonly max: number; readonly step?: number },
+): ReactElement | null {
+  const value = useSetting(input.setting);
+
+  if (hidden(input)) return null;
+
+  return (
+    <SettingsRow title={input.title} description={input.description}>
+      <NumberField
+        key={value}
+        defaultValue={value}
+        min={input.min}
+        max={input.max}
+        step={input.step}
+        disabled={value === undefined}
+        onValueCommitted={(next) => {
+          if (next !== null) input.setting.set(next);
+        }}
+      >
+        <NumberFieldGroup xstyle={settingsStyles.valueField}>
+          <NumberFieldDecrement />
+          <NumberFieldInput aria-label={input.title} />
+          <NumberFieldIncrement />
+        </NumberFieldGroup>
+      </NumberField>
+    </SettingsRow>
+  );
+}
+
+export function StepsRow<T extends string>(
+  input: Bound<T> & {
+    readonly options: readonly [Option<NoInfer<T>>, Option<NoInfer<T>>, ...Option<NoInfer<T>>[]];
+  },
+): ReactElement | null {
+  const value = useSetting(input.setting);
+
+  if (hidden(input)) return null;
+
+  const index = Math.max(
+    0,
+    input.options.findIndex((option) => option.value === value),
+  );
+
+  const first = input.options[0];
+  const last = input.options.at(-1) ?? first;
+
+  return (
+    <SettingsRow title={input.title} description={input.description}>
+      <span {...props(settingsStyles.steps)}>
+        <Slider.Root
+          max={input.options.length - 1}
+          value={index}
+          disabled={value === undefined}
+          xstyle={settingsStyles.stepsSlider}
+          onValueChange={(nextIndex) => {
+            const next = input.options[nextIndex];
+
+            if (next !== undefined) input.setting.set(next.value);
+          }}
+        >
+          <Slider.Control>
+            <Slider.Track>
+              <Slider.Thumb aria-label={input.title} aria-valuetext={input.options[index]?.label} />
+            </Slider.Track>
+          </Slider.Control>
+        </Slider.Root>
+        <span aria-hidden="true" {...props(settingsStyles.stepsLabels)}>
+          <span>{first.label}</span>
+          <span>{last.label}</span>
+        </span>
+      </span>
+    </SettingsRow>
+  );
+}
+
+export function TextRow(
+  input: Bound<string | null> & {
+    readonly placeholder: string;
+    readonly type?: "text" | "url";
+  },
+): ReactElement | null {
+  const value = useSetting(input.setting);
+
+  if (hidden(input)) return null;
+
+  return (
+    <SettingsRow title={input.title} description={input.description} controlWidth="wide">
+      <Input
+        key={value ?? ""}
+        type={input.type ?? "text"}
+        aria-label={input.title}
+        placeholder={input.placeholder}
+        defaultValue={value ?? ""}
+        disabled={value === undefined}
+        onBlur={(event) => {
+          const next = event.currentTarget.value.trim();
+
+          if (next !== (value ?? "")) input.setting.set(next === "" ? null : next);
+        }}
+      />
+    </SettingsRow>
+  );
+}

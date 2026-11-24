@@ -37,11 +37,13 @@ export function showTray(
   view: TrayView,
   listed: { readonly agents: readonly SessionId[]; readonly terminals: readonly JobId[] },
 ): TrayView {
-  if (view.kind === "list")
+  if (view.kind === "list") {
     return view.openedOver.some((id) => listed.agents.includes(id)) ? view : CLOSED;
+  }
 
-  if (view.kind === "terminals")
+  if (view.kind === "terminals") {
     return view.openedOver.some((id) => listed.terminals.includes(id)) ? view : CLOSED;
+  }
 
   return view;
 }

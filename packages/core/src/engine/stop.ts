@@ -1,9 +1,19 @@
+import { commit } from "../watch/commit.ts";
 import { asId } from "@nyte-ai/schema";
 import type { HeadName, MessageId, RunId, SessionId } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeSessionRecord } from "../contract/records.ts";
 import type { SessionRecord } from "../contract/records.ts";
-import { liveRuns, load, readInbox, requireSession, SESSION_PAGE } from "../store/session.ts";
+import {
+  attempt,
+  liveRuns,
+  load,
+  put,
+  readInbox,
+  requireSession,
+  SESSION_PAGE,
+  STALE,
+} from "../store/session.ts";
 import { sessionRef } from "../store/refs.ts";
 import { dev } from "../util/dev-log.ts";
 import { stopRun } from "./fence.ts";
@@ -23,6 +33,29 @@ export async function stopRuns(
     if ((await stopRun(kernel, session, id)).kind === "requested") stopped.push(id);
   }
 
+  await Promise.all(
+    found.record.heads.map((head) => kernel.providerRuns.revoke(session, head.name, "stop")),
+  );
+  await kernel.runtimePolicy.revoke(session);
+  await attempt(`Fencing provider work in ${session}`, async () => {
+    const current = await requireSession(kernel.store, session);
+    const record = {
+      ...current.record,
+      heads: current.record.heads.map((head) => ({
+        ...head,
+        providerFence: (head.providerFence ?? 0) + 1,
+        historyEpoch: (head.historyEpoch ?? 0) + 1,
+      })),
+    };
+    const changed = await commit(kernel, [
+      {
+        name: current.ref.name,
+        target: await put(kernel.store, "session", record),
+        expect: current.ref.revision,
+      },
+    ]);
+    return changed.kind === "stale" ? STALE : undefined;
+  });
   const prefix = `${sessionRef(session)}/inbox/`;
 
   for (const ref of await kernel.store.refs.list(prefix)) {

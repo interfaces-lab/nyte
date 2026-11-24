@@ -1,0 +1,7 @@
+{
+  // Comments are allowed in jsonc files
+  "editor": {
+    "tabSize": 2,
+    "insertSpaces": true
+  }
+}

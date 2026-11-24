@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 
-const HOLD_MS = 1_200;
+const HOLD_MS = 1200;
 
 const rollIn = keyframes({
   from: { opacity: 0, transform: "translateY(calc(100% + 1px))" },

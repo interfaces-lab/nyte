@@ -1,4 +1,4 @@
-const ESCAPE = "\u001b";
+const ESCAPE = "\u001B";
 
 const BELL = "\u0007";
 

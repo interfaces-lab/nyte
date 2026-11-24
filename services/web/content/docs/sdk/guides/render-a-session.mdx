@@ -47,6 +47,8 @@ Solid read. [Build an agent app](/docs/build/composition#build-the-chat) shows e
 
 - `snapshot().view` is `null` until the first read arrives. `snapshot()` returns the same object
   until something drawn changes, and `subscribe` calls you only then.
+- `subscribe` calls you in a microtask after the change, once for every change that landed
+  before it ran.
 - Text a part is still streaming is laid over its message as it arrives. Text for a part this view
   doesn't hold, such as another chat's, doesn't call you.
 - A message sent through the connection's journal, with `chat.send` or `session.send`, shows as

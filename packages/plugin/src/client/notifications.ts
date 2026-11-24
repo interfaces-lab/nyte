@@ -21,8 +21,9 @@ export default {
             alert.state === undefined ||
             !alertsOnChat(info, alert, true, false) ||
             api.looking.has(info.id)
-          )
+          ) {
             return;
+          }
           api.ui.notify({
             title: sessionTitle(info),
             message: alert.body,

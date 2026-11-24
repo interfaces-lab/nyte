@@ -231,11 +231,7 @@ function moveInList(event: KeyboardEvent<HTMLDivElement>, focusPopup: () => void
 
       if (neighbour === undefined) focusPopup();
       else neighbour.focus();
-
-      return;
     }
-
-    default:
   }
 }
 

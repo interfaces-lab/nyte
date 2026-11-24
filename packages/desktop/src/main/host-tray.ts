@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import process from "node:process";
 import { dev } from "@nyte-ai/sdk/client";
-import { app, clipboard, Menu, nativeImage, shell, Tray } from "electron";
+import { app, clipboard, Menu, nativeImage, nativeTheme, shell, Tray } from "electron";
 import type { MenuItemConstructorOptions, NativeImage } from "electron";
 import { processAlive } from "@nyte-ai/service/host-endpoint";
 import type { HostAgent } from "./host-agent.ts";
-import type { HostLink } from "../host/host-link.ts";
+import type { Live, LinkState } from "@nyte-ai/sdk/client";
 import { readHostStatus } from "./host-status.ts";
 import type { HostIssue, HostReading, HostStatus } from "./host-status.ts";
 
@@ -13,15 +13,17 @@ const HEADER_ICON_POINTS = 32;
 
 const STATUS_LABELS = {
   running: "Running",
+  restarting: "Restarting",
   issues: "Running with Issues",
   stopped: "Stopped",
-} as const satisfies { readonly [S in HostStatus]: string };
+} as const satisfies Readonly<Record<HostStatus, string>>;
 
 const STATUS_COLORS = {
   running: [52, 199, 89],
+  restarting: [255, 159, 10],
   issues: [255, 159, 10],
   stopped: [255, 59, 48],
-} as const satisfies { readonly [S in HostStatus]: readonly [number, number, number] };
+} as const satisfies Readonly<Record<HostStatus, readonly [number, number, number]>>;
 
 const MAC_VERSION = process.getSystemVersion().split(".").map(Number);
 
@@ -31,11 +33,13 @@ const SUBLABELS =
 const ISSUE_LABELS = {
   approval: "Approve Nyte Host in System Settings > Login Items",
   unreachable: "Nyte can't connect to the host",
-} as const satisfies { readonly [I in HostIssue]: string };
+  "update-host": "Restart Nyte Host to update it",
+  "update-app": "Update Nyte to use this host",
+} as const satisfies Readonly<Record<HostIssue, string>>;
 
 export interface HostTrayOptions {
   readonly agent: HostAgent;
-  readonly link: HostLink;
+  readonly link: Live<LinkState>;
   checkForUpdates(): void;
   openApp(): void;
   openSettings(): void;
@@ -49,7 +53,12 @@ export function createHostTray(options: HostTrayOptions): HostTray {
   const icon = nativeImage.createFromPath(resourcePath("trayTemplate.png"));
   icon.setTemplateImage(true);
   const tray = new Tray(icon);
-  const appIcon = nativeImage.createFromPath(resourcePath("icon.png"));
+
+  const appIcons = {
+    day: nativeImage.createFromPath(resourcePath("icon-day.png")),
+    night: nativeImage.createFromPath(resourcePath("icon.png")),
+  };
+
   let reading: HostReading = { status: "stopped", issues: [] };
   let probing: Promise<void> | undefined;
 
@@ -74,7 +83,14 @@ export function createHostTray(options: HostTrayOptions): HostTray {
 
     tray.popUpContextMenu(
       Menu.buildFromTemplate(
-        items(options, reading, badgedIcon(appIcon, STATUS_COLORS[reading.status])),
+        items(
+          options,
+          reading,
+          badgedIcon(
+            nativeTheme.shouldUseDarkColors ? appIcons.night : appIcons.day,
+            STATUS_COLORS[reading.status],
+          ),
+        ),
       ),
     );
   };
@@ -101,7 +117,7 @@ async function probe(
     pid,
     alive: pid !== null && processAlive(pid),
     registration,
-    link: options.link.state.kind,
+    link: options.link.snapshot(),
   });
 
   return { reading, pid };
@@ -112,11 +128,11 @@ function items(
   reading: HostReading,
   headerIcon: NativeImage,
 ): MenuItemConstructorOptions[] {
-  const state = options.link.state;
+  const state = options.link.snapshot();
 
   const versions = [
     `Nyte ${app.getVersion()}`,
-    ...(state.kind === "connected" ? [`Nyte Host ${state.version}`] : []),
+    ...(state.kind === "open" ? [`Nyte Host ${state.version}`] : []),
   ];
 
   return [
@@ -135,13 +151,13 @@ function items(
                 "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
               ),
           }
-        : { label: ISSUE_LABELS.unreachable, enabled: false },
+        : { label: ISSUE_LABELS[issue], enabled: false },
     ),
     { type: "separator" },
     ...versions.map((label): MenuItemConstructorOptions => ({
       label,
       toolTip: "Copy Versions",
-      click: () => clipboard.writeText(versions.join("\n")),
+      click: () => void clipboard.writeText(versions.join("\n")),
     })),
     { type: "separator" },
     { label: "Check for Updates…", click: () => options.checkForUpdates() },
@@ -161,7 +177,7 @@ function badgedIcon(source: NativeImage, color: readonly [number, number, number
     const radius = size * 0.11;
     const gap = size * 0.05;
 
-    for (let y = 0; y < size; y++)
+    for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const distance = Math.hypot(x + 0.5 - center, y + 0.5 - center);
         const keep = 1 - Math.max(0, Math.min(1, radius + gap - distance + 0.5));
@@ -172,6 +188,7 @@ function badgedIcon(source: NativeImage, color: readonly [number, number, number
         pixels[at + 2] = Math.round((pixels[at + 2] ?? 0) * keep + color[0] * dot);
         pixels[at + 3] = Math.round((pixels[at + 3] ?? 0) * keep + 255 * dot);
       }
+    }
 
     image.addRepresentation({ scaleFactor, width: size, height: size, buffer: pixels });
   }

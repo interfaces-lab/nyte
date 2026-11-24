@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["crates/notify"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }

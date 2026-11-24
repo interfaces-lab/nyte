@@ -9,8 +9,9 @@ export async function freezeMentions(
   content: UserContent,
 ): Promise<UserContent> {
   // oxlint-disable-next-line anti-slop/no-runtime-typeof -- UserContent is text or parts; Array.isArray would widen the parts to any[]
-  if (typeof content === "string" || !content.some((item) => item.kind === "reference"))
+  if (typeof content === "string" || !content.some((item) => item.kind === "reference")) {
     return content;
+  }
   const env = await kernel.environments.attach(session).catch(() => null);
 
   return Promise.all(

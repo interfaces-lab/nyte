@@ -83,7 +83,7 @@ const CHOOSERS: Choosers = {
 
     if (choice === "next") return advanceQuestion(state, question, null);
 
-    if (choice === "back")
+    if (choice === "back") {
       return group.active === 0
         ? stay(state)
         : stay(
@@ -97,6 +97,7 @@ const CHOOSERS: Choosers = {
               },
             }),
           );
+    }
 
     if (choice === "custom") {
       const field = group.fields[question.index];
@@ -156,8 +157,9 @@ const CHOOSERS: Choosers = {
 
     if (choice === null) return stay(state);
 
-    if (choice === state.facts.chat?.id)
+    if (choice === state.facts.chat?.id) {
       return refuse(closed, `Already in ${shortId(choice)}`, now, "info");
+    }
     const target = purpose.sessions.find((id) => id === choice);
 
     return target === undefined
@@ -170,15 +172,17 @@ const CHOOSERS: Choosers = {
 
     if (choice === null || choice === "cmd:help") return stay(closed);
 
-    if (choice === "shortcuts")
+    if (choice === "shortcuts") {
       return openDialog(closed, { kind: "text", content: "shortcuts" }, now, reduce);
+    }
 
-    if (choice.startsWith("cmd:"))
+    if (choice.startsWith("cmd:")) {
       return reduce(
         closed,
         { kind: "run-command", name: choice.slice("cmd:".length), argument: "" },
         now,
       );
+    }
     const command = CHAT_COMMANDS.find((name) => `action:${name}` === choice);
 
     const intent =
@@ -220,8 +224,9 @@ const CHOOSERS: Choosers = {
 
     if (row === undefined) return stay(state);
 
-    if (busy(state) && !row.whileBusy)
+    if (busy(state) && !row.whileBusy) {
       return refuse(state, `Wait for the current run before changing ${row.label}`, now);
+    }
 
     if (row.id === "model") return openDialog(state, { kind: "model" }, now, reduce);
 
@@ -282,7 +287,13 @@ const CHOOSERS: Choosers = {
             {
               kind: "set-trust",
               workspace: purpose.workspace,
-              value: msg.choice === "trust" ? true : msg.choice === "decline" ? false : null,
+              value:
+                msg.choice === "trust" || msg.choice === "parent"
+                  ? true
+                  : msg.choice === "decline"
+                    ? false
+                    : null,
+              at: msg.choice === "parent" ? "parent" : "folder",
             },
             now,
           ),
@@ -331,8 +342,9 @@ const CHOOSERS: Choosers = {
 
     if (choice === null) return stay(state);
 
-    if (msg.action === "chat.task.stop")
+    if (msg.action === "chat.task.stop") {
       return reduce(state, { kind: "stop-task", task: choice }, now);
+    }
 
     return openDialog(state, { kind: "inspector", task: choice }, now, reduce);
   },
@@ -352,13 +364,14 @@ const CHOOSERS: Choosers = {
 
     if (account === undefined) return stay(state);
 
-    if (msg.action === "chat.account.rename")
+    if (msg.action === "chat.account.rename") {
       return openDialog(
         state,
         { kind: "list", purpose: { kind: "account-name", account } },
         now,
         reduce,
       );
+    }
     const closed = withoutDialog(state, msg.dialog);
 
     if (account.active) return stay(closed);

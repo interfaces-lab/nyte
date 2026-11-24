@@ -43,7 +43,7 @@ it("runs a large read without blocking the event loop or a concurrent writer", a
     database.exec("UPDATE values_kept SET n = 8");
 
     expect(finished).toBe(false);
-    expect(await reading).toEqual([{ total: 500000500000 }]);
+    expect(await reading).toEqual([{ total: 500_000_500_000 }]);
     expect(await workers.read("SELECT n FROM values_kept", [])).toEqual([{ n: 8 }]);
     await expect(workers.read("UPDATE values_kept SET n = 9", [])).rejects.toThrow("readonly");
     expect(database.prepare("SELECT n FROM values_kept").get()).toEqual({ n: 8 });
@@ -61,9 +61,9 @@ it("checkpoints a large WAL in the worker so its next write can shrink it", asyn
     await vi.waitFor(
       () =>
         expect(database.prepare("PRAGMA wal_autocheckpoint").get()).toEqual({
-          wal_autocheckpoint: 10000,
+          wal_autocheckpoint: 10_000,
         }),
-      { timeout: 5_000 },
+      { timeout: 5000 },
     );
     database.prepare("INSERT INTO values_kept VALUES (11, ?)").run(new Uint8Array(8 * 1024 * 1024));
     workers.check();
@@ -72,16 +72,16 @@ it("checkpoints a large WAL in the worker so its next write can shrink it", asyn
         const row = database.prepare("PRAGMA wal_checkpoint(NOOP)").get();
         expect(row?.log).toBe(row?.checkpointed);
       },
-      { timeout: 5_000 },
+      { timeout: 5000 },
     );
     database.exec("INSERT INTO values_kept VALUES (12, NULL)");
 
-    expect((await stat(`${path}-wal`)).size).toBeLessThanOrEqual(1048576);
+    expect((await stat(`${path}-wal`)).size).toBeLessThanOrEqual(1_048_576);
     expect(
       database.prepare("SELECT n, length(bytes) AS size FROM values_kept ORDER BY n").all(),
     ).toEqual([
       { n: 7, size: null },
-      { n: 11, size: 8388608 },
+      { n: 11, size: 8_388_608 },
       { n: 12, size: null },
     ]);
   } finally {

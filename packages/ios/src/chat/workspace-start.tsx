@@ -23,9 +23,8 @@ import {
   startKey,
   startPreview,
   subscribeAsking,
-  type PendingStart,
-  type StartInput,
 } from "./workspace-start.ts";
+import type { PendingStart, StartInput } from "./workspace-start.ts";
 
 export const workspaceStorage = createMMKV({ id: "nyte.workspaces" });
 
@@ -51,12 +50,13 @@ export function useRegistryFolders(): RegistryFolders {
 
   if (query.isPending) return { kind: "loading" };
 
-  if (query.isError)
+  if (query.isError) {
     return {
       kind: "failed",
       message: describeHostError(query.error, newerHost),
       refresh: () => void query.refetch(),
     };
+  }
 
   return {
     kind: "ready",

@@ -18,18 +18,18 @@ import { findExecutable, killTree, run, spawnCommand } from "./command.ts";
 import { identifyProcess } from "./machine.ts";
 import { prepareShellIntegration } from "./shell-integration/index.ts";
 
-type PtyModule = {
+interface PtyModule {
   spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
-};
+}
 
-type Driver = {
+interface Driver {
   write(bytes: Uint8Array): Promise<void>;
   resize(size: { readonly columns: number; readonly rows: number }): boolean;
   idle(): boolean | Promise<boolean>;
   kill(signal: NodeJS.Signals): void;
   readonly pty: boolean;
   readonly pid: number | undefined;
-};
+}
 
 const OUTPUT_LIMIT = 1024 * 1024;
 
@@ -37,9 +37,9 @@ const PAUSE_BYTES = 256 * 1024;
 
 const RESUME_BYTES = 64 * 1024;
 
-const STOP_GRACE_MS = 2_000;
+const STOP_GRACE_MS = 2000;
 
-const CLOSE_GRACE_MS = 2_000;
+const CLOSE_GRACE_MS = 2000;
 
 const DONE = { done: true, value: undefined } as const;
 
@@ -68,8 +68,9 @@ export function localExec(
 
     const loginShell = typeof command !== "string" && command.length === 0;
 
-    if (loginShell && input?.pty === undefined)
+    if (loginShell && input?.pty === undefined) {
       throw new SdkError("invalid", "An empty command runs only in a pty, as the login shell.");
+    }
     const cwd = input?.cwd === undefined ? root : resolve(root, input.cwd);
     const shell = options?.shell?.() ?? undefined;
 
@@ -209,7 +210,7 @@ async function pipe(
     log.push(chunk, options.protocol ? "stderr" : undefined),
   );
 
-  if (options.protocol)
+  if (options.protocol) {
     log.throttle({
       pause: () => {
         child.stdout?.pause();
@@ -220,16 +221,18 @@ async function pipe(
         child.stderr?.resume();
       },
     });
+  }
   child.stdin?.on("error", () => undefined);
   let killed = false;
   child.on("close", (code) => finish(killed ? null : code));
   child.on("exit", (code) => {
     const group = child.pid;
 
-    if (!windows && group !== undefined)
+    if (!windows && group !== undefined) {
       try {
         process.kill(-group, "SIGTERM");
       } catch {}
+    }
 
     setTimeout(() => {
       child.stdout?.destroy();
@@ -244,8 +247,9 @@ async function pipe(
     async write(bytes) {
       const stdin = child.stdin;
 
-      if (stdin === null || !stdin.writable)
+      if (stdin === null || !stdin.writable) {
         throw new SdkError("unavailable", "The process no longer reads its input.");
+      }
       await new Promise<void>((written) => stdin.write(bytes, () => written()));
     },
     resize: () => false,
@@ -372,7 +376,7 @@ async function terminal(
               `Get-CimInstance Win32_Process -Filter "ParentProcessId = ${term.pid} AND Name != 'conhost.exe' AND Name != 'OpenConsole.exe'" | Select-Object -ExpandProperty ProcessId`,
             ]
           : ["-A", "-o", "pid=,ppid=,pgid=,stat=,comm="],
-        { cwd: options.cwd, timeoutMs: 1_500 },
+        { cwd: options.cwd, timeoutMs: 1500 },
       );
 
       if (result.code !== 0) throw new SdkError("unavailable", "Cannot inspect terminal processes");
@@ -389,7 +393,7 @@ async function terminal(
 
         return (
           Number(id) === term.pid &&
-          ((running && state?.startsWith("R") === true) ||
+          ((running && state?.startsWith("R")) ||
             basename(name.join(" ")).replace(/^-/, "") !== basename(shell))
         );
       });
@@ -404,11 +408,12 @@ async function terminal(
 }
 
 function loadPty(): PtyModule {
-  if ("bun" in process.versions)
+  if ("bun" in process.versions) {
     throw new SdkError(
       "unavailable",
       "Terminals need the Nyte desktop app's host: this host can't run @lydell/node-pty.",
     );
+  }
   return ptyFrom(() => createRequire(import.meta.url)("@lydell/node-pty"));
 }
 
@@ -457,12 +462,12 @@ function waitEnd(ended: Promise<JobEnd>, request: RequestOptions | undefined): P
   });
 }
 
-type OutputLog = {
+interface OutputLog {
   push(bytes: Uint8Array, stream?: "stderr"): void;
   end(code: number | null): void;
   reader(): { next(): Promise<IteratorResult<OutputFrame>>; close(): void };
   throttle(source: { pause(): void; resume(): void }): void;
-};
+}
 
 function tracedOutput(log: OutputLog, trace: string | null): OutputLog {
   if (!tracing.enabled) return log;

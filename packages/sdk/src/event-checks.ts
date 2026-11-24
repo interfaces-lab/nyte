@@ -1,6 +1,7 @@
 import {
   ActivationType,
   ClientRowType,
+  ClosingEventType,
   compile,
   PerformEventType,
   SessionChangeType,
@@ -21,3 +22,5 @@ export const activations = checkOnly(compile(withJson(ActivationType)));
 export const clientRows = checkOnly(compile(withJson(ClientRowType)));
 
 export const performs = checkOnly(compile(withJson(PerformEventType)));
+
+export const closings = checkOnly(compile(ClosingEventType));

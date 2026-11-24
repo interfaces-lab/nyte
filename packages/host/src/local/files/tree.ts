@@ -22,11 +22,11 @@ export type WalkFrame =
   | { readonly kind: "complete" }
   | { readonly kind: "incomplete"; readonly reason: "limit" | "permission" };
 
-export type Ignores = {
+export interface Ignores {
   matches(path: string, directory: boolean): Promise<boolean>;
   ignored(path: string, directory: boolean): Promise<boolean>;
   forget(directory: string): void;
-};
+}
 
 export const WALK_LIMIT = 50_000;
 
@@ -87,8 +87,9 @@ export function createIgnores(root: string): Ignores {
     async ignored(path, directory) {
       const segments = path.split("/");
 
-      for (let depth = 1; depth < segments.length; depth += 1)
+      for (let depth = 1; depth < segments.length; depth += 1) {
         if (await matches(segments.slice(0, depth).join("/"), true)) return true;
+      }
 
       return matches(path, directory);
     },
@@ -144,8 +145,9 @@ export async function* walkTree(
 
         if (kind === null || dirent.name === ".git") return null;
 
-        if (options.ignored === "exclude" && (await ignores.matches(path, kind === "directory")))
+        if (options.ignored === "exclude" && (await ignores.matches(path, kind === "directory"))) {
           return null;
+        }
 
         if (kind === "directory") return { path, kind, size: null };
         const stats = await lstat(join(root, path)).catch(() => null);
@@ -216,12 +218,14 @@ export function watchTree(
     const tick = async (): Promise<void> => {
       const seen = new Map<string, string>();
 
-      for await (const frame of walkTree(root, { ignored: "include" }))
-        if (frame.kind === "entries")
+      for await (const frame of walkTree(root, { ignored: "include" })) {
+        if (frame.kind === "entries") {
           for (const entry of frame.entries) {
             const stats = await lstat(join(root, entry.path)).catch(() => null);
             seen.set(entry.path, stats === null ? "" : `${stats.size}:${stats.mtimeMs}`);
           }
+        }
+      }
 
       if (known !== null) {
         for (const [path, stamp] of seen) if (known.get(path) !== stamp) note(path);
@@ -254,8 +258,10 @@ export function watchTree(
   };
 
   try {
-    watcher = watch(root, { recursive: true }, (_event, filename) =>
-      note(filename === null ? "" : filename.split(sep).join("/")),
+    watcher = watch(
+      root,
+      { recursive: true, ignore: (path) => path.split(/[\\/]/).includes("node_modules") },
+      (_event, filename) => note(filename === null ? "" : filename.split(sep).join("/")),
     );
     watcher.on("error", fallback);
   } catch {
@@ -388,7 +394,7 @@ export function watchPath(
 
 function trimSlashes(path: string): string {
   return path
-    .replace(/\\/g, "/")
-    .replace(/^\.?\/+|\/+$/g, "")
+    .replaceAll("\\", "/")
+    .replaceAll(/^\.?\/+|\/+$/g, "")
     .replace(/^\.$/, "");
 }

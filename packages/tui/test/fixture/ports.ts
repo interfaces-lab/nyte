@@ -14,7 +14,7 @@ import type {
   WorkspaceCatalogView,
   WorkspaceCommandOutcome,
 } from "@nyte-ai/sdk";
-import type { Health } from "@nyte-ai/sdk/client";
+import type { LinkState } from "@nyte-ai/sdk/client";
 import { createHandle } from "../../src/effects/local-ports.ts";
 import type {
   FilesPort,
@@ -136,8 +136,8 @@ function buildSessionInfo(id: string): SessionInfo {
     archived: false,
     activation: { kind: "active" },
     heads: [],
-    createdAt: 1_000,
-    lastActivityAt: 1_000,
+    createdAt: 1000,
+    lastActivityAt: 1000,
   };
 }
 
@@ -287,7 +287,7 @@ export function fakeHost(): FakeHost {
     addSession,
     starts,
     folders,
-    folderCatalog: { commands: [], skills: [], docs: [], contextFiles: [] },
+    folderCatalog: { commands: [], skills: [], modes: [], docs: [], contextFiles: [] },
     folderRuns: [],
     folderCommandResult: null,
     session: (id) => addSession(id),
@@ -321,7 +321,7 @@ export function fakeHost(): FakeHost {
     },
     catalog: () => catalogs,
     sessionInfos: () => directory,
-    health: () => queue<Health>(),
+    link: () => queue<LinkState>(),
     publishSessions: (list) => directory.push(list),
     refuseReplays: (sends) => refusals.push(sends),
     refusedSends: () => refusals,
@@ -348,9 +348,7 @@ export function fakeHost(): FakeHost {
     mcpLogin: async () => undefined,
     trustInfo: async () => ({
       path: "/work",
-      home: false,
-      decision: true,
-      trusted: true,
+      trust: { state: "trusted", by: { kind: "folder", path: "/work" } },
       sources: [],
     }),
     trust: async () => undefined,

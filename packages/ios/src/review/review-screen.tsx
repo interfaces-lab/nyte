@@ -1,5 +1,6 @@
 import { router } from "expo-router";
-import { SymbolView, type SFSymbol } from "expo-symbols";
+import { SymbolView } from "expo-symbols";
+import type { SFSymbol } from "expo-symbols";
 import { useState } from "react";
 import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native";
 import { css, html } from "react-strict-dom";
@@ -87,7 +88,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
             headline: "Agent is working",
             symbol: "clock",
             tint: theme.muted,
-            detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatWholeDuration(now - run.startedAt)}`}`,
+            detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00B7 ${formatWholeDuration(now - run.startedAt)}`}`,
           }
         : changes.length === 0
           ? {
@@ -166,7 +167,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
           <html.span style={[textStyles.secondary, styles.totals]}>
             <html.span style={styles.added}>{`+${String(added)} `}</html.span>
             <html.span style={styles.removed}>{`\u2212${String(removed)}`}</html.span>
-            {` \u00b7 ${String(changes.length)} ${changes.length === 1 ? "file" : "files"}`}
+            {` \u00B7 ${String(changes.length)} ${changes.length === 1 ? "file" : "files"}`}
           </html.span>
           <html.div style={styles.rule} />
           <html.span style={textStyles.secondary}>

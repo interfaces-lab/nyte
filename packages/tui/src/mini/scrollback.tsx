@@ -208,8 +208,9 @@ export function installMiniScrollback(options: {
         plan.status !== null &&
         plan.status.kind !== "settled" &&
         plan.status.kind !== "unanswered"
-      )
+      ) {
         write(noteEntry("unfinished", "Turn unfinished"));
+      }
       await pending;
       stopped = true;
     },

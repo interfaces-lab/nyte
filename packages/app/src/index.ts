@@ -15,3 +15,4 @@ export { startRendererStartup } from "./boot/startup.ts";
 export { StartupFailure } from "./boot/startup-failure.tsx";
 
 export { recordFirstFrame, seedFirstFrame, windowContentReady } from "./boot/first-frame.ts";
+export { rememberedWorkspace } from "./data/workspaces.ts";

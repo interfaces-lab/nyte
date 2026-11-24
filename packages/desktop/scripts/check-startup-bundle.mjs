@@ -3,12 +3,12 @@ import { dirname, join } from "node:path";
 import { parseSync, Visitor } from "vite";
 import { failure, formatSize, green, red, table } from "./terminal.mjs";
 
-const KIB = 1_024;
+const KIB = 1024;
 
 const budgets = {
   main: 480 * KIB,
   preload: 8 * KIB,
-  renderer: 3_490 * KIB,
+  renderer: 3490 * KIB,
   css: 290 * KIB,
 };
 
@@ -50,8 +50,9 @@ function moduleRequests(path, source) {
     ExportNamedDeclaration: (node) => add(node.source),
     ImportExpression: (node) => add(node.source),
     CallExpression: (node) => {
-      if (node.callee.type === "Identifier" && node.callee.name.endsWith("require"))
+      if (node.callee.type === "Identifier" && node.callee.name.endsWith("require")) {
         add(node.arguments[0]);
+      }
     },
   }).visit(parseSync(path, source).program);
 
@@ -66,8 +67,9 @@ async function staticGraph(entry) {
 
     for (const [, specifier] of source.matchAll(
       /(?:^|[;}\s])(?:import|export)\s*(?:[\w$*{},\s]+?\s*from\s*)?["'](\.{1,2}\/[^"']+)["']/gu,
-    ))
+    )) {
       files.add(join(dirname(file), specifier));
+    }
   }
 
   return [...files];

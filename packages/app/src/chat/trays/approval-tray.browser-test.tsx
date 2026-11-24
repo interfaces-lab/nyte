@@ -23,7 +23,7 @@ import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
@@ -33,6 +33,7 @@ import {
   viewStream,
 } from "../../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
+import { errorMessage } from "../../contract/errors.ts";
 
 const SESSION = asId<"session">("approvals");
 
@@ -115,7 +116,7 @@ function view(parts: readonly PartView[]): SessionView {
     seenThrough: null,
     background: [],
     configuration: { selected: configuration, effective: configuration },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -129,8 +130,6 @@ let refusal: string | null = null;
 
 const host: HostView = {
   id: asId<"host">("scripted"),
-  link: { kind: "connected" },
-  operations: null,
   name: "Test",
   platform: "linux",
   version: "0.0.0",
@@ -141,6 +140,7 @@ const host: HostView = {
   defaultWorkspace: null,
   projects: [],
   authority: new Set(),
+  routes: [],
 };
 
 installScripted(
@@ -153,14 +153,14 @@ installScripted(
         id: part,
         update: async () => ({ kind: "missing" }),
         async act(action): Promise<ActOutcome<undefined>> {
-          acts.push(`${part}:${String(action)}`);
+          acts.push(`${part}:${action}`);
 
           return refusal === null
             ? { kind: "ok", output: undefined }
             : { kind: "rejected", reason: refusal };
         },
         answer: async () => null,
-        watch: async function* () {
+        async *watch() {
           yield* [];
         },
         close: async () => undefined,
@@ -199,10 +199,14 @@ function Stage(): ReactElement {
 let renderFailure: unknown;
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
-    if (renderFailure !== undefined) throw renderFailure;
+    if (renderFailure !== undefined) {
+      throw renderFailure instanceof Error
+        ? renderFailure
+        : new Error(errorMessage(renderFailure), { cause: renderFailure });
+    }
     const value = read();
 
     if (value !== null && value !== undefined) return value;
@@ -259,16 +263,19 @@ export async function run(): Promise<string> {
   await nextFrame();
   await capture("approval-arrived");
 
-  if (card.querySelector("h2")?.textContent !== "Run this command?")
+  if (card.querySelector("h2")?.textContent !== "Run this command?") {
     failures.push(`title reads ${card.querySelector("h2")?.textContent ?? "nothing"}`);
+  }
 
   if (card.querySelector("pre")?.textContent !== COMMAND) failures.push("the command is not shown");
 
-  if (labels(card).join(" | ") !== "Allow once | Allow for this session | Deny")
+  if (labels(card).join(" | ") !== "Allow once | Allow for this session | Deny") {
     failures.push(`answers read ${labels(card).join(" | ")}`);
+  }
 
-  if (document.activeElement !== card)
+  if (document.activeElement !== card) {
     failures.push(`focus starts on ${document.activeElement?.textContent ?? "nothing"}`);
+  }
 
   press("Enter");
 
@@ -276,27 +283,31 @@ export async function run(): Promise<string> {
 
   press("ArrowLeft");
 
-  if (document.activeElement?.textContent !== "Deny")
+  if (document.activeElement?.textContent !== "Deny") {
     failures.push(`← from the card moves to ${document.activeElement?.textContent ?? "nothing"}`);
+  }
 
   if (card instanceof HTMLElement) card.focus();
   press("ArrowRight");
 
-  if (document.activeElement?.textContent !== "Allow once")
+  if (document.activeElement?.textContent !== "Allow once") {
     failures.push(`→ from the card moves to ${document.activeElement?.textContent ?? "nothing"}`);
+  }
 
   press("ArrowRight");
 
-  if (document.activeElement?.textContent !== "Allow for this session")
+  if (document.activeElement?.textContent !== "Allow for this session") {
     failures.push(`→ moves focus to ${document.activeElement?.textContent ?? "nothing"}`);
+  }
 
   press("ArrowLeft");
   press("ArrowLeft");
 
-  if (document.activeElement?.textContent !== "Deny")
+  if (document.activeElement?.textContent !== "Deny") {
     failures.push(
       `← from the first answer moves to ${document.activeElement?.textContent ?? "nothing"}`,
     );
+  }
 
   press("ArrowRight");
   await nextFrame();

@@ -88,7 +88,7 @@ function opener(source: "finished" | "reopen" | "live", script: readonly Step[])
     | { values: AsyncIterable<number>; ended: "finished" | "reopen" } => {
     log.opens += 1;
 
-    if (source !== "live")
+    if (source !== "live") {
       return {
         values: (async function* () {
           const value = script[at];
@@ -96,11 +96,13 @@ function opener(source: "finished" | "reopen" | "live", script: readonly Step[])
 
           if (typeof value === "number") yield value;
 
-          if (typeof value === "object" && !(value instanceof Error))
+          if (typeof value === "object" && !(value instanceof Error)) {
             await new Promise((resolve) => setTimeout(resolve, value.openFor));
+          }
         })(),
         ended: source,
       };
+    }
 
     return {
       subscribe(listener) {
@@ -203,7 +205,7 @@ test.each<{
     await vi.advanceTimersByTimeAsync(0);
   }
 
-  await vi.advanceTimersByTimeAsync(row.held ?? 4_000);
+  await vi.advanceTimersByTimeAsync(row.held ?? 4000);
 
   expect({
     opens: source.log.opens,

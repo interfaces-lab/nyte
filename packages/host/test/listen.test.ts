@@ -238,12 +238,13 @@ describe("listen", () => {
 
     const delivered = within(
       (async () => {
-        for (let next = await kept.next(); next.done !== true; next = await kept.next())
+        for (let next = await kept.next(); next.done !== true; next = await kept.next()) {
           if (JSON.stringify(next.value).includes("still-here")) return "delivered";
+        }
 
         return "ended";
       })(),
-      1_000,
+      1000,
     );
 
     expect(await delivered).toBe("delivered");
@@ -281,7 +282,7 @@ describe("listen", () => {
     assert(paired !== undefined);
     await other.principals.revoke(paired.id);
 
-    expect(await within(ended, 1_000)).toBe("unauthenticated");
+    expect(await within(ended, 1000)).toBe("unauthenticated");
     const revoked = await post(listener, "sessions.list", {}, device);
     expect([revoked.status, await readErrorCode(revoked)]).toEqual([401, "unauthenticated"]);
   });
@@ -311,7 +312,7 @@ describe("listen", () => {
     assert(paired !== undefined);
     await other.principals.revoke(paired.id);
 
-    expect(await within(ended, 1_000)).toBe("unauthenticated");
+    expect(await within(ended, 1000)).toBe("unauthenticated");
   });
 
   it("maps custom authorization to a principal, 401 and 403, and loads wire plugin paths through the kernel's loader", async () => {
@@ -401,8 +402,9 @@ describe("listen", () => {
       await post(await serve(host), "plugins.replace", replace),
       await post(owner, "plugins.replace", replace, { Authorization: `Bearer ${device}` }),
       await post(peer, "plugins.replace", replace, { Authorization: "" }),
-    ])
+    ]) {
       expect([refused.status, await readErrorCode(refused)]).toEqual([403, "denied"]);
+    }
   });
 
   it("answers a paired device's bearer token under custom auth before authorize, which still refuses the rest (§41j)", async () => {
@@ -568,8 +570,9 @@ describe("listen", () => {
     });
     let seen = (await frames.next()).value;
 
-    while (seen !== undefined && !JSON.stringify(seen).includes("streamed"))
+    while (seen !== undefined && !JSON.stringify(seen).includes("streamed")) {
       seen = (await frames.next()).value;
+    }
     expect(seen).toBeDefined();
 
     listener.disconnectClients();

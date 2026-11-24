@@ -67,8 +67,9 @@ function resolveState(transaction: LinkTransaction, now: number): LinkTransactio
     transaction.state === "approved" &&
     transaction.authorization_expires_at !== null &&
     transaction.authorization_expires_at <= now
-  )
+  ) {
     return "expired";
+  }
 
   return transaction.state;
 }
@@ -161,8 +162,9 @@ export async function approveTransaction(
     transaction === undefined ||
     resolveState(transaction, Date.now()) !== "pending" ||
     keyFingerprint(transaction.thumbprint) !== body.fingerprint
-  )
+  ) {
     throw new Refusal("not_found");
+  }
   const label = await requireLinkableOwner(context, session);
   const now = Date.now();
 

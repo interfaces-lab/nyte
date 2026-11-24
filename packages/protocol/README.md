@@ -1,6 +1,6 @@
 # @nyte-ai/protocol
 
-The HTTP wire between a Nyte host and a client in another process. The host serves it, and `@nyte-ai/sdk` builds its typed client on it.
+The HTTP wire between a Nyte host and a client in another process. The host serves it. `@nyte-ai/sdk` builds its typed client on it.
 
 ## Operations
 
@@ -19,7 +19,7 @@ The HTTP wire between a Nyte host and a client in another process. The host serv
 - The host decodes input strictly with `decodeInput`. An unknown field is `invalid`.
 - The host encodes output with `encodeOutput`, which strips fields the schema doesn't name.
 - A byte answer carries the reader's MIME type in `X-Nyte-Mime`. When bytes are the request body, the JSON input travels base64url-encoded in `X-Nyte-Input`.
-- `job.output` answers length-prefixed frames. A `0x00` frame carries bytes and a `0x01` frame carries JSON control data.
+- `job.output` answers length-prefixed frames. A `0x00` frame carries bytes. A `0x01` frame carries JSON control data.
 - Every failure answers the encoded `SdkError` at its status.
 - A watch or stream that fails partway ends with an error frame, `event: error` or a `0x01 { kind: "error" }` control frame. The client rethrows it.
 

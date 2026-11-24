@@ -17,6 +17,8 @@ export {
   decodeRunRecord,
   decodeSeenRecord,
   decodeSessionRecord,
+  decodeProviderCheckpointRecord,
+  decodeProviderContinuationRecord,
   decodeTrustRecord,
   decodeWorkspaceRecord,
   envelope,
@@ -45,7 +47,12 @@ export { BLOB_LIMIT, collectBlob } from "./store/blobs.ts";
 
 export { memoryStore } from "./store/memory-store.ts";
 
-export { STORE_VERSION, assertStoreVersion, migrateStore } from "./store/migrations.ts";
+export {
+  NewerStoreError,
+  STORE_VERSION,
+  assertStoreVersion,
+  migrateStore,
+} from "./store/migrations.ts";
 
 export type {
   CommitOutcome,

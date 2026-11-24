@@ -2,13 +2,13 @@ import type { UpdateState } from "@nyte-ai/app/contract/bridge.ts";
 import type { MessageBoxOptions } from "electron";
 import { describe, expect, test } from "vitest";
 import { createUpdateController } from "./update-controller.ts";
-import type { DesktopUpdateActivity } from "../../shared/update-activity.ts";
+import type { HostActivity } from "@nyte-ai/schema";
 
 function setup({
   available = true,
   cleanup = async () => undefined,
 }: { available?: boolean; cleanup?: () => Promise<void> } = {}) {
-  let activity: DesktopUpdateActivity = { kind: "idle" };
+  let activity: HostActivity = { runs: 0, jobs: 0 };
   let download = async (): Promise<string[]> => ["verified.zip"];
   let response = 0;
   const states: UpdateState[] = [];
@@ -65,7 +65,7 @@ function setup({
     events,
     logs,
     checks: () => checks,
-    setActivity: (next: DesktopUpdateActivity) => {
+    setActivity: (next: HostActivity) => {
       activity = next;
     },
     setDownload: (next: () => Promise<string[]>) => {
@@ -124,19 +124,19 @@ describe("desktop updates", () => {
     expect(harness.events).toEqual(["cleanup", "install"]);
   });
 
-  test("running work turns the restart into a warning that defaults to Later", async () => {
+  test("running work is named as surviving the restart", async () => {
     const harness = setup();
     await harness.controller.check();
-    harness.setActivity({ kind: "busy", taskCount: 2, terminalCommandCount: 1 });
+    harness.setActivity({ runs: 2, jobs: 1 });
     harness.setResponse(1);
     await harness.controller.click();
 
     expect(harness.checks()).toBe(1);
     expect(harness.dialogs).toMatchObject([
       {
-        type: "warning",
-        detail: "Restarting stops 2 running tasks and 1 terminal command.",
-        defaultId: 1,
+        type: "info",
+        detail: "Nyte restarts without stopping 2 running chats and 1 job.",
+        defaultId: 0,
       },
     ]);
     expect(harness.events).toEqual([]);

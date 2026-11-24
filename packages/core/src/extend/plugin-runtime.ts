@@ -31,9 +31,12 @@ import type {
   PluginApi,
   Registries,
   Registry,
+  RuntimeCall,
+  RuntimeVerdict,
 } from "../contract/plugin.ts";
 import type { AssignedPlugin } from "../contract/records.ts";
 import type { ExecutionEnv, Resources } from "../contract/workspace.ts";
+import { UnavailableError } from "../env/environment.ts";
 import { RESERVED_PART_KINDS } from "./part-definitions.ts";
 import { coveredHere, requireSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
@@ -184,18 +187,9 @@ export function createPluginRuntime(
     decide: (name, value, context, step) => held(() => dispatch.decide(name, value, context, step)),
   };
 
-  let serving = previous?.hooks ?? own;
-
-  const hooks: HookDispatch = {
-    register: (plugin, api, name, entry) => own.register(plugin, api, name, entry),
-    observe: (name, event, context) => serving.observe(name, event, context),
-    transform: (name, value, context, signal) => serving.transform(name, value, context, signal),
-    decide: (name, value, context, step) => serving.decide(name, value, context, step),
-  };
-
   const host: InstanceHost = {
     registries,
-    hooks,
+    hooks: own,
     report(owner, issue) {
       if (!active.has(owner)) return;
       rows.set(owner, [...(rows.get(owner) ?? []), issue]);
@@ -274,7 +268,11 @@ export function createPluginRuntime(
         return UNRESOLVED;
       }
       const [env, inputs] = await Promise.all([
-        kernel.environments.attach(session),
+        kernel.environments
+          .attach(session)
+          .catch((error: unknown) =>
+            error instanceof UnavailableError ? null : Promise.reject(error),
+          ),
         scanResources(kernel, session),
       ]);
 
@@ -388,7 +386,7 @@ export function createPluginRuntime(
 
   const runtime: PluginRuntime = {
     registries,
-    hooks,
+    hooks: own,
     ready,
     hold,
     load: (plugins, stored) => lifecycle.run(() => loadAll(plugins, stored)),
@@ -404,6 +402,22 @@ export function createPluginRuntime(
     },
     plugins: () => [...active.values()].map((entry) => entry.instance.plugin),
     instance: (id) => active.get(id)?.instance,
+    contributions: () => ({
+      agents: registries.agents.list(),
+      settings: registries.settings.list(),
+    }),
+    approve: (call, signal) =>
+      held(async () =>
+        (await ready.then(
+          () => true,
+          () => false,
+        ))
+          ? askApprovers(runtime, call, signal)
+          : {
+              kind: "deny",
+              reason: "This chat's plugins didn't load, so nothing could approve the call.",
+            },
+      ),
     assigned: () => assigned,
     idleSince: () => (holds > 0 || activating ? null : used),
     touch() {
@@ -427,7 +441,6 @@ export function createPluginRuntime(
   };
 
   const serve = (): void => {
-    serving = own;
     activating = false;
   };
 
@@ -449,6 +462,23 @@ export function createPluginRuntime(
   });
 
   return runtime;
+}
+
+async function askApprovers(
+  runtime: PluginRuntime,
+  call: RuntimeCall,
+  signal: AbortSignal,
+): Promise<RuntimeVerdict> {
+  for (const plugin of runtime.plugins()) {
+    const api = runtime.instance(plugin.id)?.api;
+
+    if (plugin.approve === undefined || api === undefined) continue;
+    const verdict = await plugin.approve(call, { api, signal });
+
+    if (verdict.kind === "deny") return verdict;
+  }
+
+  return signal.aborted ? { kind: "deny", reason: "The request was aborted." } : { kind: "allow" };
 }
 
 export async function activateApart(
@@ -530,12 +560,13 @@ export async function replacePlugins(
   const outcomes = checked.map(({ plugin, issues, ok }, index): PluginLoadOutcome => {
     const { id } = plugin;
 
-    if (!ok)
+    if (!ok) {
       return {
         kind: before.some((known) => known.id === id) ? "kept-previous" : "rejected",
         id,
         issues,
       };
+    }
 
     const each = sessions.flatMap((load) =>
       load.kind === "loaded" ? (load.outcomes[index] ?? []) : [],
@@ -569,7 +600,7 @@ export async function replacePlugins(
   await publishViews(kernel);
 
   const reported = outcomes.map((outcome, index): PluginLoadOutcome =>
-    failed.length === 0 || checked[index]?.ok !== true
+    failed.length === 0 || !checked[index]?.ok
       ? outcome
       : {
           kind: "rejected",
@@ -621,11 +652,15 @@ async function reloadSession(
   kernel: Kernel,
   session: SessionId,
 ): Promise<readonly PluginLoadOutcome[]> {
-  const ready = kernel.plugins.reload(session);
-  const runtime = kernel.plugins.runtime(session);
-  await ready;
+  await kernel.plugins.reload(session);
 
-  return runtime.outcomes();
+  return kernel.plugins.runtime(session).outcomes();
+}
+
+export async function publishServed(kernel: Kernel, session: SessionId): Promise<void> {
+  publishPlugins(kernel);
+  await publishCatalog(kernel, session);
+  await publishSettings(kernel);
 }
 
 function publishPlugins(kernel: Kernel): void {
@@ -651,11 +686,13 @@ async function activate(instance: PluginInstance): Promise<void> {
   if (plugin.activate === undefined) return;
   const returned: unknown = await bounded(plugin.activate(instance.api));
 
-  if (typeof returned !== "object" || returned === null)
+  if (typeof returned !== "object" || returned === null) {
     throw new Error("activate returned nothing. Return what the plugin adds, or {} for nothing.");
+  }
   instance.add(returned);
 }
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- N ties input.hooks[name] to register's name, so the entry type-checks against its own hook rather than the union of all hooks.
 function installHook<N extends HookName<"core">>(
   to: InstanceHost,
   api: PluginApi<"core">,
@@ -664,8 +701,9 @@ function installHook<N extends HookName<"core">>(
 ): void {
   const entry = input.hooks[name];
 
-  if (entry !== undefined)
+  if (entry !== undefined) {
     untilAborted(input.signal, to.hooks.register(input.owner, api, name, entry));
+  }
 }
 
 function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Disposer {
@@ -689,9 +727,11 @@ function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Di
     holds.delete(definition);
     held.dispose();
 
-    for (const runtime of kernel.plugins.runtimes().values())
-      if (runtime.registries.parts.entries().some((entry) => entry.item.kind === definition.kind))
+    for (const runtime of kernel.plugins.runtimes().values()) {
+      if (runtime.registries.parts.entries().some((entry) => entry.item.kind === definition.kind)) {
         runtime.registries.reload();
+      }
+    }
   };
 }
 
@@ -735,13 +775,15 @@ function createInstance(
 
     for (const entry of given.agents ?? []) registries.agents.owned(owner, signal).add(entry);
 
-    for (const entry of given.modelContext ?? [])
+    for (const entry of given.modelContext ?? []) {
       registries.modelContext.owned(owner, signal).add(entry);
+    }
 
     for (const entry of given.skills ?? []) registries.skills.owned(owner, signal).add(entry);
 
-    for (const entry of given.searchProviders ?? [])
+    for (const entry of given.searchProviders ?? []) {
       registries.searchProviders.owned(owner, signal).add(entry);
+    }
 
     for (const entry of given.parts ?? []) registries.parts.owned(owner, signal).add(entry);
 
@@ -750,8 +792,9 @@ function createInstance(
     for (const entry of given.settings ?? []) registries.settings.owned(owner, signal).add(entry);
     const hooks = additions.hooks ?? {};
 
-    for (const name of Object.keys(hooks))
+    for (const name of Object.keys(hooks)) {
       if (namesCoreHook(name)) installHook(to, api, { owner, signal, hooks }, name);
+    }
   };
 
   const read = <T>(pick: (registries: RegistrySet) => Registry<T>): Registry<T> => ({
@@ -798,8 +841,9 @@ function createInstance(
     add(additions) {
       added.push(additions);
 
-      for (const name of Object.keys(additions.hooks ?? {}))
+      for (const name of Object.keys(additions.hooks ?? {})) {
         if (!namesCoreHook(name)) reportUnknownHook(api, name);
+      }
 
       for (const to of hosts.keys()) apply(to, additions);
     },

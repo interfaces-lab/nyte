@@ -302,18 +302,25 @@ See [Give the agent a tool](/docs/plugins/tools) for a walkthrough.
 
 ### PromptSection [#prompt-section]
 
-| Field   | What it is                                                             |
-| ------- | ---------------------------------------------------------------------- |
-| `id`    | Name of the section. A later section with the same id replaces it      |
-| `text`  | Text added to the system prompt, or `({ model, api }) => text \| null` |
-| `order` | Sort position, lowest first. Default `100`                             |
+| Field      | What it is                                                                 |
+| ---------- | -------------------------------------------------------------------------- |
+| `id`       | Name of the section. A later section with the same id replaces it          |
+| `text`     | The section's text, or `({ model, api }) => text \| null`                  |
+| `when`     | [`(chat) => boolean`](#when): whether the section is in a chat             |
+| `delivery` | `"system"` (default): part of the system prompt. `"reminder"`: see below   |
+| `order`    | With `"system"`: sort position, lowest first. Default `100`                |
+| `gone`     | With `"reminder"`: what the model is told when the section leaves the chat |
 
 Core calls a `text` function each time it builds a request; `null` leaves the section out. When the
 text changes, the model gets the change as an update after the conversation so far, so the cached
 start of the conversation stays the same. Use one for anything that changes during a chat, such as
 the models the user enabled or a setting.
 
-A `SYSTEM.md` prompt file replaces every section.
+A reminder section never enters the system prompt. When it appears or its text changes, the model is
+told its text after the latest message. When it leaves the chat, the model is told its `gone` text.
+Use one for instructions that come and go during a chat, such as a mode's.
+
+A `SYSTEM.md` prompt file replaces every system section. Reminder sections still reach the model.
 
 ### Agent [#agent]
 

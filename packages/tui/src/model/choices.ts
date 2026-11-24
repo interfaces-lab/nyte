@@ -167,6 +167,15 @@ export function liveChoices(state: State, purpose: ListPurpose): readonly Choice
           "Trust this folder",
           shown === "" ? "Load its project files" : `Load ${shown}${more}`,
         ),
+        ...(purpose.parent === null
+          ? []
+          : [
+              choice(
+                "parent",
+                `Trust ${purpose.parent}`,
+                "Load project files in every folder inside it",
+              ),
+            ]),
         choice("decline", "Don't trust", "Skip its skills, prompts, plugins and MCP servers"),
         ...(purpose.gate ? [choice("quit", "Quit", "Decide next time")] : []),
         ...(purpose.decision === null

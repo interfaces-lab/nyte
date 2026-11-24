@@ -1,5 +1,6 @@
-import { runStatus, type UserMessage } from "@nyte-ai/plugin/client/presentation";
-import type { RunStatus } from "@nyte-ai/plugin/client/presentation";
+import { useQuery } from "@tanstack/react-query";
+import { runStatus } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage, RunStatus } from "@nyte-ai/plugin/client/presentation";
 import { sessionScreenStyles } from "../panes/session-screen.stylex.ts";
 import { modelConfiguration } from "../panes/model-configuration.ts";
 import { PaneHeader } from "../panes/pane-header.tsx";
@@ -7,15 +8,17 @@ import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useDeferredValue, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { Activation, Revision, SessionId, UserContent } from "@nyte-ai/sdk";
+import type { Activation, Revision, SessionId, UserContent, WorkspaceInfo } from "@nyte-ai/sdk";
 import type { ChatView } from "../data/chat-store.ts";
 import { Composer } from "./composer/composer.tsx";
 import type { ComposerEditorHandle } from "./composer/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./transcript/turn-view.tsx";
-import { observeActivation } from "../panes/open-workspace.tsx";
+import { observeActivation, observeTrust } from "../panes/open-workspace.tsx";
+import { workspacesQuery } from "../data/workspaces.ts";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
-import { hideFromPanes, usePaneFocused, useSplitPanes } from "../panes/pane-context.tsx";
+import { usePaneFocused, useSplitPanes } from "../panes/pane-context.tsx";
+import { hideFromPanes } from "../tabs/window-panes.tsx";
 import type { PaneId } from "../panes/layout.ts";
 import { useCatalog } from "../data/catalog.ts";
 import { coordinatedProject } from "../data/projects.ts";
@@ -32,15 +35,22 @@ import { TranscriptProvider, useTranscriptControls } from "./transcript/transcri
 import { ApprovalTray } from "./trays/approval-tray.tsx";
 import { QuestionTray } from "./trays/questions.tsx";
 import { SecretTray } from "./trays/secrets.tsx";
+import { PluginTrays } from "./trays/plugin-trays.tsx";
 import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { listAgents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
+import { listAgents, SubagentTray } from "./trays/agents.tsx";
+import type { SubagentTrayView } from "./trays/agents.tsx";
 import { modelRefFor, sessionModel } from "./composer/model-picker-state.ts";
 import { StartupReadsHold } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";
-import { chatTitle, useChat, useChatTasks, useChatWorkspace } from "../chats/index.ts";
-import { useChatFolder } from "./chat-folder.ts";
+import {
+  chatTitle,
+  useChat,
+  useChatFolder,
+  useChatTasks,
+  useChatWorkspace,
+} from "../chats/index.ts";
 import { ChatScope } from "./chat-scope.tsx";
 import { SideChatWindow } from "./side-chat/side-chat-window.tsx";
 import { chatWindow, drawnTray, showTray, useChatWindow } from "../window/index.ts";
@@ -71,8 +81,9 @@ async function applyMessageEdit({
   readonly content: UserContent;
   readonly choice: BranchModelChoice;
 }): Promise<void> {
-  if (revision == null)
+  if (revision == null) {
     throw new Error("The conversation is updating. Try editing this message again.");
+  }
 
   const session = connection().session(sessionId);
 
@@ -81,8 +92,9 @@ async function applyMessageEdit({
       modelConfiguration(modelRefFor(choice.model, choice.modes), choice.thinkingLevel),
     );
 
-    if (configured.kind !== "configured")
+    if (configured.kind !== "configured") {
       throw new Error("That model setting is no longer available");
+    }
   }
 
   const receipt = await session.send(content, {
@@ -195,8 +207,9 @@ function TranscriptColumn({
         (event.key !== "PageUp" && event.key !== "PageDown") ||
         !(event.target instanceof Element) ||
         event.target.closest("[data-composer-frame]") === null
-      )
+      ) {
         return;
+      }
       event.preventDefault();
       controls.page(event.key === "PageDown" ? 1 : -1);
     };
@@ -228,6 +241,23 @@ function PaneFocus({
 
 function ActivationNotice({ activation }: { readonly activation: Activation }): null {
   useMountEffect(() => observeActivation(activation));
+
+  return null;
+}
+
+function TrustNotice({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
+  const folder = useChatWorkspace(sessionId);
+
+  const { data: workspace } = useQuery({
+    ...workspacesQuery,
+    select: (workspaces) => workspaces.find((entry) => entry.id === folder?.id),
+  });
+
+  return workspace === undefined ? null : <TrustOffer key={workspace.id} workspace={workspace} />;
+}
+
+function TrustOffer({ workspace }: { readonly workspace: WorkspaceInfo }): null {
+  useMountEffect(() => observeTrust(workspace));
 
   return null;
 }
@@ -429,6 +459,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
         >
           <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
             {!((ready && chat.kind !== "loading") || failed) && <StartupReadsHold />}
+            {presentation === "full" && <TrustNotice sessionId={sessionId} />}
             {presentation === "full" && activation !== undefined && (
               <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
             )}
@@ -458,6 +489,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                           <ApprovalTray sessionId={sessionId} disabled={failed || navigating} />
                           <QuestionTray disabled={failed || navigating} viewport={scroll} />
                           <SecretTray sessionId={sessionId} disabled={failed || navigating} />
+                          <PluginTrays sessionId={sessionId} viewport={scroll} />
                           <SubagentTray
                             parentSessionId={sessionId}
                             agents={agents}

@@ -64,9 +64,10 @@ const dragHandles = new Map([
   ["packages/app/src/chat/composer/reasoning-steps.tsx", new Set(["steps"])],
   ["packages/app/src/sidebar/sidebar-pane.tsx", new Set(["handle"])],
   ["packages/app/src/chat/side-chat/side-chat-window.tsx", new Set(["header", "pill"])],
-  ["packages/app/src/chat/images/markup-stage.tsx", new Set(["svg"])],
+  ["packages/app/src/images/markup-stage.tsx", new Set(["svg"])],
   ["packages/app/src/panes/session-screen.stylex.ts", new Set(["sash"])],
   ["packages/app/src/workbench/workbench.stylex.ts", new Set(["sash"])],
+  ["packages/app/src/shell/workbench-dock.tsx", new Set(["sash"])],
   ["packages/canvas/src/board/board.stylex.ts", new Set(["stage"])],
 ]);
 
@@ -142,8 +143,9 @@ export default {
               elementName(row.name) !== "Row" ||
               ((interactive === undefined || literal(interactive.value) === false) &&
                 literal(attribute(row, "variant")?.value) !== "nav")
-            )
+            ) {
               continue;
+            }
 
             context.report({
               node,
@@ -237,8 +239,9 @@ export default {
             readName(node.name) !== "Pressable" ||
             attribute(node, "accessibilityRole") ||
             attribute(node, "accessibilityLabel")
-          )
+          ) {
             return;
+          }
           context.report({
             node,
             message:
@@ -278,8 +281,9 @@ export default {
           if (
             parent?.type === "JSXAttribute" &&
             !["meta", "description"].includes(readName(parent.name))
-          )
+          ) {
             return;
+          }
 
           const [test, branches] =
             expression.type === "ConditionalExpression"
@@ -318,8 +322,9 @@ export default {
           text
             .split(/\s+/)
             .every((word, index) => (index > 0 && smallWords.has(word)) || !/^[a-z]/.test(word))
-        )
+        ) {
           return;
+        }
 
         const titled = text
           .split(" ")

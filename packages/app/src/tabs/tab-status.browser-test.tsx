@@ -8,17 +8,18 @@ import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
 import type { Execution, HeadInfo, HostView, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { PaneControllerProvider } from "../panes/pane-context.tsx";
+import { WindowPanesProvider } from "./window-panes.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { queryClient } from "../data/query-client.ts";
 import { installConnection } from "../data/connection.ts";
 import { createAppRouter } from "../shell/routes.tsx";
 import { Sidebar } from "../sidebar/sidebar.tsx";
+import { SettingsNavigation } from "../settings/index.ts";
 import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
 import { useWindowTabItems, useWindowTabsState } from "./use-window-tabs.tsx";
-import { WindowTabStrip } from "./window-tab-strip.tsx";
+import { WindowTabStrip } from "../shell/window-tab-strip.tsx";
 import { chatWindow } from "../window/index.ts";
 import { windowTabs } from "./window-tabs.ts";
 
@@ -79,8 +80,7 @@ function folder(id: string): WorkspaceInfo {
     target: { kind: "local", path: `/work/${id}` },
     identity: asId("identity"),
     availability: { kind: "available" },
-    projectResources: null,
-    trusted: true,
+    trust: { state: "trusted", by: { kind: "folder", path: null } },
     projectSources: [],
     addedBy: asId("tester"),
     writers: [],
@@ -90,8 +90,6 @@ function folder(id: string): WorkspaceInfo {
 
 const host: HostView = {
   id: asId<"host">("scripted"),
-  link: { kind: "connected" },
-  operations: null,
   name: "Test",
   platform: "linux",
   version: "0.0.0",
@@ -102,6 +100,7 @@ const host: HostView = {
   defaultWorkspace: asId<"workspace">("home"),
   projects: [],
   authority: new Set(),
+  routes: [],
 };
 
 interface Listed {
@@ -242,12 +241,14 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider>
+            <WindowPanesProvider>
               <SessionDndProvider>
                 <Strip />
-                <Sidebar />
+                <Sidebar
+                  renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}
+                />
               </SessionDndProvider>
-            </PaneControllerProvider>
+            </WindowPanesProvider>
           </TooltipProvider>
         </RouterContextProvider>
       </QueryClientProvider>,

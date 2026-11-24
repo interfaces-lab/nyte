@@ -103,7 +103,7 @@ async function add(args: readonly string[], input: Input): Promise<number> {
     (server) => server.name === request.server && server.scope === request.scope,
   );
 
-  if (taken !== undefined && !request.force)
+  if (taken !== undefined && !request.force) {
     throw new CliError(
       "conflict",
       `Can't add ${request.server}. ${request.scope === "user" ? "Your user mcp.json" : "This folder's .nyte/mcp.json"} already has it.`,
@@ -115,6 +115,7 @@ async function add(args: readonly string[], input: Input): Promise<number> {
         next: [replaceStep(args)],
       },
     );
+  }
 
   settle(await mcp.add(request.server, request.config, request.scope), "add", request.server);
   receipt(input.output, `Added ${request.server}`, request.server, [
@@ -138,7 +139,7 @@ async function remove(args: readonly string[], input: Input): Promise<number> {
   const scope: McpScope = parsed.has("local") ? "project" : "user";
   const outcome = await (await openWorkspace(input.connect, scope)).remove(server, scope);
 
-  if (outcome.kind === "missing")
+  if (outcome.kind === "missing") {
     throw new CliError(
       "not_found",
       scope === "user"
@@ -159,6 +160,7 @@ async function remove(args: readonly string[], input: Input): Promise<number> {
         ],
       },
     );
+  }
 
   settle(outcome, "remove", server);
   receipt(input.output, `Removed ${server}`, server, [{ label: "Scope", value: scope }]);
@@ -217,12 +219,13 @@ async function login(args: readonly string[], input: Input): Promise<number> {
   const output = input.output;
   const signal = input.signal;
 
-  if (named === undefined && !output.mode.interactive)
+  if (named === undefined && !output.mode.interactive) {
     throw new CliError(
       "missing_input",
       "Can't choose an MCP server without an interactive terminal.",
       { next: [{ label: "Name the server", argv: ["nyte", "mcp", "login", "<NAME>"] }] },
     );
+  }
   const mcp = await openWorkspace(input.connect);
   const driver = cliLoginDriver(output.mode, signal, () => process.emit("SIGINT"));
 
@@ -255,8 +258,9 @@ async function signIn(
   const server = named ?? (await chooseServer(view, driver, output));
   const current = view.servers.find((candidate) => candidate.name === server);
 
-  if (current === undefined)
+  if (current === undefined) {
     throw new CliError("not_found", `Couldn't find MCP server ${server}.`, { next: [LIST] });
+  }
 
   if (current.transport.kind === "http" && current.state.kind === "connected" && interactive) {
     const again = await driver.choose(
@@ -290,12 +294,13 @@ async function chooseServer(view: McpView, driver: LoginDriver, output: Output):
 
   const first = signable[0];
 
-  if (first === undefined)
+  if (first === undefined) {
     throw new CliError("not_found", "Can't find an MCP server that signs in with OAuth.", {
       next: [
         { label: "Add one over HTTP", argv: ["nyte", "mcp", "add", "<NAME>", "--url", "<URL>"] },
       ],
     });
+  }
 
   if (signable.length === 1) {
     output.say(`Signing in to ${printable(first.name)}…`);
@@ -320,13 +325,14 @@ async function openWorkspace(connect: Input["connect"], scope?: McpScope): Promi
 
   if (scope !== "project") return workspace.mcp;
 
-  if (process.cwd() === homedir())
+  if (process.cwd() === homedir()) {
     throw new CliError(
       "invalid_arguments",
       "Can't use --local in your home folder. Its .nyte/mcp.json is your user file.",
     );
+  }
 
-  if ((await workspace.info()).trusted !== true)
+  if ((await workspace.info()).trust.state !== "trusted") {
     throw new CliError(
       "missing_input",
       "Can't change this folder's .nyte/mcp.json until the folder is trusted.",
@@ -335,6 +341,7 @@ async function openWorkspace(connect: Input["connect"], scope?: McpScope): Promi
         next: [{ label: "Trust this folder, then run this again", argv: ["nyte", "trust"] }],
       },
     );
+  }
 
   return workspace.mcp;
 }
@@ -345,10 +352,11 @@ async function listedWorkspace(connect: Input["connect"]): Promise<{
 }> {
   const running = await findRunningHost(hostFilePath());
 
-  if (running === null)
+  if (running === null) {
     throw new CliError("host_not_running", "Can't list MCP servers without a running Nyte host.", {
       next: [{ label: "Start the host in another terminal", argv: ["nyte", "host"] }],
     });
+  }
 
   const connection = await connect({
     kind: "attached",
@@ -362,7 +370,7 @@ async function listedWorkspace(connect: Input["connect"]): Promise<{
 
     return {
       mcp: workspace.mcp,
-      folder: (await workspace.info()).trusted === true ? "trusted" : "untrusted",
+      folder: (await workspace.info()).trust.state === "trusted" ? "trusted" : "untrusted",
     };
   }
 
@@ -415,8 +423,9 @@ function replaceStep(args: readonly string[]): NextStep {
 function settle(outcome: McpChange, verb: string, server: string): void {
   if (outcome.kind === "updated") return;
 
-  if (outcome.kind === "missing")
+  if (outcome.kind === "missing") {
     throw new CliError("not_found", `Couldn't find MCP server ${server}.`, { next: [LIST] });
+  }
 
   throw new CliError("failed", `Couldn't ${verb} MCP server ${server}.`, {
     details: [{ label: "Reason", value: printable(outcome.message) }],
@@ -427,8 +436,9 @@ function receipt(output: Output, text: string, server: string, rows: readonly Ro
   output.status("done", printable(text));
   output.rows(rows);
 
-  if (!output.mode.interactive || !output.mode.tty.stdout)
+  if (!output.mode.interactive || !output.mode.tty.stdout) {
     output.result(`${output.mode.tty.stdout ? printable(server) : server}\n`);
+  }
 }
 
 function nextStep(output: Output, step: NextStep): void {
@@ -503,10 +513,11 @@ function showList(view: McpView, output: Output): void {
     return;
   }
 
-  if (view.servers.length > 0)
+  if (view.servers.length > 0) {
     output.result(
       `${formatTable(["Name", "Scope", "State", "Tools", "Target"], view.servers.map(tableRow), output.mode.stdout).join("\n")}\n`,
     );
+  }
 
   const failing = view.servers.filter(
     (server) => server.state.kind === "failed" || server.state.kind === "needs-sign-in",
@@ -517,14 +528,16 @@ function showList(view: McpView, output: Output): void {
 
   for (const server of failing) warnServer(server, output);
 
-  for (const issue of view.issues)
+  for (const issue of view.issues) {
     output.status(
       "warn",
       `${printable(issue.source?.file ?? "mcp.json")}: ${printable(issue.message)}`,
     );
+  }
 
-  if (failing.some((server) => server.state.kind === "needs-sign-in"))
+  if (failing.some((server) => server.state.kind === "needs-sign-in")) {
     nextStep(output, { label: "Sign in to a server", argv: ["nyte", "mcp", "login"] });
+  }
 }
 
 function tableRow(server: McpServerView): readonly string[] {
@@ -550,10 +563,11 @@ function warnServer(server: McpServerView, output: Output): void {
   for (const line of lines.slice(0, STDERR_LINES)) output.say(`  ${printable(line)}`);
   const more = lines.length - STDERR_LINES;
 
-  if (more > 0)
+  if (more > 0) {
     output.say(
       `  and ${String(more)} more ${more === 1 ? "line" : "lines"} in nyte mcp list --json`,
     );
+  }
 }
 
 function serverName(
@@ -563,10 +577,11 @@ function serverName(
 ): string {
   const server = positionals[0];
 
-  if (server === undefined)
+  if (server === undefined) {
     throw new CliError("missing_input", missing, {
       next: [{ label: "Name the server", argv: ["nyte", "mcp", action, "<NAME>"] }],
     });
+  }
 
   return server;
 }
@@ -574,10 +589,11 @@ function serverName(
 function pair(text: string, flag: string): readonly [string, string] {
   const split = text.indexOf("=");
 
-  if (split <= 0)
+  if (split <= 0) {
     throw new CliError("invalid_arguments", `${flag} takes KEY=VALUE, not ${text}.`, {
       next: ADD_HELP,
     });
+  }
 
   return [text.slice(0, split), text.slice(split + 1)];
 }
@@ -592,33 +608,37 @@ function parseAdd(args: readonly string[]) {
   const parsed = parseCommandArgs("mcp", split < 0 ? args : args.slice(0, split), 1, "add");
   const server = parsed.positionals[0];
 
-  if (server === undefined)
+  if (server === undefined) {
     throw new CliError("missing_input", "Can't add an MCP server without a name.", {
       next: [{ label: "Name it", argv: ["nyte", "mcp", "add", "<NAME>", "--url", "<URL>"] }],
     });
+  }
 
   const named = parsed.value("exposure");
   const exposure = EXPOSURES.find((candidate) => candidate === named);
 
-  if (named !== undefined && exposure === undefined)
+  if (named !== undefined && exposure === undefined) {
     usage(
       `--exposure takes direct, deferred, codemode, codemode-deferred or hidden, not ${named}.`,
     );
+  }
   const env = Object.fromEntries(parsed.values("env").map((text) => pair(text, "--env")));
   const headers = Object.fromEntries(parsed.values("header").map((text) => pair(text, "--header")));
   const bearer = parsed.value("bearer-token-env-var");
 
   if (bearer !== undefined) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(bearer))
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(bearer)) {
       usage(`--bearer-token-env-var takes a variable name, not ${bearer}.`);
+    }
     headers["Authorization"] = `Bearer \${${bearer}}`;
   }
 
   const portText = parsed.value("oauth-callback-port");
   const port = portText === undefined ? undefined : Number(portText);
 
-  if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535))
+  if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65_535)) {
     usage(`--oauth-callback-port takes a port from 1 to 65535, not ${portText ?? ""}.`);
+  }
 
   const clientId = parsed.value("oauth-client-id");
   const clientSecret = parsed.value("oauth-client-secret");
@@ -645,8 +665,9 @@ function parseAdd(args: readonly string[]) {
   if (url !== undefined) {
     if (command.length > 0) usage("Can't use --url and a command after -- together.");
 
-    if (Object.keys(env).length > 0 || cwd !== undefined)
+    if (Object.keys(env).length > 0 || cwd !== undefined) {
       usage("--env and --cwd apply to a command, not a --url server.");
+    }
 
     return {
       server,
@@ -663,7 +684,7 @@ function parseAdd(args: readonly string[]) {
 
   const executable = command[0];
 
-  if (executable === undefined)
+  if (executable === undefined) {
     throw new CliError(
       "missing_input",
       `Can't add ${server} without --url or a command after --.`,
@@ -674,9 +695,11 @@ function parseAdd(args: readonly string[]) {
         ],
       },
     );
+  }
 
-  if (Object.keys(headers).length > 0 || Object.keys(oauth).length > 0)
+  if (Object.keys(headers).length > 0 || Object.keys(oauth).length > 0) {
     usage("--header, --bearer-token-env-var and --oauth-* apply to a --url server, not a command.");
+  }
   const rest = command.slice(1);
 
   return {

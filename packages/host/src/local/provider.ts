@@ -7,14 +7,18 @@ import type { WorkspaceTarget } from "@nyte-ai/schema";
 import type { EnvironmentProvider, ExecutionEnv, SnapshotsApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { pluginFilesIn } from "../plugins/loader.ts";
+import { confinedReader } from "./files/confined.ts";
 import { localFiles } from "./files/files.ts";
+import { ripgrepFinder } from "./files/ripgrep.ts";
 import { localGit } from "./git/git.ts";
 import { localGitHub } from "./git/github.ts";
+import { languageInstaller } from "./language/install.ts";
 import { localLanguage } from "./language/manager.ts";
 import { folderIdentity } from "./identity.ts";
 import { localExec } from "./process/jobs.ts";
 import { localSnapshots } from "./snapshots/snapshots.ts";
 import { localWorktrees } from "./git/worktrees.ts";
+import { localDiskCleanup } from "./storage/storage.ts";
 
 const ROOT_SOURCES = [".nyte/SYSTEM.md", ".nyte/APPEND_SYSTEM.md", ".nyte/mcp.json"];
 
@@ -24,7 +28,7 @@ export function localProvider(options?: {
   readonly gh?: string;
   readonly ripgrep?: string;
   readonly formatter?: string;
-  /** Language servers pinned by program name, such as `{ gopls: "/opt/go/bin/gopls" }`; the rest are found on PATH. */
+  /** Language servers pinned by name, such as `{ gopls: "/opt/go/bin/gopls" }`; the rest are found in the project or on PATH, and otherwise downloaded into the home's `.nyte/language-servers`. */
   readonly languageServers?: Readonly<Record<string, string>>;
   /** The login shell a pty job without a command runs, read at each start; null or absent is `$SHELL`. */
   readonly shell?: () => string | null;
@@ -34,6 +38,8 @@ export function localProvider(options?: {
   const shared = new Map<string, SnapshotsApi>();
   let state: string | undefined;
   const github = localGitHub({ gh: options?.gh, git: options?.git });
+  const installer = languageInstaller(join(home, ".nyte", "language-servers"));
+  const ripgrep = ripgrepFinder({ pinned: options?.ripgrep, installer, cwd: home });
 
   return {
     kind: "local",
@@ -62,7 +68,7 @@ export function localProvider(options?: {
         projectSources: await projectSources(path),
       };
     },
-    async attach(target) {
+    async attach(target, trusted) {
       const path = readTargetPath(target);
 
       if (path === null) throw new SdkError("unavailable", "A local workspace needs a path.");
@@ -72,14 +78,17 @@ export function localProvider(options?: {
         throw new SdkError("unavailable", `${path} is not a readable directory.`);
       const detached = new AbortController();
 
+      const confined = await confinedReader(real);
+      const files = localFiles(real, {
+        ripgrep,
+        formatter: options?.formatter,
+        trusted,
+        signal: detached.signal,
+      });
       const env: ExecutionEnv = {
         identity: await folderIdentity(real),
         cwd: real,
-        files: localFiles(real, {
-          ripgrep: options?.ripgrep,
-          formatter: options?.formatter,
-          signal: detached.signal,
-        }),
+        files: { ...files, ...(confined === undefined ? {} : { readConfined: confined }) },
         exec: localExec(real, { shell: options?.shell, signal: detached.signal }),
         close: async () => detached.abort(),
       };
@@ -88,7 +97,8 @@ export function localProvider(options?: {
     },
     git: (env) => localGit(env, { git: options?.git }),
     github,
-    language: (env) => localLanguage(env, { servers: options?.languageServers }),
+    language: (env, trusted) =>
+      localLanguage(env, { trusted, servers: options?.languageServers, installer }),
     snapshots(env) {
       state ??= join(realpathOrSelf(home), ".nyte");
 
@@ -106,6 +116,7 @@ export function localProvider(options?: {
       return snapshots;
     },
     worktrees: localWorktrees({ home, git: options?.git }),
+    storage: localDiskCleanup({ home, git: options?.git }),
     realpath: (env, path) =>
       realpath(isAbsolute(path) ? path : join(env.cwd, path)).catch(() => null),
     async destroy() {

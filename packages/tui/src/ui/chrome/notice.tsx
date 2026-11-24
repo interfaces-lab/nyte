@@ -2,7 +2,7 @@ import type { JSX } from "@opentui/solid";
 import { createEffect, createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
-import type { HealthNotice } from "../../model/screen.ts";
+import type { HostNotice } from "../../model/screen.ts";
 import type { FailureReport, Notice } from "../../model/state.ts";
 
 export function NoticeLine(): JSX.Element {
@@ -19,12 +19,12 @@ export function NoticeLine(): JSX.Element {
 
   return (
     <box id="notice" flexDirection="column" flexShrink={0} marginLeft={3} marginRight={2}>
-      <Show when={app.screen().health !== null || app.screen().updated !== null}>
+      <Show when={app.screen().host !== null || app.screen().updated !== null}>
         <box id="connection" flexDirection="row" height={1}>
-          <Show when={app.screen().health}>
-            {(health: Accessor<HealthNotice>) => <HealthText health={health()} />}
+          <Show when={app.screen().host}>
+            {(host: Accessor<HostNotice>) => <HostText host={host()} />}
           </Show>
-          <Show when={app.screen().health !== null && app.screen().updated !== null}>
+          <Show when={app.screen().host !== null && app.screen().updated !== null}>
             <text fg={theme().dim} wrapMode="none" flexShrink={0}>
               {" · "}
             </text>
@@ -56,14 +56,14 @@ export function NoticeLine(): JSX.Element {
   );
 }
 
-const CLOCK_INTERVAL_MS = 1_000;
+const CLOCK_INTERVAL_MS = 1000;
 
-function HealthText(props: { readonly health: HealthNotice }): JSX.Element {
+function HostText(props: { readonly host: HostNotice }): JSX.Element {
   const app = useApp();
   const [now, setNow] = createSignal(app.kit.now());
 
   createEffect(() => {
-    if (props.health.kind !== "reconnecting") return;
+    if (props.host.kind !== "reconnecting") return;
     const tick = app.kit.ticker(CLOCK_INTERVAL_MS);
 
     createEffect(() => {
@@ -74,23 +74,33 @@ function HealthText(props: { readonly health: HealthNotice }): JSX.Element {
 
   return (
     <text id="health" fg={app.kit.theme().warning} wrapMode="none" flexShrink={0}>
-      {healthText(props.health, now())}
+      {hostText(props.host, now())}
     </text>
   );
 }
 
-function healthText(health: HealthNotice, now: number): string {
-  switch (health.kind) {
+function hostText(host: HostNotice, now: number): string {
+  switch (host.kind) {
     case "reconnecting":
-      return `Reconnecting in ${String(Math.max(1, Math.ceil((health.at - now) / 1_000)))}s`;
-    case "unreachable":
-      return "Can't reach host";
+      return `Reconnecting in ${String(Math.max(1, Math.ceil((host.at - now) / 1000)))}s`;
+    case "updating":
+      return "Updating the host…";
+    case "restarting":
+      return "Restarting the host…";
+    case "stopped":
+      return "Host stopped";
+    case "other-host":
+      return "Another host answered · restart nyte";
     case "signed-out":
       return "Sign in again";
-    case "outdated":
-      return "Update Nyte";
+    case "update-host":
+      return "The host runs an older Nyte · update Nyte there";
+    case "update-nyte":
+      return "The host runs a newer Nyte · update this nyte";
+    case "restart-host":
+      return "The host runs an older Nyte · restart nyte host";
     default: {
-      const _exhaustive: never = health;
+      const _exhaustive: never = host;
 
       return _exhaustive;
     }

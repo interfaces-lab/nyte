@@ -343,9 +343,7 @@ describe("durable steps", () => {
 
     const log = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
 
-    expect(log.findIndex((entry) => entry === "run:stopping")).toBeGreaterThan(
-      log.findIndex((entry) => entry === "run:waiting"),
-    );
+    expect(log.indexOf("run:stopping")).toBeGreaterThan(log.indexOf("run:waiting"));
   });
 
   it.each([
@@ -784,11 +782,12 @@ describe("durable steps", () => {
         },
       });
 
-    for (let replay = 0; replay < 2; replay += 1)
+    for (let replay = 0; replay < 2; replay += 1) {
       await expect(act("big", true)).rejects.toMatchObject({
         code: "invalid",
         message: expect.stringMatching(/count action on part p1/),
       });
+    }
 
     expect(ran).toBe(2);
     expect((await readCall(kernel, session.id, asId("big"))).result).toBeNull();

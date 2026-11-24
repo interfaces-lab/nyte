@@ -58,7 +58,7 @@ decides what happens next:
 | `run` returns           | Result                                                                 |
 | ----------------------- | ---------------------------------------------------------------------- |
 | A string                | The client shows the string to the user                                |
-| `{ prompt }`            | The host sends `prompt` to the chat as the user's message              |
+| `{ prompt }`            | The host sends `prompt` to the chat; clients show the command's title  |
 | `{ workspace, output }` | The host moves the chat to `workspace`, then the client shows `output` |
 | Nothing                 | Nothing more                                                           |
 
@@ -165,6 +165,72 @@ The preset pages are `server`, `profile`, `general`, `notifications`, `appearanc
 - The settings of plugins that ship with the app show where the app already draws them, unless
   they name a `page`.
 - The terminal lists settings that have `choices` under `/settings`.
+
+### Composer modes [#modes]
+
+A per-chat switch with `mode` is a composer mode. A chat starts with no mode on, and the composer
+shows nothing for modes. Turn one on with its trigger word, such as `/plan`, or with Shift+Tab. It
+shows as a chip beside the model until it's off again.
+
+```ts title="plan-mode.ts"
+import type { Plugin } from "@nyte-ai/plugin/core";
+
+const PLAN = "mode.plan";
+
+export default {
+  id: "plan-mode",
+  contribute: {
+    settings: [
+      {
+        id: PLAN,
+        title: "Plan",
+        type: "switch",
+        scope: "chat",
+        mode: { icon: "plan", color: "oklch(0.62 0.21 293)" },
+      },
+    ],
+    prompt: [
+      {
+        id: PLAN,
+        delivery: "reminder",
+        when: (chat) => chat.settings[PLAN] === true,
+        text: "Plan mode is on.\n\nResearch the change and write a plan. Don't edit code.",
+        gone: "Plan mode is off. Its instructions no longer apply.",
+      },
+    ],
+  },
+} satisfies Plugin;
+```
+
+- `mode` needs `type: "switch"` and `scope: "chat"`, and no `default`: a mode starts off. The
+  types refuse any other setting.
+- `icon` is one of the app's icon names, such as `list`, `git-branch` or `test-tube`. A name the
+  app lacks draws the chip without an icon.
+- `color` is any CSS colour, such as `#8b5cf6`, `rebeccapurple` or `oklch(0.62 0.21 293)`. The
+  chip keeps its hue and chroma and takes lightness from the theme, so it reads in light and
+  dark mode. A colour that doesn't parse is reported on the plugin.
+- Give the mode's instructions as a [reminder section](/docs/plugins/reference#prompt-section) gated on the
+  switch. When the mode turns on, the next request tells the model its text after the latest
+  message; when it turns off, the model is told the section's `gone` text. The system prompt stays
+  the same either way, on every provider.
+- Modes are exclusive. Turning one on, from the composer, a command or `settings.set`, turns the
+  chat's other modes off. Shift+Tab steps off, then each mode in turn. Clicking the chip turns its
+  mode off.
+- Every mode gets a trigger word, its title in lower case: `/plan` for Plan. The composer runs it
+  itself, as it runs `/compact`: `/plan` turns Plan on, and `/plan` again turns it off. Nothing is
+  sent, and text typed after the word stays in the composer. It works in a new chat too, which then
+  starts in that mode.
+- A plugin command with the same name keeps the word. Autoresearch does this so `/autoresearch`
+  can take a goal.
+- A change takes effect at once, in a running turn too: the turn's next request is told, and a tool
+  gated on the mode comes or goes with it.
+- Gate the mode's tools with the same `when` as its reminder section.
+- Nyte ships two modes: Debug and Autoresearch. For whole modes written as folder plugins, see the
+  [Plan](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/plan-mode),
+  [Ask](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/ask-mode) and
+  [Multitask](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/multitask-mode)
+  examples. Copy a folder into `~/.nyte/plugins` to load it.
+- The terminal doesn't show modes yet. A command that sets the switch works everywhere.
 
 ### Secrets [#secrets]
 

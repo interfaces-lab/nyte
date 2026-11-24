@@ -28,7 +28,7 @@ function click(x: number, y: number): Promise<void> {
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(what);
@@ -93,8 +93,9 @@ export async function run(): Promise<string> {
     flushSync(() => root.render(null));
     flushSync(() => draw(part('{"height":400}')));
 
-    if (height() !== 400)
+    if (height() !== 400) {
       return `A remount should paint at the reported height, not ${String(height())}`;
+    }
 
     const heard = new Promise((resolve) =>
       window.addEventListener("message", resolve, { once: true }),
@@ -131,8 +132,9 @@ export async function run(): Promise<string> {
       target?.kind !== "file" ||
       target.file.path !== "/repo/src/ci.ts" ||
       target.lines?.start !== 42
-    )
+    ) {
       return `The link opened ${JSON.stringify(opened)}`;
+    }
 
     draw(part("{}", 99));
     await until(() => frame() === null, "A too-new canvas should drop the frame");

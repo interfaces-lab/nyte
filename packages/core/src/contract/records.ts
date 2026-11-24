@@ -4,6 +4,7 @@ import {
   CommitBodyType,
   compile,
   ConfigurationType,
+  ContextOccupancyType,
   cyclicWithJson,
   HeadInfoType,
   idSchema,
@@ -65,6 +66,9 @@ const HeadRecordType = record({
     record({ id: idSchema<"run">(), end: typed<RunEnd>()(RunEndType), endedAt: Type.Number() }),
   ),
   response: Type.Optional(typed<Usage>()(UsageType)),
+  contextOccupancy: Type.Optional(ContextOccupancyType),
+  historyEpoch: Type.Optional(Type.Number()),
+  providerFence: Type.Optional(Type.Number()),
 });
 
 export type HeadRecord = Static<typeof HeadRecordType>;
@@ -76,6 +80,16 @@ const PromptRecordType = record({
       after: idSchema<"commit">(),
       sections: list(record({ id: Type.String(), text: nullable(Type.String()) })),
     }),
+  ),
+  reminders: Type.Optional(
+    list(
+      record({
+        after: idSchema<"commit">(),
+        id: Type.String(),
+        text: nullable(Type.String()),
+        gone: Type.String(),
+      }),
+    ),
   ),
 });
 
@@ -149,10 +163,23 @@ const RunRecordType = record({
   lastSnapshot: nullable(idSchema<"snapshot">()),
   usage: nullable(typed<Usage>()(UsageType)),
   requests: Type.Number(),
+  contextOccupancy: Type.Optional(ContextOccupancyType),
+  providerSeal: Type.Optional(
+    record({
+      provider: Type.String(),
+      api: Type.String(),
+      baseModel: Type.String(),
+      historyEpoch: Type.Number(),
+      dispatchId: Type.String(),
+      data: JsonType,
+      anchor: typed<Position>()(PositionType),
+    }),
+  ),
   response: Type.Optional(typed<Usage>()(UsageType)),
 
   parked: list(idSchema<"call">()),
   interrupted: Type.Optional(record({ count: Type.Number(), mark: Type.String() })),
+  released: Type.Optional(Type.Literal(true)),
   requires: Type.Optional(list(Type.String())),
 });
 
@@ -278,7 +305,6 @@ const WorkspaceRecordType = record({
   id: idSchema<"workspace">(),
   target: typed<WorkspaceTarget>()(WorkspaceTargetType),
   identity: idSchema<"environment-identity">(),
-  projectSources: list(Type.String()),
   addedBy: idSchema<"principal">(),
   createdAt: Type.Number(),
   isolation: nullable(typed<WorktreeIsolation>()(WorktreeIsolationType)),
@@ -370,7 +396,49 @@ const HostIdentityType = record({ id: idSchema<"host">(), createdAt: Type.Number
 
 export type HostIdentity = Static<typeof HostIdentityType>;
 
+const ProviderCheckpointRecordType = record({
+  provider: Type.String(),
+  api: Type.String(),
+  baseModel: Type.String(),
+  historyEpoch: Type.Number(),
+  state: Type.Union([
+    record({ kind: Type.Literal("uncertain"), dispatchId: Type.String(), run: idSchema<"run">() }),
+    record({
+      kind: Type.Literal("clean"),
+      anchor: typed<Position>()(PositionType),
+      data: JsonType,
+    }),
+  ]),
+});
+
+export type ProviderCheckpointRecord = Static<typeof ProviderCheckpointRecordType>;
+export const decodeProviderCheckpointRecord = decoder(
+  "provider-checkpoint",
+  ProviderCheckpointRecordType,
+);
+
+const ProviderContinuationRecordType = record({
+  id: idSchema<"provider-continuation">(),
+  head: idSchema<"head">(),
+  provider: Type.String(),
+  historyEpoch: Type.Number(),
+  fence: Type.Number(),
+  instance: Type.String(),
+  registration: Type.String(),
+  createdAt: Type.Number(),
+  order: Type.Number(),
+  run: nullable(idSchema<"run">()),
+});
+
+export type ProviderContinuationRecord = Static<typeof ProviderContinuationRecordType>;
+export const decodeProviderContinuationRecord = decoder(
+  "provider-continuation",
+  ProviderContinuationRecordType,
+);
+
 export type RecordKind =
+  | "provider-checkpoint"
+  | "provider-continuation"
   | "session"
   | "commit"
   | "inbox"
@@ -392,6 +460,8 @@ export type RecordKind =
   | "project";
 
 export const STORED_RECORD_TYPES = {
+  "provider-checkpoint": ProviderCheckpointRecordType,
+  "provider-continuation": ProviderContinuationRecordType,
   session: SessionRecordType,
   commit: CommitRecordType,
   inbox: InboxRecordType,

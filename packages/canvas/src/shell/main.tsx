@@ -36,21 +36,27 @@ import { kit } from "../kit/index.ts";
 import { SchemeContext } from "../kit/scheme.ts";
 import { installLayoutCheck } from "./layout-check.ts";
 
-type Failure = { readonly phase: "load" | "render"; readonly message: string };
+interface Failure {
+  readonly phase: "load" | "render";
+  readonly message: string;
+}
 
-type ViewProps = {
+interface ViewProps {
   readonly state?: Json;
   readonly act?: (action: string, input?: Json) => Promise<Json>;
-};
+}
 
-type Loaded = { readonly title: string; readonly Canvas: ComponentType<ViewProps> };
+interface Loaded {
+  readonly title: string;
+  readonly Canvas: ComponentType<ViewProps>;
+}
 
-type State = {
+interface State {
   readonly scheme: "light" | "dark";
   readonly loaded: Loaded | null;
   readonly failure: Failure | null;
   readonly part: Json | undefined;
-};
+}
 
 const styles = create({
   failure: {
@@ -87,8 +93,9 @@ const libraries = new Map<
 function library(specifier: string): Promise<unknown> {
   const name = readCanvasLibrary(specifier);
 
-  if (name === undefined)
+  if (name === undefined) {
     return Promise.reject(new Error(`"${specifier}" is not a canvas library.`));
+  }
   const loaded = libraries.get(name);
 
   if (loaded !== undefined) return loaded.module;
@@ -187,11 +194,12 @@ function fail(cause: Failure, stack?: string): void {
 }
 
 function describe(error: unknown): { readonly message: string; readonly stack?: string } {
-  if (error instanceof Error)
+  if (error instanceof Error) {
     return {
       message: `${error.name}: ${error.message}`,
       ...(error.stack === undefined ? {} : { stack: error.stack }),
     };
+  }
 
   return { message: String(error) };
 }
@@ -307,8 +315,9 @@ function apply(context: Partial<CanvasHostContext>): void {
 
   if (context.styles === undefined) return;
 
-  for (const [name, value] of Object.entries(context.styles.variables))
+  for (const [name, value] of Object.entries(context.styles.variables)) {
     document.documentElement.style.setProperty(name, value);
+  }
 
   if (context.styles.variables["--nyte-custom-chroma-scale"] !== undefined) applyTint();
 }
@@ -319,6 +328,8 @@ function receive(data: unknown): void {
   if (message === undefined) return;
 
   switch (message.kind) {
+    case "open-link-result":
+      return;
     case "initialize-result":
       apply(message.hostContext);
       post(initializedNotification());
@@ -332,8 +343,6 @@ function receive(data: unknown): void {
       apply(message.context);
 
       return;
-    case "open-link-result":
-      return;
     case "library-result":
       libraries.get(message.name)?.receive(message.source);
 
@@ -346,8 +355,6 @@ function receive(data: unknown): void {
     case "act-result":
       pending.get(String(message.id))?.(message.outcome);
       pending.delete(String(message.id));
-
-      return;
   }
 }
 

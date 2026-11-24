@@ -12,16 +12,23 @@ const NON_TEXT_INPUT_TYPES = new Set([
   "submit",
 ]);
 
-const MODIFIER_KEYS = new Set([
+const QUIET_KEYS = new Set([
   "Alt",
   "AltGraph",
   "CapsLock",
   "Control",
+  "Escape",
   "Fn",
   "Meta",
   "NumLock",
   "Shift",
 ]);
+
+function innermostFocus(element: Element | null): Element | null {
+  const inner = element?.shadowRoot?.activeElement ?? null;
+
+  return inner === null ? element : innermostFocus(inner);
+}
 
 function editingText(element: Element | null): boolean {
   if (!(element instanceof HTMLElement)) return false;
@@ -38,9 +45,9 @@ window.addEventListener("pointerdown", () => applyFocusModality("pointer"), { ca
 window.addEventListener(
   "keydown",
   (event) => {
-    const navigates = editingText(document.activeElement)
+    const navigates = editingText(innermostFocus(document.activeElement))
       ? event.key === "Tab"
-      : !MODIFIER_KEYS.has(event.key);
+      : !QUIET_KEYS.has(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey;
 
     if (navigates) applyFocusModality("keyboard");
   },

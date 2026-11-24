@@ -11,11 +11,12 @@ export async function collectBlob(bytes: AsyncIterable<Uint8Array>): Promise<Uin
   for await (const chunk of bytes) {
     size += chunk.byteLength;
 
-    if (size > BLOB_LIMIT)
+    if (size > BLOB_LIMIT) {
       throw new SdkError(
         "invalid",
         `The file is over ${BLOB_LIMIT / 1024 / 1024} MiB, the most a stored file can hold.`,
       );
+    }
     chunks.push(chunk);
   }
 

@@ -47,7 +47,7 @@ export function modifierBits(input: Modifiers) {
 
 function printable(key: string) {
   const first = key.codePointAt(0) ?? 0;
-  const control = first < 0x20 || first === 0x7f || (first >= 0xf700 && first <= 0xf8ff);
+  const control = first < 0x20 || first === 0x7f || (first >= 0xf7_00 && first <= 0xf8_ff);
 
   if (key === "" || control) return "";
 

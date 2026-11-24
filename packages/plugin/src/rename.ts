@@ -32,9 +32,9 @@ type UserMessage = Extract<Message, { kind: "user" }>;
 
 const MAX_LENGTH = 100;
 
-const MAX_CONTEXT_LENGTH = 8_000;
+const MAX_CONTEXT_LENGTH = 8000;
 
-const MAX_FIRST_MESSAGE_LENGTH = 2_000;
+const MAX_FIRST_MESSAGE_LENGTH = 2000;
 
 const LEADING_COMMAND = /^\s*\/[a-z0-9][a-z0-9-]*(?=\s|$)/u;
 
@@ -85,8 +85,9 @@ const renameTool: ToolDefinition<Infer<typeof renameParameters>> = {
     if (title === "") throw new Error("Session title must not be empty.");
     const outcome = await invocation.host.session(id).update({ name: title });
 
-    if (outcome.kind !== "updated")
+    if (outcome.kind !== "updated") {
       throw new Error(`Unable to rename session ${id}: ${outcome.kind}.`);
+    }
 
     return { content: [{ kind: "text", text: `Renamed session ${id} to ${title}.` }] };
   },
@@ -168,8 +169,9 @@ function historyPrompt(first: UserMessage, messages: readonly Message[]): string
 
   const recent = messages
     .flatMap((message) => {
-      if (message.kind === "user" && message !== first)
+      if (message.kind === "user" && message !== first) {
         return [`User: ${userWords(message.content).trim()}`];
+      }
 
       return isPart(message, text) && message.state.markdown.trim() !== ""
         ? [`Assistant: ${message.state.markdown.trim()}`]

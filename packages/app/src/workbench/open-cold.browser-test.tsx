@@ -9,18 +9,19 @@ import { createAppRouter } from "../shell/routes.tsx";
 import { runAction } from "../commands/window-commands.ts";
 import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { ChangesPanel } from "./changes/changes-panel.tsx";
-import { DesignTab } from "./design-tab.tsx";
+import { ChangesPanel } from "../changes/changes-panel.tsx";
+import { DesignTab } from "../shell/design-tab.tsx";
+import { EditorChangesView } from "../shell/editor-changes-view.tsx";
 import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
-import { useWorkbenchSnapshot, workbench } from "./store.ts";
-import { EditorPanel } from "./editor/editor-panel.tsx";
-import { TerminalPanel } from "./terminal/terminal-panel.tsx";
+import { useWorkbenchViewState, workbench } from "./store.ts";
+import { EditorPanel } from "../editor/editor-panel.tsx";
+import { TerminalPanel } from "../terminal/terminal-panel.tsx";
 import {
   addTerminalToChat,
   clearTerminal,
   copyTerminal,
   focusTerminal,
-} from "./terminal/terminal-runtime.ts";
+} from "../terminal/terminal-runtime.ts";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -41,11 +42,11 @@ function Fallback(): null {
 }
 
 function TerminalSlots(): ReactElement {
-  const view = useWorkbenchSnapshot().views.get(WORKBENCH_HOME_VIEW_KEY);
+  const view = useWorkbenchViewState(WORKBENCH_HOME_VIEW_KEY);
 
   return (
     <>
-      {view?.tabs
+      {view.tabs
         .filter((tab) => tab.kind === "terminal")
         .map((tab) => (
           <Deferred key={tab.id} entry="workbench" fallback={<Fallback />}>
@@ -68,6 +69,7 @@ export async function run(): Promise<string> {
   window.publishWorkbench = () =>
     publishDeferred("workbench", {
       EditorPanel,
+      EditorChangesView,
       ChangesPanel,
       DesignTab,
       TerminalPanel,

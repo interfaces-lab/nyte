@@ -8,7 +8,7 @@ import { CliError } from "./cli/errors.ts";
 import { formatRows, formatStatus, paint, printable } from "./cli/format.ts";
 import type { Mode } from "./cli/mode.ts";
 
-const CLEAR_LINE = "\x1b[1G\x1b[0J";
+const CLEAR_LINE = "\u001B[1G\u001B[0J";
 
 async function ask(
   message: string,
@@ -82,8 +82,9 @@ export function cliLoginDriver(
   const interactive = (): void => {
     signal.throwIfAborted();
 
-    if (!mode.interactive)
+    if (!mode.interactive) {
       throw new CliError("missing_input", "Can't sign in without an interactive terminal.");
+    }
   };
 
   return {
@@ -105,8 +106,9 @@ export function cliLoginDriver(
           ...(code === undefined ? [] : [{ label: "Code", value: printable(code) }]),
         ],
         presentation,
-      ))
+      )) {
         say(line);
+      }
       say("");
     },
     async paste(message, secret, superseded) {
@@ -125,8 +127,9 @@ export function cliLoginDriver(
 
       if (first === undefined) throw new Error("No choices to pick from.");
 
-      for (const [index, option] of options.entries())
+      for (const [index, option] of options.entries()) {
         say(`  ${String(index + 1)}. ${choiceText(option, index === 0)}`);
+      }
 
       for (;;) {
         const answer = (

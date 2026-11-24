@@ -1,20 +1,11 @@
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
-import { compile, isJsonObject } from "@nyte-ai/schema";
+import { compile, isJson, isJsonObject } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import type { ServerCapabilities } from "./capabilities.ts";
 
-export type Capabilities = {
-  readonly incremental: boolean;
-  readonly resolvesCompletion: boolean;
-  readonly resolvesCodeAction: boolean;
-};
-
-export const NO_CAPABILITIES: Capabilities = {
-  incremental: false,
-  resolvesCompletion: false,
-  resolvesCodeAction: false,
-};
+const DYNAMIC = { dynamicRegistration: true } as const;
 
 const CAPABILITIES = {
   general: { positionEncodings: ["utf-16"] },
@@ -24,13 +15,16 @@ const CAPABILITIES = {
     workspaceEdit: { documentChanges: true, resourceOperations: [], failureHandling: "abort" },
     configuration: true,
     workspaceFolders: true,
-    didChangeConfiguration: { dynamicRegistration: false },
-    didChangeWatchedFiles: { dynamicRegistration: false },
-    executeCommand: {},
+    didChangeConfiguration: DYNAMIC,
+    didChangeWatchedFiles: { ...DYNAMIC, relativePatternSupport: true },
+    executeCommand: DYNAMIC,
+    fileOperations: { ...DYNAMIC, didCreate: true, didDelete: true },
+    diagnostics: { refreshSupport: true },
   },
   textDocument: {
-    synchronization: { didSave: false, willSave: false, willSaveWaitUntil: false },
+    synchronization: { didSave: true, willSave: false, willSaveWaitUntil: false },
     completion: {
+      ...DYNAMIC,
       completionItem: {
         snippetSupport: true,
         labelDetailsSupport: true,
@@ -44,22 +38,17 @@ const CAPABILITIES = {
       completionList: { itemDefaults: ["editRange", "insertTextFormat", "commitCharacters"] },
       contextSupport: true,
     },
-    hover: { contentFormat: ["markdown", "plaintext"] },
-    signatureHelp: {
-      signatureInformation: {
-        documentationFormat: ["markdown", "plaintext"],
-        parameterInformation: { labelOffsetSupport: true },
-        activeParameterSupport: true,
-      },
-    },
-    definition: { linkSupport: true },
-    typeDefinition: { linkSupport: true },
-    references: {},
+    hover: { ...DYNAMIC, contentFormat: ["markdown", "plaintext"] },
+    definition: { ...DYNAMIC, linkSupport: true },
+    typeDefinition: { ...DYNAMIC, linkSupport: true },
+    references: DYNAMIC,
     documentSymbol: {
+      ...DYNAMIC,
       hierarchicalDocumentSymbolSupport: true,
       symbolKind: { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) },
     },
     codeAction: {
+      ...DYNAMIC,
       codeActionLiteralSupport: {
         codeActionKind: {
           valueSet: [
@@ -79,10 +68,11 @@ const CAPABILITIES = {
       dataSupport: true,
       resolveSupport: { properties: ["edit"] },
     },
-    formatting: {},
-    rename: { prepareSupport: true },
+    formatting: DYNAMIC,
+    rangeFormatting: DYNAMIC,
+    rename: { ...DYNAMIC, prepareSupport: true },
     publishDiagnostics: { relatedInformation: true, tagSupport: { valueSet: [1, 2] } },
-    inlayHint: {},
+    diagnostic: { ...DYNAMIC, relatedDocumentSupport: true },
   },
 } as const;
 
@@ -90,15 +80,17 @@ const InitializeAnswer = compile(
   Type.Object({
     capabilities: Type.Object({
       textDocumentSync: Type.Optional(
-        Type.Union([Type.Number(), Type.Object({ change: Type.Optional(Type.Number()) })]),
-      ),
-      completionProvider: Type.Optional(
-        Type.Object({ resolveProvider: Type.Optional(Type.Boolean()) }),
-      ),
-      codeActionProvider: Type.Optional(
         Type.Union([
-          Type.Boolean(),
-          Type.Object({ resolveProvider: Type.Optional(Type.Boolean()) }),
+          Type.Number(),
+          Type.Object({
+            change: Type.Optional(Type.Number()),
+            save: Type.Optional(
+              Type.Union([
+                Type.Boolean(),
+                Type.Object({ includeText: Type.Optional(Type.Boolean()) }),
+              ]),
+            ),
+          }),
         ]),
       ),
     }),
@@ -126,26 +118,30 @@ export function initializeParams(root: string, options: Json): Json {
   };
 }
 
-/** The capabilities this client uses and the server's version, or null for an answer that is not an `InitializeResult`. */
 export function readInitialize(
   answer: unknown,
-): { readonly capabilities: Capabilities; readonly version: string | null } | null {
+): { readonly capabilities: ServerCapabilities; readonly version: string | null } | null {
   if (!InitializeAnswer.Check(answer)) return null;
-  const sync = answer.capabilities.textDocumentSync;
-  const actions = answer.capabilities.codeActionProvider;
+  const declared = answer.capabilities;
+  const sync = declared.textDocumentSync;
+  const save = typeof sync === "object" ? sync.save : undefined;
   const version = answer.serverInfo?.version;
 
   return {
     capabilities: {
       incremental: (typeof sync === "number" ? sync : sync?.change) === 2,
-      resolvesCompletion: answer.capabilities.completionProvider?.resolveProvider === true,
-      resolvesCodeAction: typeof actions === "object" && actions.resolveProvider === true,
+      save:
+        typeof save === "object" && save.includeText === true
+          ? "text"
+          : save === undefined || save === false
+            ? "none"
+            : "uri",
+      declared: isJson(declared) && isJsonObject(declared) ? declared : {},
     },
-    version: version === undefined ? null : (readGoVersion(version) ?? version),
+    version: version ?? null,
   };
 }
 
-/** Answers `workspace/configuration`: each item's dotted section of the server's settings, or all of them. */
 export function answerConfiguration(settings: Json, params: unknown): Json {
   if (!ConfigurationRequest.Check(params)) return [];
 
@@ -155,19 +151,4 @@ export function answerConfiguration(settings: Json, params: unknown): Json {
       .filter((key) => key !== "")
       .reduce<Json>((found, key) => (isJsonObject(found) ? (found[key] ?? null) : null), settings),
   );
-}
-
-function readGoVersion(text: string): string | null {
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return typeof value === "object" &&
-      value !== null &&
-      "Version" in value &&
-      typeof value.Version === "string"
-      ? value.Version
-      : null;
-  } catch {
-    return null;
-  }
 }

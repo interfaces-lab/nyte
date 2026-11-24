@@ -7,7 +7,7 @@ import { Compile } from "typebox/compile";
 
 type Role = "reader" | "checkpoint";
 
-export const BUSY_TIMEOUT_MS = 5_000;
+export const BUSY_TIMEOUT_MS = 5000;
 
 export const LARGE_PARAMS_SIZE = 64 * 1024;
 
@@ -244,8 +244,9 @@ export function sqliteWorkers(database: DatabaseSync, path: string) {
     void checkpoint
       .query("", [])
       .catch((cause: unknown) => {
-        if (checkpoint !== null)
+        if (checkpoint !== null) {
           handBack(cause instanceof Error ? cause : new Error(String(cause)));
+        }
       })
       .finally(() => {
         checking = false;

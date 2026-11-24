@@ -324,8 +324,9 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
               const previous = rows[index - 1];
               const row = rows[index];
 
-              if (previous !== undefined && row !== undefined)
+              if (previous !== undefined && row !== undefined) {
                 detail.maxOverlap = Math.max(detail.maxOverlap, previous.box.bottom - row.box.top);
+              }
             }
 
             if (viewport.textContent !== text) detail.textChanges += 1;
@@ -470,8 +471,9 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
     contentType: "application/json",
   });
 
-  if (output !== undefined)
+  if (output !== undefined) {
     await writeFile(join(output, "work.json"), JSON.stringify(work, null, 2));
+  }
 
   expect(
     (["following", "detail", "reading"] as const).flatMap((step) => {
@@ -531,11 +533,12 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   expect(summary.inputToPaintMs.max).toBeLessThanOrEqual(KEY_MAX_BUDGET_MS);
   expect(summary.renderingMs.samples).toBeGreaterThanOrEqual(MIN_RENDER_SAMPLES);
   expect(summary.renderingMs.p99).toBeLessThanOrEqual(RENDER_P99_BUDGET_MS);
-  if (process.env.NYTE_E2E_60FPS === "1")
+  if (process.env.NYTE_E2E_60FPS === "1") {
     expect(summary.frameCadenceMs.p50, "The renderer must actually run at 60Hz").toBeCloseTo(
       1000 / 60,
       0,
     );
+  }
   expect(
     trace.longTasks.filter((task) => task.startMs >= 0),
     "No renderer task may take 50ms after typing starts, through all-agent completion",

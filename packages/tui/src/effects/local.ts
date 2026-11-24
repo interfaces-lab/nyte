@@ -217,8 +217,9 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
 
       const commands = pluginCommands(read());
 
-      if (commands.length > 0)
+      if (commands.length > 0) {
         lines.push(`Commands: ${commands.map((command) => `/${command.name}`).join(" ")}`);
+      }
 
       return { kind: "text", lines: lines.length === 0 ? ["No plugins"] : lines };
     }
@@ -398,16 +399,17 @@ export async function selfUpdate(
   const outcome = await selfUpdateBinary({
     ...(effect.target === null ? {} : { target: effect.target }),
     report: (event) => {
-      if (event.kind === "downloading")
+      if (event.kind === "downloading") {
         context.dispatch({ kind: "inform", tone: "info", text: `Downloading ${event.asset}…` });
-      else if (event.kind === "verified")
+      } else if (event.kind === "verified") {
         context.dispatch({ kind: "inform", tone: "info", text: "Checksum verified." });
-      else if (event.kind === "switched")
+      } else if (event.kind === "switched") {
         context.dispatch({
           kind: "inform",
           tone: "info",
           text: `Updates now follow the ${event.channel} channel.`,
         });
+      }
     },
   });
 

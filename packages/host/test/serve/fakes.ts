@@ -29,12 +29,15 @@ import { composeServer } from "@nyte-ai/core/testing";
 import { createHandler } from "../../src/serve/handler.ts";
 import type { HandlerOptions } from "../../src/serve/handler.ts";
 
-export type FakeModels = {
+export interface FakeModels {
   readonly models: MutableModels;
   reply(...texts: readonly string[]): void;
-};
+}
 
-export type DiskFile = { readonly contents: Uint8Array; readonly version: FileVersion };
+export interface DiskFile {
+  readonly contents: Uint8Array;
+  readonly version: FileVersion;
+}
 
 export function fakeModels(): FakeModels {
   const queue: string[] = [];
@@ -63,7 +66,7 @@ export function fakeModels(): FakeModels {
     input: ["text"],
     cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 100_000,
-    maxTokens: 4_096,
+    maxTokens: 4096,
   };
 
   const respond = (options: SimpleStreamOptions | undefined): AssistantMessageEventStream =>
@@ -114,7 +117,7 @@ export function localProvider(
     browser: () => fakeBrowser(pages),
     snapshots: () => undefined,
     inspect: async (target) => ({
-      identity: asId(`local:${"path" in target ? String(target.path) : "?"}`),
+      identity: asId(`local:${"path" in target ? target.path : "?"}`),
       availability: { kind: "available" },
       projectSources: [],
     }),
@@ -134,7 +137,7 @@ export function localProvider(
                 scope: "workspace",
                 mime: "text/plain",
                 contents: new TextDecoder().decode(file.contents),
-                encoding: "utf-8",
+                encoding: "utf8",
                 version: file.version,
               };
         },
@@ -253,8 +256,9 @@ export async function served(
 
       if (authorization === "Bearer guest") return guest;
 
-      if (authorization === "Pairing 123-456")
+      if (authorization === "Pairing 123-456") {
         return { ...guest, headers: { "X-Nyte-Credential": "device-token" } };
+      }
 
       throw new SdkError("unauthenticated", "The request is not authorized.");
     },
@@ -269,8 +273,9 @@ export async function served(
 
   const workspace = await host.workspaces.add({ kind: "local", path: "/work" });
 
-  if (workspace.kind !== "added" && workspace.kind !== "exists")
+  if (workspace.kind !== "added" && workspace.kind !== "exists") {
     throw new Error(`The local workspace was not added: ${workspace.kind}.`);
+  }
 
   return {
     host,

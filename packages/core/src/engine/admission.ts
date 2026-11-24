@@ -1,7 +1,6 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   CommitId,
-  Decision,
   HeadName,
   MessageId,
   MessageSource,
@@ -28,7 +27,7 @@ import { commit } from "../watch/commit.ts";
 import { walkCommitPath } from "../fold/paths.ts";
 import { holdsReports } from "../watch/project.ts";
 import { withFold } from "../watch/reads.ts";
-import { callRef, headRef, inboxRef, receiptRef } from "../store/refs.ts";
+import { headRef, inboxRef, receiptRef } from "../store/refs.ts";
 import {
   attempt,
   guard,
@@ -37,7 +36,6 @@ import {
   liveRun,
   MAIN,
   put,
-  readCall,
   readInbox,
   readReceipt,
   readRefExpectation,
@@ -52,10 +50,9 @@ import { dev } from "../util/dev-log.ts";
 import { admitted, buildMessage, pendingReceipt } from "./admission-writes.ts";
 import type { MessageRecord } from "./admission-writes.ts";
 import { holdSummary, summarizedMove } from "./branch-summary.ts";
-import { callPhase } from "./call-phase.ts";
 import { resolveHeadConfiguration } from "./contributions.ts";
+import { gateSubmission } from "./before-send.ts";
 import { fence, finishFence } from "./fence.ts";
-import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
 import { chooseSendSchedule, landed } from "./send-schedule.ts";
 import { stopCut } from "./stop.ts";
@@ -72,23 +69,23 @@ interface Sending {
   readonly reserved: boolean;
 }
 
-type SendInput = {
+interface SendInput {
   readonly session: SessionId;
   readonly head: HeadName;
   readonly context: ConnectionContext;
   readonly content: UserContent;
   readonly options?: SendOptions;
   readonly reserved?: boolean;
-};
+}
 
-type ReviseInput = {
+interface ReviseInput {
   readonly session: SessionId;
   readonly head: HeadName;
   readonly context: ConnectionContext;
   readonly message: MessageId;
   readonly content: UserContent;
   readonly options?: ReviseOptions;
-};
+}
 
 interface Gated {
   readonly previous: FoldInput | undefined;
@@ -119,8 +116,9 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
   const found = await requireSession(kernel.store, input.session);
   const head = found.record.heads.find((entry) => entry.name === input.head);
 
-  if (head === undefined)
+  if (head === undefined) {
     throw new SdkError("unknown", `Session ${input.session} has no head ${input.head}.`);
+  }
 
   const sending: Sending = {
     kernel,
@@ -183,8 +181,9 @@ export async function reviseQueued(
   if (
     queued &&
     (await revise(sending, message, await gateRevision(sending, message), null)) !== null
-  )
+  ) {
     return { kind: "revised" };
+  }
 
   return readDeparture(kernel, session, message);
 }
@@ -206,8 +205,9 @@ export async function readDeparture(
 export async function refuseDeciding(kernel: Kernel, session: SessionId, message: MessageId) {
   const input = await withFold(kernel, session, (state) => state.inputs.get(message));
 
-  if (input?.schedule.kind === "deciding")
+  if (input?.schedule.kind === "deciding") {
     throw new SdkError("invalid", `Message ${message} is still being decided.`);
+  }
 }
 
 export function selectRunStart(
@@ -294,11 +294,12 @@ export async function landing(
     for (const [index, message] of due.entries()) {
       const input = inputs[index];
 
-      if (input === undefined)
+      if (input === undefined) {
         throw new SdkError(
           "internal",
           `Message ${message} is in the inbox but was never admitted.`,
         );
+      }
 
       const record: CommitRecord = {
         parent: records.at(-1)?.id ?? tip.id,
@@ -377,7 +378,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
   if (await replayed()) return sendReceipt(kernel, session, id);
   dev("admission", "send", { session, head, receipt: id });
 
-  const submission = await gate(sending, asId<"message">(id), {
+  const submission = await gateSubmission(sending, asId<"message">(id), {
     content: sending.content,
     source: options.source ?? USER,
     delivery: options.delivery ?? "steer",
@@ -406,13 +407,21 @@ async function admit(sending: Sending): Promise<SendReceipt> {
 
     const outcome = await commit(kernel, [
       await admitted(kernel, session, head, inbox, [...inbox.messages, message.id], message),
-      await pendingReceipt(kernel.store, session, id, digest, reservation),
+      await pendingReceipt(
+        kernel.store,
+        session,
+        id,
+        digest,
+        sending.context.principal,
+        reservation,
+      ),
     ]);
 
-    if (outcome.kind === "stale")
+    if (outcome.kind === "stale") {
       return outcome.name === receiptRef(session, id) && (await replayed())
         ? sendReceipt(kernel, session, id)
         : STALE;
+    }
 
     await announce(kernel, session, head, message);
     dev("admission", "admitted", { session, head, message: message.id, covered });
@@ -425,7 +434,7 @@ async function gateRevision(sending: Sending, target: MessageId) {
   const { kernel, session, options } = sending;
   const previous = await withFold(kernel, session, (state) => state.inputs.get(target));
 
-  const submission = await gate(sending, target, {
+  const submission = await gateSubmission(sending, target, {
     content: sending.content,
     source: options.source ?? previous?.source ?? USER,
     delivery: options.delivery ?? previous?.delivery ?? "steer",
@@ -447,7 +456,7 @@ async function revise(sending: Sending, target: MessageId, gated: Gated, keyed: 
       resolveHeadConfiguration(kernel, session, head),
     ]);
 
-    const current = inbox.messages.findIndex((message) => message === target);
+    const current = inbox.messages.indexOf(target);
 
     if (current < 0) return null;
     const rest = inbox.messages.filter((message) => message !== target);
@@ -496,16 +505,18 @@ async function revise(sending: Sending, target: MessageId, gated: Gated, keyed: 
                 kind: "send",
                 digest: keyed.digest,
                 outcome: null,
+                principal: sending.context.principal,
               }),
               expect: "absent" as const,
             },
           ]),
     ]);
 
-    if (outcome.kind === "stale")
+    if (outcome.kind === "stale") {
       return keyed !== null && outcome.name === receiptRef(session, keyed.id)
         ? ((await readReplayReceipt(kernel, session, keyed)) ?? STALE)
         : STALE;
+    }
 
     if (covered) kernel.wakes.notify(session, head);
     dev("admission", "revised", { session, head, message: target });
@@ -518,7 +529,7 @@ async function edit(sending: Sending, target: MessageId, keyed: Keyed): Promise<
   const { options } = sending;
   const { id, digest } = keyed;
 
-  const submission = await gate(sending, asId<"message">(id), {
+  const submission = await gateSubmission(sending, asId<"message">(id), {
     content: sending.content,
     source: options.source ?? USER,
     delivery: options.delivery ?? "steer",
@@ -574,7 +585,7 @@ async function editGated(
     if (located === undefined) return { kind: "failed", outcome: { kind: "missing-target" } };
     const { parent, since } = located;
 
-    if (abandoned?.kind === "summarize")
+    if (abandoned?.kind === "summarize") {
       return {
         kind: "summarize",
         tip: checked.tip,
@@ -582,6 +593,7 @@ async function editGated(
         since,
         instructions: abandoned.instructions ?? null,
       };
+    }
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
     const stopped = fenced === null || fenced.kind === "ended" ? null : checked.run;
     const record = message(stopped, checked.inbox.messages.length);
@@ -602,7 +614,7 @@ async function editGated(
         [...checked.inbox.messages, record.id],
         record,
       ),
-      await pendingReceipt(kernel.store, session, id, digest, "absent"),
+      await pendingReceipt(kernel.store, session, id, digest, sending.context.principal, "absent"),
     ]);
 
     dev("admission", "edit", { session, head, target, outcome: outcome.kind });
@@ -617,21 +629,24 @@ async function editGated(
     return replayed === null ? STALE : { kind: "replayed", receipt: replayed };
   });
 
+  const reserved = { id, kind: "send", digest, principal: sending.context.principal } as const;
+
   switch (edited.kind) {
     case "replayed":
       return edited.receipt;
 
     case "failed":
-      if (!(await reserve(kernel, session, { id, kind: "send", digest, outcome: edited.outcome })))
+      if (!(await reserve(kernel, session, { ...reserved, outcome: edited.outcome }))) {
         return (
           (await readReplayReceipt(kernel, session, gated)) ?? sendReceipt(kernel, session, id)
         );
+      }
       break;
 
     case "summarize": {
       const release = holdSummary(kernel, session, id);
 
-      if (!(await reserve(kernel, session, { id, kind: "send", digest, outcome: null }))) {
+      if (!(await reserve(kernel, session, { ...reserved, outcome: null }))) {
         release();
 
         return (
@@ -657,11 +672,12 @@ async function editGated(
         },
       })
         .then(async (summarized) => {
-          if (summarized.kind === "failed")
+          if (summarized.kind === "failed") {
             return settleReceipt(kernel, session, id, {
               kind: "send",
               outcome: summarized.outcome,
             });
+          }
 
           if (summarized.kind !== "moved") return;
 
@@ -758,7 +774,7 @@ export async function readmitDeciding(
     reserved: false,
   };
 
-  const submission = await gate(sending, input.id, {
+  const submission = await gateSubmission(sending, input.id, {
     content: input.content,
     source: input.source,
     delivery: input.delivery,
@@ -777,7 +793,7 @@ export async function readmitDeciding(
       ),
     ]);
 
-    const position = inbox.messages.findIndex((message) => message === input.id);
+    const position = inbox.messages.indexOf(input.id);
 
     if (position < 0) return null;
 
@@ -823,11 +839,13 @@ async function readReservation(
 
   if (found === null) return null;
 
-  if (found.record.kind === "report")
+  if (found.record.kind === "report") {
     return found.record.outcome === null ? found.ref.revision : null;
+  }
 
-  if (found.record.kind !== "send" || found.record.digest !== digest)
+  if (found.record.kind !== "send" || found.record.digest !== digest) {
     throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+  }
 
   return null;
 }
@@ -841,8 +859,9 @@ async function readReplayReceipt(
 
   if (found === null) return null;
 
-  if (found.record.kind !== "send" || found.record.digest !== digest)
+  if (found.record.kind !== "send" || found.record.digest !== digest) {
     throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+  }
 
   return sendReceipt(kernel, session, found.record.id);
 }
@@ -867,94 +886,6 @@ async function locate(
 
     return record === undefined ? undefined : { parent: path[index - 1] ?? null, since: record.at };
   });
-}
-
-async function gate(
-  sending: Sending,
-  message: MessageId,
-  submission: Submission,
-): Promise<Submission> {
-  const decision = await decideBeforeSend(sending, message, submission);
-
-  if (decision.action === "reject") {
-    dev("admission", "refused", { session: sending.session, message });
-
-    throw new SdkError("invalid", decision.reason);
-  }
-
-  if (decision.action === "error") throw new SdkError("internal", decision.message);
-  const admitted = decision.action === "modify" ? decision.value : submission;
-
-  return {
-    ...admitted,
-    content: await freezeMentions(sending.kernel, sending.session, admitted.content),
-  };
-}
-
-async function decideBeforeSend(
-  sending: Sending,
-  message: MessageId,
-  submission: Submission,
-): Promise<Decision<Submission>> {
-  const { kernel, session } = sending;
-  const call = asId<"call">(`hook:before_send:${message}`);
-
-  if (submission.replace === message) {
-    const found = await readCall(kernel.store, session, call);
-
-    if (found !== null && callPhase(found.record).kind === "settled")
-      await commit(kernel, [
-        { name: callRef(session, call), target: null, expect: found.ref.revision },
-      ]);
-  }
-
-  const closing = kernel.executionState.closing.signal;
-  const signal = sending.stop === null ? closing : AbortSignal.any([closing, sending.stop]);
-  let woken = Promise.withResolvers<void>();
-  const dispose = kernel.waits.onWoken(session, call, () => woken.resolve());
-  const abort = (): void => woken.resolve();
-  signal.addEventListener("abort", abort, { once: true });
-
-  try {
-    for (;;) {
-      woken = Promise.withResolvers<void>();
-
-      const outcome = await kernel.plugins
-        .runtime(session)
-        .hooks.decide(
-          "before_send",
-          submission,
-          {
-            session,
-            head: sending.head,
-            run: sending.context.origin?.run ?? null,
-            principal: sending.context.principal,
-          },
-          { call, run: null, head: null, part: null, signal },
-        )
-        .catch((error: unknown) => {
-          throw signal.aborted ? undecided(closing) : error;
-        });
-
-      if (outcome.kind === "done") return outcome.value;
-
-      if (!signal.aborted) {
-        if (outcome.kind === "interrupted") return { action: "continue" };
-        await woken.promise;
-      }
-
-      if (signal.aborted) throw undecided(closing);
-    }
-  } finally {
-    signal.removeEventListener("abort", abort);
-    dispose();
-  }
-}
-
-function undecided(closing: AbortSignal): SdkError {
-  return closing.aborted
-    ? new SdkError("unavailable", "The kernel closed before before_send decided.")
-    : new SdkError("invalid", "The send was stopped before before_send decided.");
 }
 
 function hashSendRequest(sending: Sending): Promise<string> {
@@ -982,7 +913,7 @@ function findInsertionIndex(
   if (position === undefined) return Math.min(current, rest.length);
 
   if (position.kind === "last") return rest.length;
-  const before = rest.findIndex((message) => message === position.message);
+  const before = rest.indexOf(position.message);
 
   return before < 0 ? Math.min(current, rest.length) : before;
 }

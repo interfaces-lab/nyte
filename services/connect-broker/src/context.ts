@@ -83,6 +83,7 @@ export async function throttle(
   bucket: RateLimit,
   subject: string,
 ): Promise<void> {
-  if (!withinLimit(bucket, await rateStatement(context, bucket, subject).first()))
+  if (!withinLimit(bucket, await rateStatement(context, bucket, subject).first())) {
     throw new Refusal("rate_limited");
+  }
 }

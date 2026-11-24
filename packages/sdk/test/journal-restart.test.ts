@@ -336,15 +336,17 @@ async function comeBack(
 async function strand(storage: JournalStorage): Promise<void> {
   const journal = createSendJournal(storage);
 
-  for (const entry of await journal.load())
+  for (const entry of await journal.load()) {
     await journal.put({ ...entry, session: asId<"session">("stranded") });
+  }
 }
 
 async function age(storage: JournalStorage): Promise<void> {
   const journal = createSendJournal(storage);
 
-  for (const entry of await journal.load())
+  for (const entry of await journal.load()) {
     await journal.put({ ...entry, at: entry.at - 24 * 60 * 60 * 1000 - 1 });
+  }
 }
 
 function drawn(view: SessionView, expired: readonly string[]): "landed" | "expired" | null {

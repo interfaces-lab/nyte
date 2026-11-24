@@ -9,6 +9,7 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import type { Clients, ConnectOptions, Connection, RequestJournal, Sessions } from "@nyte-ai/core";
+import { linkLost } from "@nyte-ai/protocol";
 import type { CallName, OperationInput, OperationOutput } from "@nyte-ai/protocol";
 import { dial } from "./connection/connect.ts";
 import type { HostCredentials } from "./connection/connect.ts";
@@ -17,16 +18,13 @@ import type { Chat, ChatOptions } from "./live/chat.ts";
 import type { ClientsStore } from "./live/clients.ts";
 import type { HeadStore } from "./live/head.ts";
 import { openLink } from "./live/host-connection.ts";
-import type {
-  ActionHandler,
-  Fetch,
-  Health,
-  OpenSocket,
-  TextUpdate,
-} from "./live/host-connection.ts";
+import type { ActionHandler, Fetch, OpenSocket, TextUpdate } from "./live/host-connection.ts";
+import { linkCell } from "./live/link.ts";
+import type { LinkState } from "./live/link.ts";
 import type { PartStore } from "./live/part.ts";
 import type { RefusedSends } from "./send/journal.ts";
 import type { SessionsStore, SessionsWindow } from "./live/sessions.ts";
+import { retryDelay } from "./live/store.ts";
 import type { Live } from "./live/store.ts";
 
 export interface ClientConnectOptions {
@@ -39,6 +37,9 @@ export interface ClientConnectOptions {
   readonly journal: RequestJournal;
   /** The global `fetch` and `WebSocket` when absent: a desktop bridge or React Native passes its own. */
   readonly transport?: { readonly fetch?: Fetch; readonly socket?: OpenSocket };
+  /** Dial again on the retry curve until the host answers or this aborts, for a client that lives as long as its host may be away. Without it, a host that doesn't answer rejects. */
+  readonly wait?: AbortSignal;
+  readonly away?: (state: Extract<LinkState, { readonly kind: "away" }>) => void;
 }
 
 export interface ClientConnection extends Connection {
@@ -48,9 +49,8 @@ export interface ClientConnection extends Connection {
     /** The sessions in `window`, kept current: the newest roots by default, `pinned`, a parent's children, or the roots whose name holds `query`. Close it when done. */
     open(window?: SessionsWindow): SessionsStore;
   };
-  /** The socket's state. The socket dials on the first use of anything below, so a connection that only makes requests opens none. */
-  readonly health: Live<Health>;
-  /** Call it when the link may have come back: the app came forward, the window got focus, the network returned. A link that is retrying or blocked dials now; an open one checks the host answers. */
+  /** The connection's state, from the socket and from what HTTP answers. Reading it dials the socket, as does the first use of anything below, so a connection that only makes requests opens none. */
+  readonly link: Live<LinkState>;
   retry(): void;
   /** The chat of `session`'s `options.head` (main by default): its view, kept current, and the actions a chat screen takes. Each call returns its own chat. */
   chat(session: SessionId, options?: ChatOptions): Chat;
@@ -74,18 +74,28 @@ const TAIL = 200;
 /** Connects to the host at `options.url` and resolves once it has answered and proved itself as `sdk.connect` does: requests, the journal, the socket and every chat over one connection. `close()` closes all of it. */
 export async function connect(options: ClientConnectOptions): Promise<ClientConnection> {
   const fetch = options.transport?.fetch;
+  const cell = linkCell();
 
-  const dialed = await dial({
-    url: options.url,
-    credentials: options.credentials,
-    expect: options.expect,
-    journal: options.journal,
-    fetch,
-  });
+  const dialing = () =>
+    dial({
+      url: options.url,
+      credentials: options.credentials,
+      expect: options.expect,
+      journal: options.journal,
+      fetch,
+      link: cell,
+    });
+
+  const dialed =
+    options.wait === undefined
+      ? await dialing()
+      : await answered(dialing, options.wait, options.away ?? (() => undefined));
 
   const http = dialed.connection;
 
   const link = openLink(options.url, {
+    link: cell,
+    host: http.hostId,
     credentials: dialed.credential,
     client: options.client,
     socket: options.transport?.socket,
@@ -116,11 +126,45 @@ export async function connect(options: ClientConnectOptions): Promise<ClientConn
         head,
         open: () => link.head(session, head, { tail }),
         text: (listener) => link.text(listener),
-        health: link.health,
+        link: link.link,
         journal: dialed.journal,
       });
     },
     close,
     [Symbol.asyncDispose]: close,
   };
+}
+
+async function answered<T>(
+  dialing: () => Promise<T>,
+  signal: AbortSignal,
+  away: NonNullable<ClientConnectOptions["away"]>,
+): Promise<T> {
+  const since = Date.now();
+
+  for (let attempt = 0; ; attempt += 1) {
+    signal.throwIfAborted();
+
+    try {
+      return await dialing();
+    } catch (error) {
+      if (!linkLost(error)) throw error;
+      const delay = retryDelay(attempt);
+      away({ kind: "away", since, retryAt: Date.now() + delay, reason: "lost" });
+      await sleep(delay, signal);
+    }
+  }
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
 }

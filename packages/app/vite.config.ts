@@ -30,6 +30,6 @@ export default defineConfig({
     conditions: ["nyte-source", ...defaultClientConditions],
     dedupe: ["react", "react-dom"],
   },
-  build: { chunkSizeWarningLimit: 6_000 },
+  build: { chunkSizeWarningLimit: 6000 },
   server: { port: 5179, strictPort: true, forwardConsole: true },
 });

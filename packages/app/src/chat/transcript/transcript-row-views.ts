@@ -49,6 +49,12 @@ export type UserRowView =
       readonly wrapped: boolean;
     }
   | {
+      readonly kind: "action";
+      readonly label: string;
+      readonly held: boolean;
+      readonly wrapped: boolean;
+    }
+  | {
       readonly kind: "user";
       readonly message: UserMessage;
       readonly content: UserContent;
@@ -60,8 +66,14 @@ export function stepRowView(row: StepRow): StepRowView {
   const facts = stepGroupFacts(row.messages, row.running);
   const only = facts.entries[0];
 
-  if (!row.running && facts.entries.length === 1 && only !== undefined && only.kind !== "thinking")
+  if (
+    !row.running &&
+    facts.entries.length === 1 &&
+    only !== undefined &&
+    only.kind !== "thinking"
+  ) {
     return { kind: "entry", entry: only };
+  }
 
   return { kind: "group", facts };
 }
@@ -126,7 +138,7 @@ export function userRowView(row: PromptRow | PartRow): UserRowView | undefined {
   const prompt = row.kind === "prompt";
   const held = row.kind === "prompt" && row.held;
 
-  if (showsReport(message))
+  if (showsReport(message)) {
     return {
       kind: "report",
       source: message.source,
@@ -134,15 +146,20 @@ export function userRowView(row: PromptRow | PartRow): UserRowView | undefined {
       held,
       wrapped: prompt,
     };
+  }
 
   if (showsAnswer(message)) return { kind: "answer", message, held, wrapped: prompt };
+
+  if (message.source.kind === "action") {
+    return { kind: "action", label: message.source.label, held, wrapped: prompt };
+  }
 
   return {
     kind: "user",
     message,
-    content: message.source.kind === "action" ? message.source.label : message.content,
+    content: message.content,
     pending: row.kind === "prompt" && row.pending,
-    editable: !prompt && message.source.kind !== "action",
+    editable: !prompt,
   };
 }
 

@@ -3,7 +3,12 @@ import { exposeClerkBridge } from "@clerk/electron/preload";
 import { ACCOUNT_CHANNELS } from "../shared/account/protocol.ts";
 import type { AccountBridge, AccountCommand } from "../shared/account/protocol.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
-import type { AppMenuCommand } from "@nyte-ai/app/contract/bridge.ts";
+import type {
+  AppMenuCommand,
+  BrowserFocusMessage,
+  BrowserShownMessage,
+  HostEvent,
+} from "@nyte-ai/app/contract/bridge.ts";
 import {
   APPS_ARGUMENT,
   BROWSER_FOCUS_CHANNEL,
@@ -33,11 +38,6 @@ import type {
   CallReplyFor,
   DesktopBridge,
 } from "../shared/ipc.ts";
-import type {
-  BrowserFocusMessage,
-  BrowserShownMessage,
-  HostEvent,
-} from "@nyte-ai/app/contract/bridge.ts";
 import { bridgeError } from "@nyte-ai/app/contract/errors.ts";
 import { DESKTOP_APPS, parseDesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 
@@ -164,12 +164,6 @@ const bridge = {
     },
     remote: {
       state: none("host.remote.state"),
-      start: object("host.remote.start"),
-      stop: none("host.remote.stop"),
-      configure: object("host.remote.configure"),
-      clear: object("host.remote.clear"),
-      pair: object("host.remote.pair"),
-      revoke: object("host.remote.revoke"),
       configureTailnet: object("host.remote.configureTailnet"),
       signOutTailnet: none("host.remote.signOutTailnet"),
     },
@@ -214,8 +208,9 @@ const bridge = {
       notify: (input) => ipcRenderer.send(TERMINAL_NOTIFICATION_CHANNEL, input),
     },
     setUnsavedEdits: (held) => ipcRenderer.send(UNSAVED_EDITS_CHANNEL, held),
-    setWorkspacePath: (path) => ipcRenderer.send(WINDOW_WORKSPACE_CHANNEL, path),
+    setWorkspace: (workspace) => ipcRenderer.send(WINDOW_WORKSPACE_CHANNEL, workspace),
     switchApp: object("host.switchApp"),
+    openSettings: object("host.openSettings"),
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);

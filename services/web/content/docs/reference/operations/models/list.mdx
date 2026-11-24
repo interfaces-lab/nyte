@@ -105,13 +105,25 @@ first provider with working credentials, or `null`.
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "name", "credential", "methods", "limits", "models", "listings"],
+        "required": [
+          "id",
+          "name",
+          "agent",
+          "credential",
+          "methods",
+          "limits",
+          "models",
+          "listings"
+        ],
         "properties": {
           "id": {
             "type": "string"
           },
           "name": {
             "type": "string"
+          },
+          "agent": {
+            "type": "boolean"
           },
           "credential": {
             "enum": ["unknown", "missing", "configured", "verified", "failed"]

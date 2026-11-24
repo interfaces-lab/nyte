@@ -19,7 +19,7 @@ import {
   withdrawHost,
 } from "./host-endpoint.ts";
 import type { RunningHost } from "./host-endpoint.ts";
-import { OWN_TOKEN_AUTHORITY, startHostThread } from "./host-thread.ts";
+import { NewerStoreFailure, OWN_TOKEN_AUTHORITY, startHostThread } from "./host-thread.ts";
 import type { HostWorkerEntry, Supervisor } from "./host-thread.ts";
 import { portConflict, probePort } from "./port.ts";
 
@@ -47,11 +47,13 @@ export interface ServeHostOptions {
 
 export type Served =
   | { readonly kind: "stopped" }
+  | { readonly kind: "replaced" }
+  | { readonly kind: "store-newer"; readonly message: string }
   | { readonly kind: "taken"; readonly by: RunningHost | null };
 
 type Claim = Served | { readonly kind: "claimed"; readonly release: () => void };
 
-const STANDBY_POLL_MS = 1_000;
+const STANDBY_POLL_MS = 1000;
 
 export async function serveHost(options: ServeHostOptions): Promise<Served> {
   if (!options.log) return serve(options, options.output);
@@ -104,8 +106,9 @@ async function claimHost(path: string, options: ServeHostOptions, output: Output
       return { kind: "taken", by: holder ?? (await findRunningHost(path)) };
     }
 
-    if (!standing)
+    if (!standing) {
       output.write(`${JSON.stringify({ type: "standby", holder: holder?.pid ?? null })}\n`);
+    }
     standing = true;
     await sleep(STANDBY_POLL_MS, undefined, { signal: options.signal }).catch(() => undefined);
 
@@ -139,14 +142,30 @@ async function serveClaimed(
     tailnet: options.tailnet,
     workspace: homedir(),
     supervisor: options.supervisor,
+  }).catch((cause: unknown) => {
+    if (!(cause instanceof NewerStoreFailure)) throw cause;
+
+    return cause;
   });
+
+  if (thread instanceof NewerStoreFailure) {
+    openFaultLog(hostFaultsPath())({
+      at: Date.now(),
+      area: "host",
+      message: "store-newer",
+      data: JSON.stringify({ error: thread.message }),
+    });
+
+    return { kind: "store-newer", message: thread.message };
+  }
 
   const port = Number(new URL(thread.address).port);
 
-  if (conflict !== undefined)
+  if (conflict !== undefined) {
     process.stderr.write(
       `${conflict} Listening on port ${String(port)} instead; clients that knew the old address need ${thread.address}.\n`,
     );
+  }
 
   await saveHostAddress(addressPath, { port, token });
 
@@ -159,14 +178,14 @@ async function serveClaimed(
       );
 
       const stopped = await Promise.race([
-        aborted(options.signal).then(() => null),
+        aborted(options.signal).then(() => "stopped" as const),
         thread.ended.then(
-          () => null,
+          () => "replaced" as const,
           (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause))),
         ),
       ]);
 
-      if (stopped !== null) {
+      if (stopped instanceof Error) {
         openFaultLog(hostFaultsPath())({
           at: Date.now(),
           area: "host",
@@ -177,7 +196,7 @@ async function serveClaimed(
         throw new Error(`The host stopped: ${stopped.message}`);
       }
 
-      return { kind: "stopped" };
+      return { kind: stopped };
     } finally {
       await withdrawHost(path, process.pid);
     }

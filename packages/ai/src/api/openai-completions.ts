@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { Stream } from "openai/streaming";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.js";
 import { calculateCost } from "../model-capabilities.ts";
@@ -29,24 +30,23 @@ import { emptyCost, runAssistantStream } from "./assistant-stream.ts";
 import {
   appendGrammarToolInputJsonDelta,
   createGrammarToolInputProperties,
-  type GrammarToolInputJsonBuffer,
 } from "./constrained-sampling.ts";
+import type { GrammarToolInputJsonBuffer } from "./constrained-sampling.ts";
 import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 import { NullableTokenCount } from "./token-count.ts";
 import {
   OpenAIReasoningDetailSchema,
-  type OpenAIReasoningDetail,
   appendOpenAIReasoningDetail,
   CopilotReasoningOpaqueSchema,
   REASONING_DELTA_SCHEMAS,
   ReasoningDetailsDeltaSchema,
 } from "./openai-completions-reasoning.ts";
-import {
-  type ResolvedOpenAICompletionsCompat,
-  resolveCompat,
-} from "./openai-completions-convert.ts";
-import { type OpenAICompletionsOptions, buildParams } from "./openai-completions-params.ts";
+import type { OpenAIReasoningDetail } from "./openai-completions-reasoning.ts";
+import { resolveCompat } from "./openai-completions-convert.ts";
+import type { ResolvedOpenAICompletionsCompat } from "./openai-completions-convert.ts";
+import { buildParams } from "./openai-completions-params.ts";
+import type { OpenAICompletionsOptions } from "./openai-completions-params.ts";
 
 const ChoiceUsageSchema = Type.Object({
   usage: Type.Object({
@@ -167,13 +167,13 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       );
       stream.push({ type: "start", partial: output });
 
-      type StreamingToolCallDelta = {
+      interface StreamingToolCallDelta {
         index?: number;
         id?: string;
         type?: string;
         function?: { name?: string; arguments?: string };
         custom?: { name?: string; input?: string };
-      };
+      }
 
       let textBlock: TextContent | null = null;
       let thinkingBlock: ThinkingContent | null = null;
@@ -181,8 +181,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       let hasFinishReason = false;
       const toolCallBlocksByIndex = new Map<number, StreamingToolCallBlock>();
       const toolCallBlocksById = new Map<string, StreamingToolCallBlock>();
-      const getContentIndex = (block: StreamingBlock) =>
-        blocks.findIndex((candidate) => candidate === block);
+      const getContentIndex = (block: StreamingBlock) => blocks.indexOf(block);
 
       const appendCustomToolCallInput = (
         block: StreamingToolCallBlock,

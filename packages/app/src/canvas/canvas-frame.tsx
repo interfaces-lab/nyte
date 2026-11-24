@@ -31,14 +31,14 @@ import { workbenchViewKey } from "../workbench/paths.ts";
 import { useVisibleCanvasTab, workbench } from "../workbench/store.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
-import { useAppearance } from "../theme/appearance-store.ts";
+import { useAppearance } from "../preferences/appearance-store.ts";
 import { canvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
-import { openConversationLink } from "../chat/markdown/external-link.ts";
+import { openConversationLink } from "../markdown/external-link.ts";
 import type { MentionFile } from "../data/files.ts";
-import { PartOrigin } from "../chat/transcript/part-origin.ts";
-import { useChatFolder } from "../chat/chat-folder.ts";
-import { linkReference, useCitableFiles } from "../chat/markdown/prose.tsx";
+import { PartOrigin } from "./part-origin.ts";
+import { useChatFolder } from "../chats/index.ts";
+import { linkReference, useCitableFiles } from "../markdown/prose.tsx";
 import { useReferenceOpener } from "../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
 
@@ -151,8 +151,9 @@ function canvasLink(
 ): (() => void) | undefined {
   const url = URL.parse(href);
 
-  if (url?.protocol === "http:" || url?.protocol === "https:")
+  if (url?.protocol === "http:" || url?.protocol === "https:") {
     return () => openConversationLink(url.href, opener);
+  }
   const reference = linkReference(href, files);
 
   return reference?.kind === "file" ? opener?.(reference) : undefined;
@@ -162,7 +163,7 @@ const HEIGHTS_KEY = "nyte.canvas-heights";
 
 const HEIGHTS_KEPT = 200;
 
-const HEIGHTS_SAVE_DELAY_MS = 1_000;
+const HEIGHTS_SAVE_DELAY_MS = 1000;
 
 const storedHeights = Type.Array(Type.Tuple([Type.String(), Type.Number()]));
 
@@ -205,10 +206,10 @@ export type DrawnCanvas = Pick<
   "runtime" | "code" | "title" | "height" | "heights" | "error"
 >;
 
-export type ViewedPart = {
+export interface ViewedPart {
   readonly state: Json;
   act(action: string, input: Json): Promise<Json>;
-};
+}
 
 export function CanvasFrame({
   state,
@@ -294,7 +295,7 @@ function TranscriptCanvas({
   const besideTab = useVisibleCanvasTab(workspacePath, origin);
   const title = state.title;
 
-  if (besideTab !== undefined)
+  if (besideTab !== undefined) {
     return (
       <CanvasFrame
         state={state}
@@ -318,6 +319,7 @@ function TranscriptCanvas({
         }
       />
     );
+  }
 
   const openBeside =
     origin === undefined
@@ -449,20 +451,23 @@ function CanvasShell({
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- posts the theme to the running iframe shell, again when a hidden Activity shows it after a change
   useLayoutEffect(() => {
-    if (shell.current.initialized)
+    if (shell.current.initialized) {
       post(frameRef.current, hostContextChangedNotification(canvasTheme(shown)));
+    }
   }, [shown]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- posts changed code to the running iframe shell
   useLayoutEffect(() => {
-    if (shell.current.initialized)
+    if (shell.current.initialized) {
       post(frameRef.current, renderNotification({ runtime, code, title }));
+    }
   }, [runtime, code, title]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- posts a part view's changed state to the running iframe shell
   useLayoutEffect(() => {
-    if (shell.current.initialized && partState !== undefined)
+    if (shell.current.initialized && partState !== undefined) {
       post(frameRef.current, partStateNotification(partState));
+    }
   }, [partState]);
 
   useMountEffect(() => {

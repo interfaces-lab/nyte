@@ -5,7 +5,7 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { activityStyles } from "./activity.stylex.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
-import { Prose } from "../markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import type { ThinkingMessage } from "@nyte-ai/plugin/client/presentation";
 import { thoughtView } from "./transcript-row-views.ts";
 import { useShownLive } from "./step-group-open.ts";
@@ -42,13 +42,14 @@ export function ThinkingLine({
     </div>
   );
 
-  if (thought.kind === "unfolded")
+  if (thought.kind === "unfolded") {
     return (
       <div aria-busy={streaming || undefined} {...props(stepGroupStyles.root)}>
         <div {...props(stepGroupStyles.status)}>{label}</div>
         {prose}
       </div>
     );
+  }
 
   return (
     <Collapsible.Root

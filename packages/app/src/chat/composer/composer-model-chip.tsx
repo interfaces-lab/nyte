@@ -3,7 +3,8 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { useCatalog } from "../../data/catalog.ts";
 import { useConfigureSession, useSessionChoice } from "../../data/sessions.ts";
-import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
+import { ModelPicker } from "./model-picker.tsx";
+import type { ModelPickerChange } from "./model-picker.tsx";
 import { modelRefFor, sessionModel } from "./model-picker-state.ts";
 
 export function SessionModelChip({

@@ -448,7 +448,7 @@ describe("composeHost", () => {
     expect(workspace).not.toBeNull();
     expect(second.kernel.host.current().defaultWorkspace).toBe(workspace);
     expect(await second.workspaces.list()).toMatchObject([
-      { id: workspace, addedBy: "local", projectResources: null },
+      { id: workspace, addedBy: "local", trust: { state: "undecided" } },
     ]);
   });
 });

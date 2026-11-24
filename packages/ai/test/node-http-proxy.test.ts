@@ -59,7 +59,9 @@ describe("node HTTP proxy resolution", () => {
 
     assert.throws(
       () => resolveHttpProxyUrlForTarget("https://bedrock-runtime.us-east-1.amazonaws.com"),
-      new RegExp(UNSUPPORTED_PROXY_PROTOCOL_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      new RegExp(
+        UNSUPPORTED_PROXY_PROTOCOL_MESSAGE.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`),
+      ),
     );
   });
 

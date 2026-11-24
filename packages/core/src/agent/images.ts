@@ -17,8 +17,9 @@ export async function modelImage(
   const mime = normalizeImageType(file.mime);
   const label = `Image ${file.name}, ${mime}`;
 
-  if (images === null)
+  if (images === null) {
     return passThrough(file.bytes, mime, label, "no image processor is configured");
+  }
   let prepared: PreparedImage | undefined;
 
   try {
@@ -29,8 +30,9 @@ export async function modelImage(
     return passThrough(file.bytes, mime, label, "the image processor failed");
   }
 
-  if (prepared === undefined)
+  if (prepared === undefined) {
     return [{ type: "text", text: `[${label}: left out, it cannot be prepared for the model]` }];
+  }
   const image: ImageContent = { type: "image", data: prepared.data, mimeType: prepared.mimeType };
 
   if (prepared.resized === undefined) return [image];
@@ -57,16 +59,18 @@ function passThrough(
 
   if (!INLINE_IMAGE_TYPES.has(mime)) return omitted("the model does not take this format");
 
-  if (Math.ceil(bytes.byteLength / 3) * 4 > IMAGE_LIMITS.maxBase64Bytes)
+  if (Math.ceil(bytes.byteLength / 3) * 4 > IMAGE_LIMITS.maxBase64Bytes) {
     return omitted(`${String(bytes.byteLength)} bytes is too large to send`);
+  }
   const size = imageDimensions(bytes, mime);
 
   if (size === undefined) return omitted("its size cannot be read");
 
-  if (size.width > IMAGE_LIMITS.maxWidth || size.height > IMAGE_LIMITS.maxHeight)
+  if (size.width > IMAGE_LIMITS.maxWidth || size.height > IMAGE_LIMITS.maxHeight) {
     return omitted(
       `${String(size.width)}x${String(size.height)} is larger than ${String(IMAGE_LIMITS.maxWidth)}x${String(IMAGE_LIMITS.maxHeight)}`,
     );
+  }
 
   return [{ type: "image", data: bytes.toBase64(), mimeType: mime }];
 }
@@ -96,21 +100,22 @@ function imageDimensions(
       if (bytes.length < 30) return undefined;
       const chunk = new TextDecoder().decode(bytes.subarray(12, 16));
 
-      if (chunk === "VP8 ")
+      if (chunk === "VP8 ") {
         return {
-          width: view.getUint16(26, true) & 0x3fff,
-          height: view.getUint16(28, true) & 0x3fff,
+          width: view.getUint16(26, true) & 0x3f_ff,
+          height: view.getUint16(28, true) & 0x3f_ff,
         };
+      }
 
       if (chunk === "VP8L") {
         const bits = view.getUint32(21, true);
 
-        return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+        return { width: (bits & 0x3f_ff) + 1, height: ((bits >>> 14) & 0x3f_ff) + 1 };
       }
 
       if (chunk === "VP8X") {
         const uint24 = (offset: number): number =>
-          view.getUint16(offset, true) + view.getUint8(offset + 2) * 0x10000;
+          view.getUint16(offset, true) + view.getUint8(offset + 2) * 0x1_00_00;
 
         return { width: uint24(24) + 1, height: uint24(27) + 1 };
       }
@@ -134,8 +139,9 @@ function imageDimensions(
           marker !== 0xc4 &&
           marker !== 0xc8 &&
           marker !== 0xcc
-        )
+        ) {
           return { width: view.getUint16(offset + 7), height: view.getUint16(offset + 5) };
+        }
         offset += 2 + view.getUint16(offset + 2);
       }
 

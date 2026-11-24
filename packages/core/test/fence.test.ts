@@ -51,8 +51,9 @@ function labels(updates: readonly RefUpdate[]): readonly string[] {
 }
 
 function createdRun(updates: readonly RefUpdate[]) {
-  for (const event of updates.flatMap((update) => update.events ?? []))
+  for (const event of updates.flatMap((update) => update.events ?? [])) {
     if (event.kind === "part" && event.change === "created" && event.run) return event.run;
+  }
 
   return null;
 }
@@ -157,8 +158,9 @@ describe("the stop fence (ADV round 2)", () => {
       const { session } = await host.sessions.start({ content: "Hi." });
       const old = asId<"run">("old");
 
-      for (let index = 0; index < count; index += 1)
+      for (let index = 0; index < count; index += 1) {
         await livePart(kernel, session.id, old, asId(`old:1:${index}`), "Old.");
+      }
 
       const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
 
@@ -203,8 +205,9 @@ describe("the stop fence (ADV round 2)", () => {
         bumps += 1;
         const ref = await inner.get(fence.name);
 
-        if (ref !== null)
+        if (ref !== null) {
           await inner.set([{ name: ref.name, target: ref.target, expect: ref.revision }]);
+        }
       }
 
       return inner.set(updates);
@@ -484,14 +487,16 @@ describe("integration of round 2 (§61–§63)", () => {
 });
 
 function findRun(messages: readonly Message[], content: string): RunId {
-  for (const message of messages)
+  for (const message of messages) {
     if (
       message.kind === "user" &&
       message.content === content &&
       message.status.kind === "landed" &&
       message.status.run !== null
-    )
+    ) {
       return message.status.run;
+    }
+  }
 
   throw new Error(`No run landed ${content}.`);
 }

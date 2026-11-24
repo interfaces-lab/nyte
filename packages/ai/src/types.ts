@@ -5,7 +5,23 @@ import type {
   Model,
   ThinkingLevel,
   TranscriptContext,
+  UserMessage,
 } from "@nyte-ai/schema/model";
+import type {
+  CommitId,
+  HeadName,
+  Json,
+  MessageId,
+  MessageSource,
+  Position,
+  ProviderContinuationId,
+  RunId,
+  RunView,
+  SessionId,
+  ToolClass,
+  ToolInfo,
+  ToolOutcome,
+} from "@nyte-ai/schema";
 import type { AssistantMessageEventStream } from "./utils/event-stream.ts";
 
 export type { AssistantMessageEventStream } from "./utils/event-stream.ts";
@@ -29,6 +45,7 @@ export type {
   ConstrainedSamplingConfig,
   Context,
   ProviderCheckpointMaterial,
+  ProviderCheckpointSeal,
   DeferredHandle,
   DiagnosticErrorInfo,
   GrammarFormat,
@@ -175,7 +192,69 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
   maxRetryDelayMs?: number;
 }
 
-export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
+export type ProviderCheckpointState =
+  | { readonly kind: "absent" }
+  | { readonly kind: "uncertain"; readonly dispatchId: string; readonly run: RunId }
+  | { readonly kind: "clean"; readonly anchor: Position; readonly data: Json };
+
+export interface ProviderCheckpointAccess {
+  readonly state: ProviderCheckpointState;
+  reserve(input: {
+    readonly dispatchId: string;
+    readonly kind: "prompt" | "detached";
+  }): Promise<"reserved" | "stale" | "uncertain">;
+}
+
+export interface ProviderInput {
+  readonly commit: CommitId;
+  readonly message: MessageId;
+  readonly source: MessageSource;
+  readonly projection: UserMessage;
+}
+
+export interface ProviderToolPort {
+  offered(): Promise<readonly ToolInfo[]>;
+  invoke(input: {
+    readonly operation: string;
+    readonly name: string;
+    readonly args: Json;
+    readonly signal: AbortSignal;
+  }): Promise<ToolOutcome>;
+  authorize(input: {
+    readonly operation: string;
+    readonly name: string;
+    readonly subjectName: string;
+    readonly args: Json;
+    readonly class: ToolClass;
+    readonly signal: AbortSignal;
+  }): Promise<{ readonly kind: "allow" } | { readonly kind: "deny"; readonly reason: string }>;
+}
+
+export interface ProviderHeadRequest {
+  readonly kind: "head";
+  readonly session: SessionId;
+  readonly head: HeadName;
+  readonly run: RunId;
+  readonly request: number;
+  readonly attempt: number;
+  readonly origin: RunView["origin"];
+  readonly history: {
+    readonly epoch: number;
+    readonly tip: Position;
+    readonly inputs: readonly ProviderInput[];
+  };
+  readonly lifetime: AbortSignal;
+  readonly checkpoint: ProviderCheckpointAccess;
+  readonly tools: ProviderToolPort;
+  claimContinuation(id: ProviderContinuationId): Promise<"claimed" | "stale">;
+}
+
+export type ProviderExecution =
+  | { readonly kind: "standalone"; readonly purpose: "plugin" | "summary" | "compaction" }
+  | ProviderHeadRequest;
+
+export interface StreamOptions extends ProviderRequestOptions {
+  execution?: ProviderExecution;
   /**
    * Optional callback invoked after an HTTP response is received and before
    * its body stream is consumed.
@@ -213,7 +292,7 @@ export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
 
 export type ProviderStreamOptions = StreamOptions & Record<string, unknown>;
 
-export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>> {
+export interface DeferredFetchOptions extends ProviderRequestOptions {
   /**
    * Maximum provider long-poll duration in milliseconds.
    * Defaults to 0, which performs one status check.
@@ -221,7 +300,7 @@ export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>>
   wait?: number;
 }
 
-export type DeferredCancelOptions = ProviderRequestOptions<Model<Api>>;
+export type DeferredCancelOptions = ProviderRequestOptions;
 
 export interface ProviderStreams {
   stream(

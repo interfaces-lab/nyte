@@ -9,9 +9,8 @@ import {
   IsRequired,
   IsSchemaObject,
   IsType,
-  type XSchema,
-  type XSchemaObject,
 } from "typebox/schema";
+import type { XSchema, XSchemaObject } from "typebox/schema";
 import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "../types.ts";
 
@@ -60,8 +59,12 @@ function schemaAllowsNull(schema: XSchema): boolean {
 
   if (schemaTypes(schema).includes("null")) return true;
 
-  if ((IsConst(schema) && schema.const === null) || (IsEnum(schema) && schema.enum.includes(null)))
+  if (
+    (IsConst(schema) && schema.const === null) ||
+    (IsEnum(schema) && schema.enum.includes(null))
+  ) {
     return true;
+  }
 
   return IsAnyOf(schema) && schema.anyOf.some((variant) => schemaAllowsNull(variant));
 }
@@ -295,6 +298,7 @@ export function resolveJsonSchemaStrictSampling(
       if (config.strict !== "require") return undefined;
       throw new Error(
         `Tool "${tool.name}" requires JSON-schema constrained sampling, but ${error.message}.`,
+        { cause: error },
       );
     }
   }
@@ -341,7 +345,9 @@ export function resolveGrammarConstrainedSampling(
     return { ...variant, inputProperty: inferGrammarInputProperty(tool) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Tool "${tool.name}" cannot use grammar constrained sampling: ${message}.`);
+    throw new Error(`Tool "${tool.name}" cannot use grammar constrained sampling: ${message}.`, {
+      cause: error,
+    });
   }
 }
 

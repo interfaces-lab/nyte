@@ -43,7 +43,9 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "workspaces.add": () => sdk.workspaces.add({ kind: "local", path: "/new" }),
     "workspaces.forget": () => sdk.workspaces.forget(at.id),
     "workspaces.cleanWorktrees": () => sdk.workspaces.cleanWorktrees(),
-    "workspace.update": () => at.update({ projectResources: false }),
+    "workspaces.scanStorage": () => sdk.workspaces.scanStorage(),
+    "workspaces.cleanStorage": () => sdk.workspaces.cleanStorage([]),
+    "workspace.update": () => at.update({ trusted: false }),
     "workspace.reload": () => at.reload(),
     "mcp.watch": () => at.mcp.watch()[Symbol.asyncIterator]().next(),
     "mcp.reconnect": () => at.mcp.reconnect("s"),
@@ -71,6 +73,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "principals.list": () => sdk.principals.list(),
     "principals.pair": () => sdk.principals.pair({ authority: new Set(["participant"]) }),
     "principals.revoke": () => sdk.principals.revoke(asId("nobody")),
+    "host.activity": () => sdk.host.activity(),
   };
 
   const answered = await Promise.all(

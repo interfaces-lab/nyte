@@ -17,26 +17,28 @@ function diffRows(diff: FileDiffMetadata): readonly DiffRow[] {
   const whole = !diff.isPartial;
 
   const context = (index: number, count: number, old: number, next: number): void => {
-    for (let offset = 0; offset < count; offset += 1)
+    for (let offset = 0; offset < count; offset += 1) {
       rows.push({
         marker: " ",
         old: old + offset,
         new: next + offset,
         content: lineText(diff.additionLines, index + offset),
       });
+    }
   };
 
   let oldIndex = 0;
   let newIndex = 0;
 
   for (const hunk of diff.hunks) {
-    if (whole)
+    if (whole) {
       context(
         hunk.additionLineIndex - hunk.collapsedBefore,
         hunk.collapsedBefore,
         hunk.deletionLineIndex - hunk.collapsedBefore + 1,
         hunk.additionLineIndex - hunk.collapsedBefore + 1,
       );
+    }
     let old = hunk.deletionStart;
     let next = hunk.additionStart;
 
@@ -48,21 +50,23 @@ function diffRows(diff: FileDiffMetadata): readonly DiffRow[] {
         continue;
       }
 
-      for (let offset = 0; offset < content.deletions; offset += 1)
+      for (let offset = 0; offset < content.deletions; offset += 1) {
         rows.push({
           marker: "-",
           old: old + offset,
           new: undefined,
           content: lineText(diff.deletionLines, content.deletionLineIndex + offset),
         });
+      }
 
-      for (let offset = 0; offset < content.additions; offset += 1)
+      for (let offset = 0; offset < content.additions; offset += 1) {
         rows.push({
           marker: "+",
           old: undefined,
           new: next + offset,
           content: lineText(diff.additionLines, content.additionLineIndex + offset),
         });
+      }
       old += content.deletions;
       next += content.additions;
     }
@@ -71,13 +75,14 @@ function diffRows(diff: FileDiffMetadata): readonly DiffRow[] {
     newIndex = hunk.additionLineIndex + hunk.additionCount;
   }
 
-  if (whole && diff.hunks.length > 0)
+  if (whole && diff.hunks.length > 0) {
     context(
       newIndex,
       Math.max(0, diff.additionLines.length - newIndex),
       oldIndex + 1,
       newIndex + 1,
     );
+  }
 
   return rows;
 }

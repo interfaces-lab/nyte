@@ -113,12 +113,13 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
 
       if (environment.owner_id !== input.ownerId) return { kind: "conflict" };
 
-      if (!wrote)
+      if (!wrote) {
         return refusedClaim(db, {
           ownerId: input.ownerId,
           sessionId: input.sessionId,
           now: input.now,
         });
+      }
 
       return { kind: "linked", environment, fresh: environment.id === id };
     }
@@ -176,24 +177,28 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
       environment === undefined ||
       environment.id !== transaction.environment_id ||
       environment.state === "revoked"
-    )
+    ) {
       return { kind: "revoked" };
+    }
 
     return (consumed?.meta.changes ?? 0) === 1
       ? { kind: "linked", environment, fresh: environment.id === id }
       : { kind: "recovered", environment, transaction };
   }
 
-  if (transaction.state !== "approved" || transaction.authorization_expires_at === null)
+  if (transaction.state !== "approved" || transaction.authorization_expires_at === null) {
     return { kind: "transaction", state: transaction.state };
+  }
 
-  if (transaction.authorization_expires_at <= input.now)
+  if (transaction.authorization_expires_at <= input.now) {
     return { kind: "transaction", state: "expired" };
+  }
 
   if (environment?.state === "revoked") return { kind: "revoked" };
 
-  if (environment !== undefined && environment.owner_id !== transaction.owner_id)
+  if (environment !== undefined && environment.owner_id !== transaction.owner_id) {
     return { kind: "conflict" };
+  }
 
   return refusedClaim(db, {
     ownerId: transaction.owner_id ?? "",
@@ -210,8 +215,9 @@ async function refusedClaim(
 
   if (owner !== undefined && owner.status !== "active") return { kind: "owner_disabled" };
 
-  if (await sessionDenied(db, { sessionId: input.sessionId, now: input.now }))
+  if (await sessionDenied(db, { sessionId: input.sessionId, now: input.now })) {
     return { kind: "session_revoked" };
+  }
 
   return { kind: "limit" };
 }

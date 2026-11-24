@@ -63,7 +63,7 @@ function openChat(opened: ClientConnection, session: SessionId): LiveView<ChatVi
   const tail = Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL);
   const chat = opened.chat(session, { tail });
   const activity = sessionActivityProjector();
-  const paint = paintSpans<ChatView>(session, nextFrame);
+  const paint = paintSpans(session, nextFrame);
   let drawn: ChatSnapshot | undefined;
   performance.mark("nyte:session-requested", { detail: session });
 
@@ -112,10 +112,11 @@ export function showChat(
   const view = snapshot.view;
   const freshness = snapshot.freshness;
 
-  if (view === null)
+  if (view === null) {
     return freshness.kind === "stale" && freshness.error !== null
       ? { kind: "failed", error: freshness.error }
       : { kind: "waiting" };
+  }
 
   return {
     kind: "shown",
@@ -130,7 +131,10 @@ export function showChat(
   };
 }
 
-export type ShownPart = { readonly part: PartView | null; readonly staleSince: number | null };
+export interface ShownPart {
+  readonly part: PartView | null;
+  readonly staleSince: number | null;
+}
 
 const partStores = watchFamily((opened, key: string): LiveView<ShownPart> => {
   const [session = "", part = ""] = key.split(" ");
@@ -153,13 +157,15 @@ export function showPart(
   const staleSince = freshness.kind === "stale" ? freshness.since : null;
   const found = store.snapshot === null ? previous?.part : store.snapshot.part;
 
-  if (found === undefined)
+  if (found === undefined) {
     return freshness.kind === "stale" && freshness.error !== null
       ? { kind: "failed", error: freshness.error }
       : { kind: "waiting" };
+  }
 
-  if (previous?.part === found && previous.staleSince === staleSince)
+  if (previous?.part === found && previous.staleSince === staleSince) {
     return { kind: "shown", value: previous };
+  }
 
   return { kind: "shown", value: { part: found, staleSince } };
 }
@@ -201,7 +207,7 @@ onInstall((replaced) => {
   if (replaced) hold({ kind: "replaced" });
 });
 
-export function chatGone(state: WatchState<ChatView>): boolean {
+function chatGone(state: WatchState<ChatView>): boolean {
   const freshness = state.value?.freshness;
   const error = state.error ?? (freshness?.kind === "stale" ? freshness.error : null);
 

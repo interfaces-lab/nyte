@@ -8,7 +8,7 @@ import { errorMessage } from "../contract/errors.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useHostProcess } from "../data/host.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
-import { SettingsSection } from "../settings/rows.tsx";
+import { SettingsSection } from "../settings-rows/rows.tsx";
 
 const MINUTE_MS = 60_000;
 

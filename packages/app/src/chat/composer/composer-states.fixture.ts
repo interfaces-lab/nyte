@@ -15,12 +15,13 @@ import type {
   UserContent,
 } from "@nyte-ai/sdk";
 import { SdkError } from "@nyte-ai/sdk";
-import type { Health, RefusedSend } from "@nyte-ai/sdk/client";
+import type { LinkState, RefusedSend } from "@nyte-ai/sdk/client";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { viewStream } from "../../../test/scripted-connection.ts";
 import { enterBehavior } from "./composer-keys.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
 import { USAGE, endedTurn } from "../../../test/view-fixtures.ts";
+import { errorMessage } from "../../contract/errors.ts";
 
 const configuration: Configuration = {
   kind: "exact",
@@ -109,7 +110,7 @@ export function view(
     seenThrough: null,
     background: [],
     configuration: { selected: configuration, effective: configuration },
-    context: { tokens: 250, window: 1_000, lastRequest: null },
+    context: { tokens: 250, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -206,9 +207,15 @@ const saveGates: Promise<void>[] = [];
 
 let loseHold: (lost: Awaited<HeldMessage["lost"]>) => void = () => undefined;
 
-const OPEN: Health = { kind: "open", since: 0 };
+const OPEN: LinkState = {
+  kind: "open",
+  since: 0,
+  version: "0.0.0",
+  startedAt: 0,
+  match: { kind: "current" },
+};
 
-export const health = viewStream<Health>(OPEN);
+export const link = viewStream<LinkState>(OPEN);
 
 export const stops: PromiseWithResolvers<StopOutcome<never>>[] = [];
 
@@ -320,8 +327,9 @@ export async function editQueuedMessage({
     `send button reads "${sendTitle}"`,
   );
 
-  if (layer === "composer")
+  if (layer === "composer") {
     check(stored() === KEPT_DRAFT, `the composer stores "${stored()}" while editing`);
+  }
 
   mark = calls.length;
   press("Escape");
@@ -703,7 +711,7 @@ function written(probe: Probe): string {
 }
 
 async function eventually(done: () => boolean): Promise<void> {
-  const deadline = performance.now() + 2_000;
+  const deadline = performance.now() + 2000;
 
   while (!done() && performance.now() < deadline) await painted();
 }
@@ -732,8 +740,9 @@ export async function sendTwice(probe: Probe): Promise<readonly string[]> {
 
   if (sends.length !== first + 2) failures.push(`${String(sends.length - first)} sends, not 2`);
 
-  if (probe.button("Send message")?.getAttribute("aria-busy") === "true")
+  if (probe.button("Send message")?.getAttribute("aria-busy") === "true") {
     failures.push("Send stays busy while the journal holds the messages");
+  }
 
   for (const sent of sends.splice(first)) sent.end("unsent");
 
@@ -772,14 +781,17 @@ export async function replayRefused(): Promise<readonly string[]> {
     const draft = drafts.readSession(chat).draft;
     const label = typed === "" ? "over an empty draft" : "over text";
 
-    if (draft.composer.draft !== shows)
+    if (draft.composer.draft !== shows) {
       failures.push(`${label}: the draft reads "${draft.composer.draft}", not "${shows}"`);
+    }
 
-    if (draft.notice?.message.startsWith("Couldn't send the message") !== true)
+    if (draft.notice?.message.startsWith("Couldn't send the message") !== true) {
       failures.push(`${label}: the notice reads "${draft.notice?.message ?? ""}"`);
+    }
 
-    if ((draft.notice?.restore?.text ?? null) !== restore)
+    if ((draft.notice?.restore?.text ?? null) !== restore) {
       failures.push(`${label}: Restore Draft offers "${draft.notice?.restore?.text ?? "nothing"}"`);
+    }
   }
 
   return failures;
@@ -805,12 +817,7 @@ export async function pressStop({ region, editor, button }: Probe): Promise<read
   await painted();
   check(stops.length === sent + 1, `${String(stops.length - sent)} stops were sent, not 1`);
 
-  health.push({
-    kind: "retrying",
-    attempt: 1,
-    at: 0,
-    error: new SdkError("unavailable", "The link is lost."),
-  });
+  link.push({ kind: "away", since: 0, retryAt: 0, reason: "lost" });
   await until(() => (busy() === null ? true : null), "the pending Stop to clear with the link");
   button("Stop response")?.click();
   await until(() => (stops.length === sent + 2 ? true : null), "Stop to be sent again");
@@ -834,7 +841,7 @@ export async function pressStop({ region, editor, button }: Probe): Promise<read
         : null,
     "a failed Stop to clear and say so",
   );
-  health.push(OPEN);
+  link.push(OPEN);
 
   return failures;
 }
@@ -885,10 +892,14 @@ export async function until<T>(
   what: string,
   seen: () => string = () => "",
 ): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
-    if (renderFailure !== undefined) throw renderFailure;
+    if (renderFailure !== undefined) {
+      throw renderFailure instanceof Error
+        ? renderFailure
+        : new Error(errorMessage(renderFailure), { cause: renderFailure });
+    }
     const value = read();
 
     if (value !== null && value !== undefined) return value;

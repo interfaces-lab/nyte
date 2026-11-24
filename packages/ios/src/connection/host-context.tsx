@@ -1,15 +1,12 @@
 import { createContext, use, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { AppState } from "react-native";
-import { skipToken, useQuery } from "@tanstack/react-query";
 import type { ClientConnection } from "@nyte-ai/sdk/client";
-import Constants from "expo-constants";
 import { fetch } from "expo/fetch";
-import { gt, valid } from "semver";
 import type { Connection, SavedConnection } from "./connection.ts";
 import type { ConnectFailure } from "./connect-copy.ts";
 import { connectionStore, hostVerifier } from "./host.ts";
-import { useHealth } from "./live.ts";
+import { useLink } from "./live.ts";
 import { releaseCopy } from "../account/account-copy.ts";
 import { chatDrafts } from "../chat/draft-store.ts";
 import { returnRefused } from "../chat/send-answer.ts";
@@ -18,21 +15,21 @@ import { RELEASE_TIMEOUT_MS, releaseOnHost } from "../account/revocation.ts";
 import { toast } from "../ui/toast.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 
-type HostTarget = {
+interface HostTarget {
   saved: SavedConnection;
   connection: Connection;
   client: ClientConnection;
   scope: string;
   key: string;
-};
+}
 
-export type HostRecovery = {
+export interface HostRecovery {
   readonly saved: SavedConnection;
   readonly failure: Exclude<ConnectFailure, { kind: "cancelled" }>;
   readonly retry: () => void;
   readonly repair: (() => void) | undefined;
   readonly disconnect: () => Promise<void>;
-};
+}
 
 type HostConnectionState =
   | { kind: "loading" }
@@ -40,13 +37,13 @@ type HostConnectionState =
   | { kind: "recovery"; recovery: HostRecovery }
   | ({ kind: "connected" } & HostTarget);
 
-export type HostSession = {
+export interface HostSession {
   readonly client: ClientConnection;
   readonly connection: Connection;
   readonly saved: SavedConnection;
   readonly scope: string;
   readonly disconnect: () => Promise<void>;
-};
+}
 
 export type ConnectedHost = HostSession & { readonly newerHost: boolean };
 
@@ -61,7 +58,7 @@ export function useHost(): ConnectedHost {
 }
 
 export function HostProvider({ session, children }: { session: HostSession; children: ReactNode }) {
-  const health = useHealth(session.client);
+  const link = useLink(session.client);
   useMountEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") session.client.retry();
@@ -87,17 +84,7 @@ export function HostProvider({ session, children }: { session: HostSession; chil
     return refused.subscribe(giveBack);
   });
 
-  const opened = health.kind === "open" ? health.since : undefined;
-
-  const version = useQuery({
-    queryKey: ["host-version", session.scope, opened],
-    queryFn: opened === undefined ? skipToken : () => readVersion(session.client),
-    placeholderData: (previous) => previous,
-  });
-
-  const host = valid(version.data);
-  const app = valid(Constants.expoConfig?.version);
-  const newerHost = host !== null && app !== null && gt(host, app);
+  const newerHost = link.kind === "open" && link.match.kind === "host-newer";
 
   return <HostContext.Provider value={{ ...session, newerHost }}>{children}</HostContext.Provider>;
 }
@@ -145,11 +132,12 @@ export function useHostConnection() {
           : Promise.resolve(undefined),
     });
 
-    if (removed?.released !== undefined)
+    if (removed?.released !== undefined) {
       toast.show(
         "Disconnected",
         releaseCopy(removed.saved.connection.name, { host: removed.released, broker: "skipped" }),
       );
+    }
   }
 
   const host: HostConnectionState =
@@ -180,10 +168,4 @@ export function useHostConnection() {
                 : { kind: "loading" };
 
   return { host, disconnect };
-}
-
-async function readVersion(client: ClientConnection): Promise<string | null> {
-  for await (const view of client.watch()) return view.version;
-
-  return null;
 }

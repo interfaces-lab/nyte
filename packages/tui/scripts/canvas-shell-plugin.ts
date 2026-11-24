@@ -17,12 +17,15 @@ export const canvasShellPlugin = {
       const names = paths.map((path) => relative(shell, path).split(sep).join("/"));
       const listed = Object.keys(files).toSorted();
 
-      if (names.join("\n") !== listed.join("\n"))
+      if (names.join("\n") !== listed.join("\n")) {
         throw new Error(`${shell} doesn't hold the files ${args.path} lists. Rebuild the canvas.`);
+      }
 
-      for (const [index, path] of paths.entries())
-        if (readFileSync(path).toString("base64") !== files[names[index] ?? ""])
+      for (const [index, path] of paths.entries()) {
+        if (readFileSync(path).toString("base64") !== files[names[index] ?? ""]) {
           throw new Error(`${path} differs from ${args.path}. Rebuild the canvas.`);
+        }
+      }
 
       const imports = paths.map(
         (path, index) =>

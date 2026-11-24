@@ -34,8 +34,9 @@ const migrations = readdirSync(`${broker}migrations`)
 
 const digest = createHash("sha256");
 
-for (const file of ["dist/index.js", "wrangler.jsonc", ...migrations])
+for (const file of ["dist/index.js", "wrangler.jsonc", ...migrations]) {
   digest.update(readFileSync(`${broker}${file}`));
+}
 
 const tag = digest.digest("hex").slice(0, 32);
 

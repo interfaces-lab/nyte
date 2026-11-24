@@ -22,14 +22,15 @@ import type {
   FileScope,
   GitApi,
   GitHubApi,
-  LanguageService,
   PageHolder,
   SnapshotsApi,
 } from "../contract/workspace.ts";
+import type { LanguageService } from "../contract/language.ts";
 import { applyBatch } from "./batches.ts";
 import { workspaceRef } from "../store/refs.ts";
-import { listSessionRecords, load, requireSession } from "../store/session.ts";
+import { listSessionRecords, load, requireSession, workspaceRecords } from "../store/session.ts";
 import { wrapBrowser } from "./browser.ts";
+import { projectTrust } from "./trust.ts";
 import { resolveVariables } from "./variables.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
@@ -43,6 +44,7 @@ export class UnavailableError extends SdkError {
 }
 
 interface Attachment {
+  readonly workspace: WorkspaceId;
   readonly provider: EnvironmentProvider;
   readonly env: ExecutionEnv;
   close(): Promise<void>;
@@ -50,6 +52,7 @@ interface Attachment {
   git(): GitApi | undefined;
   github(): GitHubApi | undefined;
   language(): LanguageService | undefined;
+  trustChanged(trusted: boolean): Promise<void>;
   snapshots(): SnapshotsApi | null;
 }
 
@@ -85,8 +88,9 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     providers().find((candidate) => candidate.kind === kind);
 
   const dropEmptySlot = (session: SessionId, slot: Slot): void => {
-    if (slot.wraps.length === 0 && slot.attaching === null && sessions.get(session) === slot)
+    if (slot.wraps.length === 0 && slot.attaching === null && sessions.get(session) === slot) {
       sessions.delete(session);
+    }
   };
 
   const ensureSessionSlot = (session: SessionId): Slot => {
@@ -107,29 +111,32 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     const record = await requireWorkspace(kernel.store, workspace);
     const serving = provider(record.target.kind);
 
-    if (serving === undefined)
+    if (serving === undefined) {
       throw new UnavailableError(
         "unsupported",
         `No environment provider serves ${record.target.kind}.`,
       );
+    }
 
     const inspected = await serving.inspect(record.target).catch((error: unknown) => {
       throw new UnavailableError("unreachable", formatErrorMessage(error));
     });
 
-    if (inspected.availability.kind === "unavailable")
+    if (inspected.availability.kind === "unavailable") {
       throw new UnavailableError(
         inspected.availability.reason,
         `Workspace ${workspace} is ${inspected.availability.reason}.`,
       );
+    }
 
-    if (inspected.identity !== record.identity)
+    if (inspected.identity !== record.identity) {
       throw new UnavailableError(
         "unreachable",
         `Workspace ${workspace} no longer refers to its registered environment.`,
       );
+    }
 
-    const attached = await serving.attach(record.target);
+    const attached = await serving.attach(record.target, () => projectTrust(kernel, record));
 
     if (attached.identity !== record.identity) {
       await attached.close();
@@ -231,7 +238,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       slot.version += 1;
 
       return () => {
-        const index = slot.wraps.findIndex((candidate) => candidate === entry);
+        const index = slot.wraps.indexOf(entry);
 
         if (index < 0) return;
         slot.wraps.splice(index, 1);
@@ -264,6 +271,20 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       workspaces.delete(workspace);
       await (await known?.catch(() => null))?.close();
     },
+    async trustChanged(workspace, trusted) {
+      const attached = [
+        workspaces.get(workspace),
+        ...[...sessions.values()].map((slot) => slot.attaching),
+      ];
+
+      await Promise.all(
+        attached.map(async (pending) => {
+          const found = await pending?.catch(() => null);
+
+          if (found?.workspace === workspace) await found.trustChanged(trusted);
+        }),
+      );
+    },
   };
 }
 
@@ -273,24 +294,28 @@ export function classifyFileSupport(
   return provider?.snapshots === undefined ? "unsupported" : "available";
 }
 
-export async function inspectWorkspaceAvailability(
+export async function inspectWorkspace(
   kernel: Kernel,
   workspace: Pick<WorkspaceRecord, "target" | "identity">,
-): Promise<Availability> {
+): Promise<{ readonly availability: Availability; readonly projectSources: readonly string[] }> {
   const serving = kernel.environments.provider(workspace.target.kind);
 
-  if (serving === undefined) return { kind: "unavailable", reason: "unsupported" };
-
-  try {
-    const inspected = await serving.inspect(workspace.target);
-
-    return inspected.availability.kind === "unavailable" ||
-      inspected.identity === workspace.identity
-      ? inspected.availability
-      : { kind: "unavailable", reason: "unreachable" };
-  } catch {
-    return { kind: "unavailable", reason: "unreachable" };
+  if (serving === undefined) {
+    return { availability: { kind: "unavailable", reason: "unsupported" }, projectSources: [] };
   }
+
+  const inspected = await serving.inspect(workspace.target).catch(() => null);
+
+  if (inspected === null || inspected.availability.kind === "unavailable") {
+    return {
+      availability: inspected?.availability ?? { kind: "unavailable", reason: "unreachable" },
+      projectSources: [],
+    };
+  }
+
+  return inspected.identity === workspace.identity
+    ? { availability: inspected.availability, projectSources: inspected.projectSources }
+    : { availability: { kind: "unavailable", reason: "unreachable" }, projectSources: [] };
 }
 
 export async function readWorkspace(
@@ -301,15 +326,6 @@ export async function readWorkspace(
     (await load(store, await store.refs.get(workspaceRef(workspace)), decodeWorkspaceRecord))
       ?.record ?? null
   );
-}
-
-export async function workspaceRecords(
-  store: StoreConnection,
-): Promise<readonly WorkspaceRecord[]> {
-  const refs = await store.refs.list("workspaces/");
-  const found = await Promise.all(refs.map((ref) => load(store, ref, decodeWorkspaceRecord)));
-
-  return found.flatMap((entry) => (entry === null ? [] : [entry.record]));
 }
 
 export async function byIdentity(
@@ -346,8 +362,9 @@ async function requireWorkspace(
 ): Promise<WorkspaceRecord> {
   const record = await readWorkspace(store, workspace);
 
-  if (record === null)
+  if (record === null) {
     throw new SdkError("unknown", `Workspace ${workspace} is not registered on this host.`);
+  }
 
   return record;
 }
@@ -357,8 +374,9 @@ function classifyCapabilityFailure(
 ): Extract<Capability<never>, { readonly kind: "unsupported" | "unavailable" }> {
   const reason = formatErrorMessage(error);
 
-  if (error instanceof UnavailableError && error.reason === "unsupported")
+  if (error instanceof UnavailableError && error.reason === "unsupported") {
     return { kind: "unsupported", reason };
+  }
 
   return error instanceof SdkError && error.code === "unknown"
     ? { kind: "unavailable", retry: "manual", reason }
@@ -441,6 +459,7 @@ function attachment(
   let language: LanguageService | undefined;
 
   return {
+    workspace: workspace.id,
     provider,
     env,
     async close() {
@@ -469,10 +488,11 @@ function attachment(
     },
     language() {
       if (closing) return undefined;
-      language ??= provider.language?.(env);
+      language ??= provider.language?.(env, () => projectTrust(kernel, workspace));
 
       return language;
     },
+    trustChanged: async (trusted) => language?.trustChanged(trusted),
     snapshots() {
       snapshots ??= provider.snapshots?.(env) ?? null;
 

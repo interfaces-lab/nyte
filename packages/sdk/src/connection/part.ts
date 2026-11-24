@@ -17,8 +17,9 @@ export function partHandle<K extends PartDefinition>(
 
       if (given === null) return { kind: "missing" };
 
-      if (!isJson(given.value))
+      if (!isJson(given.value)) {
         return { kind: "invalid", issues: [issue("The state is not JSON.")] };
+      }
 
       return rows.call("part.update", { session, part: id, next: given.value, options });
     },
@@ -33,8 +34,9 @@ export function partHandle<K extends PartDefinition>(
 
       if (fitsActionOutput(kind, action, absent)) return { kind: "ok", output: absent };
 
-      if (fitsActionOutput(kind, action, outcome.output))
+      if (fitsActionOutput(kind, action, outcome.output)) {
         return { kind: "ok", output: outcome.output };
+      }
 
       return { kind: "failed", message: `This handle cannot carry ${named}'s output.` };
     },

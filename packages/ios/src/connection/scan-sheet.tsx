@@ -14,16 +14,17 @@ import { css, html } from "react-strict-dom";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { media, overCamera, radii, spacing, textStyles } from "../theme.ts";
-import { parseConnectionPayload, type Connection } from "./connection.ts";
+import { parseConnectionPayload } from "./connection.ts";
+import type { Connection } from "./connection.ts";
 import { SHARE_LOCATION } from "./connect-copy.ts";
 
 const SCANNED_TYPES: ScannedObjectType[] = ["qr"];
 
-type ScanSheetProps = {
+interface ScanSheetProps {
   visible: boolean;
   onClose: () => void;
   onScan: (connection: Connection) => void;
-};
+}
 
 export function ScanSheet({ visible, onClose, onScan }: ScanSheetProps) {
   return (

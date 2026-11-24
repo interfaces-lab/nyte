@@ -4,7 +4,7 @@
 
 # Nyte
 
-Nyte is a durable runtime for agent conversations, with a terminal client and a desktop app.
+Nyte is a durable runtime for agent conversations. It includes a terminal client and a desktop app.
 
 ## Install
 
@@ -23,11 +23,11 @@ Install the terminal client:
 curl -fsSL https://nyte.sh/install | sh
 ```
 
-For the desktop app, download it from the [installation guide](https://nyte.sh/docs).
+Download the desktop app from the [installation guide](https://nyte.sh/docs).
 
 ## First run
 
-Sign in to a model provider, then start a session in the folder you want the agent to work in:
+Sign in to a model provider. Then start a session in the folder you want the agent to work in:
 
 ```sh
 nyte login
@@ -40,13 +40,15 @@ To run one prompt and print the answer:
 nyte -p "Summarize this project's README"
 ```
 
-If something doesn't work, `nyte doctor` checks the install and `nyte triage` starts an agent on what `nyte doctor` finds. The [user guide](packages/cli/docs/README.md) covers the rest.
+If something doesn't work, run `nyte doctor` to check the install. Run `nyte triage` to start an agent on what `nyte doctor` finds. The [user guide](packages/cli/docs/README.md) covers the rest.
 
 ## How it works
 
-A host is the process that runs the agent and stores sessions. Each client talks to a host on your machine, which keeps sessions in SQLite and runs agents in process. Every step reads its state from the store, so any host can take over a session between steps.
+A host is the process that runs the agent and stores sessions. Each client talks to a host on your machine. That host keeps sessions in SQLite and runs agents in process. Every step reads its state from the store, so any host can take over a session between steps.
 
-You can also run a host for remote clients with `@nyte-ai/host`, storing sessions in SQLite or PostgreSQL. It runs in a Cloudflare Durable Object and on Vercel, and the [examples](packages/examples) show both. Clients connect through `@nyte-ai/sdk`.
+You can also run a host for remote clients with `@nyte-ai/host`, storing sessions in SQLite or PostgreSQL. It runs in a Cloudflare Durable Object and on Vercel. The [examples](packages/examples) show both. Clients connect through `@nyte-ai/sdk`.
+
+The desktop app opens two kinds of window on a project. Nyte is for chat. Code is for editing, with the workbench as the main area. They share one host, so a chat is the same in both. A build from source also offers Studio, the design board.
 
 ## Development
 

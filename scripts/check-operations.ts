@@ -11,14 +11,17 @@ import {
 } from "@nyte-ai/schema";
 import type { Declaration, Json, OperationDescription } from "@nyte-ai/schema";
 
-type Lock = { readonly revision: number; readonly operations: { readonly [name: string]: Json } };
+interface Lock {
+  readonly revision: number;
+  readonly operations: Readonly<Record<string, Json>>;
+}
 
-type Operation = {
+interface Operation {
   readonly name: string;
   readonly row: Declaration<unknown, unknown>;
   readonly description: OperationDescription;
   readonly path: string;
-};
+}
 
 const root = resolve(import.meta.dirname, "..");
 
@@ -35,7 +38,7 @@ const END = "{/* generated:end */}";
 const TODO =
   "TODO: write what this operation does, when a client calls it, who may call it and on what, an example input and output, and the errors it raises.";
 
-const rows: { readonly [name: string]: Declaration<unknown, unknown> } = OPERATIONS;
+const rows: Readonly<Record<string, Declaration<unknown, unknown>>> = OPERATIONS;
 
 const operations: readonly Operation[] = describeOperations().flatMap((description) => {
   const row = rows[description.name];
@@ -69,17 +72,19 @@ process.stdout.write(
 function checkLock(): string[] {
   const lock = readLock();
 
-  if (lock === undefined)
+  if (lock === undefined) {
     return [`${relative(root, lockPath)} is missing. Run \`pnpm operations --update\`.`];
+  }
 
-  if (API_REVISION < lock.revision)
+  if (API_REVISION < lock.revision) {
     return [
       `API_REVISION is ${API_REVISION}, older than the lock's revision ${lock.revision}. Revisions only go up.`,
     ];
+  }
 
   const moved = changes(lock);
 
-  if (API_REVISION === lock.revision && moved.length > 0)
+  if (API_REVISION === lock.revision && moved.length > 0) {
     return [
       [
         `These operations changed while API_REVISION is still ${lock.revision}:`,
@@ -87,11 +92,13 @@ function checkLock(): string[] {
         `Bump API_REVISION in ${revisionPath} and run \`pnpm operations --update\`.`,
       ].join("\n"),
     ];
+  }
 
-  if (API_REVISION > lock.revision)
+  if (API_REVISION > lock.revision) {
     return [
       `API_REVISION is ${API_REVISION} but the lock records revision ${lock.revision}. Run \`pnpm operations --update\`.`,
     ];
+  }
 
   return [];
 }
@@ -102,9 +109,11 @@ function updateLock(): void {
   if (
     lock !== undefined &&
     (API_REVISION < lock.revision || (API_REVISION === lock.revision && changes(lock).length > 0))
-  )
+  ) {
     return;
-  const next: Lock = { revision: API_REVISION, operations: digests };
+  }
+
+  const next = { revision: API_REVISION, operations: digests };
   writeFileSync(lockPath, `${JSON.stringify(next, null, 2)}\n`);
 }
 
@@ -136,8 +145,9 @@ function readLock(): Lock | undefined {
   const revision = Number(value.revision);
   const locked = value.operations;
 
-  if (!Number.isInteger(revision) || !isJsonObject(locked))
+  if (!Number.isInteger(revision) || !isJsonObject(locked)) {
     throw new Error("The lock needs an integer revision and an operations object.");
+  }
 
   return { revision, operations: locked };
 }
@@ -174,16 +184,18 @@ async function checkDocs(): Promise<string[]> {
     const path = entry[0];
     const shown = relative(root, path);
 
-    if (!existsSync(path))
+    if (!existsSync(path)) {
       return [
         path.endsWith(".mdx")
           ? `${shown} is missing. Run \`pnpm operations --write-docs\`, then write its page.`
           : `${shown} is missing. Run \`pnpm operations --write-docs\`.`,
       ];
+    }
     const content = readFileSync(path, "utf8");
 
-    if (content !== entry[1])
+    if (content !== entry[1]) {
       return [`${shown} is out of date. Run \`pnpm operations --write-docs\`.`];
+    }
 
     if (content.includes(TODO)) return [`${shown} still has its TODO section. Write it by hand.`];
 
@@ -295,8 +307,9 @@ function handWritten(content: string): string {
 async function formatFile(path: string, text: string): Promise<string> {
   const result = await format(path, text);
 
-  if (result.errors.length > 0)
+  if (result.errors.length > 0) {
     throw new Error(`oxfmt could not format ${relative(root, path)}: ${result.errors[0]?.message}`);
+  }
 
   return result.code;
 }
@@ -324,5 +337,5 @@ function namespace(name: string): string {
 function slug(name: string): string {
   return name
     .slice(name.indexOf(".") + 1)
-    .replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    .replaceAll(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }

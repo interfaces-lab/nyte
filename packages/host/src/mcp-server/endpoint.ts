@@ -40,23 +40,23 @@ import type { CallBinding } from "../serve/binding.ts";
 import type { McpGrant, McpGrants } from "./grants.ts";
 import { mcpResource, READ_SCOPE, resourceMetadataUrl, WRITE_SCOPE } from "./oauth.ts";
 
-type Tool = {
+interface Tool {
   readonly name: string;
   readonly operation: CallName;
   readonly access: "read" | "write";
   readonly description: string;
   readonly inputSchema: JsonSchema;
-};
+}
 
-type Bound = {
+interface Bound {
   readonly connection: Connection;
   readonly binding: CallBinding;
   dispose(): void;
-};
+}
 
 const PARTICIPANT: ReadonlySet<Authority> = new Set<Authority>(["participant"]);
 
-const rows: { readonly [name: string]: Declaration<unknown, unknown> } = OPERATIONS;
+const rows: Readonly<Record<string, Declaration<unknown, unknown>>> = OPERATIONS;
 
 const INSTRUCTIONS =
   "Tools read and steer the sessions on this Nyte host. Each tool is one host operation.";
@@ -173,7 +173,7 @@ export function createMcpEndpoint(options: {
       (candidate) => candidate.access === "read" || grant.access.kind === "ceiling",
     );
 
-    for (const tool of tools)
+    for (const tool of tools) {
       server.registerTool(
         tool.name,
         {
@@ -183,6 +183,7 @@ export function createMcpEndpoint(options: {
         },
         (value, context) => call(grant, tool, value, context.mcpReq.signal),
       );
+    }
 
     return server;
   };
@@ -210,11 +211,12 @@ export function createMcpEndpoint(options: {
         verifyAccessToken: async (token) => {
           const grant = await options.grants.authenticate(token, resource);
 
-          if (grant === null)
+          if (grant === null) {
             throw new OAuthError(
               OAuthErrorCode.InvalidToken,
               "The token is unknown, revoked or expired.",
             );
+          }
           found.grant = grant;
 
           return {
@@ -264,26 +266,30 @@ async function run(
 ): Promise<Json> {
   const row = OPERATIONS[tool.operation];
 
-  if (!PARTICIPANT.has(row.authority))
+  if (!PARTICIPANT.has(row.authority)) {
     throw new SdkError("denied", `${tool.operation} needs ${row.authority} authority.`);
+  }
 
   const path = isJsonObject(value) ? value.path : undefined;
 
-  if (typeof path === "string")
+  if (typeof path === "string") {
     await confine(bound.connection, isJsonObject(value) ? value.workspace : undefined, path);
+  }
 
-  if (tool.access === "write")
+  if (tool.access === "write") {
     await Promise.all(
       [...new Set(namedSessions(value, ""))].map(async (target) => {
         const owner = (await bound.connection.session(asId<"session">(target)).info()).mcp?.grant;
 
-        if (owner !== grant.id)
+        if (owner !== grant.id) {
           throw new SdkError(
             "denied",
             `Session ${target} wasn't started through this MCP grant, so it may not steer, stop or name it.`,
           );
+        }
       }),
     );
+  }
 
   return callOperation(bound.binding, tool.operation, value, signal);
 }
@@ -310,8 +316,9 @@ async function confine(
     target?.kind === "local" &&
     "path" in target &&
     (await findScope(target.path, path)) === "workspace"
-  )
+  ) {
     return;
+  }
 
   throw new SdkError(
     "denied",
@@ -319,6 +326,7 @@ async function confine(
   );
 }
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- N ties binding[name] to decodeInput(name) so the call typechecks
 async function callOperation<N extends CallName>(
   binding: CallBinding,
   name: N,

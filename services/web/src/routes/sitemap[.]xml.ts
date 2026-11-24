@@ -11,6 +11,7 @@ export const Route = createFileRoute("/sitemap.xml")({
           siteUrl,
           `${siteUrl}/privacy`,
           `${siteUrl}/terms`,
+          `${siteUrl}/data`,
           ...allDocs().map((page) => `${siteUrl}${page.url}`),
           ...allDesignPages().map((page) => designPublicUrl(page.url)),
         ];

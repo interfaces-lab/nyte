@@ -11,9 +11,11 @@ import type {
 import type { DraftContent } from "../media/attachments.ts";
 import type { SendOutcome } from "./remote-chat.ts";
 
-type NewTarget = { kind: "new" };
+interface NewTarget {
+  kind: "new";
+}
 
-export type SessionTarget = {
+export interface SessionTarget {
   kind: "session";
   sessionId: SessionId;
   head: string;
@@ -28,7 +30,7 @@ export type SessionTarget = {
   onSend: (content: DraftContent, delivery?: Delivery) => Promise<SendOutcome>;
   onStop: () => void;
   onChooseHead: (head: HeadName) => void;
-};
+}
 
 export type ComposerTarget = NewTarget | SessionTarget;
 

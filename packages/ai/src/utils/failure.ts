@@ -60,7 +60,7 @@ export function reportsQuotaExhaustion(text: string): boolean {
 }
 
 const AUTH_PATTERN = pattern([
-  "\\b401\\b",
+  String.raw`\b401\b`,
   "unauthori[sz]ed",
   "invalid (?:x-)?api[ _-]?key",
   "authentication",
@@ -75,8 +75,8 @@ const RATE_LIMIT_PATTERN = pattern([
 ]);
 
 const OVERLOADED_PATTERN = pattern([
-  "\\b529\\b",
-  "\\b5(?:00|02|03|04|20|24)\\b",
+  String.raw`\b529\b`,
+  String.raw`\b5(?:00|02|03|04|20|24)\b`,
   "overload",
   "server_busy",
   "servers are currently busy",
@@ -108,7 +108,7 @@ const NETWORK_PATTERN = pattern([
   "upstream_stream_read_error",
   "stream was interrupted",
   "http/?2 stream failed",
-  "request to \\S+ failed, reason:",
+  String.raw`request to \S+ failed, reason:`,
   "reset before headers",
   "socket hang up",
   "socket connection was closed",
@@ -204,7 +204,7 @@ function retryAfterMs(message: AssistantMessage): number | undefined {
 
   if (!Number.isFinite(seconds) || seconds < 0) return undefined;
 
-  return Number.isFinite(maximum) && maximum > 0 && seconds > maximum ? undefined : seconds * 1_000;
+  return Number.isFinite(maximum) && maximum > 0 && seconds > maximum ? undefined : seconds * 1000;
 }
 
 function silentOverflow(message: AssistantMessage, contextWindow: number | undefined): boolean {
@@ -306,8 +306,9 @@ export function requestUnsent(message: AssistantMessage): boolean {
 function unsentCode(error: unknown): string | undefined {
   if (!(error instanceof Error)) return undefined;
 
-  if ("code" in error && typeof error.code === "string" && UNSENT_CODES.has(error.code))
+  if ("code" in error && typeof error.code === "string" && UNSENT_CODES.has(error.code)) {
     return error.code;
+  }
 
   return unsentCode(error.cause);
 }

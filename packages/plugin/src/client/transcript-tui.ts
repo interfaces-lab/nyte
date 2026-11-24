@@ -1,7 +1,12 @@
-import { branchSummary, compaction, text, thinking, tool } from "@nyte-ai/plugin/client";
-import type { Renderer } from "@nyte-ai/plugin/client";
-import type { Plugin } from "@nyte-ai/plugin/client";
-import { defineRenderer } from "@nyte-ai/plugin/client";
+import {
+  branchSummary,
+  compaction,
+  text,
+  thinking,
+  tool,
+  defineRenderer,
+} from "@nyte-ai/plugin/client";
+import type { Renderer, Plugin } from "@nyte-ai/plugin/client";
 import { box, text as textView } from "./tui-view.ts";
 import type { TuiView } from "./tui-view.ts";
 

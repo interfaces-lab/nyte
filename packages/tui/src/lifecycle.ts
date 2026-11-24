@@ -6,7 +6,7 @@ const ENDINGS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
 export type Ending = (typeof ENDINGS)[number];
 
-let shutdownDeadlineMs = 1_500;
+let shutdownDeadlineMs = 1500;
 
 export function exitStatus(ending: Ending): number {
   return 128 + constants.signals[ending];

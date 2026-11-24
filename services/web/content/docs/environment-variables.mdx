@@ -69,7 +69,9 @@ Set these in the shell that starts `nyte`. The ones marked **Both** also apply t
 | `NYTE_HOME`                | `nyte`     | The folder for `settings.json`, `host.json` and the host's lock, socket and log, instead of `~/.nyte`. It doesn't move the chat database |
 | `NYTE_DB`                  | Both       | The chat database file, instead of `~/.nyte/nyte.db`                                                                                     |
 | `NYTE_SKIP_VERSION_CHECK`  | Both       | Any value turns off the check for a newer release                                                                                        |
-| `NYTE_OFFLINE`             | Both       | Any value turns off update checks, and the desktop app's updates                                                                         |
+| `NYTE_OFFLINE`             | Both       | Any value turns off update checks, the desktop app's updates and [usage data](/docs/usage-data)                                          |
+| `NYTE_TELEMETRY`           | Both       | `0` turns off install pings and usage statistics, whatever the settings say. See [Usage data](/docs/usage-data)                          |
+| `DO_NOT_TRACK`             | Both       | `1` does the same as `NYTE_TELEMETRY=0`                                                                                                  |
 | `NYTE_CACHE_RETENTION`     | Both       | `short` asks providers for their shorter prompt cache. By default Nyte asks for the longer one where a provider has it, such as one hour |
 | `NYTE_SHELL_INTEGRATION`   | Both       | `0` turns off the shell integration Nyte adds to the zsh and bash shells it starts                                                       |
 | `NYTE_OAUTH_CALLBACK_HOST` | Both       | The address the Anthropic and OpenAI sign-in listens on for the browser's redirect. Default `127.0.0.1`                                  |

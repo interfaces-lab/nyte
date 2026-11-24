@@ -433,7 +433,11 @@ export const composerStyles = create({
     overflow: "clip",
     flexWrap: "nowrap",
   },
-  editorExpanded: { paddingBlock: space.s2, paddingInline: space.s3 },
+  editorExpanded: {
+    paddingBlockStart: space.s2_5,
+    paddingBlockEnd: space.s2,
+    paddingInline: space.s3,
+  },
   editorMessageEdit: {
     minHeight: type.leadingLg,
     paddingBlock: USER_PROMPT_PADDING_BLOCK,
@@ -562,6 +566,17 @@ export const composerStyles = create({
   addButtonCompact: { gridArea: "add" },
   pillButton: { borderRadius: radius.pill },
   addMenu: { width: 260, maxWidth: "calc(100vw - 24px)" },
+  modeSlot: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.s1,
+    flexShrink: 0,
+  },
+  modeSlotCompact: { gridArea: "modes" },
+  layoutCompactModes: {
+    gridTemplateColumns: `${control.heightMd} minmax(64px, 1fr) auto minmax(0, auto) auto`,
+    gridTemplateAreas: '"add editor modes model send"',
+  },
   modelSlot: {
     display: "inline-flex",
     alignItems: "center",

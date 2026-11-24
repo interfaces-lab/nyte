@@ -6,31 +6,34 @@ import type { FloorRule } from "../kit/floor.ts";
 
 type Runtime = typeof jsxRuntime;
 
-type Owner = { readonly component: string; readonly at: string | null };
+interface Owner {
+  readonly component: string;
+  readonly at: string | null;
+}
 
-type Box = {
+interface Box {
   readonly left: number;
   readonly top: number;
   readonly right: number;
   readonly bottom: number;
-};
+}
 
-type Glyphs = {
+interface Glyphs {
   readonly node: Text;
   readonly owner: Owner;
   readonly laid: readonly Box[];
   readonly boxes: readonly Box[];
   readonly surface: Element | null;
-};
+}
 
-type Draft = {
+interface Draft {
   readonly rule: FloorRule;
   readonly key: string;
   readonly owner: Owner;
   readonly measured: number;
   readonly floor: number;
   readonly what: string;
-};
+}
 
 const TOLERANCE = 0.5;
 
@@ -62,8 +65,9 @@ export function installLayoutCheck(runtime: Runtime, readCode: () => string): Ru
 }
 
 function trace<Made extends { readonly props: unknown }>(element: Made): Made {
-  if (armed.on && typeof element.props === "object" && element.props !== null)
+  if (armed.on && typeof element.props === "object" && element.props !== null) {
     traces.set(element.props, new Error("canvas element"));
+  }
 
   return element;
 }
@@ -110,8 +114,9 @@ function checkLayout(code: string): CanvasLayoutFinding[] {
   for (const draft of drafts) {
     const seen = worst.get(`${draft.rule} ${draft.key}`);
 
-    if (seen === undefined || severity(draft) > severity(seen))
+    if (seen === undefined || severity(draft) > severity(seen)) {
       worst.set(`${draft.rule} ${draft.key}`, draft);
+    }
   }
 
   return [...worst.values()]
@@ -296,7 +301,7 @@ function findClipper(
 
   if (small || truncates || scrolls(style.overflowX) || scrolls(style.overflowY)) return undefined;
 
-  if (hides(style.overflowX) || hides(style.overflowY))
+  if (hides(style.overflowX) || hides(style.overflowY)) {
     return {
       box: element instanceof SVGSVGElement ? box : clientBox(element),
       name:
@@ -304,6 +309,7 @@ function findClipper(
           ? "the chart's own box"
           : `its <${element.tagName.toLowerCase()}>`,
     };
+  }
 
   return findClipper(root, element.parentElement);
 }
@@ -327,7 +333,7 @@ function checkSurfaces(
       const second = fibers.owner(other);
       const pair = `${describeOwner(first)} and ${describeOwner(second)}`;
 
-      if (across < -TOLERANCE && down < -TOLERANCE)
+      if (across < -TOLERANCE && down < -TOLERANCE) {
         return [
           {
             rule: "overlap",
@@ -338,6 +344,7 @@ function checkSurfaces(
             what: `${pair} overlap by ${round(-Math.max(across, down))} px`,
           },
         ];
+      }
       const apart = across < 0 ? down : down < 0 ? across : Number.POSITIVE_INFINITY;
 
       if (apart >= floor - TOLERANCE) return [];
@@ -416,7 +423,7 @@ function checkInset(
     if (near === undefined || near.by >= floor - TOLERANCE) return [];
     const holder = fibers.owner(text.surface);
 
-    if (near.by < -TOLERANCE)
+    if (near.by < -TOLERANCE) {
       return [
         {
           rule: "overflow",
@@ -427,6 +434,7 @@ function checkInset(
           what: `${quote(text.node)} in ${describeOwner(text.owner)} runs ${round(-near.by)} px past the ${near.side} edge of its ${describeOwner(holder)}`,
         },
       ];
+    }
 
     return [
       {
@@ -486,8 +494,9 @@ function readGlyphs(
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
 
-  for (let node = walker.nextNode(); node !== null; node = walker.nextNode())
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
     if (node instanceof Text && node.data.trim() !== "") nodes.push(node);
+  }
 
   return nodes.flatMap((node) => {
     const parent = node.parentElement;
@@ -587,30 +596,30 @@ function painted(element: Element): boolean {
 }
 
 class FiberReader {
-  readonly #key: string | undefined;
-  readonly #code: string;
-  readonly #owners = new Map<Element, Owner>();
+  private readonly key: string | undefined;
+  private readonly code: string;
+  private readonly owners = new Map<Element, Owner>();
 
   constructor(root: Element, code: string) {
     const first = root.querySelector("*");
-    this.#key =
+    this.key =
       first === null
         ? undefined
         : Object.keys(first).find((key) => key.startsWith("__reactFiber$"));
-    this.#code = code;
+    this.code = code;
   }
 
   owner(element: Element): Owner {
-    const known = this.#owners.get(element);
+    const known = this.owners.get(element);
 
     if (known !== undefined) return known;
 
-    const found = this.#walk(this.#fiber(element), undefined) ?? {
+    const found = this.walk(this.fiber(element), undefined) ?? {
       component: `<${element.tagName.toLowerCase()}>`,
       at: null,
     };
 
-    this.#owners.set(element, found);
+    this.owners.set(element, found);
 
     return found;
   }
@@ -619,10 +628,10 @@ class FiberReader {
     const display = getComputedStyle(element).display;
 
     if (display.startsWith("inline") || display === "contents") return false;
-    const name = this.#findKitRoot(element);
+    const name = this.findKitRoot(element);
 
     if (name !== undefined) return KIT_ROLES.get(name) === "surface";
-    const props = read(this.#fiber(element), "memoizedProps");
+    const props = read(this.fiber(element), "memoizedProps");
     const box = element.getBoundingClientRect();
 
     return (
@@ -637,10 +646,10 @@ class FiberReader {
   }
 
   textBlock(element: Element): boolean {
-    const name = this.#findKitRoot(element);
+    const name = this.findKitRoot(element);
 
     if (name !== undefined) return KIT_ROLES.get(name) === "text";
-    const props = read(this.#fiber(element), "memoizedProps");
+    const props = read(this.fiber(element), "memoizedProps");
 
     return (
       /^(?:H[1-6]|P)$/u.test(element.tagName) &&
@@ -650,15 +659,15 @@ class FiberReader {
     );
   }
 
-  #fiber(element: Element): unknown {
-    return this.#key === undefined
+  private fiber(element: Element): unknown {
+    return this.key === undefined
       ? undefined
-      : Object.getOwnPropertyDescriptor(element, this.#key)?.value;
+      : Object.getOwnPropertyDescriptor(element, this.key)?.value;
   }
 
-  #findKitRoot(element: Element): string | undefined {
+  private findKitRoot(element: Element): string | undefined {
     for (
-      let fiber = read(this.#fiber(element), "return");
+      let fiber = read(this.fiber(element), "return");
       fiber !== undefined && fiber !== null;
       fiber = read(fiber, "return")
     ) {
@@ -673,21 +682,23 @@ class FiberReader {
     return undefined;
   }
 
-  #walk(fiber: unknown, kit: string | undefined): Owner | undefined {
-    if (fiber === undefined || fiber === null)
+  private walk(fiber: unknown, kit: string | undefined): Owner | undefined {
+    if (fiber === undefined || fiber === null) {
       return kit === undefined ? undefined : { component: kit, at: null };
+    }
     const type = read(fiber, "type");
     const props = read(fiber, "memoizedProps");
     const name = findKitName(type);
     const traced = typeof props === "object" && props !== null ? traces.get(props) : undefined;
 
-    if (traced !== undefined)
+    if (traced !== undefined) {
       return {
         component: name ?? nameType(type),
-        at: locateCanvasStack(this.#code, traced.stack ?? "") ?? null,
+        at: locateCanvasStack(this.code, traced.stack ?? "") ?? null,
       };
+    }
 
-    return this.#walk(read(fiber, "return"), kit ?? name);
+    return this.walk(read(fiber, "return"), kit ?? name);
   }
 }
 

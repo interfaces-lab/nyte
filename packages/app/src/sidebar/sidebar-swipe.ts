@@ -1,9 +1,9 @@
 import { createTheme } from "@stylexjs/stylex";
-import { useEffectEvent, useRef, useState, type RefObject } from "react";
+import { useEffectEvent, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { flushSync } from "react-dom";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { sidebarMotion } from "../theme/tokens.stylex.ts";
-import { windowApp } from "../contract/nyte.ts";
 import { useSidebar } from "./use-sidebar.ts";
 
 const THRESHOLD = 16;
@@ -40,7 +40,8 @@ interface SwipeStep {
   readonly toggles: boolean;
 }
 
-export function useSidebarSwipe(root: RefObject<HTMLElement | null>): boolean {
+/** Opens and closes the sidebar with a two-finger swipe over `root`. A window without the chat sidebar passes `enabled` false. */
+export function useSidebarSwipe(root: RefObject<HTMLElement | null>, enabled: boolean): boolean {
   const sidebar = useSidebar();
   const [pushing, setPushing] = useState(false);
   const gesture = useRef<Swipe | undefined>(undefined);
@@ -97,7 +98,7 @@ export function useSidebarSwipe(root: RefObject<HTMLElement | null>): boolean {
   useMountEffect(() => {
     const element = root.current;
 
-    if (element === null || windowApp() === "code") return;
+    if (element === null || !enabled) return;
     const listener = (event: WheelEvent): void => onWheel(event);
     element.addEventListener("wheel", listener, { passive: true });
 

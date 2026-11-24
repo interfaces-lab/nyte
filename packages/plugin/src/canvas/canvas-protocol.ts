@@ -212,6 +212,7 @@ export const KIT = {
   Collapsible:
     "Collapsible.Root { open?, defaultOpen?, onOpenChange? } > Collapsible.Trigger { children } + Collapsible.Panel { children }",
   Kbd: "{ keys: string[] }",
+  Icon: '{ name: string, size?: "2xs" | "xs" | "sm" | "md" | "lg" = "sm", label?: string }: a glyph from the app\'s icon set in the colour of the text around it; an unknown name draws nothing and logs the closest names',
   Spinner: "{}",
   useColorScheme: '(): "light" | "dark"',
 } as const;
@@ -233,20 +234,21 @@ export const CANVAS_VARIABLES = [
 
 export const CANVAS_PROTOCOL_VERSION = "2026-01-26";
 
-export type CanvasHostContext = {
+export interface CanvasHostContext {
   readonly theme: "light" | "dark";
   readonly styles: { readonly variables: Readonly<Record<string, string>> };
   readonly displayMode: "inline";
   readonly platform: "desktop" | "web" | "mobile";
   readonly deviceCapabilities: { readonly touch: boolean; readonly hover: boolean };
-};
+}
 
-export type CanvasModule = {
+export interface CanvasModule {
   readonly runtime: number;
   readonly code: string;
   readonly title: string;
-};
+}
 
+// oxlint-disable-next-line typescript/consistent-type-definitions -- stored as Json, which needs the implicit index signature only a type alias has
 export type CanvasHostInfo = {
   readonly name: "nyte-desktop" | "nyte-web" | "nyte-ios" | "nyte-preview";
   readonly version: string;
@@ -421,7 +423,7 @@ export function readShellMessage(data: unknown): ShellMessage | undefined {
 
   if (method === INITIALIZE && id !== undefined) {
     const info = record(params?.["appInfo"]);
-    const runtime = info === undefined ? NaN : Number(info["version"]);
+    const runtime = info === undefined ? Number.NaN : Number(info["version"]);
 
     return Number.isInteger(runtime) && runtime > 0
       ? { kind: "initialize", id, runtime }
@@ -469,8 +471,9 @@ export function readShellMessage(data: unknown): ShellMessage | undefined {
       params?.["level"] !== "error" ||
       (phase !== "load" && phase !== "render") ||
       typeof text !== "string"
-    )
+    ) {
       return undefined;
+    }
 
     return { kind: "error", phase, message: text, stack: typeof stack === "string" ? stack : null };
   }
@@ -500,8 +503,9 @@ export function readHostMessage(data: unknown): HostMessage | undefined {
         : undefined;
     }
 
-    if (result["hostContext"] === undefined)
+    if (result["hostContext"] === undefined) {
       return { kind: "open-link-result", id, isError: result["isError"] === true };
+    }
     const info = record(result["hostInfo"]);
     const context = readContext(result["hostContext"]);
     const name = info?.["name"];
@@ -514,8 +518,9 @@ export function readHostMessage(data: unknown): HostMessage | undefined {
         name !== "nyte-web" &&
         name !== "nyte-ios" &&
         name !== "nyte-preview")
-    )
+    ) {
       return undefined;
+    }
 
     return { kind: "initialize-result", id, hostInfo: { name, version }, hostContext: context };
   }
@@ -553,7 +558,10 @@ export function clampCanvasHeight(height: number): number {
   return Math.min(CANVAS_MAX_HEIGHT, Math.max(CANVAS_MIN_HEIGHT, Math.round(height)));
 }
 
-export type CanvasMeasuredHeight = { readonly width: number; readonly height: number };
+export interface CanvasMeasuredHeight {
+  readonly width: number;
+  readonly height: number;
+}
 
 export function canvasStartHeight(
   canvas: {
@@ -582,7 +590,7 @@ export function sanitizeCanvasVariables(
   return Object.fromEntries(
     Object.entries(variables)
       .filter(([name]) => allowed.includes(name))
-      .map(([name, value]) => [name, value.replace(/[;{}<>]/g, "")]),
+      .map(([name, value]) => [name, value.replaceAll(/[;{}<>]/g, "")]),
   );
 }
 
@@ -626,11 +634,13 @@ function readPartialContext(value: unknown): Partial<CanvasHostContext> | undefi
     platform !== "desktop" &&
     platform !== "web" &&
     platform !== "mobile"
-  )
+  ) {
     return undefined;
+  }
 
-  if (capabilities !== undefined && (typeof touch !== "boolean" || typeof hover !== "boolean"))
+  if (capabilities !== undefined && (typeof touch !== "boolean" || typeof hover !== "boolean")) {
     return undefined;
+  }
 
   return {
     ...(theme === undefined ? {} : { theme }),

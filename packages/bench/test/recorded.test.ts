@@ -181,11 +181,11 @@ describe("the recorder", () => {
 
     class Echo implements RecorderSocket {
       readyState = 1;
-      readonly #listeners = new Set<(event: SocketEvent) => void>();
+      private readonly listeners = new Set<(event: SocketEvent) => void>();
 
       send(data: string): void {
         queueMicrotask(() => {
-          for (const listener of this.#listeners) listener({ data: `echo ${data}` });
+          for (const listener of this.listeners) listener({ data: `echo ${data}` });
         });
       }
 
@@ -194,11 +194,11 @@ describe("the recorder", () => {
       }
 
       addEventListener(type: string, listener: (event: SocketEvent) => void): void {
-        if (type === "message") this.#listeners.add(listener);
+        if (type === "message") this.listeners.add(listener);
       }
 
       removeEventListener(_type: string, listener: (event: SocketEvent) => void): void {
-        this.#listeners.delete(listener);
+        this.listeners.delete(listener);
       }
     }
 

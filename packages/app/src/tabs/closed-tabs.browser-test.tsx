@@ -8,7 +8,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 import { queryClient } from "../data/query-client.ts";
-import { closeSettings, showNotifiedChat } from "../settings/return.ts";
+import { closeSettings, showNotifiedChat } from "../settings-sections/return.ts";
 import { createAppRouter } from "../shell/routes.tsx";
 import { activeTab, tabPlace, tabPlaces } from "./model.ts";
 import { useWindowTabsSync } from "./use-window-tabs.tsx";
@@ -94,8 +94,9 @@ async function overSettings(
 export async function run(): Promise<string> {
   windowTabs.start({ id: "closed-tabs", launch: undefined });
 
-  for (const id of [quiet.id, ARCHIVED, DELETED, asId<"session">("other-0")])
+  for (const id of [quiet.id, ARCHIVED, DELETED, asId<"session">("other-0")]) {
     windowTabs.openChat(id, "permanent");
+  }
 
   for (const id of [quiet.id, ARCHIVED, DELETED]) {
     const tab = windowTabs.getSnapshot().tabs.find((candidate) => {
@@ -122,8 +123,9 @@ export async function run(): Promise<string> {
     ),
   );
 
-  for (let frame = 0; frame < 200 && closedChats().join(", ") !== quiet.id; frame += 1)
+  for (let frame = 0; frame < 200 && closedChats().join(", ") !== quiet.id; frame += 1) {
     await nextFrame();
+  }
   const kept = closedChats().join(", ");
   const settings: string[] = [];
 

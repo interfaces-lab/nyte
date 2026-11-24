@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
-import { COMMANDS, findCommand } from "./commands.ts";
-import type { CommandName } from "./commands.ts";
+import { findCommand } from "./commands.ts";
+import type { CommandName, COMMANDS } from "./commands.ts";
 import { CliError, suggest } from "./errors.ts";
 
 type Spec<C extends CommandName> = Extract<(typeof COMMANDS)[number], { readonly name: C }>;
@@ -44,18 +44,21 @@ export function readAction<C extends GroupName>(name: C, args: readonly string[]
 
   if (namesAction(name, word)) return { action: word, args: args.slice(1) };
 
-  if ((word === undefined || word.startsWith("-")) && namesAction(name, fallback))
+  if ((word === undefined || word.startsWith("-")) && namesAction(name, fallback)) {
     return { action: fallback, args };
+  }
 
-  if (word === undefined)
+  if (word === undefined) {
     throw new CliError("missing_input", `Name a command for nyte ${name}.`, { next });
+  }
 
-  if (word.startsWith("-"))
+  if (word.startsWith("-")) {
     throw new CliError(
       "invalid_arguments",
       `Name a nyte ${name} command before ${word.split("=")[0] ?? word}.`,
       { next },
     );
+  }
 
   const near = suggest(
     word,
@@ -105,12 +108,13 @@ export function parseCommandArgs<C extends CommandName, A extends ActionName<C> 
     if (token.kind === "option-terminator") continue;
 
     if (token.kind === "positional") {
-      if (positionals.length === maxPositionals)
+      if (positionals.length === maxPositionals) {
         throw new CliError(
           "invalid_arguments",
           `Unexpected argument ${token.value} for ${path.join(" ")}.`,
           help,
         );
+      }
       positionals.push(token.value);
       continue;
     }
@@ -130,12 +134,14 @@ export function parseCommandArgs<C extends CommandName, A extends ActionName<C> 
       );
     }
 
-    if (values.has(spec.name) && spec.repeatable !== true)
+    if (values.has(spec.name) && spec.repeatable !== true) {
       throw new CliError("invalid_arguments", `Provide --${spec.name} only once.`, help);
+    }
 
     if (spec.value === undefined) {
-      if (token.value !== undefined)
+      if (token.value !== undefined) {
         throw new CliError("invalid_arguments", `${token.rawName} takes no value.`, help);
+      }
       values.set(spec.name, []);
       continue;
     }
@@ -143,8 +149,9 @@ export function parseCommandArgs<C extends CommandName, A extends ActionName<C> 
     if (
       token.value === undefined ||
       (!token.inlineValue && token.value !== "-" && token.value.startsWith("-"))
-    )
+    ) {
       throw new CliError("invalid_arguments", `${token.rawName} needs a value.`, help);
+    }
     values.set(spec.name, [...(values.get(spec.name) ?? []), token.value]);
   }
 

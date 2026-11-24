@@ -165,7 +165,7 @@ export function createMentionSuggestionRanking(files: readonly MentionFile[]): M
     for (const entry of candidates) {
       const tier = fileTier(query, entry);
 
-      if (tier !== undefined)
+      if (tier !== undefined) {
         keepBest(
           best,
           {
@@ -176,6 +176,7 @@ export function createMentionSuggestionRanking(files: readonly MentionFile[]): M
           },
           limit,
         );
+      }
     }
 
     return best;

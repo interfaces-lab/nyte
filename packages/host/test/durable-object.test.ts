@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { durableObjectStore } from "../src/store/durable-object.ts";
 import { doSqlStub } from "./do-sql-stub.ts";
-import { storeConformance, storeMigrationConformance } from "./store-conformance.ts";
+import { storeConformance } from "./store-conformance.ts";
+import { storeMigrationConformance } from "./store-migration-conformance.ts";
 
 async function fresh() {
   return durableObjectStore(doSqlStub());

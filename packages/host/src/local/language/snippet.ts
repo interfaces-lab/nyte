@@ -1,15 +1,15 @@
 import type { SnippetStop } from "@nyte-ai/schema";
 
-type Parse = {
+interface Parse {
   readonly source: readonly string[];
   index: number;
   text: string;
   readonly stops: { readonly number: number; readonly stop: SnippetStop }[];
-};
+}
 
 const ESCAPED = new Set(["$", "}", "\\", ",", "|"]);
 
-/** Expands an LSP snippet to its text and tab stops: placeholders keep their default, choices their first option, variables their default or nothing; `$0` sorts last. */
+/** Expands an LSP snippet to its text and tab stops: placeholders keep their default, choices their first option, variables their default or nothing; `$0` sorts last, and a snippet with stops but no `$0` ends with one at the end of its text. */
 export function expandSnippet(snippet: string): {
   readonly text: string;
   readonly stops: readonly SnippetStop[];
@@ -17,6 +17,8 @@ export function expandSnippet(snippet: string): {
   const parse: Parse = { source: Array.from(snippet), index: 0, text: "", stops: [] };
   readUntil(parse, null);
   const rank = (number: number): number => (number === 0 ? Number.POSITIVE_INFINITY : number);
+
+  if (parse.stops.length > 0) addStop(parse, 0, parse.text.length);
 
   return {
     text: parse.text,

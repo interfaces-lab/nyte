@@ -9,7 +9,7 @@ export interface FolderFollow {
   readonly wanted: string | null;
 }
 
-export type FollowStep =
+type FollowStep =
   | { readonly kind: "none" }
   | { readonly kind: "activate"; readonly folder: string | null };
 
@@ -80,10 +80,11 @@ export function adoptLocation(
   const tab = activeTab(state);
   const view = tab.view;
 
-  if (view.kind === "page" && view.page.kind === "customize" && location.kind === "customize")
+  if (view.kind === "page" && view.page.kind === "customize" && location.kind === "customize") {
     return pageSection(view.page) === pageSection(location)
       ? undefined
       : { kind: "page-section", section: pageSection(location) };
+  }
 
   return samePlaceAt(tabPlace(tab), location)
     ? undefined
@@ -110,8 +111,9 @@ export function followFolder(
     return { next: { followed, wanted }, step: { kind: "activate", folder: wanted } };
   }
 
-  if (draft?.folder === undefined)
+  if (draft?.folder === undefined) {
     return { next: { ...previous, followed }, step: { kind: "none" } };
+  }
 
   return {
     next: { followed, wanted: draft.folder },

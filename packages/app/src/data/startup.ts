@@ -1,7 +1,7 @@
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { ConnectionProblem } from "../contract/connection.ts";
 
-export type StartupProblem = Exclude<ConnectionProblem["kind"], "network">;
+export type StartupProblem = ConnectionProblem["kind"];
 
 type StartupConnection =
   | { readonly kind: "connecting" }

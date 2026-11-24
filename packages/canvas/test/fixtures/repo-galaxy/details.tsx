@@ -3,7 +3,7 @@ import { GRAPH, HUBS, ROOT } from "./graph.ts";
 import type { Import, Star } from "./graph.ts";
 
 export function Details({ star }: { readonly star: Star | undefined }) {
-  if (star === undefined)
+  if (star === undefined) {
     return (
       <Table
         caption="Most imported"
@@ -14,6 +14,7 @@ export function Details({ star }: { readonly star: Star | undefined }) {
         rows={HUBS.map((hub) => ({ module: hub.label, count: hub.importers.length }))}
       />
     );
+  }
   const cell = (edge: Import | undefined, outgoing: boolean) => {
     const other = edge === undefined ? undefined : GRAPH.stars[outgoing ? edge.to : edge.from];
     const path = outgoing ? star.path : other?.path;

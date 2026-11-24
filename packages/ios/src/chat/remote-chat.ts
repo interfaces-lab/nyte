@@ -21,14 +21,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
-import {
-  chatFor,
-  healthMessage,
-  updatedLabel,
-  useChatRead,
-  useHealth,
-} from "../connection/live.ts";
-import { uploadDraft, type DraftContent } from "../media/attachments.ts";
+import { chatFor, linkMessage, updatedLabel, useChatRead, useLink } from "../connection/live.ts";
+import { uploadDraft } from "../media/attachments.ts";
+import type { DraftContent } from "../media/attachments.ts";
 import { sendAnswer } from "./send-answer.ts";
 import type { SendAnswer } from "./send-answer.ts";
 
@@ -83,7 +78,7 @@ export function useRemoteChat(client: ClientConnection, sessionId: SessionId, he
 
   const read = useChatRead(client, sessionId, headName);
   const chat = read !== undefined && "view" in read ? read : undefined;
-  const health = useHealth(client);
+  const link = useLink(client);
   const state = chat?.view;
 
   const info = useQuery({
@@ -206,7 +201,7 @@ export function useRemoteChat(client: ClientConnection, sessionId: SessionId, he
     state,
     tip: tip?.kind === "commit" ? tip.id : undefined,
     heads: info.data?.heads.map((entry) => entry.name) ?? [],
-    health: healthMessage(health),
+    health: linkMessage(link),
     loadError:
       read !== undefined && "error" in read ? describeHostError(read.error, newerHost) : undefined,
     updated: updatedLabel(chat?.freshness),

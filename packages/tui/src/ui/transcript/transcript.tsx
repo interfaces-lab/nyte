@@ -99,20 +99,23 @@ export function Transcript(props: TranscriptProps): JSX.Element {
     if (box === undefined) return;
     const { rows: all, window } = props.model();
 
-    if (direction === -1 && window.start > 0 && box.scrollTop <= box.viewport.height)
+    if (direction === -1 && window.start > 0 && box.scrollTop <= box.viewport.height) {
       props.onRevealEarlier();
+    }
 
     if (
       direction === 1 &&
       window.end < all.length &&
       box.scrollTop + 2 * box.viewport.height >= box.scrollHeight
-    )
+    ) {
       props.onRevealLater?.();
+    }
   };
 
   const settle = (): void => {
-    if (box !== undefined && held !== null && !held.node.isDestroyed)
+    if (box !== undefined && held !== null && !held.node.isDestroyed) {
       box.scrollTo(Math.max(0, layoutTop(held.node) - held.offset));
+    }
   };
 
   const release = (frames: number): void => {

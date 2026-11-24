@@ -53,7 +53,7 @@ let sessions = 0;
 async function picked(configure: (patch: ConfigureSessionPatch) => Promise<ConfigureOutcome>) {
   sessions += 1;
   const session = asId<"session">(`configured-${String(sessions)}`);
-  const views = viewStream<SessionView>(chosen(1, OLD));
+  const views = viewStream(chosen(1, OLD));
   const started: { configuration: unknown }[] = [];
 
   const scripted = scriptedConnection({
@@ -153,25 +153,26 @@ test.each<{
   for (const step of row.steps) {
     if (step === "answer") answer.resolve(CONFIGURED);
 
-    if (step === "picked back")
+    if (step === "picked back") {
       void new MutationObserver(
         queryClient,
         sessionConfigurationOptions({ sessionId: chat.session }),
       )
         .mutate({ model: OLD })
         .catch(() => undefined);
+    }
 
     if (step === "unrelated view") chat.views.push(chosen(2, OLD));
 
     if (step === "chosen view") chat.views.push(chosen(3, NEW));
-    await settle(step === "2 s" ? 2_000 : 0);
+    await settle(step === "2 s" ? 2000 : 0);
   }
 
   expect({ shown: chat.shown(), pending: pendingConfigurations(chat.session).length }).toEqual({
     shown: row.shown,
     pending: row.pending,
   });
-  await settle(2_000);
+  await settle(2000);
   chat.leave();
   await settle();
   vi.useRealTimers();

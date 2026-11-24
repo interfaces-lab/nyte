@@ -127,8 +127,9 @@ export function Board(input: { readonly host: HTMLElement }): ReactElement {
 
         return at?.x !== entry[1].x || at.y !== entry[1].y;
       }))
-  )
+  ) {
     setAnchors({ signature, settled, at: placed });
+  }
   const lit = gestures.editing === null ? findLit(host, view.lights.you) : null;
   const glowing = findGlowing(sheets, view.lights.agents);
   const pageFrames = usePageFrames({ sheets, placed, lit, zoom: () => camera.at().zoom });
@@ -282,7 +283,7 @@ export function Board(input: { readonly host: HTMLElement }): ReactElement {
 
             if (at === undefined) return [];
 
-            if (sheet.error !== null && sheet.frames.length === 0)
+            if (sheet.error !== null && sheet.frames.length === 0) {
               return [
                 <div
                   key={sheet.path}
@@ -293,6 +294,7 @@ export function Board(input: { readonly host: HTMLElement }): ReactElement {
                   {`${sheet.path} could not be drawn.\n${describeSheetError(sheet.error)}`}
                 </div>,
               ];
+            }
 
             return sheet.frames.map((frame) => (
               <FrameChrome

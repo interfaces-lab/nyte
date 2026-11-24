@@ -132,9 +132,11 @@ it("names every kit export and every library family a canvas can import", () => 
     `\`react\`, \`react-dom\` (createPortal, flushSync), \`${KIT_SPECIFIER}\`, your own files and \`three\`, \`d3-*\`, \`@nivo/*\`.`,
   );
 
-  for (const name of Object.keys(LIBRARY_VERSIONS))
+  for (const name of Object.keys(LIBRARY_VERSIONS)) {
     expect(name === "three" || name.startsWith("d3-") || name.startsWith("@nivo/")).toBe(true);
+  }
 
-  for (const name of KIT_EXPORTS)
+  for (const name of KIT_EXPORTS) {
     expect(CANVAS_DESCRIPTION).toMatch(new RegExp(`\\b${name}\\b`, "u"));
+  }
 });

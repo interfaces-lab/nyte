@@ -69,8 +69,9 @@ function pickBodyText(error: ProviderSdkError): string | undefined {
     responseBody !== null &&
     "pipe" in responseBody &&
     typeof responseBody.pipe === "function"
-  )
+  ) {
     return undefined;
+  }
 
   if (plainObjectWithFields(responseBody)) return safeJsonStringify(responseBody);
 

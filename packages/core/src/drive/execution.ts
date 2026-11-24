@@ -32,7 +32,8 @@ import { reapJobs } from "../engine/jobs.ts";
 import { recoverReports } from "../engine/reports.ts";
 import { BEAT_MS } from "../engine/presence.ts";
 import { recoverStarts } from "../engine/start.ts";
-import { crashLooping, interruption, parkedFailure } from "../engine/interruptions.ts";
+import { activitySettled, RETIRING_MS } from "../engine/activity.ts";
+import { crashLooping, interruption, parkedFailure, releaseRun } from "../engine/interruptions.ts";
 import { earliestWake, loadWaits } from "../engine/waits.ts";
 import { commit } from "../watch/commit.ts";
 import { withFold } from "../watch/reads.ts";
@@ -54,7 +55,7 @@ import { endOverdue, OVERDUE, outlasting } from "./stop-grace.ts";
 
 const PAGE = 100;
 
-const ADVANCE_RETRY = { baseDelayMs: 1_000, maxAgentDelayMs: 60_000 } as const;
+const ADVANCE_RETRY = { baseDelayMs: 1000, maxAgentDelayMs: 60_000 } as const;
 
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
@@ -76,6 +77,8 @@ export function createExecutionState(): ExecutionState {
     closing: new AbortController(),
     streams: new AbortController(),
     paused: null,
+    retiring: false,
+    settles: new Set(),
   };
 }
 
@@ -105,8 +108,9 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
           entry.owners.size > 0 ||
           state.advancing.has(name) ||
           state.undrained.has(name)
-        )
+        ) {
           continue;
+        }
         released.push(release(kernel, entry.session, entry.head));
       }
 
@@ -131,9 +135,11 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
 
     await Promise.allSettled(unresolved.map((session) => kernel.plugins.reload(session)));
 
-    if (records !== null && kernel.execution.kind === "run")
-      for (const record of records)
+    if (records !== null && kernel.execution.kind === "run") {
+      for (const record of records) {
         for (const head of await recover(kernel, record)) kernel.wakes.notify(record.id, head);
+      }
+    }
   } catch (error) {
     await close();
 
@@ -151,8 +157,9 @@ export async function advance(
   const state = kernel.executionState;
   const name = leaseRef(session, head);
 
-  if (state.advancing.has(name))
+  if (state.advancing.has(name)) {
     return { kind: "busy", until: state.held.get(name)?.expiresAt ?? Date.now() + LEASE_MS };
+  }
   state.advancing.add(name);
   let claimed = false;
   let report: AdvanceReport | null = null;
@@ -160,24 +167,27 @@ export async function advance(
   try {
     const found = await readSession(kernel.store, session);
 
-    if (found === null || !found.record.heads.some((entry) => entry.name === head))
+    if (found === null || !found.record.heads.some((entry) => entry.name === head)) {
       return { kind: "idle" };
+    }
     kernel.children.link(found.record, null, 0);
-    const runtime = kernel.plugins.runtime(session);
+    const runtime = kernel.plugins.newest(session);
     await runtime.ready;
 
-    if (JSON.stringify(runtime.assigned()) !== JSON.stringify(found.record.plugins ?? null))
+    if (JSON.stringify(runtime.assigned()) !== JSON.stringify(found.record.plugins ?? null)) {
       await kernel.plugins.reload(session);
+    }
     const refused = await claim(kernel, session, head);
 
     if (refused !== null) return refused;
     claimed = true;
     const owners = state.held.get(name)?.owners;
 
-    for (const [handle, coverage] of state.covers)
+    for (const [handle, coverage] of state.covers) {
       if (await covers(kernel.store, coverage, found.record)) owners?.add(handle);
+    }
 
-    report = await step(kernel, session, head).catch((error) =>
+    report = await step(kernel, session, head).catch((error: unknown) =>
       failStep(kernel, session, head, error),
     );
     dev("execution", "advance", { session, head, report: report.kind });
@@ -189,12 +199,14 @@ export async function advance(
     if (
       claimed &&
       !state.undrained.has(name) &&
+      !kernel.providerRuns.held(session, head) &&
       (report?.kind !== "continue" || (state.held.get(name)?.owners.size ?? 0) === 0)
     ) {
       await release(kernel, session, head);
 
-      if (report?.kind === "idle" && (await owed(kernel, session, head)))
+      if (report?.kind === "idle" && (await owed(kernel, session, head))) {
         kernel.wakes.notify(session, head);
+      }
     }
   }
 }
@@ -204,11 +216,18 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   const report = live === null ? null : await settleLive(kernel, session, head, live);
 
   if (report !== null) return report;
+  const continuation = await kernel.providerRuns.start(session, head);
+  if (continuation !== null) {
+    begin(kernel, session, continuation);
+    return (await drive(kernel, session, head, continuation)) ?? next(kernel, session, head);
+  }
   const due = await dueInputs(kernel, session, head);
 
   if (due === null) return { kind: "idle" };
 
   if (due.kind === "held") return { kind: "retry", until: due.until };
+
+  if (kernel.executionState.retiring) return { kind: "retry", until: Date.now() + RETIRING_MS };
 
   const run = await newRun(
     kernel.store,
@@ -218,8 +237,9 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
     due.input.requires ?? kernel.presence?.member.capabilities ?? [],
   );
 
-  if ((await landing(kernel, session, head, due.ids, run.view.id, run.updates)).length === 0)
+  if ((await landing(kernel, session, head, due.ids, run.view.id, run.updates)).length === 0) {
     return next(kernel, session, head);
+  }
   begin(kernel, session, run.view);
 
   return (await drive(kernel, session, head, run.view)) ?? next(kernel, session, head);
@@ -252,8 +272,9 @@ async function owedPage(
   input: { readonly cursor?: Cursor; readonly limit: number },
   operations: boolean,
 ): Promise<RepairPage> {
-  if (input.cursor !== undefined && !input.cursor.startsWith("work:"))
+  if (input.cursor !== undefined && !input.cursor.startsWith("work:")) {
     throw new SdkError("invalid", `${input.cursor} is not a recovery cursor`);
+  }
   const limit = Math.max(1, input.limit);
 
   const refs = await kernel.store.sessions.work({
@@ -272,9 +293,11 @@ async function owedPage(
   for (const session of sessions) {
     const found = await readSession(kernel.store, session);
 
-    if (found !== null)
-      for (const head of await recover(kernel, found.record, operations))
+    if (found !== null) {
+      for (const head of await recover(kernel, found.record, operations)) {
         runnable.push({ session, head });
+      }
+    }
   }
 
   for (const entry of runnable) kernel.wakes.notify(entry.session, entry.head);
@@ -296,8 +319,9 @@ async function recover(
   const session = record.id;
 
   if (operations) {
-    if (record.parent !== null)
+    if (record.parent !== null) {
       kernel.children.link(record, await readChildState(kernel.store, record), 0);
+    }
     await recoverMoves(kernel, session);
     await recoverStarts(kernel, session);
   }
@@ -306,8 +330,9 @@ async function recover(
 
   const runnable: HeadName[] = [];
 
-  for (const head of record.heads)
+  for (const head of record.heads) {
     if (await owed(kernel, session, head.name)) runnable.push(head.name);
+  }
 
   return runnable;
 }
@@ -315,7 +340,12 @@ async function recover(
 async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise<boolean> {
   const live = await liveRun(kernel.store, session, head);
 
-  if (live === null) return (await dueInputs(kernel, session, head)) !== null;
+  if (live === null) {
+    return (
+      (await kernel.providerRuns.pending(session, head)) ||
+      (await dueInputs(kernel, session, head)) !== null
+    );
+  }
 
   return (
     !kernel.executionState.driving.has(live.record.view.id) &&
@@ -385,7 +415,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 
       failures.delete(key);
     })()
-      .catch((error) => {
+      .catch((error: unknown) => {
         const failed = (failures.get(key) ?? 0) + 1;
         failures.set(key, failed);
         fault("execution", "advance failed", { session, head, error: formatError(error) });
@@ -443,10 +473,10 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 
   const sweeper = kernel.presence === null ? null : setInterval(() => void sweep(), BEAT_MS);
 
-  if (coverage.kind === "all")
+  if (coverage.kind === "all") {
     void (async () => {
       await covering;
-      await reapJobs(kernel).catch((error) =>
+      await reapJobs(kernel).catch((error: unknown) =>
         fault("execution", "reaping failed", { error: formatError(error) }),
       );
       let cursor: Cursor | undefined;
@@ -454,7 +484,10 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       do {
         cursor = (await repair(kernel, { cursor, limit: PAGE })).next ?? undefined;
       } while (cursor !== undefined && !closed);
-    })().catch((error) => fault("execution", "repair failed", { error: formatError(error) }));
+    })().catch((error: unknown) =>
+      fault("execution", "repair failed", { error: formatError(error) }),
+    );
+  }
 
   let closing: Promise<void> | null = null;
 
@@ -500,16 +533,21 @@ function release(kernel: Kernel, session: SessionId, head: HeadName): Promise<vo
 async function renewIdle(kernel: Kernel): Promise<void> {
   const { held, advancing } = kernel.executionState;
 
-  for (const name of Array.from(held.keys()))
+  for (const name of Array.from(held.keys())) {
     await kernel.executionState.leaseQueue
       .run(name, async () => {
         const entry = held.get(name);
 
-        return entry === undefined || entry.owners.size === 0 || advancing.has(name)
+        return entry === undefined ||
+          (entry.owners.size === 0 && !kernel.providerRuns.held(entry.session, entry.head)) ||
+          advancing.has(name)
           ? null
           : claimNow(kernel, entry.session, entry.head);
       })
-      .catch((error) => fault("execution", "renewal failed", { name, error: formatError(error) }));
+      .catch((error: unknown) =>
+        fault("execution", "renewal failed", { name, error: formatError(error) }),
+      );
+  }
 }
 
 async function claimNow(
@@ -539,8 +577,9 @@ async function claimNow(
   const holder =
     !foreign || kernel.presence === null ? null : await kernel.presence.holder(lease.instance);
 
-  if (foreign && (holder === null || holder.kind === "absent") && lease.expiresAt > now)
+  if (foreign && (holder === null || holder.kind === "absent") && lease.expiresAt > now) {
     return { kind: "busy", until: lease.expiresAt };
+  }
 
   if (holder?.kind === "alive") return { kind: "busy", until: holder.until };
 
@@ -599,8 +638,9 @@ async function settleLive(
 ): Promise<AdvanceReport | null> {
   const run = live.record.view.id;
 
-  if (kernel.executionState.driving.has(run))
+  if (kernel.executionState.driving.has(run)) {
     return (await holding(kernel.store, session, live.record)) ?? { kind: "idle" };
+  }
 
   if (crashLooping(live.record)) {
     await endRun(kernel, session, run, { kind: "failed", failure: parkedFailure(live.record) });
@@ -795,13 +835,14 @@ async function drive(
     })
     .then(
       (end) => ({ end }),
-      (error) => ({ end: failed(error) }),
+      (error: unknown) => ({ end: failed(error) }),
     )
     .finally(() => {
       unrenew();
       closing.removeEventListener("abort", unrenew);
       closing.removeEventListener("abort", resolveClosed);
       kernel.executionState.driving.delete(run.id);
+      activitySettled(kernel);
     });
 
   const ended = await outlasting(
@@ -812,8 +853,9 @@ async function drive(
     Promise.race([turned, closed.promise]),
   );
 
-  if (ended === null && kernel.presence !== null)
+  if (ended === null && kernel.presence !== null) {
     kernel.executionState.undrained.add(leaseRef(session, head));
+  }
   const stopping = await stopRequested(kernel.store, session, run.id);
   const refused = renewal.refused();
 
@@ -829,7 +871,7 @@ async function drive(
     return endOverdue(kernel, session, head, run.id);
   }
 
-  if (ended === null || (closing.aborted && !stopping)) return null;
+  if (ended === null || (closing.aborted && !stopping)) return releaseRun(kernel, session, run.id);
 
   if (ended.end.kind === "parked" && !stopping) return null;
 
@@ -919,6 +961,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
   const live = await liveRun(kernel.store, session, head);
 
   if (live === null) {
+    if (await kernel.providerRuns.pending(session, head)) return { kind: "continue" };
     const due = await dueInputs(kernel, session, head);
 
     if (due?.kind === "held") return { kind: "retry", until: due.until };
@@ -936,8 +979,9 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   if (record.waiting !== null || calls.length > 0) return waitingOn(kernel.store, session, record);
 
-  if (record.retrying !== null && record.retrying.until > Date.now())
+  if (record.retrying !== null && record.retrying.until > Date.now()) {
     return { kind: "retry", until: record.retrying.until };
+  }
 
   return { kind: "continue" };
 }

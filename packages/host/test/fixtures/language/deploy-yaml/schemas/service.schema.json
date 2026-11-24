@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Service Deployment",
+  "description": "Configuration for deploying a backend service.",
+  "type": "object",
+  "required": ["name", "replicas", "enabled"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique identifier for the deployed service."
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["development", "staging", "production"],
+      "description": "Target environment for the deployment."
+    },
+    "replicas": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of running service instances."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Whether the service receives live traffic."
+    },
+    "port": {
+      "type": "integer",
+      "description": "TCP port the service listens on."
+    },
+    "healthCheck": {
+      "type": "object",
+      "description": "HTTP readiness probe configuration.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Endpoint path checked by the load balancer."
+        },
+        "intervalSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "description": "Delay between readiness checks in seconds."
+        }
+      },
+      "required": ["path"]
+    },
+    "labels": {
+      "type": "object",
+      "description": "Key-value metadata attached to the deployment.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

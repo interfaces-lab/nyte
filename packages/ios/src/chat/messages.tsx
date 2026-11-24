@@ -28,13 +28,17 @@ function Row({ layout, children }: { layout: ConversationLayout; children: React
 
 type UserRow = Extract<ChatRow, { kind: "user" }>;
 
-export type QueuedActions = {
+export interface QueuedActions {
   edit: (item: UserRow, text: string) => void;
   sendNow: (item: UserRow) => void;
   remove: (item: UserRow) => void;
-};
+}
 
-type Choice = { name: string; label: string; run: () => void };
+interface Choice {
+  name: string;
+  label: string;
+  run: () => void;
+}
 
 function messageChoices(
   item: UserRow,
@@ -102,8 +106,9 @@ async function blobUri(client: Connection, blob: BlobId, mime: string): Promise<
   let binary = "";
 
   try {
-    for await (const chunk of reader.chunks())
+    for await (const chunk of reader.chunks()) {
       for (const byte of chunk) binary += String.fromCharCode(byte);
+    }
   } finally {
     await reader.close();
   }
@@ -349,10 +354,11 @@ export const MessageRow = memo(function MessageRow({
 
   if (item.kind === "assistant") return <AssistantMessage item={item} layout={layout} />;
 
-  if (item.kind === "canvas")
+  if (item.kind === "canvas") {
     return (
       <CanvasRow item={item} layout={layout} onReport={onReport} onOpenCanvas={onOpenCanvas} />
     );
+  }
 
   return (
     <Row layout={layout}>

@@ -33,6 +33,12 @@ export const hairline = create({
       [media.forcedColors]: { default: FORCED_LEFT, ":dir(rtl)": FORCED_RIGHT },
     },
   },
+  forcedInlineEnd: {
+    borderImage: {
+      default: null,
+      [media.forcedColors]: { default: FORCED_RIGHT, ":dir(rtl)": FORCED_LEFT },
+    },
+  },
   inlineStartAfter: {
     boxShadow: ELEVATION,
     "::after": {

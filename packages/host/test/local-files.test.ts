@@ -65,7 +65,7 @@ describe("localFiles", () => {
       scope: "workspace",
       mime: "text/plain",
       contents: "hello\n",
-      encoding: "utf-8",
+      encoding: "utf8",
       version: sha256("hello\n"),
     });
     expect(await files.read("b.bin")).toMatchObject({ kind: "binary", size: 3 });
@@ -176,8 +176,9 @@ describe("localFiles", () => {
 
     await writeFile(join(root, "run.sh"), "#!/bin/sh\n", { mode: 0o755 });
     await files.write("run.sh", "#!/bin/sh\necho\n");
-    if (process.platform !== "win32")
+    if (process.platform !== "win32") {
       expect((await stat(join(root, "run.sh"))).mode & 0o777).toBe(0o755);
+    }
 
     await symlink("new.txt", join(root, "alias"));
     const read = await files.read("alias");
@@ -251,7 +252,7 @@ describe("localFiles", () => {
   it("pages a tree by 500 entries, and a walk answers incomplete at its limit", async () => {
     const root = await folder();
     await Promise.all(
-      Array.from({ length: 1_200 }, (_, index) =>
+      Array.from({ length: 1200 }, (_, index) =>
         writeFile(join(root, `f${String(index).padStart(4, "0")}`), ""),
       ),
     );
@@ -268,27 +269,33 @@ describe("localFiles", () => {
     ).toEqual([4, 4, 2, { kind: "incomplete", reason: "limit" }]);
   }, 30_000);
 
-  it("finds names fuzzily, best match first, capped", async () => {
-    const root = await folder();
-    await mkdir(join(root, "src", "parser"), { recursive: true });
-    await writeFile(join(root, "src", "parser", "index.ts"), "");
-    await writeFile(join(root, "src", "parser.ts"), "");
-    await writeFile(join(root, "src", "my-parser.test.ts"), "");
-    await writeFile(join(root, "README.md"), "");
-    const files = localFiles(root);
-    const found = await files.find({ query: "parser" });
+  for (const engine of ["ripgrep", "scan"] as const) {
+    it(`finds names fuzzily, best match first, capped, through ${engine}`, async () => {
+      const root = await folder();
+      await mkdir(join(root, "src", "parser"), { recursive: true });
+      await writeFile(join(root, "src", "parser", "index.ts"), "");
+      await writeFile(join(root, "src", "parser.ts"), "");
+      await writeFile(join(root, "src", "my-parser.test.ts"), "");
+      await writeFile(join(root, "README.md"), "");
 
-    expect(found.map((entry) => entry.path)).toEqual([
-      "src/parser.ts",
-      "src/my-parser.test.ts",
-      "src/parser/index.ts",
-    ]);
-    expect((await files.find({ query: "rdm" })).map((entry) => entry.path)).toEqual(["README.md"]);
-    expect(await files.find({ query: "parser", limit: 1 })).toHaveLength(1);
-    expect((await files.find({ query: "", limit: 500 })).length).toBeLessThanOrEqual(50);
-  });
+      const files = localFiles(root, engine === "scan" ? { ripgrep: async () => null } : undefined);
 
-  for (const engine of ["ripgrep", "scan"] as const)
+      const found = await files.find({ query: "parser" });
+
+      expect(found.map((entry) => entry.path)).toEqual([
+        "src/parser.ts",
+        "src/my-parser.test.ts",
+        "src/parser/index.ts",
+      ]);
+      expect((await files.find({ query: "rdm" })).map((entry) => entry.path)).toEqual([
+        "README.md",
+      ]);
+      expect(await files.find({ query: "parser", limit: 1 })).toHaveLength(1);
+      expect((await files.find({ query: "", limit: 500 })).length).toBeLessThanOrEqual(50);
+    });
+  }
+
+  for (const engine of ["ripgrep", "scan"] as const) {
     it(`searches content with smart case through ${engine}`, async () => {
       const root = await folder();
       await writeFile(join(root, "a.ts"), "const Alpha = 1;\nconst beta = alpha;\n");
@@ -296,10 +303,7 @@ describe("localFiles", () => {
       await writeFile(join(root, ".gitignore"), "skip.txt\n");
       await writeFile(join(root, "skip.txt"), "alpha hidden\n");
 
-      const files = localFiles(
-        root,
-        engine === "scan" ? { ripgrep: join(root, "no-rg") } : undefined,
-      );
+      const files = localFiles(root, engine === "scan" ? { ripgrep: async () => null } : undefined);
 
       const all = await collect(files.search({ query: "alpha" }));
 
@@ -327,8 +331,9 @@ describe("localFiles", () => {
         limit: 1,
       });
     });
+  }
 
-  for (const engine of ["ripgrep", "scan"] as const)
+  for (const engine of ["ripgrep", "scan"] as const) {
     it(`searches with case, word, regex, globs and drafts through ${engine}`, async () => {
       const root = await folder();
       await mkdir(join(root, "src"));
@@ -336,10 +341,7 @@ describe("localFiles", () => {
       await writeFile(join(root, "src", "a.test.ts"), "alpha test\n");
       await writeFile(join(root, "b.txt"), "alpha two\n");
 
-      const files = localFiles(
-        root,
-        engine === "scan" ? { ripgrep: join(root, "no-rg") } : undefined,
-      );
+      const files = localFiles(root, engine === "scan" ? { ripgrep: async () => null } : undefined);
 
       const found = async (input: Omit<SearchInput, "query">, query = "alpha") =>
         (await collect(files.search({ query, ...input })))
@@ -361,7 +363,7 @@ describe("localFiles", () => {
         "b.txt:1:1:5",
         "src/a.test.ts:1:1:5",
       ]);
-      expect(await found({ regex: true }, "al?pha \\w+")).toEqual([
+      expect(await found({ regex: true }, String.raw`al?pha \w+`)).toEqual([
         "b.txt:1:1:9",
         "src/a.test.ts:1:1:10",
         "src/a.ts:2:1:9",
@@ -383,20 +385,28 @@ describe("localFiles", () => {
         code: "invalid",
       });
     });
+  }
 
-  it("formats with a detected formatter and answers unavailable without one", async () => {
+  it("formats with a detected formatter, answers failed when it can't run, and runs nothing in an untrusted folder", async () => {
     const root = await folder();
-
-    const files = localFiles(root, {
-      formatter: join(import.meta.dirname, "../../../node_modules/.bin/oxfmt"),
-    });
+    const formatter = join(import.meta.dirname, "../../../node_modules/.bin/oxfmt");
+    const trusted = async () => true;
+    const files = localFiles(root, { formatter, trusted });
 
     const formatted = await files.format("a.ts", "const   a=1\n");
 
     expect(formatted).toEqual({ kind: "formatted", contents: "const a = 1;\n" });
     expect(await files.format("a.ts", "const a = 1;\n")).toEqual({ kind: "unchanged" });
     expect(
-      (await localFiles(root, { formatter: join(root, "none") }).format("a.ts", "x")).kind,
+      (await localFiles(root, { formatter: join(root, "none"), trusted }).format("a.ts", "x")).kind,
+    ).toBe("failed");
+    expect(
+      (
+        await localFiles(root, { formatter, trusted: async () => false }).format(
+          "a.ts",
+          "const   a=1\n",
+        )
+      ).kind,
     ).toBe("unavailable");
   });
 
@@ -452,8 +462,9 @@ describe("localFiles", () => {
     const root = await folder();
     const watching = Promise.withResolvers<void>();
     dev.on((line) => {
-      if (line === `DEV:files watching ${JSON.stringify({ path: root, recursive: false })}`)
+      if (line === `DEV:files watching ${JSON.stringify({ path: root, recursive: false })}`) {
         watching.resolve();
+      }
     });
     onTestFinished(() => dev.off());
     const controller = new AbortController();

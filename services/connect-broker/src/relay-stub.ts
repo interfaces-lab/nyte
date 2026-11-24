@@ -82,11 +82,12 @@ export function resetChannel(
     input.stub.fetch(request).then(async (response) => {
       await response.body?.cancel();
 
-      if (!response.ok)
+      if (!response.ok) {
         context.log.warn("relay.reset_failed", {
           environmentId: input.environmentId,
           status: response.status,
         });
+      }
     }),
   );
 }

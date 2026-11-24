@@ -22,7 +22,7 @@ export const E2E_OUT = process.env["NYTE_E2E_OUT"] ?? resolve(DESKTOP_ROOT, "out
 
 const MAIN_ENTRY = resolve(E2E_OUT, "main/index.js");
 
-const REAP_MS = 5_000;
+const REAP_MS = 5000;
 
 const KEPT_VARIABLES = new Set([
   "PATH",
@@ -101,10 +101,11 @@ async function assertBuilt(): Promise<void> {
 
   const lines = missing.flat();
 
-  if (lines.length > 0)
+  if (lines.length > 0) {
     throw new Error(
       `Missing build outputs. Build them in this order from the repository root:\n${lines.join("\n")}`,
     );
+  }
 }
 
 function launchEnvironment(options: LaunchOptions, host: E2eHost) {
@@ -130,8 +131,8 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
     join(PACKAGES_ROOT, "canvas"),
     join(options.parentDirectory, "canvas"),
     "junction",
-  ).catch((cause: NodeJS.ErrnoException) => {
-    if (cause.code !== "EEXIST") throw cause;
+  ).catch((cause: unknown) => {
+    if (!(cause instanceof Error && "code" in cause && cause.code === "EEXIST")) throw cause;
   });
 
   const downloads =
@@ -233,10 +234,11 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
     const left = tree === null ? [] : await survivors(tree, REAP_MS);
     await stopHost();
 
-    if (left.length > 0)
+    if (left.length > 0) {
       throw new Error(
         `The desktop's processes outlived close(): ${left.map((row) => `${String(row.pid)} ${row.command}`).join(", ")}`,
       );
+    }
   };
 
   try {

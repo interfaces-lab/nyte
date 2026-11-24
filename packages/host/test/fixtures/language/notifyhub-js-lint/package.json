@@ -1,0 +1,9 @@
+{
+  "name": "notifyhub-lint",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "eslint": "10.15.0",
+    "oxlint": "1.94.0"
+  }
+}

@@ -88,7 +88,7 @@ export const RandomId = Type.String({ pattern: "^[A-Za-z0-9_-]{22,86}$" });
 
 export const CompactJws = Type.String({
   maxLength: 8192,
-  pattern: "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+  pattern: String.raw`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`,
 });
 
 export const Name = Type.String({ minLength: 1, maxLength: NAME_LIMIT });
@@ -344,7 +344,7 @@ export const ReceiptClaims = Type.Object({
 export type ReceiptClaims = Static<typeof ReceiptClaims>;
 
 export function keyFingerprint(thumbprint: string): string {
-  return thumbprint.slice(0, 16).replace(/(.{4})(?=.)/gu, "$1-");
+  return thumbprint.slice(0, 16).replaceAll(/(.{4})(?=.)/gu, "$1-");
 }
 
 export function randomUserCode(randomBytes: (count: number) => Uint8Array): string {

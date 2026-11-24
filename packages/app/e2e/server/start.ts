@@ -29,7 +29,7 @@ const { models } = fakeModels({
       title === null &&
       lastUserText(request) === "Start an agent." &&
       request.context.messages.at(-1)?.role !== "toolResult"
-    )
+    ) {
       return {
         content: [
           {
@@ -40,6 +40,7 @@ const { models } = fakeModels({
           },
         ],
       };
+    }
 
     return { content: [{ type: "text", text: `Echo: ${title ?? lastUserText(request)}` }] };
   },
@@ -95,8 +96,9 @@ for (const args of [
   ["config", "user.email", "e2e@example.test"],
   ["add", "--", "README.md"],
   ["commit", "-qm", "Seed workspace"],
-])
+]) {
   execFileSync("git", args, { cwd });
+}
 
 const host = await sdk.open({
   store: sqliteStore({ memory: true }),

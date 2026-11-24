@@ -44,8 +44,9 @@ async function dialWithTicket(
   const answer: unknown = await response.json();
   const ticket = isJson(answer) && isJsonObject(answer) ? answer["ticket"] : undefined;
 
-  if (typeof ticket !== "string" || ticket === "")
+  if (typeof ticket !== "string" || ticket === "") {
     throw new SdkError("invalid", "The host answered no socket ticket.");
+  }
   const Socket = globalWebSocket();
   url.searchParams.set("ticket", ticket);
 
@@ -72,8 +73,9 @@ function deferredSocket(open: () => Promise<SocketLike>): SocketLike {
       socket = opened;
       opened.addEventListener("open", () => emit("open", { code: 0, reason: "" }));
       opened.addEventListener("message", (event) => {
-        for (const listener of listeners.get("message") ?? [])
+        for (const listener of listeners.get("message") ?? []) {
           listener({ data: event.data, code: 0, reason: "" });
+        }
       });
       opened.addEventListener("error", () => emit("error", { code: 0, reason: "" }));
       opened.addEventListener("close", (event) => emit("close", event));

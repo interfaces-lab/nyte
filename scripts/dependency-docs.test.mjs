@@ -43,7 +43,7 @@ function failure(result, pattern) {
   equal(result.status, 1);
   equal(result.stdout, "");
   match(JSON.parse(result.stderr).error, pattern);
-  equal(result.stderr.includes("\u001b"), false);
+  equal(result.stderr.includes("\u001B"), false);
 }
 
 void test("workspace links select physical versions, parent search paths, and alias metadata", async (t) => {
@@ -163,10 +163,10 @@ void test("invalid names and module arguments are rejected at the boundary", asy
     "@scope/pkg/sub",
     "@scope//pkg",
     "https://example.com",
-    "pkg\\sub",
+    String.raw`pkg\sub`,
     "pkg%2fsub",
     "pkg\n",
-    "pkg\u001b",
+    "pkg\u001B",
     "pkg name",
     "-pkg",
   ]) {
@@ -260,7 +260,7 @@ void test("C1 controls are rejected in public arguments and manifest strings", a
     version: "1.0.0",
   });
 
-  for (const control of ["\u0080", "\u0085", "\u009f"]) {
+  for (const control of ["\u0080", "\u0085", "\u009F"]) {
     const name = `fixture${control}`;
     await rejects(discoverDependencyDocs(name, root), /Invalid package name/);
     failure(cli(["--workspace", root, name]), /Invalid package name/);
@@ -322,17 +322,19 @@ void test("broken nearest packages and malformed metadata never fall back to an 
       ["invalid-types", { types: [] }],
       ["invalid-exports", { exports: 12 }],
     ]) {
-      if (kind === scenario)
+      if (kind === scenario) {
         await writeFile(
           join(packageRoot, "package.json"),
           JSON.stringify({ name: "fixture-package", version: "1.0.0", ...patch }),
         );
+      }
     }
 
     if (kind === "wrong-doc-kind") await writeFile(join(packageRoot, "docs"), "not a directory");
 
-    if (kind === "dangling-doc")
+    if (kind === "dangling-doc") {
       await symlink(join(root, "absent"), join(packageRoot, "README.md"));
+    }
     await rejects(discoverDependencyDocs("fixture-package", workspace));
     failure(cli(["--workspace", workspace, "fixture-package"]), /.+/);
   }

@@ -1,7 +1,8 @@
 import type { HostId } from "@nyte-ai/sdk";
 import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { readStored, removeStored, type StorageArea, writeStored } from "../lib/storage.ts";
+import { readStored, removeStored, writeStored } from "../lib/storage.ts";
+import type { StorageArea } from "../lib/storage.ts";
 import type { ConnectOptions, Connection, WebBridge } from "./bridge.ts";
 
 const PinSchema = Type.Object({

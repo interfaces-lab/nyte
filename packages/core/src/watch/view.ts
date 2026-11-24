@@ -65,8 +65,9 @@ export async function historyHead(
     const messages = folded?.messages ?? [];
     const end = messages.findIndex((message) => message.id === input.before);
 
-    if (folded === undefined || path === undefined || end < 0 || input.limit <= 0)
+    if (folded === undefined || path === undefined || end < 0 || input.limit <= 0) {
       return { messages: [], leadingPrompt: null, turns: [] };
+    }
     const start = Math.max(0, end - input.limit);
     const page = messages.slice(start, end);
 

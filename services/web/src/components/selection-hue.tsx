@@ -5,7 +5,7 @@ const DRIFT = 0.36;
 const DRIFT_SPAN = 700;
 
 function lattice(index: number) {
-  const n = Math.sin(index * 127.1) * 43758.5453;
+  const n = Math.sin(index * 127.1) * 43_758.5453;
   return n - Math.floor(n);
 }
 
@@ -20,7 +20,7 @@ function hueAt(position: number) {
   const scaled = Math.min(Math.max(position, 0), 1) * (HUES.length - 1);
   const index = Math.min(Math.floor(scaled), HUES.length - 2);
   const from = HUES[index] ?? HUES[0];
-  const to = HUES[index + 1] ?? HUES[HUES.length - 1];
+  const to = HUES[index + 1] ?? HUES.at(-1);
   return from + (to - from) * (scaled - index);
 }
 

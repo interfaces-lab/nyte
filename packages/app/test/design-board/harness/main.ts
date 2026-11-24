@@ -42,12 +42,13 @@ let last: BoardLoad | null = null;
 const send = (message: AppMessage): void => frame.contentWindow?.postMessage(message, "*");
 
 function matches(value: Json | undefined, pattern: JsonPattern | undefined): boolean {
-  if (Array.isArray(pattern))
+  if (Array.isArray(pattern)) {
     return (
       Array.isArray(value) &&
       value.length === pattern.length &&
       pattern.every((item, index) => matches(value[index], item))
     );
+  }
 
   if (!(pattern instanceof Object)) return value === pattern;
 
@@ -117,8 +118,7 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
         agents: [],
         follow: null,
       });
-
-      return;
+      break;
     default:
   }
 });

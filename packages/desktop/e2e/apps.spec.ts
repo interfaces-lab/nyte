@@ -60,40 +60,47 @@ async function focused(application: ElectronApplication, page: Page): Promise<bo
   return (await application.browserWindow(page)).evaluate((window) => window.isFocused());
 }
 
-const LightReply = Type.Object({
-  kind: Type.Literal("lights"),
-  lights: Type.Object({
-    you: Type.Union([
-      Type.Object({
-        subject: Type.Object({
-          kind: Type.String(),
-          path: Type.String(),
-          start: Type.Optional(Type.Number()),
-          end: Type.Optional(Type.Number()),
-        }),
+const YourLight = Type.Object({
+  kind: Type.Literal("you"),
+  you: Type.Union([
+    Type.Object({
+      subject: Type.Object({
+        kind: Type.String(),
+        path: Type.String(),
+        start: Type.Optional(Type.Number()),
+        end: Type.Optional(Type.Number()),
       }),
-      Type.Null(),
-    ]),
-  }),
+    }),
+    Type.Null(),
+  ]),
 });
 
-async function readLight(page: Page): Promise<Static<typeof LightReply>["lights"]> {
+async function readLight(page: Page): Promise<Pick<Static<typeof YourLight>, "you">> {
   const reply = await page.evaluate(
     () =>
       new Promise((resolve) => {
         const channel = new BroadcastChannel("nyte:light:v1");
-        const timer = setTimeout(() => resolve(null), 2_000);
 
-        channel.addEventListener("message", (event: MessageEvent<unknown>) => {
+        const settle = (answer: unknown): void => {
           clearTimeout(timer);
           channel.close();
-          resolve(event.data);
+          resolve(answer);
+        };
+
+        const timer = setTimeout(() => settle({ kind: "you", you: null }), 2000);
+
+        channel.addEventListener("message", (event: MessageEvent<unknown>) => {
+          const message = event.data;
+
+          if (typeof message !== "object" || message === null || !("kind" in message)) return;
+
+          if (message.kind === "you") settle(message);
         });
         channel.postMessage({ kind: "ask" });
       }),
   );
 
-  return Value.Parse(LightReply, reply).lights;
+  return { you: Value.Parse(YourLight, reply).you };
 }
 
 async function nextWindow(application: ElectronApplication, open: () => Promise<void>) {
@@ -154,6 +161,10 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
       const nyte = first.page;
       const problems = [collectErrors(nyte)];
 
+      await application.evaluate(({ BrowserWindow, screen }) => {
+        BrowserWindow.getAllWindows()[0]?.setBounds(screen.getPrimaryDisplay().workArea);
+      });
+
       await openChat(nyte, FIXTURES.beta);
       await expect(apps(nyte).getByRole("button", { name: "Nyte" })).toHaveAttribute(
         "aria-pressed",
@@ -183,7 +194,8 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
             .getByRole("tablist", { name: "Workbench tabs" })
             .getByRole("tab", { name: "Editor" }),
         ).toHaveCount(0);
-        expect(await offered(code)).toEqual(["Editor", "Changes", "Browser", "Terminal"]);
+        await expect(code.getByRole("button", { name: "New workbench tab" })).toHaveCount(0);
+        await expect(code.getByRole("button", { name: "Show panel" })).toBeVisible();
         await capture(testInfo, application, code, "code-opened");
       });
 
@@ -195,7 +207,7 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
         await expect(async () => {
           await text.getByText("second", { exact: true }).click();
           await expect(editor(code).getByRole("button", { name: /^Ln 2, Col \d+$/u })).toBeVisible({
-            timeout: 1_000,
+            timeout: 1000,
           });
         }).toPass();
         const from = await text.getByText("second", { exact: true }).boundingBox();
@@ -337,8 +349,9 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
       const pages = application.windows();
       const problems = pages.map(collectErrors);
 
-      for (const page of pages)
+      for (const page of pages) {
         await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
+      }
 
       const titles = (): Promise<string[]> =>
         Promise.all(pages.map((page) => title(application, page)));
@@ -361,8 +374,9 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
       const code = kinds.find((kind) => kind.label === "Code")?.page;
       const studio = kinds.find((kind) => kind.label === "Studio")?.page;
 
-      if (code === undefined || studio === undefined)
+      if (code === undefined || studio === undefined) {
         throw new Error("The relaunch brought Code or Studio back as another kind.");
+      }
       await expect(
         workbench(studio)
           .getByRole("navigation", { name: "Designs" })

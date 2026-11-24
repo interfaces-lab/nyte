@@ -1,5 +1,5 @@
 import { asId, standard } from "@nyte-ai/schema";
-import type { Infer, ModelRequest } from "@nyte-ai/schema";
+import type { Awaitable, Infer, ModelRequest } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import { createHost } from "../src/api/connection.ts";
@@ -7,7 +7,17 @@ import { createHostState } from "../src/api/host.ts";
 import { createKernel } from "../src/compose.ts";
 import { toolSource } from "../src/extend/registry.ts";
 import { envelope, memoryStore, workspaceRef } from "../src/store.ts";
-import type { Plugin, ToolDefinition } from "../src/index.ts";
+import { definePart } from "../src/index.ts";
+import type {
+  ActionContext,
+  ActionOutput,
+  Part,
+  Plugin,
+  PluginApi,
+  Session,
+  ToolDefinition,
+} from "../src/index.ts";
+import { says } from "./plugin-support.ts";
 import { world } from "./fake-env.ts";
 import { chatOnly, fakeModels, open } from "./fake-models.ts";
 import { configuration, env, main, script, setup, until, workspace } from "../src/harness.ts";
@@ -42,8 +52,6 @@ async function controlled(attach: () => Promise<typeof env>) {
             id: workspace,
             target: { kind: "local", path: "/tmp/project" },
             identity: asId("identity"),
-            projectResources: true,
-            projectSources: [],
             addedBy: asId("local"),
             createdAt: 0,
             isolation: null,
@@ -245,8 +253,9 @@ describe("plugin reload (D4)", () => {
     const { kernel } = await setup();
     const ids = Array.from({ length: 50 }, () => asId<"session">(crypto.randomUUID()));
 
-    for (const id of ids)
+    for (const id of ids) {
       await expect(kernel.plugins.runtime(id).ready).rejects.toMatchObject({ code: "unknown" });
+    }
 
     await until(() => (kernel.plugins.runtimes().size === 0 ? true : undefined));
   });
@@ -268,6 +277,7 @@ describe("plugin reload (D4)", () => {
       content: "Hi.",
     });
     const old = fixture.kernel.plugins.runtime(session.id);
+    const release = old.hold();
     await fixture.kernel.plugins.reload(session.id);
 
     const result = await old.hooks.transform(
@@ -275,6 +285,7 @@ describe("plugin reload (D4)", () => {
       { kind: "ok", content: [], output: null, parts: [] },
       { session: session.id, head: main, run: null, principal: asId("local") },
     );
+    release();
 
     assert(result.kind === "ok");
     expect(result.content).toEqual([{ kind: "text", text: "OLD" }]);
@@ -539,5 +550,133 @@ describe("plugin reload (D4)", () => {
       message:
         "The plugins assigned to this session did not load: No plugin named extra is loaded on this host.",
     });
+  });
+});
+
+describe("readers during a reload", () => {
+  const markerState = standard(Type.Object({}));
+  const markerActions = { touch: { input: nothing } };
+
+  const markerHandlers: {
+    readonly [A in keyof typeof markerActions]: (
+      context: ActionContext<Infer<typeof markerState>, typeof markerActions>,
+    ) => Awaitable<ActionOutput<(typeof markerActions)[A]>>;
+  } = {
+    touch: (context) => {
+      expect(context.api.signal.aborted).toBe(false);
+
+      return undefined;
+    },
+  };
+
+  const marker = definePart({
+    kind: "crew/marker",
+    state: markerState,
+    actions: markerActions,
+    fallback: () => "Marker",
+    onAction: (action, _input, context) => markerHandlers[action](context),
+  });
+
+  const cases: readonly {
+    readonly name: string;
+    readonly read: (input: {
+      readonly session: Session;
+      readonly part: Part<typeof marker>;
+      readonly api: PluginApi<"core">;
+      readonly finishReload: () => void;
+    }) => Promise<unknown>;
+    readonly expected: unknown;
+  }[] = [
+    {
+      name: "a send is admitted with its pinned agent and mode, and its run waits for the reload",
+      read: async ({ session, finishReload }) => {
+        const receipt = await session.send("Go.");
+        finishReload();
+
+        return (await receipt.settled()).kind;
+      },
+      expected: "completed",
+    },
+    {
+      name: "an agent runtime's call goes through the session's approve hooks",
+      read: ({ api }) =>
+        api.approve(
+          { name: "rm", class: { kind: "custom", label: "rm" } },
+          new AbortController().signal,
+        ),
+      expected: { kind: "deny", reason: "Not rm." },
+    },
+    {
+      name: "a part action reaches its plugin",
+      read: async ({ part }) => (await part.act("touch", {})).kind,
+      expected: "ok",
+    },
+    {
+      name: "a command runs",
+      read: ({ session }) => session.command("hello", ""),
+      expected: { kind: "ran", output: "hi" },
+    },
+  ];
+
+  it.each(cases)("$name, from the loaded plugins", async ({ read, expected }) => {
+    const apis: PluginApi<"core">[] = [];
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let reloading = false;
+
+    const crew: Plugin<"core"> = {
+      id: "crew",
+      contribute: {
+        agents: [{ id: "builder", mode: "primary" }],
+        settings: [
+          { id: "crew.mode", title: "Crew", type: "switch", scope: "chat", mode: { icon: "bolt" } },
+        ],
+        parts: [marker],
+        commands: [says("hello", "hi")],
+      },
+      approve: async (call) =>
+        call.name === "rm" ? { kind: "deny", reason: "Not rm." } : { kind: "allow" },
+      activate(api) {
+        apis.push(api);
+
+        return {};
+      },
+    };
+
+    const gate: Plugin<"core"> = {
+      id: "gate",
+      async activate() {
+        if (reloading) {
+          entered.resolve();
+          await release.promise;
+        }
+
+        return {};
+      },
+    };
+
+    const fake = fakeModels();
+    fake.reply(
+      { content: [{ type: "text", text: "Hi." }] },
+      { content: [{ type: "text", text: "Done." }] },
+    );
+    await using host = await open(fake, { plugins: [gate, crew] });
+
+    const { session, receipt } = await host.sessions.start({
+      content: "Hi.",
+      configuration: { agent: "builder", settings: { "crew.mode": true } },
+    });
+    expect((await receipt.settled()).kind).toBe("completed");
+    const part = await session.parts.create(marker, { state: {}, placement: { kind: "panel" } });
+    const api = apis[0];
+    assert(api !== undefined);
+
+    reloading = true;
+    const reloaded = host.kernel.plugins.reload(session.id);
+    await entered.promise;
+
+    expect(await read({ session, part, api, finishReload: release.resolve })).toEqual(expected);
+    release.resolve();
+    await reloaded;
   });
 });

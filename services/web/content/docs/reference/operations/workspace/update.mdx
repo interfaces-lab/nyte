@@ -66,13 +66,25 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
     "patch": {
       "type": "object",
       "properties": {
-        "projectResources": {
+        "trusted": {
           "anyOf": [
             {
               "type": "boolean"
             },
             {
               "type": "null"
+            }
+          ]
+        },
+        "at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "folder"
+            },
+            {
+              "type": "string",
+              "const": "parent"
             }
           ]
         }

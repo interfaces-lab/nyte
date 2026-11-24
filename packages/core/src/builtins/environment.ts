@@ -156,7 +156,7 @@ const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
     if (previous.kind === "directory") throw new Error(`${args.path} is a directory.`);
     const contents = encodeTextFile(
       args.content,
-      previous.kind === "text" ? previous.encoding : "utf-8",
+      previous.kind === "text" ? previous.encoding : "utf8",
     );
     const outcome = await files.write(args.path, contents, { parents: true });
 
@@ -187,25 +187,28 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
     const { files } = invocation.env;
     const document = await files.read(args.path);
 
-    if (document.kind !== "text")
+    if (document.kind !== "text") {
       throw new Error(`${args.path} is ${document.kind}, not a text file.`);
+    }
     const { contents } = document;
     const crlf = /^[^\n]*\r\n/.test(contents);
 
     const spans = args.edits.flatMap((change, index) => {
       const matches = change.oldText === "" ? [] : findMatches(contents, change.oldText, crlf);
 
-      if (matches.length === 0)
+      if (matches.length === 0) {
         throw new Error(
           `Edit ${index + 1}: no match for oldText in ${args.path}; read it again and copy the text exactly.`,
         );
+      }
 
-      if (matches.length > 1 && change.replaceAll !== true)
+      if (matches.length > 1 && change.replaceAll !== true) {
         throw new Error(
           `Edit ${index + 1}: oldText occurs ${matches.length} times in ${args.path}; add surrounding lines to make it unique, or set replaceAll.`,
         );
+      }
 
-      const newText = crlf ? change.newText.replace(/\r?\n/g, "\r\n") : change.newText;
+      const newText = crlf ? change.newText.replaceAll(/\r?\n/g, "\r\n") : change.newText;
 
       return separate(matches).map((match) => ({ ...match, newText, index }));
     });
@@ -215,8 +218,9 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
     for (const [position, span] of ordered.entries()) {
       const next = ordered[position + 1];
 
-      if (next !== undefined && next.start < span.end)
+      if (next !== undefined && next.start < span.end) {
         throw new Error(`Edits ${span.index + 1} and ${next.index + 1} overlap in ${args.path}.`);
+      }
     }
 
     const edited = ordered.reduceRight(
@@ -228,8 +232,9 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
       expect: document.version,
     });
 
-    if (outcome.kind === "stale")
+    if (outcome.kind === "stale") {
       throw new Error(`${args.path} changed while it was being edited; read it again.`);
+    }
 
     if (outcome.kind !== "saved") throw new Error(`Could not write ${args.path}: ${outcome.kind}.`);
 
@@ -269,8 +274,9 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
             ? entry.path.slice(directory.length + 1)
             : entry.path;
 
-        if (relative !== "" && !relative.includes("/"))
+        if (relative !== "" && !relative.includes("/")) {
           names.add(entry.kind === "directory" ? `${relative}/` : relative);
+        }
       }
     }
 
@@ -555,10 +561,13 @@ export const environmentPlugin: Plugin<"core"> = {
   },
 };
 
-type Match = { readonly start: number; readonly end: number };
+interface Match {
+  readonly start: number;
+  readonly end: number;
+}
 
 function findMatches(contents: string, oldText: string, crlf: boolean): readonly Match[] {
-  const searches = crlf ? [oldText, oldText.replace(/\r?\n/g, "\r\n")] : [oldText];
+  const searches = crlf ? [oldText, oldText.replaceAll(/\r?\n/g, "\r\n")] : [oldText];
 
   const tiers = [
     () => searches.map((search) => occurrences(contents, search)),
@@ -591,10 +600,10 @@ function occurrences(contents: string, search: string): readonly Match[] {
 
 function foldTypography(value: string): string {
   return value
-    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
-    .replace(/[\u2010-\u2015\u2212]/g, "-")
-    .replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ");
+    .replaceAll(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replaceAll(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replaceAll(/[\u2010-\u2015\u2212]/g, "-")
+    .replaceAll(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ");
 }
 
 function lineOccurrences(contents: string, search: string): readonly Match[] {
@@ -683,8 +692,9 @@ function numbered(
 
   if (lines.length === 0) return `${path} is empty.`;
 
-  if (first > lines.length)
+  if (first > lines.length) {
     return `${path} has ${lines.length} lines; offset ${first} is past the end.`;
+  }
   const shown: string[] = [];
   let size = 0;
   const last = Math.min(lines.length, first - 1 + (args.limit ?? READ_LINES));

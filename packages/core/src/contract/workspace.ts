@@ -24,6 +24,8 @@ import type {
   ForgetOutcome,
   FormatOutcome,
   WorktreeCleanup,
+  StorageCleanup,
+  StorageScan,
   GitCommitFiles,
   GitCommitId,
   GitCommitView,
@@ -80,28 +82,8 @@ import type {
   TrashOutcome,
   TrashToken,
   RestoreOutcome,
-  CodeAction,
-  CodeActionOutcome,
-  CodeActionResolveToken,
-  CompletionItem,
-  CompletionList,
-  CompletionResolveToken,
-  CompletionTrigger,
-  DiagnosticsFrame,
-  DocumentSymbol,
-  FormatOptions,
-  Hover,
-  InlayHint,
-  LanguageLocation,
-  LanguageServerView,
-  RenameOutcome,
-  RenameTarget,
-  SignatureHelp,
-  TextChange,
-  TextEdit,
-  TextPosition,
-  TextRange,
 } from "@nyte-ai/schema";
+import type { LanguageApi, LanguageService } from "./language.ts";
 import type { Login, PluginStorage } from "./host.ts";
 import type { OsProcess } from "./records.ts";
 import type { Receipt } from "./session.ts";
@@ -153,70 +135,6 @@ export interface GitHubApi {
   state(): Promise<GitHubState>;
   /** Opens a pull request for the checked-out branch, which the caller has pushed; an open one for the branch answers `exists` and opens nothing. */
   createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
-}
-
-/**
- * Language intelligence for a workspace's files, from a language server per language and project
- * root. Paths are workspace-relative or absolute and come back workspace-relative inside the
- * workspace. A client drives the text of the documents it opens: `open` with its version, then
- * `change` with each newer version, one at a time and in order, then `close`. A file no client
- * opened is read from disk for each request. Queries on a file no server handles, or whose
- * server is missing or failed, answer empty; `status` says why.
- */
-export interface LanguageApi {
-  status(): Promise<readonly LanguageServerView[]>;
-  watchStatus(): AsyncIterable<readonly LanguageServerView[]>;
-  /** The server that took the document, or null for a file no language handles. */
-  open(input: {
-    readonly path: string;
-    readonly text: string;
-    readonly version: number;
-  }): Promise<LanguageServerView | null>;
-  /** Throws `SdkError("unknown")` for a document no client opened and `SdkError("stale")` for a version no newer than the last; open the document again to start over. */
-  change(input: {
-    readonly path: string;
-    readonly version: number;
-    readonly changes: readonly TextChange[];
-  }): Promise<null>;
-  close(input: { readonly path: string }): Promise<null>;
-  /** Each frame holds the files whose list changed since the last; the first holds every file's known list. */
-  diagnostics(): AsyncIterable<readonly DiagnosticsFrame[]>;
-  completion(
-    input: LanguagePosition & { readonly trigger: CompletionTrigger },
-  ): Promise<CompletionList>;
-  resolveCompletion(input: {
-    readonly token: CompletionResolveToken;
-  }): Promise<CompletionItem | null>;
-  hover(input: LanguagePosition): Promise<Hover | null>;
-  definition(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
-  typeDefinition(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
-  references(
-    input: LanguagePosition & { readonly includeDeclaration: boolean },
-  ): Promise<readonly LanguageLocation[]>;
-  symbols(input: { readonly path: string }): Promise<readonly DocumentSymbol[]>;
-  prepareRename(input: LanguagePosition): Promise<RenameTarget | null>;
-  rename(input: LanguagePosition & { readonly name: string }): Promise<RenameOutcome>;
-  codeActions(input: {
-    readonly path: string;
-    readonly range: TextRange;
-  }): Promise<readonly CodeAction[]>;
-  resolveCodeAction(input: { readonly token: CodeActionResolveToken }): Promise<CodeActionOutcome>;
-  format(input: {
-    readonly path: string;
-    readonly options: FormatOptions;
-  }): Promise<readonly TextEdit[]>;
-  signatureHelp(input: LanguagePosition): Promise<SignatureHelp | null>;
-  inlayHints(input: {
-    readonly path: string;
-    readonly range: TextRange;
-  }): Promise<readonly InlayHint[]>;
-}
-
-export type LanguagePosition = { readonly path: string; readonly position: TextPosition };
-
-/** What a provider hands its attachment: the API, and `shutdown` to stop every server when the workspace detaches. */
-export interface LanguageService extends LanguageApi {
-  shutdown(): Promise<void>;
 }
 
 export interface GitHubAccountApi {
@@ -344,6 +262,8 @@ export type SnapshotScope =
 
 export interface SnapshotsApi {
   capture(scope: SnapshotScope): Promise<SnapshotId>;
+  /** Whether `diff` and `patches` can compare the two: both empty or taken by this folder's history. A snapshot from another folder, another kind of history, or an older id format never compares. */
+  comparable(from: SnapshotId, to: SnapshotId): boolean;
   diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>;
   patches(
     from: SnapshotId,
@@ -376,6 +296,19 @@ export interface WorktreeProvider {
   clean(target: WorkspaceTarget): Promise<boolean>;
 }
 
+export interface StorageWorkspace {
+  readonly target: WorkspaceTarget;
+  readonly worktree: boolean;
+  readonly usedAt: number;
+  readonly running: boolean;
+}
+
+/** Finds what the machine's disk can get back and removes it. `clean` scans again and removes only the named items the scan still finds unblocked. */
+export interface StorageProvider {
+  scan(workspaces: readonly StorageWorkspace[]): Promise<StorageScan>;
+  clean(workspaces: readonly StorageWorkspace[], items: readonly string[]): Promise<StorageCleanup>;
+}
+
 export interface EnvironmentProvider {
   readonly kind: string;
   inspect(target: WorkspaceTarget): Promise<{
@@ -383,13 +316,18 @@ export interface EnvironmentProvider {
     readonly availability: Availability;
     readonly projectSources: readonly string[];
   }>;
-  attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
+  attach(target: WorkspaceTarget, trusted: () => Promise<boolean>): Promise<ExecutionEnv>;
   readonly git?: (env: ExecutionEnv) => GitApi | undefined;
   readonly github?: (env: ExecutionEnv) => GitHubApi | undefined;
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
-  readonly language?: (env: ExecutionEnv) => LanguageService | undefined;
+  /** Language servers run project code, so the service starts one only while `trusted` answers that the user trusts the workspace's folder; it asks again before each start. */
+  readonly language?: (
+    env: ExecutionEnv,
+    trusted: () => Promise<boolean>,
+  ) => LanguageService | undefined;
   readonly worktrees?: WorktreeProvider;
+  readonly storage?: StorageProvider;
   /** The real path of `path` (absolute, or relative to `env.cwd`) on the machine `env` runs on: every symlink resolved and each name spelled as the disk stores it, so a case-insensitive disk answers `AGENTS.md` with the `AGENTS.MD` it holds; null where nothing resolves. Without it, context files are told apart by the paths they were read at and no worktree shadows its repository's. */
   readonly realpath?: (env: ExecutionEnv, path: string) => Promise<string | null>;
   destroy?(target: WorkspaceTarget): Promise<void>;
@@ -454,9 +392,17 @@ export interface EnvironmentRegistry {
     holder?: PageHolder | null,
   ): Promise<EnvironmentCapabilities>;
   detachWorkspace(workspace: WorkspaceId): Promise<void>;
+  trustChanged(workspace: WorkspaceId, trusted: boolean): Promise<void>;
 }
 
 export interface FilesApi {
+  /** Reads bounded UTF-8 from a regular file through a root-confined handle; unavailable without that guarantee. */
+  readonly readConfined?: (input: {
+    readonly path: string;
+    readonly line?: number;
+    readonly limit?: number;
+    readonly signal: AbortSignal;
+  }) => Promise<{ readonly content: string }>;
   read(path: string, options?: { readonly as: "text" | "document" }): Promise<FileDocument>;
   bytes(path: string): Promise<ByteReader>;
   stat(path: string): Promise<{
@@ -648,7 +594,7 @@ export interface Workspaces {
     target: WorkspaceTarget,
     options?: {
       /** Trusts (`true`) or declines (`false`) the folder's project files; by default the folder follows a decision saved for it or the nearest folder above it. */
-      readonly projectResources?: boolean;
+      readonly trusted?: boolean;
       readonly expect?: { readonly identity: EnvironmentIdentity };
     },
   ): Promise<AddOutcome>;
@@ -656,6 +602,10 @@ export interface Workspaces {
   forget(id: WorkspaceId): Promise<ForgetOutcome>;
 
   cleanWorktrees(): Promise<WorktreeCleanup>;
+
+  scanStorage(): Promise<StorageScan>;
+
+  cleanStorage(items: readonly string[]): Promise<StorageCleanup>;
 }
 
 export interface Workspace {
@@ -677,7 +627,9 @@ export interface Workspace {
    * sessions reload with the change.
    */
   update(patch: {
-    readonly projectResources?: boolean | null;
+    readonly trusted?: boolean | null;
+    /** Saves the decision for this folder (the default) or for the folder above it, which `trust.parent` names. */
+    readonly at?: "folder" | "parent";
   }): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
 
   reload(): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;

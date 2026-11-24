@@ -79,7 +79,7 @@ export function applicationMenuTemplate(options: {
 
   const fileActions = [
     { label: "New Window", accelerator: "Shift+CommandOrControl+N", click: options.newWindow },
-    action(clientActions.newChat),
+    command(clientActions.newChat),
     action(clientActions.newTab),
     action(clientActions.openFolder),
     command(clientActions.search),
@@ -164,6 +164,9 @@ export function applicationMenuTemplate(options: {
         command(clientActions.sidebar),
         command(clientActions.workbench),
         command(clientActions.terminal),
+        { type: "separator" },
+        command(clientActions.goBack),
+        command(clientActions.goForward),
         { type: "separator" },
         command(clientActions.splitRight),
         command(clientActions.splitDown),
@@ -271,8 +274,9 @@ export function acceleratorMatches(accelerator: string, key: BrowserKey, mac: bo
     key.ctrlKey !== (has("control", "ctrl") || (!mac && primary)) ||
     key.altKey !== has("alt", "option") ||
     key.shiftKey !== has("shift")
-  )
+  ) {
     return false;
+  }
   const wanted = ACCELERATOR_KEYS.get(name) ?? name;
   const character = shortcutCharacter(key);
 

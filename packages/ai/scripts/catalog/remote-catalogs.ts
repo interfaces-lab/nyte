@@ -112,13 +112,15 @@ export async function fetchOpenRouterModels(): Promise<Model<Api>[]> {
       input.push("image");
     }
 
-    const inputCost = roundCost(parseFloat(model.pricing?.prompt || "0") * 1_000_000);
-    const outputCost = roundCost(parseFloat(model.pricing?.completion || "0") * 1_000_000);
+    const inputCost = roundCost(Number.parseFloat(model.pricing?.prompt || "0") * 1_000_000);
+    const outputCost = roundCost(Number.parseFloat(model.pricing?.completion || "0") * 1_000_000);
 
-    const cacheReadCost = roundCost(parseFloat(model.pricing?.input_cache_read || "0") * 1_000_000);
+    const cacheReadCost = roundCost(
+      Number.parseFloat(model.pricing?.input_cache_read || "0") * 1_000_000,
+    );
 
     const cacheWriteCost = roundCost(
-      parseFloat(model.pricing?.input_cache_write || "0") * 1_000_000,
+      Number.parseFloat(model.pricing?.input_cache_write || "0") * 1_000_000,
     );
 
     const contextWindow = model.top_provider?.context_length || model.context_length || 4096;
@@ -158,7 +160,7 @@ export async function fetchAiGatewayModels(): Promise<Model<Api>[]> {
   const models: Model<Api>[] = [];
 
   const toNumber = (value: string | number | undefined): number => {
-    const parsed = parseFloat(String(value ?? "0"));
+    const parsed = Number.parseFloat(String(value ?? "0"));
 
     return Number.isFinite(parsed) ? parsed : 0;
   };

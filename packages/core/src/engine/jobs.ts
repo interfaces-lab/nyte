@@ -25,6 +25,7 @@ import { clipText } from "../util/clip.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import { closable } from "../util/iterable.ts";
 import { followedTrace, traceparent } from "../util/trace.ts";
+import { activitySettled } from "./activity.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";
 import { deliverReport } from "./reports.ts";
 import { LOST, readJob, waitFor } from "./waits.ts";
@@ -93,8 +94,10 @@ export function createJobTable(kernel: Kernel): JobTable {
     entries.set(id, next);
     announce(next, previous);
 
-    if (previous.view.state.kind === "running" && next.view.state.kind !== "running")
+    if (previous.view.state.kind === "running" && next.view.state.kind !== "running") {
       forgetEnded(next.workspace);
+      activitySettled(kernel);
+    }
   };
 
   return {
@@ -105,10 +108,11 @@ export function createJobTable(kernel: Kernel): JobTable {
       const pending = starts.get(id);
       const known = pending ?? entries.get(id);
 
-      if (known !== undefined)
+      if (known !== undefined) {
         return known.digest === digest
           ? (pending?.started ?? Promise.resolve())
           : Promise.reject(new SdkError("invalid", `Job ${id} was started with another input.`));
+      }
       const started = spawn().finally(() => starts.delete(id));
       starts.set(id, { digest, started });
 
@@ -146,8 +150,9 @@ export function createJobTable(kernel: Kernel): JobTable {
           entry.view.state.kind === "running",
       );
 
-      for (const entry of started)
+      for (const entry of started) {
         update(entry.view.id, (view) => ({ ...view, foreground: false }));
+      }
 
       return started.length > 0;
     },
@@ -208,10 +213,11 @@ function watchJobs(kernel: Kernel, workspace: WorkspaceId): AsyncIterable<readon
           return { done: false, value: jobs };
         }
 
-        while (moved.size === 0 && !closed)
+        while (moved.size === 0 && !closed) {
           await new Promise<void>((resolve) => {
             wake = resolve;
           });
+        }
 
         wake = null;
         const [first] = moved;
@@ -269,11 +275,12 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
     output() {
       const entry = kernel.jobs.get(id);
 
-      if (entry === undefined)
+      if (entry === undefined) {
         throw new SdkError(
           "unavailable",
           `Job ${id} is not running in this host instance; its output reaches you through its exit report.`,
         );
+      }
 
       return closable<OutputFrame>(() => {
         const reader = entry.output.open();
@@ -298,8 +305,9 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
       if (pty === null) return { kind: "not-pty" };
       const outcome = await entry.process.resize(size);
 
-      if (outcome.kind === "resized")
+      if (outcome.kind === "resized") {
         kernel.jobs.update(id, (view) => ({ ...view, pty: { ...pty, ...size } }));
+      }
 
       return outcome;
     },
@@ -378,12 +386,14 @@ export async function startJob(
     input.pty ?? null,
   ]);
 
-  if (input.command === undefined && input.pty === undefined)
+  if (input.command === undefined && input.pty === undefined) {
     throw new SdkError("invalid", "A job without a pty needs a command.");
+  }
 
   const held = (id: JobId): Job => {
-    if ((kernel.jobs.get(id)?.digest ?? digest) !== digest)
+    if ((kernel.jobs.get(id)?.digest ?? digest) !== digest) {
       throw new SdkError("invalid", `Job ${id} was started with another input.`);
+    }
 
     return jobHandle(kernel, id);
   };
@@ -415,8 +425,9 @@ async function spawn(
   const on = async (session: SessionId): Promise<boolean> =>
     (await readSession(kernel.store, session))?.record.workspace === workspace;
 
-  if (input.session !== undefined && !(await on(input.session)))
+  if (input.session !== undefined && !(await on(input.session))) {
     throw new SdkError("invalid", `Session ${input.session} is not on workspace ${workspace}.`);
+  }
 
   const runner =
     input.session ?? (origin !== null && (await on(origin.session)) ? origin.session : null);
@@ -475,10 +486,11 @@ async function spawn(
       throw cause;
     });
 
-  if (owner !== null && process.os !== undefined)
+  if (owner !== null && process.os !== undefined) {
     await recordJobProcess(kernel, id, process.os).catch((error: unknown) => {
       fault("jobs", "process not recorded", { job: id, error: String(error) });
     });
+  }
 
   const output = createOutput(
     input.pty !== undefined && input.session === undefined
@@ -571,8 +583,9 @@ export async function reapJobs(kernel: Kernel): Promise<void> {
     const { record } = found;
 
     if (record.end !== null) {
-      if (Date.now() - (record.endedAt ?? record.startedAt) > ENDED_JOB_MS)
+      if (Date.now() - (record.endedAt ?? record.startedAt) > ENDED_JOB_MS) {
         await commit(kernel, [{ name: ref.name, target: null, expect: ref.revision }]);
+      }
 
       continue;
     }
@@ -587,8 +600,9 @@ export async function reapJobs(kernel: Kernel): Promise<void> {
       holder.why === "lapsed" &&
       (await commit(kernel, [{ name: holder.name, target: null, expect: holder.expect }])).kind !==
         "set"
-    )
+    ) {
       continue;
+    }
 
     const ended =
       record.os === undefined
@@ -635,11 +649,13 @@ async function reserveJobReport(
 function abandonedReport(record: JobRecord, ended: "ended" | "gone" | "unknown"): string {
   const named = record.command === "" ? record.title : `${record.title} (${record.command})`;
 
-  if (ended === "ended")
+  if (ended === "ended") {
     return `Job ${named} was stopped: the Nyte that ran it exited, so the next one ended the command. Its output and exit status are unknown.`;
+  }
 
-  if (ended === "gone")
+  if (ended === "gone") {
     return `Job ${named} was lost with the Nyte that ran it, and it is no longer running. Its output and exit status are unknown.`;
+  }
 
   return `Job ${named} was abandoned: the Nyte that ran it exited, so its output and exit status are unknown, and the command may still be running.`;
 }
@@ -703,13 +719,13 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
 }
 
 function createOutput(shell: { orphaned(): void } | null): JobOutput {
-  type Reader = {
+  interface Reader {
     replay: OutputFrame[];
     frames: OutputFrame[];
     size: number;
     missed: boolean;
     wake: (() => void) | null;
-  };
+  }
 
   let kept: Uint8Array[] = [];
   let size = 0;

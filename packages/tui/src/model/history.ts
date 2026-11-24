@@ -12,8 +12,9 @@ export function promptEntries(view: HeadView | null): readonly DraftSnapshot[] {
     .flatMap((message) => {
       if (message.kind !== "user" || message.status.kind !== "landed") return [];
 
-      if (showsReport(message) || showsAnswer(message) || message.source.kind === "action")
+      if (showsReport(message) || showsAnswer(message) || message.source.kind === "action") {
         return [];
+      }
       const draft = draftFromContent(message.content);
 
       return draft.text.trim() === "" ? [] : [draft];

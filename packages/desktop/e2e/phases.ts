@@ -25,5 +25,5 @@ export function describePhases(phases: Phases): string {
 }
 
 function duration(ms: number): string {
-  return ms < 1_000 ? `${String(ms)} ms` : `${(ms / 1_000).toFixed(2)} s`;
+  return ms < 1000 ? `${String(ms)} ms` : `${(ms / 1000).toFixed(2)} s`;
 }

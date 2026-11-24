@@ -66,7 +66,10 @@ type HeaderSocket = new (
   init: { readonly headers: Readonly<Record<string, string>> },
 ) => SocketLike;
 
-type Exit = { readonly code: number | null; readonly signal: NodeJS.Signals | null };
+interface Exit {
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+}
 
 interface HostProcess {
   readonly child: ChildProcess;
@@ -96,8 +99,9 @@ let rpcId = 0;
 
 const args = process.argv.slice(2);
 
-if (args.some((arg) => arg !== "--attach"))
+if (args.some((arg) => arg !== "--attach")) {
   throw new Error("Usage: pnpm --dir packages/service verify:host [--attach]");
+}
 
 if (args.includes("--attach")) await verifyAttached();
 else await verifyServed();
@@ -154,10 +158,11 @@ async function servedChecks(
   const listening = await obtain("host starts", "bun tui binary.ts host --json", async () => {
     const value = await within(START_MS, "listening", first.listening);
 
-    if (value.pid !== first.child.pid)
+    if (value.pid !== first.child.pid) {
       throw new Error(
         `listening names pid ${String(value.pid)}, child is ${String(first.child.pid)}`,
       );
+    }
 
     return { result: `listening on ${value.url}`, value };
   });
@@ -176,8 +181,9 @@ async function servedChecks(
 
     if (mode !== 0o600) throw new Error(`mode ${mode.toString(8)}, want 600`);
 
-    if (published.pid !== first.child.pid)
+    if (published.pid !== first.child.pid) {
       throw new Error(`names pid ${String(published.pid)}, child is ${String(first.child.pid)}`);
+    }
 
     if (published.url !== url) throw new Error(`names ${published.url}, listening on ${url}`);
 
@@ -305,8 +311,9 @@ async function servedChecks(
 
     if (ended === null) throw new Error("a second host listened on the same home");
 
-    if (ended.code !== 1)
+    if (ended.code !== 1) {
       throw new Error(`exited ${describeExit(ended)}, want 1: ${second.stderr()}`);
+    }
 
     return `exited ${String(ended.code)}`;
   });
@@ -318,8 +325,9 @@ async function servedChecks(
       "host.json",
     );
 
-    if (published.pid !== first.child.pid)
+    if (published.pid !== first.child.pid) {
       throw new Error(`names pid ${String(published.pid)}, first is ${String(first.child.pid)}`);
+    }
 
     return `names pid ${String(published.pid)}`;
   });
@@ -345,10 +353,11 @@ async function servedChecks(
         "host.json",
       );
 
-      if (published.pid !== fresh.child.pid)
+      if (published.pid !== fresh.child.pid) {
         throw new Error(
           `host.json names pid ${String(published.pid)}, fresh is ${String(fresh.child.pid)}`,
         );
+      }
       const exit = await stopHost(fresh);
 
       if (existsSync(hostFile)) throw new Error(`stopped ${describeExit(exit)}, host.json remains`);
@@ -369,11 +378,13 @@ async function mcpChecks(url: string, socket: string): Promise<void> {
       Type.Object({ resource: Type.String(), authorization_servers: Type.Array(Type.String()) }),
     );
 
-    if (metadata.resource !== resource)
+    if (metadata.resource !== resource) {
       throw new Error(`resource ${metadata.resource}, want ${resource}`);
+    }
 
-    if (!metadata.authorization_servers.includes(url))
+    if (!metadata.authorization_servers.includes(url)) {
       throw new Error(`authorization servers ${metadata.authorization_servers.join(", ")}`);
+    }
 
     return `resource ${metadata.resource}`;
   });
@@ -385,8 +396,9 @@ async function mcpChecks(url: string, socket: string): Promise<void> {
 
     if (response.status !== 401) throw new Error(`answered ${String(response.status)}, want 401`);
 
-    if (challenge?.includes("resource_metadata=") !== true)
+    if (challenge?.includes("resource_metadata=") !== true) {
       throw new Error(`WWW-Authenticate ${String(challenge)}`);
+    }
 
     return `401, ${challenge}`;
   });
@@ -426,8 +438,9 @@ async function mcpChecks(url: string, socket: string): Promise<void> {
     const pending = /data-request="([^"]+)"/.exec(page)?.[1];
     const code = /<code id="code">([^<]+)<\/code>/.exec(page)?.[1];
 
-    if (pending === undefined || code === undefined)
+    if (pending === undefined || code === undefined) {
       throw new Error("the authorize page shows no code");
+    }
 
     return { result: `page shows code ${code}`, value: { verifier, pending, code } };
   });
@@ -513,8 +526,9 @@ async function mcpChecks(url: string, socket: string): Promise<void> {
 
     const names = answer.result.tools.map((tool) => tool.name);
 
-    if (!names.includes("sessions_list"))
+    if (!names.includes("sessions_list")) {
       throw new Error(`no sessions_list in ${names.join(", ")}`);
+    }
 
     return `${String(names.length)} tools, sessions_list among them`;
   });
@@ -551,8 +565,9 @@ async function describes(answered: Promise<Response>): Promise<string> {
   const description = await read(response, DescriptionType);
   const digest = response.headers.get(OPERATIONS_HEADER);
 
-  if (digest !== own)
+  if (digest !== own) {
     throw new Error(`operations digest ${String(digest)}, this checkout's is ${own}`);
+  }
 
   return `version ${description.version}, digest ${own}`;
 }
@@ -561,10 +576,11 @@ async function status(answered: Promise<Response>, expected: number): Promise<st
   const response = await answered;
   const text = await response.text();
 
-  if (response.status !== expected)
+  if (response.status !== expected) {
     throw new Error(
       `answered ${String(response.status)}, want ${String(expected)}: ${text.slice(0, 160)}`,
     );
+  }
 
   return String(response.status);
 }
@@ -587,8 +603,9 @@ async function rpc<T extends TSchema>(
 
   const text = await response.text();
 
-  if (response.status !== 200)
+  if (response.status !== 200) {
     throw new Error(`answered ${String(response.status)}: ${text.slice(0, 160)}`);
+  }
   const frame = text.split("\n").findLast((line) => line.startsWith("data: "));
 
   return checked(
@@ -748,15 +765,17 @@ async function read<T extends TSchema>(response: Response, type: T): Promise<Sta
   const text = await response.text();
   const value = parseJson(text);
 
-  if (!response.ok || !compile(type).Check(value))
+  if (!response.ok || !compile(type).Check(value)) {
     throw new Error(`answered ${String(response.status)}: ${text.slice(0, 160)}`);
+  }
 
   return value;
 }
 
 function checked<T extends TSchema>(value: unknown, type: T, what: string): Static<T> {
-  if (!compile(type).Check(value))
+  if (!compile(type).Check(value)) {
     throw new Error(`${what} answered ${JSON.stringify(value)?.slice(0, 160)}`);
+  }
 
   return value;
 }
@@ -819,7 +838,7 @@ function printTable(table: readonly Row[]): void {
   const cells = table.map((row) => [
     row.check,
     row.via,
-    `${row.ok ? "ok" : "FAIL"} ${row.result}`.replace(/\s+/gu, " "),
+    `${row.ok ? "ok" : "FAIL"} ${row.result}`.replaceAll(/\s+/gu, " "),
     String(row.ms),
   ]);
 

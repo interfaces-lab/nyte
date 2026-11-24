@@ -165,8 +165,9 @@ function resolvePath(from: string, specifier: string): string {
 function readGraph(start: string, imports: ReadonlyMap<string, readonly string[]>): string[] {
   const seen = [start];
 
-  for (const path of seen)
+  for (const path of seen) {
     for (const next of imports.get(path) ?? []) if (!seen.includes(next)) seen.push(next);
+  }
 
   return seen;
 }
@@ -176,20 +177,22 @@ function resolveImport(input: {
   readonly specifier: string;
   readonly known: ReadonlySet<string>;
 }): Target {
-  if (!input.specifier.startsWith("./") && !input.specifier.startsWith("../"))
+  if (!input.specifier.startsWith("./") && !input.specifier.startsWith("../")) {
     return {
       kind: "missing",
       message: `${input.from} imports ${JSON.stringify(input.specifier)}: a design imports react and its own .jsx and .css files, nothing else.`,
     };
+  }
   const path = resolvePath(input.from, input.specifier);
 
-  if (path.endsWith(".css"))
+  if (path.endsWith(".css")) {
     return input.known.has(path)
       ? { kind: "style", path }
       : {
           kind: "missing",
           message: `${input.from} imports ${input.specifier}, which is not a stylesheet under design/.`,
         };
+  }
 
   return path.endsWith(".jsx") && input.known.has(path)
     ? { kind: "module", path }
@@ -246,8 +249,9 @@ function compileText(input: {
       "",
     );
 
-    if (!Value.Check(PositionedType, error))
+    if (!Value.Check(PositionedType, error)) {
       return { kind: "failed", message, line: null, column: null };
+    }
     const lines = input.text.slice(0, unstamp(error.pos, input.stamps)).split("\n");
 
     return {
@@ -281,10 +285,11 @@ function writeModule(path: string, body: Compiled, targets: ReadonlyMap<string, 
   const board = `globalThis.${BOARD_GLOBAL}`;
   const open = `${board}.define(${JSON.stringify(path)}, function (exports, ${LOAD}) {`;
 
-  if (body.kind === "failed")
+  if (body.kind === "failed") {
     return `${open} throw Object.assign(new Error(${JSON.stringify(body.message)}), ${JSON.stringify(
       { path, line: body.line, column: body.column },
     )});\n});\n`;
+  }
 
   const cases = [
     ...Object.entries(RUNTIME).map(

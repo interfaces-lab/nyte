@@ -21,13 +21,15 @@ export async function registerFolder(
       expect: { identity: seen.identity },
     });
 
-    if (added.kind === "stale")
+    if (added.kind === "stale") {
       return { kind: "failed", message: "The folder changed. Try again." };
+    }
 
-    if (added.kind === "unavailable")
+    if (added.kind === "unavailable") {
       return { kind: "failed", message: UNREADABLE_FOLDER[folders] };
+    }
 
-    if (trust) await connection.workspace(added.workspace).update({ projectResources: true });
+    if (trust) await connection.workspace(added.workspace).update({ trusted: true });
     const workspace = await connection.workspace(added.workspace).info();
     const folder = "path" in workspace.target ? workspace.target.path : path;
 
@@ -36,9 +38,9 @@ export async function registerFolder(
       workspace: {
         id: workspace.id,
         path: folder,
-        name: folder.split(/[\\/]/u).filter(Boolean).at(-1) ?? folder,
+        name: folder.split(/[\\/]/u).findLast(Boolean) ?? folder,
       },
-      needsTrust: workspace.trusted === null && seen.projectSources.length > 0,
+      needsTrust: workspace.trust.state === "undecided" && workspace.trust.notice === "ask",
     };
   } catch (cause) {
     return { kind: "failed", message: errorMessage(cause) };

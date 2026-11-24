@@ -289,10 +289,11 @@ function attachedSource(url: string): HostSource {
   const token = process.env["NYTE_HOST_TOKEN"];
   delete process.env["NYTE_HOST_TOKEN"];
 
-  if (token === undefined || token === "")
+  if (token === undefined || token === "") {
     throw new CliError("missing_input", "Can't attach to --host-url without NYTE_HOST_TOKEN set.", {
       details: [{ label: "Token", value: "nyte host writes it to ~/.nyte/host.json" }],
     });
+  }
 
   return { kind: "attached", endpoint: { url, token } };
 }
@@ -303,11 +304,12 @@ async function chat(args: readonly string[], context: Context): Promise<CommandE
     COMMANDS.map((command) => command.name),
   );
 
-  if (misplaced !== undefined)
+  if (misplaced !== undefined) {
     throw new CliError(
       "invalid_arguments",
       `Put ${misplaced[0] ?? ""} first: ${shellCommand(["nyte", ...misplaced])}`,
     );
+  }
 
   const flags = parseFlags(args);
   const stdinTerminal = context.output.mode.tty.stdin;
@@ -315,11 +317,12 @@ async function chat(args: readonly string[], context: Context): Promise<CommandE
   const tui = !flags.print && !flags.json && !flags.quiet && stdinTerminal;
   const resumeId = flags.resume.kind === "latest" && flags.rest.length === 1;
 
-  if (!flags.print && flags.rest.length > 0 && !(tui && resumeId))
+  if (!flags.print && flags.rest.length > 0 && !(tui && resumeId)) {
     throw unknownCommand(flags.rest[0] ?? "");
+  }
   const source = hostSource(flags);
 
-  if (flags.minimal && (!stdinTerminal || !stdoutTerminal))
+  if (flags.minimal && (!stdinTerminal || !stdoutTerminal)) {
     throw new CliError(
       "missing_input",
       "Can't open --minimal without a terminal on stdin and stdout.",
@@ -329,16 +332,18 @@ async function chat(args: readonly string[], context: Context): Promise<CommandE
         ],
       },
     );
+  }
 
-  if (!tui)
+  if (!tui) {
     return print(
       flags,
       await readPrompt(flags.rest, stdinTerminal, context.invocation.signal),
       source,
       context,
     );
+  }
 
-  if (!stdoutTerminal)
+  if (!stdoutTerminal) {
     throw new CliError(
       "missing_input",
       "Can't open the full-screen app without a terminal on stdout.",
@@ -346,6 +351,7 @@ async function chat(args: readonly string[], context: Context): Promise<CommandE
         next: [{ label: "Send one prompt and print the answer", argv: ["nyte", "-p", "<PROMPT>"] }],
       },
     );
+  }
 
   context.invocation.signal.throwIfAborted();
   context.invocation.handoff();
@@ -379,20 +385,23 @@ async function print(
   stopIfCanceled();
   const catalog = await host.models.list();
 
-  if (models.availableModels(catalog).length === 0)
+  if (models.availableModels(catalog).length === 0) {
     throw new CliError("missing_input", "Can't send a prompt without a stored credential.", {
       next: [{ label: "Sign in to a provider", argv: ["nyte", "login"] }],
     });
+  }
   const configuration = setup.flagConfiguration(catalog, flags);
   const resumed = await setup.targetSession(host, flags.resume);
 
-  if (flags.resume.kind === "latest" && resumed === null)
+  if (flags.resume.kind === "latest" && resumed === null) {
     throw new CliError("not_found", "Can't continue the latest chat. There are no chats yet.", {
       next: [{ label: "Start a chat", argv: ["nyte", "-p", "<PROMPT>"] }],
     });
+  }
 
-  if (flags.trust !== undefined)
+  if (flags.trust !== undefined) {
     await setup.trustFolder(host, flags.resume, process.cwd(), flags.trust);
+  }
 
   if (resumed !== null && flags.resume.kind === "latest" && !flags.json) {
     const workspace = await host.workspace((await resumed.info()).workspace).info();
@@ -412,13 +421,14 @@ async function print(
   if (resumed !== null && configuration !== undefined) {
     const configured = await resumed.configure(configuration);
 
-    if (configured.kind !== "configured")
+    if (configured.kind !== "configured") {
       throw new CliError("failed", "Couldn't apply --model or --effort to the chat.", {
         details: [
           { label: "Session", value: resumed.id },
           { label: "Outcome", value: configured.kind },
         ],
       });
+    }
   }
 
   const started =

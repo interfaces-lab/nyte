@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { OpenQuestion } from "@nyte-ai/plugin/question/schema";
 import { asId } from "@nyte-ai/schema";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import type { Ask } from "./asks.ts";
 import { dockView, stepDock } from "./question-dock.ts";
 import type { DockEvent, Reply, RequestDraft } from "./question-dock.ts";
@@ -297,8 +297,9 @@ function describe(row: Row): Seen {
       assert.ok(shown !== undefined, `${row.name}: nothing shown for ${event.kind}`);
       const step = stepDock(shown, state.drafts, event);
 
-      if (step.outcome.kind === "none" || step.outcome.kind === "blocked")
+      if (step.outcome.kind === "none" || step.outcome.kind === "blocked") {
         assert.equal(step.drafts, state.drafts, `${row.name}: ${event.kind} kept the same drafts`);
+      }
 
       return {
         drafts: step.drafts,

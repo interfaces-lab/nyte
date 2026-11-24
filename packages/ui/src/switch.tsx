@@ -1,12 +1,14 @@
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
 import { Field } from "@base-ui/react/field";
 import { create, props } from "@stylexjs/stylex";
-import { useId, type ComponentProps, type ReactElement } from "react";
+import { useId } from "react";
+import type { ComponentProps, ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
 import { media, radius, row, space, switchControl, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
@@ -161,8 +163,9 @@ export function SwitchField({
             if (
               target instanceof Element &&
               (target === currentTarget.control || target.closest('[role="switch"]'))
-            )
+            ) {
               return;
+            }
 
             if (event.shiftKey || selectionWithin(currentTarget)) {
               event.preventDefault();

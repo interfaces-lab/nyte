@@ -47,10 +47,11 @@ describe("woken calls", () => {
       durable.wait({ kind: "timer", until: soon }),
     );
 
-    for (let index = 1; index < 50; index += 1)
+    for (let index = 1; index < 50; index += 1) {
       await waitStep(holder.kernel, session.id, `c${index}`, async (durable) =>
         durable.wait({ kind: "timer", until: Date.now() + 60_000 }),
       );
+    }
 
     await other.kernel.waits.tick(soon + 1);
     expect(await wokenNames(holder.kernel)).toEqual([wokenIndex(session.id, asId("c0"))]);
@@ -110,10 +111,11 @@ describe("woken calls", () => {
     await kernel.waits.tick(soon + 1);
     expect(await wokenNames(kernel)).toEqual([wokenIndex(session.id, asId("c1"))]);
 
-    for (const parked of [session.id, kept.id])
+    for (const parked of [session.id, kept.id]) {
       await waitStep(kernel, parked, "c2", async (durable) =>
         durable.wait({ kind: "timer", until: Date.now() + 60_000 }),
       );
+    }
 
     expect(await host.session(session.id).remove()).toEqual({ kind: "removed" });
     expect(

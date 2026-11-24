@@ -60,13 +60,14 @@ function due(storage: Pick<DurableObjectSql, "sql">, rows: readonly [string, num
     "CREATE TABLE IF NOT EXISTS nyte_schedule (session TEXT NOT NULL, head TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (session, head))",
   );
 
-  for (const [session, at] of rows)
+  for (const [session, at] of rows) {
     storage.sql.exec(
       "INSERT INTO nyte_schedule (session, head, at) VALUES (?, ?, ?)",
       session,
       "main",
       at,
     );
+  }
 }
 
 function readSchedule(storage: Pick<DurableObjectSql, "sql">): Record<string, SqlValue>[] {
@@ -100,8 +101,8 @@ describe("pass (§42f, §42i)", () => {
     const host = fakeHost({
       reports: {
         a: { kind: "idle" },
-        b: { kind: "waiting", until: now + 5_000 },
-        c: { kind: "retry", until: now + 7_000 },
+        b: { kind: "waiting", until: now + 5000 },
+        c: { kind: "retry", until: now + 7000 },
         d: new Error("boom"),
       },
     });
@@ -113,11 +114,11 @@ describe("pass (§42f, §42i)", () => {
     expect(host.advanced).toEqual(["a", "b", "c", "d"]);
     expect(host.repairs).toBe(0);
     expect(rows.a).toBeUndefined();
-    expect(rows.b).toBe(now + 5_000);
-    expect(rows.c).toBe(now + 7_000);
+    expect(rows.b).toBe(now + 5000);
+    expect(rows.c).toBe(now + 7000);
     expect(Number(rows.d)).toBeGreaterThanOrEqual(now + 30_000);
     expect(rows.later).toBe(now + 60_000);
-    expect(next).toBe(now + 5_000);
+    expect(next).toBe(now + 5000);
   });
 
   it("advances at most budget.heads and leaves the rest due at once", async () => {
@@ -233,6 +234,6 @@ describe("NyteHost's cold start (§42y)", () => {
     const described = await host.fetch(new Request("http://host.test/.nyte/describe"));
 
     expect(described.status).toBe(200);
-    expect(alarms.some((at) => at >= before - 1_000 && at <= Date.now())).toBe(true);
+    expect(alarms.some((at) => at >= before - 1000 && at <= Date.now())).toBe(true);
   });
 });

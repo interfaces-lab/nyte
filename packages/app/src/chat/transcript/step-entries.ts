@@ -65,12 +65,12 @@ export function stepEntries(steps: StepCalls, mergeThinking: boolean): readonly 
     const step = readBrowserStep(message.state.name, message.state.args);
 
     if (step !== null) {
-      if (previous?.kind === "browser")
+      if (previous?.kind === "browser") {
         entries[entries.length - 1] = {
           ...previous,
           steps: [...previous.steps, { message, step }],
         };
-      else entries.push({ kind: "browser", key: message.id, steps: [{ message, step }] });
+      } else entries.push({ kind: "browser", key: message.id, steps: [{ message, step }] });
       continue;
     }
 

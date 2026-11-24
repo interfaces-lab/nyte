@@ -59,8 +59,9 @@ function record(ring: Ring, draft: Draft): void {
     ring.steps.at(-1)?.seq === draft.seq &&
     touched.paths.size === 0 &&
     TABLES.every((table) => touched.upsert[table].size + touched.drop[table].size === 0)
-  )
+  ) {
     return;
+  }
   ring.mark += 1;
   ring.steps.push({ seq: draft.seq, mark: ring.mark, ...touched });
   const evicted = ring.steps.length > RING ? ring.steps.shift() : undefined;
@@ -165,8 +166,9 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
     const thinkingOnly = steps > 0 && steps === thinking;
     draft.thinking.set(id, thinking);
 
-    if (steps !== turn.info.steps || thinkingOnly !== turn.info.thinkingOnly)
+    if (steps !== turn.info.steps || thinkingOnly !== turn.info.thinkingOnly) {
       setTurn(draft, { ...turn, info: { ...turn.info, steps, thinkingOnly } });
+    }
   }
 
   for (const [name, from] of reflows) {
@@ -199,8 +201,9 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
 
     const after = path.usage.at(-1) ?? ZERO_USAGE;
 
-    if (before !== after && JSON.stringify(before) !== JSON.stringify(after))
+    if (before !== after && JSON.stringify(before) !== JSON.stringify(after)) {
       touchRow(draft, "usage", name);
+    }
   }
 
   return touched;
@@ -259,8 +262,9 @@ function place(draft: Draft, path: Path, message: Message): void {
     info !== undefined &&
     path.messages.at(-1)?.turn !== message.turn &&
     showsTurn(draft.messages, info)
-  )
+  ) {
     touchRow(draft, "turns", message.turn);
+  }
 }
 
 function truncate(draft: Draft, head: HeadName, path: Path, length: number): void {
@@ -281,8 +285,9 @@ function count(draft: Draft, head: HeadName, message: Message, delta: number): v
     message.kind !== "part" ||
     message.role !== "step" ||
     draft.turns.get(message.turn)?.head !== head
-  )
+  ) {
     return;
+  }
 
   const entry = draft.steps.get(message.turn) ?? { steps: 0, thinking: 0 };
   entry.steps += delta;

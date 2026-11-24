@@ -113,8 +113,9 @@ export class ConnectRuntime {
     const { broker } = this;
     const reason = this.unavailableReason();
 
-    if (broker === undefined || reason !== undefined)
+    if (broker === undefined || reason !== undefined) {
       return { kind: "unavailable", reason: reason ?? "not_configured" };
+    }
     const read = await this.store.read();
 
     if (read.kind === "failed") return { kind: "unavailable", reason: "store_failed" };
@@ -124,8 +125,9 @@ export class ConnectRuntime {
     if (
       (link !== null && link.origin !== broker.origin) ||
       (read.file.linkKey !== null && read.file.linkKey.origin !== broker.origin)
-    )
+    ) {
       return { kind: "unavailable", reason: "origin_changed" };
+    }
 
     if (link === null) {
       return {
@@ -463,12 +465,13 @@ export class ConnectRuntime {
       await this.recordRemoval(deviceId, kind);
       recorded = true;
     } finally {
-      if (kind === "release")
+      if (kind === "release") {
         setTimeout(() => {
           serving?.disconnectClients();
 
           if (recorded) void this.outbox.sendRevocations(true);
         }, this.timing.dropDelayMs);
+      }
     }
 
     this.changed();
@@ -487,8 +490,9 @@ export class ConnectRuntime {
       if (
         !link.devices.some((device) => device.id === deviceId) &&
         (queued === undefined || queued.kind === "revoke" || kind === "release")
-      )
+      ) {
         return file;
+      }
 
       return {
         ...file,

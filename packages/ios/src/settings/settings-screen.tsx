@@ -5,10 +5,11 @@ import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAccount } from "../account/account-provider.tsx";
-import { ConnectSheet, type ConnectionSheetPage } from "../account/connect-panel.tsx";
+import { ConnectSheet } from "../account/connect-panel.tsx";
+import type { ConnectionSheetPage } from "../account/connect-panel.tsx";
 import { useHost } from "../connection/host-context.tsx";
 import { displayAddress } from "../connection/connection.ts";
-import { useHealth } from "../connection/live.ts";
+import { useLink } from "../connection/live.ts";
 import { workspaceName, workspacePath } from "../chat/workspace-menu.ts";
 import { useRegistryFolders } from "../chat/workspace-start.tsx";
 import { Group, GroupRow } from "../ui/group.tsx";
@@ -40,19 +41,19 @@ export function SettingsScreen() {
   const [dateSections, setDateSections] = useDateSections();
   const [twoLinePreview, setTwoLinePreview] = useTwoLinePreview();
 
-  const health = useHealth(client);
+  const link = useLink(client);
   const registry = useRegistryFolders();
 
   const version = Constants.expoConfig?.version ?? "0.0.0";
 
-  const refused = saved.kind === "managed" && health.kind === "blocked" && health.reason === "auth";
+  const refused = saved.kind === "managed" && link.kind === "refused" && link.reason === "auth";
 
   const status: HostStatus =
-    health.kind === "connecting" || health.kind === "retrying"
+    link.kind === "connecting" || link.kind === "away"
       ? "checking"
       : refused
         ? "refused"
-        : health.kind === "blocked"
+        : link.kind === "refused" || link.kind === "closed"
           ? "unreachable"
           : "connected";
 

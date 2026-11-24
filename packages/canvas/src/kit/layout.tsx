@@ -162,7 +162,7 @@ export function Grid({
   const roles = Children.toArray(children).map(findLayoutRole);
   const floor = Math.max(0, ...roles.map((role) => pairFloor(role, role, "inline")));
   const gap = snapStep(Math.max(snapStep(asked, GAPS, 2), floor), GAPS, 2);
-  const columns = askedColumns === "auto" ? Number.NaN : Math.round(Number(askedColumns));
+  const columns = askedColumns === "auto" ? Number.NaN : Math.round(askedColumns);
 
   return (
     <div
@@ -171,7 +171,7 @@ export function Grid({
         gaps[gap],
         Number.isFinite(columns) && columns >= 1
           ? grid.fixed(columns, GAP_SPACE[gap])
-          : grid.auto(Number.isFinite(Number(minWidth)) ? Number(minWidth) : 160),
+          : grid.auto(Number.isFinite(minWidth) ? minWidth : 160),
       )}
     >
       {children}

@@ -37,14 +37,16 @@ const all = Promise.withResolvers<void>();
 const check = (): void => {
   const snapshot = head.snapshot();
 
-  for (const message of snapshot === null ? [] : headView(snapshot).messages)
+  for (const message of snapshot === null ? [] : headView(snapshot).messages) {
     if (
       message.kind === "user" &&
       typeof message.content === "string" &&
       message.content.startsWith("VIS ") &&
       !seen.has(message.content)
-    )
+    ) {
       seen.set(message.content, Date.now());
+    }
+  }
 
   if (seen.size >= Number(expected)) all.resolve();
 };

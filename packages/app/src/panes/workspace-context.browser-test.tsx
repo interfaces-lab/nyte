@@ -28,8 +28,7 @@ function folder(
     target: { kind: "local", path },
     identity: asId<"environment-identity">(id),
     availability: { kind: "available" },
-    projectResources: null,
-    trusted: true,
+    trust: { state: "trusted", by: { kind: "folder", path: null } },
     projectSources: [],
     addedBy: asId<"principal">("tester"),
     writers: [],
@@ -78,7 +77,7 @@ function expectRule(passed: boolean, message: string): void {
 }
 
 async function until<T>(read: () => T | null | undefined | false, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
     const value = read();
@@ -257,7 +256,7 @@ const files: FilesApi = {
     throw new SdkError("unavailable", "Not scripted.");
   },
   format: refuse,
-  scan: async function* () {
+  async *scan() {
     yield {
       kind: "entries",
       entries: [{ path: `${checkedOutBranch()}.ts`, kind: "file", size: 1, version: null }],
@@ -265,10 +264,10 @@ const files: FilesApi = {
     yield { kind: "complete" };
   },
   find: refuse,
-  search: async function* () {
+  async *search() {
     yield { kind: "complete" };
   },
-  watch: async function* () {
+  async *watch() {
     yield* [];
     await new Promise<never>(() => undefined);
   },

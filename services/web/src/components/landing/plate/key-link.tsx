@@ -1,6 +1,7 @@
 import { HrefLink } from "~/components/site/href-link";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { useEffectEvent, useRef, type ReactNode } from "react";
+import { useEffectEvent, useRef } from "react";
+import type { ReactNode } from "react";
 
 interface KeyLinkProps {
   href: string;
@@ -14,15 +15,17 @@ export function KeyLink({ href, shortcut, className, kbdClassName, children }: K
   const ref = useRef<HTMLAnchorElement>(null);
 
   const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat)
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat) {
       return;
+    }
     if (event.key.toLowerCase() !== shortcut.toLowerCase()) return;
     const target = event.target;
     if (
       target instanceof HTMLElement &&
       (target.isContentEditable || target.closest("input, textarea, select, [role=dialog]"))
-    )
+    ) {
       return;
+    }
     event.preventDefault();
     ref.current?.click();
   });

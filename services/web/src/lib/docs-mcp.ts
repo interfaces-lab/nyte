@@ -70,7 +70,7 @@ function docsServer(origin: string): McpServer {
     async (input) => {
       const page = findDoc(input.page);
 
-      if (page === undefined)
+      if (page === undefined) {
         return {
           content: [
             {
@@ -80,6 +80,7 @@ function docsServer(origin: string): McpServer {
           ],
           isError: true,
         };
+      }
 
       return answer(`${await page.text()}\n\nSource: ${origin}${page.url}`);
     },
@@ -122,10 +123,11 @@ async function searchDocs(query: string, origin: string, limit: number): Promise
     const lines = pages.get(url) ?? [];
     const text = plain(hit.content);
 
-    if (hit.type !== "page" && lines.length < 4 && text !== findPage(url)?.description)
+    if (hit.type !== "page" && lines.length < 4 && text !== findPage(url)?.description) {
       lines.push(
         `  - ${text.length > 200 ? `${text.slice(0, 199)}…` : text} (${origin}${hit.url})`,
       );
+    }
     pages.set(url, lines);
   }
 
@@ -151,7 +153,7 @@ function findDoc(path: string): DocPage | undefined {
     .replace(/^https?:\/\/[^/]+/u, "")
     .replace(/[#?].*$/u, "")
     .replace(/\.mdx?$/u, "")
-    .replace(/^\/+|\/+$/gu, "")
+    .replaceAll(/^\/+|\/+$/gu, "")
     .replace(/^docs\/?/u, "");
 
   return findPage(trimmed === "" ? "/docs" : `/docs/${trimmed}`);
@@ -163,7 +165,7 @@ function formatDocPath(url: string): string {
 
 function plain(text: string): string {
   return text
-    .replace(/<[^>]+>/gu, "")
-    .replace(/\s+/gu, " ")
+    .replaceAll(/<[^>]+>/gu, "")
+    .replaceAll(/\s+/gu, " ")
     .trim();
 }

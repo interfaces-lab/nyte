@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { mkdirSync, rmSync, writeFileSync } from "fs";
-import { dirname, join, relative } from "path";
-import { fileURLToPath } from "url";
-import { styleText } from "util";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import { styleText } from "node:util";
 import type { Api, Model } from "../src/types.ts";
 import {
   applyAnthropicAllowedFallbackModelMetadata,
@@ -67,7 +67,7 @@ import {
 import { done, fail, seconds } from "./terminal.ts";
 import { verifyNyteCatalogs } from "./verify-catalogs.ts";
 
-const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const packageRoot = join(import.meta.dirname, "..");
 
 async function loadModelsDevData(): Promise<{
   readonly models: Model<Api>[];

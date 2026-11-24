@@ -200,7 +200,7 @@ test("the search line draws the caret where the model put it", async () => {
   const row = rows(app.frame()).findIndex((line) => line.includes("abc"));
   const texts = (app.captureSpans().lines[row]?.spans ?? []).map((span) => span.text);
 
-  const first = texts.findIndex((text) => text === "a");
+  const first = texts.indexOf("a");
 
   expect(texts.slice(first, first + 3)).toEqual(["a", "b", "c"]);
 

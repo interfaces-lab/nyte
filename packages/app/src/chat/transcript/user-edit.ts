@@ -1,5 +1,5 @@
 import type { UserContent } from "@nyte-ai/sdk";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import { composerContentEmpty } from "../composer/composer-plan.ts";
 import type { ComposerContent } from "../composer/composer-plan.ts";
 import type { ModelPickerChange } from "../composer/model-picker.tsx";
@@ -117,8 +117,9 @@ export function nextEdit(edit: UserEditState, event: UserEditEvent): UserEditSta
 export function decideSave(edit: UserEditState, draft: ComposerContent): SaveDecision {
   if (edit.saving) return { kind: "busy" };
 
-  if (composerContentEmpty(draft))
+  if (composerContentEmpty(draft)) {
     return { kind: "empty", edit: { ...edit, error: EMPTY_MESSAGE } };
+  }
 
   return {
     kind: "send",

@@ -6,16 +6,20 @@ import { Type } from "typebox";
 export const QUESTION_TOOL = "question";
 
 const infoSchema = Type.Object({
-  question: Type.String({ minLength: 1, pattern: "\\S", description: "The question to ask." }),
+  question: Type.String({
+    minLength: 1,
+    pattern: String.raw`\S`,
+    description: "The question to ask.",
+  }),
   header: Type.String({
     minLength: 1,
     maxLength: 30,
-    pattern: "\\S",
+    pattern: String.raw`\S`,
     description: "A short label for this question.",
   }),
   options: Type.Array(
     Type.Object({
-      label: Type.String({ minLength: 1, pattern: "\\S" }),
+      label: Type.String({ minLength: 1, pattern: String.raw`\S` }),
       description: Type.String({ description: "What this choice means." }),
     }),
     { description: "Distinct choices; the user can also write their own." },

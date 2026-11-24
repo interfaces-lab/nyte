@@ -10,7 +10,8 @@ import type { FakeModels } from "@nyte-ai/bench";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/connect.ts";
 import type { ClientConnection } from "../src/connect.ts";
-import type { Health, OpenSocket, SocketRequest } from "../src/live/host-connection.ts";
+import type { OpenSocket, SocketRequest } from "../src/live/host-connection.ts";
+import type { LinkState } from "../src/live/link.ts";
 import type { ChatSnapshot } from "../src/live/chat.ts";
 import type { HeadStore } from "../src/live/head.ts";
 import { createSendJournal } from "../src/send/journal.ts";
@@ -125,10 +126,10 @@ async function attach(
   return connection;
 }
 
-async function until(connection: ClientConnection, kind: Health["kind"]): Promise<Health> {
-  await vi.waitFor(() => expect(connection.health.snapshot().kind).toBe(kind), { timeout: 5_000 });
+async function until(connection: ClientConnection, kind: LinkState["kind"]): Promise<LinkState> {
+  await vi.waitFor(() => expect(connection.link.snapshot().kind).toBe(kind), { timeout: 5000 });
 
-  return connection.health.snapshot();
+  return connection.link.snapshot();
 }
 
 describe("a connection's socket", () => {
@@ -163,8 +164,8 @@ describe("a connection's socket", () => {
       vi.useRealTimers();
     });
 
-    expect(await until(connection, "blocked")).toMatchObject({
-      reason: "version",
+    expect(await until(connection, "refused")).toMatchObject({
+      reason: "update-host",
       error: { message: expect.stringMatching(/^Update the host/) },
     });
     await vi.advanceTimersByTimeAsync(30_000);
@@ -173,7 +174,33 @@ describe("a connection's socket", () => {
     connection.retry();
     await transport.dialed(2);
     expect(transport.opened).toHaveLength(2);
-    expect(await until(connection, "blocked")).toMatchObject({ reason: "version" });
+    expect(await until(connection, "refused")).toMatchObject({ reason: "update-host" });
+  });
+
+  it("closes for good a socket another host answers at the same address", async () => {
+    const first = await serve();
+    const other = await serve();
+    const away = new URL(other.listener.address ?? "").host;
+
+    const transport = counting((request) => {
+      const url = new URL(request.url);
+      url.host = away;
+
+      return new WebSocket(url.href, { headers: request.headers });
+    });
+
+    const connection = await attach(first.listener, transport.socket);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
+
+    expect(await until(connection, "refused")).toMatchObject({
+      reason: "other-host",
+      error: { code: "stale" },
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(transport.opened).toHaveLength(1);
   });
 });
 
@@ -218,7 +245,7 @@ async function matchesRead(connection: ClientConnection, store: HeadStore, sessi
         activation: snapshot?.activation,
       }).toEqual({ ...openSessionStore(window).snapshot(), activation: window.live.activation });
     },
-    { timeout: 4_000 },
+    { timeout: 4000 },
   );
 }
 
@@ -241,16 +268,16 @@ describe("a refused login", () => {
     const principal = (await served.host.principals.list())[0]?.id;
     expect(principal).toBeDefined();
     await served.host.principals.revoke(principal ?? asId("none"));
-    await until(paired, "retrying");
+    await until(paired, "away");
     paired.retry();
 
-    expect(await until(paired, "blocked")).toMatchObject({
+    expect(await until(paired, "refused")).toMatchObject({
       reason: "auth",
       error: { code: "unauthenticated" },
     });
 
     const unreachable = await attach(served.listener, () => new WebSocket("ws://127.0.0.1:9"));
-    expect(await until(unreachable, "retrying")).toMatchObject({ attempt: 1 });
+    expect(await until(unreachable, "away")).toMatchObject({ reason: "lost" });
   });
 });
 
@@ -288,7 +315,7 @@ describe("a head store", () => {
     served.listener.disconnectClients();
 
     await vi.waitFor(() => {
-      expect(connection.health.snapshot()).toMatchObject({ kind: "retrying", attempt: 1 });
+      expect(connection.link.snapshot()).toMatchObject({ kind: "away", reason: "lost" });
       expect(store.freshness().kind).toBe("stale");
     });
 
@@ -322,8 +349,8 @@ describe("a head store", () => {
     await send(served, session, text);
     const connection = await attach(served.listener);
     await until(connection, "open");
-    const kinds: Health["kind"][] = [];
-    connection.health.subscribe(() => kinds.push(connection.health.snapshot().kind));
+    const kinds: LinkState["kind"][] = [];
+    connection.link.subscribe(() => kinds.push(connection.link.snapshot().kind));
     const store = watched(connection, session);
 
     await vi.waitFor(() => expect(store.freshness().kind).toBe("fresh"), { timeout: 10_000 });
@@ -346,58 +373,16 @@ describe("a reconnect", () => {
 
     for (const drop of [1, 2, 3]) {
       served.listener.disconnectClients();
-      const retrying = await until(connection, "retrying");
+      const retrying = await until(connection, "away");
 
-      expect({ drop, retrying }).toMatchObject({ drop, retrying: { attempt: 1 } });
-      expect(retrying.kind === "retrying" && retrying.at - Date.now()).toBeLessThanOrEqual(1_000);
-      vi.advanceTimersByTime(1_000);
+      expect({ drop, retrying }).toMatchObject({ drop, retrying: { reason: "lost" } });
+      expect(retrying.kind === "away" && retrying.retryAt - Date.now()).toBeLessThanOrEqual(1000);
+      vi.advanceTimersByTime(1000);
       await until(connection, "open");
     }
   });
 
-  it("waits longer before each retry of a host that welcomes it and then closes for size", async () => {
-    const served = await serve();
-    const session = await startSession(served);
-    await send(served, session, "x".repeat(1_200_000));
-
-    const connection = await attach(served.listener, (request) => {
-      const socket = global(request);
-      const send = socket.send.bind(socket);
-
-      return Object.assign(socket, {
-        send(data: string) {
-          send(data.replace(`"api_revision":${API_REVISION},`, ""));
-        },
-      });
-    });
-
-    await until(connection, "open");
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    cleanups.push(async () => {
-      vi.useRealTimers();
-    });
-    const retries = recorder<number>();
-    const waits = retries.entries;
-
-    connection.health.subscribe(() => {
-      const health = connection.health.snapshot();
-
-      if (health.kind === "retrying") retries.record(health.at - Date.now());
-    });
-    watched(connection, session);
-
-    for (const close of [1, 2, 3]) {
-      await retries.reached(close);
-      expect(waits).toHaveLength(close);
-      vi.advanceTimersByTime(waits.at(-1) ?? 0);
-    }
-
-    expect(waits[1]).toBeGreaterThan(waits[0] ?? Infinity);
-    expect(waits[2]).toBeGreaterThan(waits[1] ?? Infinity);
-    expect(waits[2]).toBeGreaterThan(1_000);
-  }, 30_000);
-
-  it("keeps one socket when a health listener wakes the connection as it starts retrying", async () => {
+  it("keeps one socket when a link listener wakes the connection as it goes away", async () => {
     const served = await serve();
     const transport = counting();
     const connection = await attach(served.listener, transport.socket);
@@ -407,8 +392,8 @@ describe("a reconnect", () => {
       vi.useRealTimers();
     });
 
-    connection.health.subscribe(() => {
-      if (connection.health.snapshot().kind === "retrying") connection.retry();
+    connection.link.subscribe(() => {
+      if (connection.link.snapshot().kind === "away") connection.retry();
     });
     served.listener.disconnectClients();
     await transport.dialed(2);
@@ -465,7 +450,7 @@ describe("a silent link", () => {
   it.each([
     { case: "while idle", call: false, retry: false, alive: 29_999, lost: 40_000 },
     { case: "with a call pending", call: true, retry: false, alive: 14_999, lost: 15_000 },
-    { case: "when asked to retry", call: false, retry: true, alive: 1_999, lost: 2_000 },
+    { case: "when asked to retry", call: false, retry: true, alive: 1999, lost: 2000 },
   ] as const)(
     "is found $case, fails the pending call as a lost link, and resumes on a new socket",
     async (row) => {
@@ -485,8 +470,8 @@ describe("a silent link", () => {
 
       if (row.retry) connection.retry();
       await vi.waitFor(() => expect(transport.owed()).toEqual([]));
-      await vi.advanceTimersByTimeAsync(5_000);
-      expect(connection.health.snapshot().kind).toBe("open");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(connection.link.snapshot().kind).toBe("open");
       expect(transport.opened).toHaveLength(1);
 
       transport.cut();
@@ -498,9 +483,9 @@ describe("a silent link", () => {
 
       if (row.retry) connection.retry();
       await vi.advanceTimersByTimeAsync(row.alive);
-      expect(connection.health.snapshot().kind).toBe("open");
+      expect(connection.link.snapshot().kind).toBe("open");
       await vi.advanceTimersByTimeAsync(row.lost - row.alive);
-      expect(connection.health.snapshot().kind).not.toBe("open");
+      expect(connection.link.snapshot().kind).not.toBe("open");
       expect(store.freshness().kind).toBe("stale");
 
       if (pending !== null) expect(linkLost(await pending)).toBe(true);
@@ -536,7 +521,7 @@ describe("a failed read", () => {
     await vi.waitFor(() =>
       expect(store.freshness()).toMatchObject({ kind: "stale", error: { code: "invalid" } }),
     );
-    expect(connection.health.snapshot().kind).toBe("open");
+    expect(connection.link.snapshot().kind).toBe("open");
     await matchesRead(connection, store, session);
   });
 });
@@ -557,7 +542,7 @@ describe("a sessions store", () => {
           expect(sessions.freshness()).toMatchObject({ kind: "fresh" });
           expect({ ids: sessions.snapshot()?.ids, rows: sessions.snapshot()?.rows }).toEqual(fresh);
         },
-        { timeout: 4_000 },
+        { timeout: 4000 },
       );
 
     await matches();
@@ -608,7 +593,7 @@ describe("a sessions store's order", () => {
   });
 });
 
-function welcomedAt(revision: number, frames: string[]) {
+function recording(frames: string[]) {
   return class extends WebSocket {
     override send(data: string): void {
       frames.push(data);
@@ -616,66 +601,49 @@ function welcomedAt(revision: number, frames: string[]) {
     }
 
     override dispatchEvent(event: Event): boolean {
-      if (!(event instanceof MessageEvent)) return super.dispatchEvent(event);
-      const text = String(event.data);
+      if (event instanceof MessageEvent) frames.push(String(event.data));
 
-      const data = text.includes('"type":"welcome"')
-        ? text
-            .replace(/"api_revision":\d+/u, `"api_revision":${revision}`)
-            .replace(/"api_server_revision":\d+/u, `"api_server_revision":${revision}`)
-        : text;
-
-      frames.push(data);
-
-      return super.dispatchEvent(new MessageEvent("message", { data }));
+      return super.dispatchEvent(event);
     }
   };
 }
 
 describe("a resume", () => {
-  it.each([
-    { host: "this host", revision: API_REVISION, describes: true },
-    { host: "a host at revision 26", revision: 26, describes: false },
-  ])(
-    "against $host describes what it holds only to a host that takes it, and ends equal to a fresh read",
-    async (entry) => {
-      const served = await serve();
-      const session = await startSession(served);
-      const frames: string[] = [];
-      const Socket = welcomedAt(entry.revision, frames);
+  it("describes what it holds to the host, and ends equal to a fresh read", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    const frames: string[] = [];
+    const Socket = recording(frames);
 
-      const connection = await attach(
-        served.listener,
-        (request) => new Socket(request.url, { headers: request.headers }),
-      );
+    const connection = await attach(
+      served.listener,
+      (request) => new Socket(request.url, { headers: request.headers }),
+    );
 
-      const sessions = connection.sessions.open();
-      cleanups.push(async () => sessions.close());
-      const store = watched(connection, session);
+    const sessions = connection.sessions.open();
+    cleanups.push(async () => sessions.close());
+    const store = watched(connection, session);
 
-      await matchesRead(connection, store, session);
-      await vi.waitFor(() => expect(sessions.freshness().kind).toBe("fresh"));
-      const first = frames.length;
-      served.listener.disconnectClients();
-      await vi.waitFor(() => expect(store.freshness().kind).toBe("stale"));
-      await send(served, session, "While away.");
-      await until(connection, "open");
-      await matchesRead(connection, store, session);
-      await vi.waitFor(() => expect(sessions.freshness().kind).toBe("fresh"));
+    await matchesRead(connection, store, session);
+    await vi.waitFor(() => expect(sessions.freshness().kind).toBe("fresh"));
+    const first = frames.length;
+    served.listener.disconnectClients();
+    await vi.waitFor(() => expect(store.freshness().kind).toBe("stale"));
+    await send(served, session, "While away.");
+    await until(connection, "open");
+    await matchesRead(connection, store, session);
+    await vi.waitFor(() => expect(sessions.freshness().kind).toBe("fresh"));
 
-      const resumes = frames
-        .slice(first)
-        .filter((frame) => /"op":"(head|sessions)\.read","input":\{.*"resume"/u.test(frame));
+    const resumes = frames
+      .slice(first)
+      .filter((frame) => /"op":"(head|sessions)\.read","input":\{.*"resume"/u.test(frame));
 
-      const answers = frames.slice(first).filter((frame) => frame.includes('"kept":'));
+    const answers = frames.slice(first).filter((frame) => frame.includes('"kept":'));
 
-      expect(resumes).toHaveLength(2);
-      expect(resumes.filter((frame) => frame.includes('"held":'))).toHaveLength(
-        entry.describes ? 2 : 0,
-      );
-      expect(answers).toHaveLength(entry.describes ? 2 : 0);
-    },
-  );
+    expect(resumes).toHaveLength(2);
+    expect(resumes.filter((frame) => frame.includes('"held":'))).toHaveLength(2);
+    expect(answers).toHaveLength(2);
+  });
 });
 
 describe("offer", () => {
@@ -725,8 +693,9 @@ describe("offer", () => {
       { name: "offerer" },
     );
 
-    for (const name of ["one", "two", "three"])
+    for (const name of ["one", "two", "three"]) {
       offerer.offer({ name, summary: "", input: {} }, () => null);
+    }
 
     const asker = await attach(served.listener, global, { name: "asker" });
 

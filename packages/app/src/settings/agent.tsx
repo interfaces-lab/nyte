@@ -3,7 +3,7 @@ import { ModelPicker } from "../chat/composer/model-picker.tsx";
 import { modelRefFor, selectedModelOption } from "../chat/composer/model-picker-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useCatalog, useSetPreference } from "../data/catalog.ts";
-import { SettingsRow, SettingsSection } from "./rows.tsx";
+import { SettingsRow, SettingsSection } from "../settings-rows/rows.tsx";
 
 export function AgentSettings(): ReactElement {
   const catalog = useCatalog();

@@ -157,11 +157,11 @@ async function localServer(): Promise<Local> {
         server.closeAllConnections();
         server.close(() => resolve());
       }),
+    () => {
+      for (const client of upgrades.clients) client.terminate();
+      upgrades.close();
+    },
   );
-  cleanups.push(() => {
-    for (const client of upgrades.clients) client.terminate();
-    upgrades.close();
-  });
   const address = server.address();
   assert.ok(Value.Check(Type.Object({ port: Type.Number() }), address));
 
@@ -409,8 +409,9 @@ test("a frame that breaks the contract closes the socket, and it comes back with
     [
       "one channel past the limit",
       () => {
-        for (let index = 0; index <= RELAY_CHANNEL_LIMIT; index += 1)
+        for (let index = 0; index <= RELAY_CHANNEL_LIMIT; index += 1) {
           relay.send(openFrame("/connection.watch"));
+        }
       },
     ],
     [

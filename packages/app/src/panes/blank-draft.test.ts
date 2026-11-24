@@ -301,8 +301,9 @@ test("a draft the storage refuses doesn't stop the other drafts or the index fro
   const storage = {
     ...values,
     setItem: (key: string, value: string) => {
-      if (refused !== "" && key.includes(refused))
+      if (refused !== "" && key.includes(refused)) {
         throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      }
       values.setItem(key, value);
     },
   };
@@ -420,7 +421,7 @@ test.each<
   [
     "a stored value larger than its cap keeps the newest that fit",
     manyGroups,
-    manyGroups.slice(manyGroups.length - 76),
+    manyGroups.slice(-76),
   ],
   ["a chat with none stores none", [], []],
 ])("%s", (name, written, restored) => {

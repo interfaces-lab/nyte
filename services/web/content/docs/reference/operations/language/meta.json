@@ -4,6 +4,7 @@
     "status",
     "watch-status",
     "open",
+    "install",
     "change",
     "close",
     "diagnostics",
@@ -18,8 +19,6 @@
     "rename",
     "code-actions",
     "resolve-code-action",
-    "format",
-    "signature-help",
-    "inlay-hints"
+    "format"
   ]
 }

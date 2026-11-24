@@ -1,5 +1,6 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { useId, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useId, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { create } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
@@ -33,8 +34,9 @@ function parseResults(value: unknown): Result[] {
   if (!Array.isArray(value)) throw new Error("Search returned an invalid response.");
 
   return value.map((entry: unknown): Result => {
-    if (typeof entry !== "object" || entry === null)
+    if (typeof entry !== "object" || entry === null) {
       throw new Error("Search returned an invalid result.");
+    }
     if (
       !("id" in entry) ||
       typeof entry.id !== "string" ||
@@ -44,8 +46,9 @@ function parseResults(value: unknown): Result[] {
       typeof entry.url !== "string" ||
       !("type" in entry) ||
       (entry.type !== "page" && entry.type !== "heading" && entry.type !== "text")
-    )
+    ) {
       throw new Error("Search returned an invalid result.");
+    }
 
     return { id: entry.id, type: entry.type, content: entry.content, url: entry.url };
   });
@@ -168,7 +171,7 @@ function SearchContent({ onClose }: { readonly onClose: () => void }) {
     }
     setResponse({ status: "pending" });
     const controller = new AbortController();
-    const timer = setTimeout(async () => {
+    const lookup = async () => {
       try {
         const found = await searchSite(next, controller.signal);
 
@@ -177,7 +180,8 @@ function SearchContent({ onClose }: { readonly onClose: () => void }) {
       } catch {
         if (!controller.signal.aborted) setResponse({ status: "error" });
       }
-    }, 89);
+    };
+    const timer = setTimeout(() => void lookup(), 89);
     controller.signal.addEventListener("abort", () => clearTimeout(timer));
     pending.current = controller;
   };

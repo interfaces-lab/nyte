@@ -44,8 +44,9 @@ export function transcriptSlot(message: Message): TranscriptSlot {
     return { kind: "step", message };
   }
 
-  if (showsText(message))
+  if (showsText(message)) {
     return /\S/u.test(message.state.markdown) ? { kind: "response", message } : { kind: "blank" };
+  }
 
   if (showsThinking(message)) return { kind: "step", message };
 

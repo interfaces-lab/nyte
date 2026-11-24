@@ -25,15 +25,18 @@ const executablePath = named === undefined || named === "" ? chromium.executable
 
 export const chromiumFound = existsSync(executablePath);
 
-export type ShellPreviewed = { readonly report: CanvasPreviewReport; readonly phone: Uint8Array };
+export interface ShellPreviewed {
+  readonly report: CanvasPreviewReport;
+  readonly phone: Uint8Array;
+}
 
-export type ShellPreview = {
+export interface ShellPreview {
   readonly preview: (
     source: string,
     files?: Readonly<Record<string, string>>,
   ) => Promise<ShellPreviewed>;
   readonly close: () => Promise<void>;
-};
+}
 
 export async function openShellPreview(): Promise<ShellPreview> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-canvas-shell-"));
@@ -91,19 +94,21 @@ async function previewIn(
 }
 
 async function serve(directory: string): Promise<Server> {
-  const server = createServer(async (request, response) => {
+  const server = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://localhost").pathname;
-    const body = await readFile(join(directory, path)).catch(() => undefined);
 
-    if (body === undefined) {
-      response.writeHead(404);
-      response.end();
-
-      return;
-    }
-
-    response.writeHead(200, { "Content-Type": TYPES[extname(path)] ?? "application/octet-stream" });
-    response.end(body);
+    void readFile(join(directory, path)).then(
+      (body) => {
+        response.writeHead(200, {
+          "Content-Type": TYPES[extname(path)] ?? "application/octet-stream",
+        });
+        response.end(body);
+      },
+      () => {
+        response.writeHead(404);
+        response.end();
+      },
+    );
   });
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

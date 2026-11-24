@@ -52,11 +52,13 @@ function classifyRef(ref: string, currentGeneration: number): "unknown_ref" | un
 const NAME_CAP = 200;
 
 function escapeName(raw: string): string {
-  const escaped = sanitizeLine(raw).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escaped = sanitizeLine(raw)
+    .replaceAll("\\", String.raw`\\`)
+    .replaceAll('"', String.raw`\"`);
 
   if (escaped.length <= NAME_CAP) return escaped;
 
-  return escaped.slice(0, NAME_CAP) + "\u2026";
+  return `${escaped.slice(0, NAME_CAP)}\u2026`;
 }
 
 function snapshotScript(generation: number, maxNodes: number, subtreeRef?: string): string {
@@ -314,7 +316,7 @@ function parseKeyExpression(
   expression: string,
 ): { readonly modifiers: number; readonly key: string } | undefined {
   const parts = expression.split("+");
-  const keyPart = parts[parts.length - 1];
+  const keyPart = parts.at(-1);
 
   if (keyPart === undefined || keyPart === "") return undefined;
   let modifiers = 0;
@@ -367,11 +369,11 @@ const CONSOLE_RING_SIZE = 200;
 
 const CAPTURE_SCALE = 0.5;
 
-const CAPTURE_BUDGET_MS = 3_000;
+const CAPTURE_BUDGET_MS = 3000;
 
 const CAPTURE_RETRY_MS = 100;
 
-const CAPTURE_ATTEMPT_MS = 1_000;
+const CAPTURE_ATTEMPT_MS = 1000;
 
 const HOST_FOCUS_MS = 500;
 
@@ -531,11 +533,12 @@ async function keepingKeyboard<T>(contents: WebContents, act: () => Promise<T>):
   } finally {
     const taken = !contents.isDestroyed() && contents.focusedFrame !== null;
 
-    if (!host.isDestroyed())
+    if (!host.isDestroyed()) {
       await settledWithin(
         host.executeJavaScript(restoreHostFocus(contents.id, taken)),
         HOST_FOCUS_MS + FOCUS_ARRIVAL_MS,
       );
+    }
   }
 }
 
@@ -606,8 +609,9 @@ async function checkElement(
 
   const classification = classifyRef(ref, runtime.generation);
 
-  if (classification === "unknown_ref")
+  if (classification === "unknown_ref") {
     return { kind: "failed", failure: { kind: "unknown_ref", ref } };
+  }
 
   const script = checkScript(decoded.index);
 
@@ -616,8 +620,9 @@ async function checkElement(
   if (check?.cmd !== "check") return { kind: "failed", failure: { kind: "stale_document", ref } };
 
   if (check.kind !== "ok") {
-    if (check.kind === "not_found" || check.kind === "no_refs")
+    if (check.kind === "not_found" || check.kind === "no_refs") {
       return { kind: "failed", failure: { kind: "unknown_ref", ref } };
+    }
 
     if (check.kind === "detached") return { kind: "failed", failure: { kind: "detached", ref } };
 
@@ -701,8 +706,9 @@ export async function performType(
   const typed = await keepingKeyboard(contents, async () => {
     const focusResult = await runPageScript(contents, focusCode);
 
-    if (focusResult !== undefined && (focusResult.cmd !== "focus" || focusResult.kind !== "ok"))
+    if (focusResult !== undefined && (focusResult.cmd !== "focus" || focusResult.kind !== "ok")) {
       return false;
+    }
     await cdpClick(contents, cx, cy, "left", 1);
     await contents.debugger.sendCommand("Input.insertText", { text });
     const enterKey = submit ? resolveKey("Enter") : undefined;
@@ -740,7 +746,7 @@ export async function performPress(
   const descriptor = parsed === undefined ? undefined : resolveKey(parsed.key);
 
   await keepingKeyboard(contents, async () => {
-    if (check !== undefined)
+    if (check !== undefined) {
       await cdpClick(
         contents,
         check.rect.x + check.rect.width / 2,
@@ -748,6 +754,7 @@ export async function performPress(
         "left",
         1,
       );
+    }
 
     if (descriptor !== undefined) await cdpKey(contents, descriptor, parsed?.modifiers);
   });
@@ -885,8 +892,9 @@ export async function performEvaluate(
   if (ref !== undefined) {
     const decoded = decodeRef(ref);
 
-    if (decoded === undefined)
+    if (decoded === undefined) {
       return { kind: "threw", message: `Unknown ref: ${sanitizeLine(ref)}` };
+    }
     wrapped = `(function() {
       var el = window.__nyte_refs?.get(${decoded.index});
       if (!el) throw new Error("Unknown ref");
@@ -901,8 +909,9 @@ export async function performEvaluate(
       },
     ]);
 
-    if (!Value.Check(PageJsonSchema, result))
+    if (!Value.Check(PageJsonSchema, result)) {
       return { kind: "threw", message: "Evaluation returned no result" };
+    }
     const parsed = Value.Parse(EvalResultSchema, JSON.parse(result));
 
     if ("e" in parsed) return { kind: "threw", message: parsed.e };

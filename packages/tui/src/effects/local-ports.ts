@@ -122,13 +122,14 @@ async function resolvePaste(
       : { kind: "part", part: image };
   }
 
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = text.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
   const path = pastedPath(normalized, cwd);
   const info = path === null ? undefined : await stat(path).catch(() => undefined);
 
   if (path !== null && info?.isFile() === true) {
-    if (!IMAGE_EXTENSIONS.has(extname(path).toLowerCase()))
+    if (!IMAGE_EXTENSIONS.has(extname(path).toLowerCase())) {
       return { kind: "part", part: { kind: "file", path, directory: false } };
+    }
     const data = await readFile(path).catch(() => undefined);
     const image = data === undefined ? null : imagePart(data);
 
@@ -178,7 +179,7 @@ function pastedPath(value: string, cwd: string): string | null {
   const trimmed = value.trim();
 
   if (trimmed === "" || trimmed.includes("\n")) return null;
-  const raw = trimmed.replace(/^['"]+|['"]+$/g, "");
+  const raw = trimmed.replaceAll(/^['"]+|['"]+$/g, "");
 
   if (raw.startsWith("file://")) {
     try {
@@ -188,7 +189,7 @@ function pastedPath(value: string, cwd: string): string | null {
     }
   }
 
-  return resolve(cwd, process.platform === "win32" ? raw : raw.replace(/\\(.)/g, "$1"));
+  return resolve(cwd, process.platform === "win32" ? raw : raw.replaceAll(/\\(.)/g, "$1"));
 }
 
 export async function resolveMention(query: string, cwd: string): Promise<MentionFile | null> {
@@ -198,12 +199,13 @@ export async function resolveMention(query: string, cwd: string): Promise<Mentio
   if (info === undefined) return null;
   const display = relative(cwd, path).split("\\").join("/");
 
-  if (info.isDirectory())
+  if (info.isDirectory()) {
     return {
       path: `${path}/`,
       display: display === "" ? "./" : `${display}/`,
       label: `${basename(path)}/`,
     };
+  }
 
   return info.isFile() ? { path, display, label: basename(path) } : null;
 }
@@ -214,8 +216,9 @@ async function readAttachmentText(path: string): Promise<string | null> {
   if (info === undefined || !info.isFile() || info.size > MAX_ATTACHMENT_BYTES) return null;
   const bytes = await readFile(path).catch(() => undefined);
 
-  if (bytes === undefined || bytes.byteLength > MAX_ATTACHMENT_BYTES || bytes.includes(0))
+  if (bytes === undefined || bytes.byteLength > MAX_ATTACHMENT_BYTES || bytes.includes(0)) {
     return null;
+  }
   const text = bytes.toString("utf8");
 
   return text.includes("</file>") ? null : text;

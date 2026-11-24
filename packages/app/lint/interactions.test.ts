@@ -64,7 +64,7 @@ const controls = <><button onClick={() => {}} /><div role="option" onClick={() =
       "json",
       rejected,
       accepted,
-    ]).catch((error) => {
+    ]).catch((error: unknown) => {
       if (Value.Check(FailedRun, error)) return { stdout: error.stdout };
       throw error;
     });

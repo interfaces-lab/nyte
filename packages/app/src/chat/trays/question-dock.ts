@@ -1,10 +1,10 @@
 import type { OpenQuestion, QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
 import type { PartId, SessionId } from "@nyte-ai/sdk";
-import { sameComposerDocument } from "../composer/composer-document.ts";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import { sameComposerDocument } from "../../panes/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import type { Ask } from "./asks.ts";
 
-export type FieldDraft =
+type FieldDraft =
   | {
       readonly kind: "single";
       readonly selection:
@@ -180,11 +180,12 @@ export function stepDock(
           ? draft.fields
           : withField(draft, customDraft(selected, typed)).fields;
 
-      if (!view.last)
+      if (!view.last) {
         return {
           drafts: saveDraft(view, drafts, { ...draft, fields, current: draft.current + 1 }),
           outcome: { kind: "next" },
         };
+      }
 
       return {
         drafts: saveDraft(view, drafts, { ...draft, fields }),
@@ -202,13 +203,14 @@ export function stepDock(
   }
 }
 
-export function fieldAnswers(field: FieldDraft): string[] {
+function fieldAnswers(field: FieldDraft): string[] {
   const custom = field.document.text.trim();
 
-  if (field.kind === "multiple")
+  if (field.kind === "multiple") {
     return Array.from(
       new Set([...field.options.map((label) => label.trim()), ...(custom !== "" ? [custom] : [])]),
     );
+  }
 
   switch (field.selection.kind) {
     case "empty":

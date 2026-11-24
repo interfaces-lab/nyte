@@ -37,7 +37,7 @@ pnpm --dir packages/vt run update
 pnpm --dir packages/vt test
 ```
 
-Spell out `run`: a bare `pnpm update` is pnpm's own command and upgrades dependencies instead. The script downloads the latest `tip` wasm and its minisign signature and verifies them with Ghostty's public key. It checks that the wasm is the build Ghostty published for the release's commit. Only then does it write the files and `pin.json`.
+Spell out `run`. A bare `pnpm update` is pnpm's own command and upgrades dependencies instead. The script downloads the latest `tip` wasm and its minisign signature, then verifies them with Ghostty's public key. It checks that the wasm is the build Ghostty published for the release's commit. Only then does it write the files and `pin.json`.
 
 ## Development
 

@@ -20,6 +20,7 @@ function treeSnapshots(tree: Map<string, string>): SnapshotsApi {
 
   return {
     capture: take,
+    comparable: () => true,
     diff: async (from, to) => {
       const before = trees.get(from) ?? new Map<string, string>();
       const after = trees.get(to) ?? new Map<string, string>();

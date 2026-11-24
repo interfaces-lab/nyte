@@ -1,10 +1,9 @@
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import type { Api, Model, ModelCost } from "../../src/types.ts";
-import {
-  ModelsDevReasoningOptionSchema,
-  type ModelsDevReasoningOption,
-} from "../models-dev-reasoning-options.ts";
+import { ModelsDevReasoningOptionSchema } from "../models-dev-reasoning-options.ts";
+import type { ModelsDevReasoningOption } from "../models-dev-reasoning-options.ts";
 
 const optionalNumber = Type.Optional(Type.Number());
 
@@ -137,24 +136,24 @@ export function modelsDevModel(
 }
 
 export class ModelsDevMetadata {
-  readonly #reasoningOptions = new Map<string, ModelsDevReasoningOption[]>();
-  readonly #modes = new Map<string, NonNullable<Model<Api>["modes"]>>();
+  private readonly reasoningOptions = new Map<string, ModelsDevReasoningOption[]>();
+  private readonly modes = new Map<string, NonNullable<Model<Api>["modes"]>>();
 
   record(provider: string, id: string, sourceModel: ModelsDevModel): void {
     const key = `${provider}:${id}`;
 
     if (sourceModel.reasoning_options !== undefined) {
-      this.#reasoningOptions.set(key, sourceModel.reasoning_options);
+      this.reasoningOptions.set(key, sourceModel.reasoning_options);
     }
 
-    if (sourceModel.experimental?.modes?.fast !== undefined) this.#modes.set(key, ["fast"]);
+    if (sourceModel.experimental?.modes?.fast !== undefined) this.modes.set(key, ["fast"]);
   }
 
   findReasoningOptions(key: string): ModelsDevReasoningOption[] | undefined {
-    return this.#reasoningOptions.get(key);
+    return this.reasoningOptions.get(key);
   }
 
   findModes(key: string): NonNullable<Model<Api>["modes"]> | undefined {
-    return this.#modes.get(key);
+    return this.modes.get(key);
   }
 }

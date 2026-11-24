@@ -1,11 +1,6 @@
 import { FILLED_GLYPHS, GLYPHS } from "../src/glyphs/selected.generated.ts";
-import {
-  FILLED_ICON_NAMES,
-  ICON_NAMES,
-  type FilledIconName,
-  type Glyph,
-  type IconName,
-} from "../src/icon-names.ts";
+import { FILLED_ICON_NAMES, ICON_NAMES } from "../src/icon-names.ts";
+import type { FilledIconName, Glyph, IconName } from "../src/icon-names.ts";
 
 export type IconReference =
   | { readonly name: IconName; readonly outlined: Glyph }

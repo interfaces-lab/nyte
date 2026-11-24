@@ -9,12 +9,14 @@ const range = { start: position, end: { line: 31, utf16Column: 17 } };
 const at = { workspace, path: "main.go", position };
 
 const server = {
-  language: "go",
+  languages: ["go"],
   server: "gopls",
   root: "",
   state: { kind: "busy", title: "Indexing", percent: null },
   version: "v0.24.0",
   executable: "/usr/local/bin/gopls",
+  features: ["hover", "rename", "completion"],
+  completionTriggers: ["."],
 };
 
 const completionToken = { kind: "completion", server: "s1", answer: 3, item: 0 };
@@ -45,8 +47,28 @@ export const languageOperations = {
   "language.status input": operation(OPERATIONS["language.status"].input, workspaceInput, {}),
   "language.status output": operation(
     OPERATIONS["language.status"].output,
-    [server],
-    [{ ...server, state: { kind: "asleep" } }],
+    [
+      server,
+      {
+        ...server,
+        state: { kind: "installing", percent: 42 },
+        features: [],
+        completionTriggers: [],
+      },
+      {
+        ...server,
+        state: { kind: "available", bytes: 381_704_192 },
+        features: [],
+        completionTriggers: [],
+      },
+      {
+        ...server,
+        state: { kind: "available", bytes: null },
+        features: [],
+        completionTriggers: [],
+      },
+    ],
+    [{ ...server, features: ["telepathy"] }],
   ),
   "language.watchStatus input": operation(
     OPERATIONS["language.watchStatus"].input,
@@ -63,10 +85,11 @@ export const languageOperations = {
     { workspace, path: "main.go", text: "package main\n", version: 1 },
     { workspace, path: "main.go", text: "package main\n" },
   ),
-  "language.open output": operation(OPERATIONS["language.open"].output, null, {
-    ...server,
-    root: 1,
-  }),
+  "language.open output": operation(
+    OPERATIONS["language.open"].output,
+    [],
+    [{ ...server, languages: ["klingon"] }],
+  ),
   "language.change input": operation(
     OPERATIONS["language.change"].input,
     {
@@ -79,6 +102,11 @@ export const languageOperations = {
       ],
     },
     { workspace, path: "main.go", version: 2, changes: [{ text: "x" }] },
+  ),
+  "language.install input": operation(
+    OPERATIONS["language.install"].input,
+    { workspace, server: "jdtls", root: "" },
+    { workspace, server: "jdtls" },
   ),
   "language.close input": operation(
     OPERATIONS["language.close"].input,
@@ -234,37 +262,12 @@ export const languageOperations = {
   ),
   "language.format input": operation(
     OPERATIONS["language.format"].input,
-    { workspace, path: "main.go", options: { tabSize: 4, insertSpaces: false } },
+    { workspace, path: "main.go", options: { tabSize: 4, insertSpaces: false }, range },
     { workspace, path: "main.go", options: { tabSize: 4 } },
   ),
   "language.format output": operation(
     OPERATIONS["language.format"].output,
-    [{ range, text: "\t" }],
-    [{ range, newText: "\t" }],
-  ),
-  "language.signatureHelp output": operation(
-    OPERATIONS["language.signatureHelp"].output,
-    {
-      signatures: [
-        {
-          label: "Submit(ctx, message)",
-          documentation: "",
-          parameters: [{ utf16Start: 7, utf16End: 10 }],
-        },
-      ],
-      activeSignature: 0,
-      activeParameter: null,
-    },
-    { signatures: [], activeSignature: 0 },
-  ),
-  "language.inlayHints input": operation(
-    OPERATIONS["language.inlayHints"].input,
-    { workspace, path: "main.go", range },
-    { workspace, path: "main.go" },
-  ),
-  "language.inlayHints output": operation(
-    OPERATIONS["language.inlayHints"].output,
-    [{ position, label: "parent:", kind: "parameter", padLeft: false, padRight: true }],
-    [{ position, label: "parent:", kind: "name", padLeft: false, padRight: true }],
+    { kind: "edits", edits: [{ range, text: "\t" }] },
+    { kind: "edits", edits: [{ range, newText: "\t" }] },
   ),
 } satisfies Record<string, Case>;

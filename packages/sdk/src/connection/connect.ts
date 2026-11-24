@@ -6,6 +6,7 @@ import { createTransport, decodeError, decodeOutput } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
 import { createClient } from "./client.ts";
 import type { Client } from "./client.ts";
+import type { LinkCell } from "../live/link.ts";
 import { createSendJournal } from "../send/journal.ts";
 import { parsed } from "./receipts.ts";
 
@@ -26,7 +27,9 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
   return (await dial(options)).connection;
 }
 
-export async function dial(options: ConnectOptions): Promise<Dialed> {
+export async function dial(
+  options: ConnectOptions & { readonly link?: LinkCell },
+): Promise<Dialed> {
   const { credentials } = options;
   const send = options.fetch ?? fetch;
   const key = credentials.kind === "pairing" ? `${options.url}\n${credentials.code}` : null;
@@ -54,7 +57,7 @@ export async function dial(options: ConnectOptions): Promise<Dialed> {
 }
 
 async function openClient(
-  options: ConnectOptions,
+  options: ConnectOptions & { readonly link?: LinkCell },
   transport: Transport,
   first: HostViewWire,
   frames: AsyncIterator<Json>,
@@ -67,10 +70,11 @@ async function openClient(
 
   const named = proved !== null && answered === proved.hostId && first.id === answered;
 
-  if (options.expect !== undefined && !named)
+  if (options.expect !== undefined && !named) {
     throw new SdkError("stale", `Host ${answered} answered instead of ${options.expect.hostId}.`, {
       hostId: answered,
     });
+  }
 
   const credential: HostCredentials =
     credentials.kind === "pairing"
@@ -95,6 +99,7 @@ async function openClient(
     journal,
     journaled,
     hostFrames: frames,
+    link: options.link,
   });
 
   return { ...client, credential };
@@ -116,11 +121,12 @@ export async function credentialHeaders(
 function deviceToken(transport: Transport, kept: string | undefined): string {
   const token = transport.credential() ?? kept;
 
-  if (token === undefined)
+  if (token === undefined) {
     throw new SdkError(
       "unauthenticated",
       "The host returned no device credential for the pairing code.",
     );
+  }
 
   return token;
 }
@@ -133,8 +139,9 @@ async function firstView(
   try {
     const next = await frames.next();
 
-    if (next.done === true)
+    if (next.done === true) {
       throw new SdkError("unavailable", "The host closed the connection before it answered.");
+    }
 
     return {
       view: decodeOutput("connection.watch", next.value),
@@ -168,13 +175,14 @@ async function verifyIdentity(url: string, send: Fetch, expected: HostPin): Prom
   const nonce = crypto.randomUUID();
   const challenge = await askIdentity(url, send, nonce);
 
-  if (challenge === null)
+  if (challenge === null) {
     throw new SdkError(
       "stale",
       `The server at ${url} answered no identity challenge, so it cannot prove it is host ${expected.hostId}. If you redeployed that host without its identity key, pair again.`,
     );
+  }
 
-  if (challenge.hostId !== expected.hostId)
+  if (challenge.hostId !== expected.hostId) {
     throw new SdkError(
       "stale",
       `Host ${challenge.hostId} answered instead of ${expected.hostId}.`,
@@ -182,13 +190,15 @@ async function verifyIdentity(url: string, send: Fetch, expected: HostPin): Prom
         hostId: challenge.hostId,
       },
     );
+  }
 
-  if (challenge.publicKey !== expected.publicKey)
+  if (challenge.publicKey !== expected.publicKey) {
     throw new SdkError(
       "stale",
       `The identity key of host ${challenge.hostId} changed since you paired with it, so another machine could be answering. If that host's identity key was regenerated or Nyte was reinstalled there, pair again.`,
       { hostId: challenge.hostId },
     );
+  }
 
   await checkSignature(challenge, nonce);
 
@@ -229,8 +239,9 @@ async function askIdentity(
   if (!response.ok) throw decodeError(isJson(body) ? body : null, response.status);
   const challenge = parsed(IdentityChallengeSchema, body);
 
-  if (challenge === null || challenge.nonce !== nonce)
+  if (challenge === null || challenge.nonce !== nonce) {
     throw new SdkError("invalid", "The host answered the identity challenge with something else.");
+  }
 
   return challenge;
 }
@@ -251,8 +262,9 @@ async function checkSignature(challenge: IdentityChallenge, nonce: string): Prom
     encoder.encode(`nyte/identity\n${challenge.hostId}\n${nonce}`),
   );
 
-  if (!signed)
+  if (!signed) {
     throw new SdkError("stale", `The identity signature of ${challenge.hostId} does not verify.`, {
       hostId: challenge.hostId,
     });
+  }
 }

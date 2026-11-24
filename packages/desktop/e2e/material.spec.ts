@@ -83,11 +83,12 @@ test("every window kind fills its titlebar with the material, blends what is beh
 
         if (theme !== "light") return;
 
-        for (const channel of [0, 1, 2])
+        for (const channel of [0, 1, 2]) {
           expect(
             Math.abs((own[channel] ?? 0) - (before[channel] ?? 255)),
             `${app}'s material back in light`,
           ).toBeLessThanOrEqual(SAME_CHROME);
+        }
       }).toPass({ timeout: 15_000 });
     }
   }
@@ -106,7 +107,7 @@ test("the traffic lights stay on the titlebar's line when a window shows, loses 
     { name: "light-again", act: () => desk.setTheme("light") },
   ];
 
-  for (const moment of moments)
+  for (const moment of moments) {
     for (const app of KINDS) {
       const page = desk.page(app);
 
@@ -123,6 +124,7 @@ test("the traffic lights stay on the titlebar's line when a window shows, loses 
         ).toBeLessThanOrEqual(LINE_TOLERANCE);
       }).toPass({ timeout: 10_000 });
     }
+  }
 });
 
 async function onScreen(

@@ -31,51 +31,51 @@ interface GuestSessionsOptions {
 }
 
 export class GuestSessions {
-  readonly #options: GuestSessionsOptions;
-  readonly #sessions = new Map<string, GuestSession>();
-  #blocker: Blocker | undefined;
-  #blockerReady: Promise<void> | undefined;
-  #blockerSettled = false;
+  private readonly options: GuestSessionsOptions;
+  private readonly sessions = new Map<string, GuestSession>();
+  private blocker: Blocker | undefined;
+  private blockerReady: Promise<void> | undefined;
+  private settled = false;
 
   constructor(options: GuestSessionsOptions) {
-    this.#options = options;
+    this.options = options;
   }
 
   ensureBlocker(): Promise<void> {
-    this.#blockerReady ??= loadBlocker(this.#options.dependencies.filterListPath)
+    this.blockerReady ??= loadBlocker(this.options.dependencies.filterListPath)
       .then((loaded) => {
-        this.#blocker = loaded;
+        this.blocker = loaded;
       })
       .finally(() => {
-        this.#blockerSettled = true;
+        this.settled = true;
       });
 
-    return this.#blockerReady;
+    return this.blockerReady;
   }
 
   blockerSettled(): boolean {
-    return this.#blockerSettled;
+    return this.settled;
   }
 
   blocking(url: string): BrowserSurfaceState["blocking"] {
-    const settings = this.#options.dependencies.settings();
+    const settings = this.options.dependencies.settings();
 
-    if (this.#blocker === undefined || !settings.blockAds) return "off";
+    if (this.blocker === undefined || !settings.blockAds) return "off";
 
     return shieldPaused(url, settings.adblockAllowedHosts) ? "paused" : "on";
   }
 
   blockedStyles(url: string): string {
-    return this.blocking(url) === "on" ? (this.#blocker?.stylesFor(url) ?? "") : "";
+    return this.blocking(url) === "on" ? (this.blocker?.stylesFor(url) ?? "") : "";
   }
 
   hosts(partition: string): boolean {
-    return this.#sessions.has(partition);
+    return this.sessions.has(partition);
   }
 
   forOwner(owner: BrowserOwner): GuestSession {
     const partition = partitionName(owner);
-    const existing = this.#sessions.get(partition);
+    const existing = this.sessions.get(partition);
 
     if (existing !== undefined) return existing;
 
@@ -89,14 +89,14 @@ export class GuestSessions {
       trustedCertificateHosts: new Set(),
     };
 
-    this.#configure(guestSession);
-    this.#sessions.set(partition, guestSession);
+    this.configure(guestSession);
+    this.sessions.set(partition, guestSession);
 
     return guestSession;
   }
 
-  #configure(guestSession: GuestSession): void {
-    const { dependencies, downloads, surface: surfaceFor, publish } = this.#options;
+  private configure(guestSession: GuestSession): void {
+    const { dependencies, downloads, surface: surfaceFor, publish } = this.options;
     const guest = guestSession.session;
 
     guest.setUserAgent(guestUserAgent());
@@ -145,8 +145,8 @@ export class GuestSessions {
         contents === undefined || contents.isDestroyed() ? "" : contents.getURL(),
       );
 
-      if (this.#blocker !== undefined && blocking === "on") {
-        const decision = this.#blocker.decide(details);
+      if (this.blocker !== undefined && blocking === "on") {
+        const decision = this.blocker.decide(details);
 
         if (decision.kind !== "allow") {
           if (surface !== undefined) surface.blocked += 1;
@@ -173,8 +173,9 @@ export class GuestSessions {
         return;
       }
 
-      if (details.webContentsId !== undefined)
+      if (details.webContentsId !== undefined) {
         guestSession.upgrades.set(details.webContentsId, details.url);
+      }
       callback({ redirectURL: upgraded });
     });
 

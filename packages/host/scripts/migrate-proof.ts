@@ -97,8 +97,9 @@ await host.close();
 
 await hostStore.close();
 
-if (listed.items.length !== sessions.length)
+if (listed.items.length !== sessions.length) {
   problems.push(`sessions.list shows ${listed.items.length} of ${sessions.length} sessions`);
+}
 
 const result = {
   source,

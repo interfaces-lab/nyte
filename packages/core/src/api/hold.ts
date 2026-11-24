@@ -8,7 +8,7 @@ import type {
 import { HOLD_MS } from "../contract/session.ts";
 import type { HeldMessage, HoldOutcome, ReleaseOutcome } from "../contract/session.ts";
 
-const RENEW_MS = 5_000;
+const RENEW_MS = 5000;
 
 export async function holdMessage(
   message: MessageId,

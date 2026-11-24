@@ -23,8 +23,8 @@ import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
   withSpring,
-  type SharedValue,
 } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import {
   Camera,
@@ -32,7 +32,8 @@ import {
   useCameraPermission,
   usePhotoOutput,
 } from "react-native-vision-camera";
-import { prepareImage, type StagedImage } from "../media/attachments.ts";
+import { prepareImage } from "../media/attachments.ts";
+import type { StagedImage } from "../media/attachments.ts";
 import type { PhotoAccess, RecentPhoto } from "../media/recent-photos.ts";
 import { controls, menu, overCamera, spacing, typography, useTheme } from "../theme.ts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -165,8 +166,9 @@ export function AttachmentsMenu({
       return;
     }
 
-    if (access === "failed")
+    if (access === "failed") {
       setNotice(next === "photos" ? "Couldn't load photos" : "Couldn't open camera");
+    }
     setRequesting(undefined);
     showPanel(next);
   };
@@ -224,9 +226,9 @@ export function AttachmentsMenu({
   const commitPhotos = (prepared: readonly StagedImage[]) => {
     const single = prepared.length === 1 ? prepared[0] : undefined;
 
-    if (single !== undefined)
+    if (single !== undefined) {
       flight.run(single, () => onCommitPhotos([single]), surfaceFrame.get());
-    else if (prepared.length > 0) {
+    } else if (prepared.length > 0) {
       onCommitPhotos(prepared);
       onClose();
     }
@@ -553,8 +555,9 @@ function AttachCamera({
       !active ||
       !hasPermission ||
       device === undefined
-    )
+    ) {
       return;
+    }
     capturePending.current = true;
     setBusy(true);
     onBusyChange(true);

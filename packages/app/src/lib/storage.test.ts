@@ -2,7 +2,8 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import { expect, onTestFinished, test, vi } from "vitest";
-import { persisted, readStored, type StorageArea } from "./storage.ts";
+import { persisted, readStored } from "./storage.ts";
+import type { StorageArea } from "./storage.ts";
 
 const KEY = "nyte:test:v1";
 

@@ -143,12 +143,13 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
 
-  if (startupError !== null)
+  if (startupError !== null) {
     failures.unshift(
       connectFailure instanceof CliError
         ? formatError(connectFailure, resolvePresentation(process.env, process.stdout))
         : `error: ${startupError}`,
     );
+  }
 
   await cleanup("Host", async () => {
     const local = await connecting.catch(() => null);

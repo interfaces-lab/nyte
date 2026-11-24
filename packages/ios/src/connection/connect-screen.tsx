@@ -4,7 +4,8 @@ import { BottomSheet, RNHostView } from "@expo/ui";
 import { useAccount } from "../account/account-provider.tsx";
 import { useTheme } from "../theme.ts";
 import { ConnectWelcome } from "./connect-welcome.tsx";
-import { ConnectionForm, type ConnectionMethod } from "./connection-form.tsx";
+import { ConnectionForm } from "./connection-form.tsx";
+import type { ConnectionMethod } from "./connection-form.tsx";
 import type { HostRecovery } from "./host-context.tsx";
 
 export function ConnectScreen({

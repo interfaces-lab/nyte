@@ -38,7 +38,7 @@ function Meta({
         mark === "failed" && styles.failed,
       ]}
     >
-      {clock === undefined ? lead : `${lead} \u00b7 ${clock}`}
+      {clock === undefined ? lead : `${lead} \u00B7 ${clock}`}
     </html.span>
   );
 }

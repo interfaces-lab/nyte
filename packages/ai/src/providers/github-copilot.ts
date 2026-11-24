@@ -6,11 +6,8 @@ import {
   GITHUB_COPILOT_DEFAULT_ORIGIN,
   GITHUB_COPILOT_HEADERS,
 } from "../api/github-copilot-headers.ts";
-import {
-  githubCopilotOAuth,
-  matchesCopilotCredential,
-  type GitHubCopilotOAuthOptions,
-} from "../auth/oauth/github-copilot.ts";
+import { githubCopilotOAuth, matchesCopilotCredential } from "../auth/oauth/github-copilot.ts";
+import type { GitHubCopilotOAuthOptions } from "../auth/oauth/github-copilot.ts";
 import { createProvider } from "../provider.ts";
 
 export function githubCopilotProvider(options: GitHubCopilotOAuthOptions = {}) {

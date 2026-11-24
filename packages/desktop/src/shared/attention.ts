@@ -81,8 +81,9 @@ export function stepWindowAttention(
 
   if (event.kind === "ended" && (event.end === "closed" || ready)) next.delete(event.window);
 
-  if (event.kind === "clicked" && !ready)
+  if (event.kind === "clicked" && !ready) {
     next.set(event.window, { kind: "loading", opening: event.session });
+  }
 
   if (event.kind === "focused" && before !== undefined) {
     next.delete(event.window);

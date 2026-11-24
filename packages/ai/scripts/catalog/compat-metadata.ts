@@ -1,4 +1,4 @@
-import { isDeepStrictEqual } from "util";
+import { isDeepStrictEqual } from "node:util";
 import type {
   AnthropicMessagesCompat,
   Api,
@@ -371,8 +371,9 @@ export function applyOpenAIGrammarToolCompatMetadata(model: Model<Api>): void {
   if (
     !OPENAI_GRAMMAR_TOOL_APIS.has(model.api) ||
     !OPENAI_GRAMMAR_TOOL_PROVIDERS.has(model.provider)
-  )
+  ) {
     return;
+  }
   const match = /^gpt-(\d+)/.exec(model.id);
 
   if (!match || Number(match[1]) < 5) return;

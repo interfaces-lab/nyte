@@ -13,7 +13,8 @@ import type {
   ToolInfo,
 } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
-import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -32,7 +33,7 @@ import { hostWatch, mcpWatch } from "../data/watches.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { useWatch, useWatchSelect } from "../data/watch-store.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { settingsStyles as page } from "../settings/settings.stylex.ts";
+import { settingsStyles as page } from "../settings-rows/settings.stylex.ts";
 import { PluginSetting } from "../settings/plugin-settings.tsx";
 import { ConnectionRow, ConnectionStatus } from "../components/connection-list.tsx";
 import { McpServersTab, mcpNeedsAttention } from "./customize-mcp.tsx";
@@ -196,12 +197,13 @@ function presentPlugin(
 }
 
 function placeSkill(info: SkillInfo, root: string | undefined): SkillView {
-  if (ABSOLUTE.test(info.location))
+  if (ABSOLUTE.test(info.location)) {
     return {
       info,
       path: info.location,
       project: root !== undefined && info.location.startsWith(`${root}/`),
     };
+  }
 
   return {
     info,
@@ -342,8 +344,9 @@ function PluginsTab({
   const yours = plugins.filter((plugin) => !plugin.shipped);
   const adding = term === "" ? openPluginsFolder : undefined;
 
-  if (plugins.length === 0 && term !== "")
+  if (plugins.length === 0 && term !== "") {
     return <Notice>No plugins match &ldquo;{term}&rdquo;</Notice>;
+  }
 
   return (
     <>
@@ -412,7 +415,7 @@ function SkillsTab({
   const project = skills.filter((skill) => skill.project);
   const yours = skills.filter((skill) => !skill.project);
 
-  if (skills.length === 0)
+  if (skills.length === 0) {
     return term === "" ? (
       <Notice>
         No skills yet. Add a folder with a SKILL.md to .agents/skills here or in your home folder.
@@ -420,6 +423,7 @@ function SkillsTab({
     ) : (
       <Notice>No skills match &ldquo;{term}&rdquo;</Notice>
     );
+  }
 
   return (
     <>

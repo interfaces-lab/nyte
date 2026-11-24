@@ -20,24 +20,20 @@ import {
   resolveTranscriptTools,
 } from "../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
+import type { CodexFrame } from "./openai-codex-wire.ts";
 import {
   CodexFrameJson,
-  type CodexFrame,
   readBoolean,
   readNumber,
   readRecord,
   readText,
   TERMINAL_RESPONSE_TYPES,
 } from "./openai-codex-wire.ts";
-import {
-  convertResponsesMessages,
-  convertResponsesTools,
-  type ResponsesInput,
-  type ResponsesTool,
-} from "./openai-responses-convert.ts";
+import type { ResponsesInput, ResponsesTool } from "./openai-responses-convert.ts";
+import { convertResponsesMessages, convertResponsesTools } from "./openai-responses-convert.ts";
 import type { ResponsesServiceTier } from "./openai-responses-events.ts";
-import { DAYBREAK_ACCESS_PROGRAM } from "./openai-responses-stream.ts";
 import type { OpenAIResponsesStreamOptions } from "./openai-responses-stream.ts";
+import { DAYBREAK_ACCESS_PROGRAM } from "./openai-responses-stream.ts";
 
 export interface OpenAICodexResponsesOptions extends StreamOptions {
   reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -305,7 +301,7 @@ export async function* mapCodexEvents(
   events: AsyncIterable<CodexFrame>,
   output: AssistantMessage,
   onAccountLimits?: (limits: AccountLimits) => void | Promise<void>,
-): AsyncGenerator<unknown> {
+): AsyncGenerator {
   for await (const event of events) {
     const { type } = event;
 
@@ -415,7 +411,7 @@ export function parseErrorResponse(
     const plan = planType ? ` (${planType.toLowerCase()} plan)` : "";
     const resetsAt = readNumber(err.resets_at);
     const mins = resetsAt
-      ? Math.max(0, Math.round((resetsAt * 1000 - Date.now()) / 60000))
+      ? Math.max(0, Math.round((resetsAt * 1000 - Date.now()) / 60_000))
       : undefined;
     const when = mins !== undefined ? ` Try again in ~${mins} min.` : "";
     friendlyMessage = `You have hit your ChatGPT usage limit${plan}.${when}`.trim();

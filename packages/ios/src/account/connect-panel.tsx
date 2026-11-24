@@ -6,7 +6,8 @@ import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { BrokerError } from "@nyte-ai/connect";
 import type { BrokerClient, EnvironmentSummary } from "@nyte-ai/connect";
-import { displayAddress, type SavedConnection } from "../connection/connection.ts";
+import { displayAddress } from "../connection/connection.ts";
+import type { SavedConnection } from "../connection/connection.ts";
 import { SHARE_LOCATION } from "../connection/connect-copy.ts";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { Group, GroupRow } from "../ui/group.tsx";
@@ -16,10 +17,14 @@ import { toast } from "../ui/toast.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { ConnectionForm } from "../connection/connection-form.tsx";
 import { controls, list, spacing, textStyles, tokens, useTheme } from "../theme.ts";
-import { brokerCopy, connectEndingCopy, releaseCopy, type AccountCopy } from "./account-copy.ts";
+import { brokerCopy, connectEndingCopy, releaseCopy } from "./account-copy.ts";
+import type { AccountCopy } from "./account-copy.ts";
 import type { Account, SignInEnding, SignOutEnding } from "./account-provider.tsx";
 
-type Current = { readonly saved: SavedConnection; readonly reconnect: boolean };
+interface Current {
+  readonly saved: SavedConnection;
+  readonly reconnect: boolean;
+}
 
 export function ConnectPanel({
   account,
@@ -194,16 +199,17 @@ export function AccountAvatar({ url, size = 36 }: { url: string | undefined; siz
 }
 
 function signOutNotice(ending: SignOutEnding): AccountCopy | undefined {
-  if (ending.kind === "notRemoved")
+  if (ending.kind === "notRemoved") {
     return {
       title: "Still signed in",
       body: "The Keychain kept this computer's connection. Unlock your phone and try again.",
       action: "retry",
     };
+  }
 
-  if (ending.released !== undefined)
+  if (ending.released !== undefined) {
     toast.show("Signed out", releaseCopy(ending.released.name, ending.released.report));
-  else if (ending.kind === "signedOut") toast.show("Signed out");
+  } else if (ending.kind === "signedOut") toast.show("Signed out");
 
   return ending.kind === "clerkFailed"
     ? {
@@ -275,8 +281,9 @@ function MacGroup({
       ending.kind === "broker" &&
       ending.failure.kind === "refused" &&
       ["forbidden", "not_found", "revoked"].includes(ending.failure.code)
-    )
+    ) {
       void environments.refetch();
+    }
   }
 
   async function remove(environment: EnvironmentSummary) {

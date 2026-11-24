@@ -236,8 +236,9 @@ function renderEntry(
   const used = 2 + entry.syntax.length;
   const fits = layout.column + entry.summary.length <= layout.width;
 
-  if (fits && used + 2 <= layout.column)
+  if (fits && used + 2 <= layout.column) {
     return [`${head}${" ".repeat(layout.column - used)}${entry.summary}`];
+  }
 
   if (fits) return [head, `${" ".repeat(layout.column)}${entry.summary}`];
 

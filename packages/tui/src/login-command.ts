@@ -27,7 +27,7 @@ export async function loginCommand(input: AuthInput): Promise<void> {
   const out = input.output;
   const open = !args.has("no-open") && out.mode.browser;
 
-  if (keyOption === undefined && !out.mode.interactive)
+  if (keyOption === undefined && !out.mode.interactive) {
     throw new CliError("missing_input", "Can't sign in without an interactive terminal.", {
       next: [
         {
@@ -37,6 +37,7 @@ export async function loginCommand(input: AuthInput): Promise<void> {
         { label: "Run it in a terminal", argv: ["nyte", "login", ...input.args] },
       ],
     });
+  }
 
   const key =
     keyOption === undefined
@@ -94,12 +95,13 @@ export async function logoutCommand(input: AuthInput): Promise<void> {
   const providerId = args.positionals[0];
   const out = input.output;
 
-  if (providerId === undefined && !out.mode.interactive)
+  if (providerId === undefined && !out.mode.interactive) {
     throw new CliError(
       "missing_input",
       "Can't choose a provider without an interactive terminal.",
       { next: [{ label: "Name the provider", argv: ["nyte", "logout", "<PROVIDER>"] }] },
     );
+  }
 
   input.signal.throwIfAborted();
 
@@ -124,7 +126,7 @@ async function readKey(
 ): Promise<string> {
   const piped = ["nyte", "login", providerId ?? "<PROVIDER>", "--key", "-"];
 
-  if (option !== "-")
+  if (option !== "-") {
     throw new CliError(
       "invalid_arguments",
       "Can't take an API key as an argument. Pipe it to --key -.",
@@ -132,13 +134,15 @@ async function readKey(
         next: [{ label: "Pipe the key", argv: piped }],
       },
     );
+  }
 
-  if (providerId === undefined)
+  if (providerId === undefined) {
     throw new CliError("missing_input", "Can't choose a provider for a piped key.", {
       next: [{ label: "Name the provider", argv: piped }],
     });
+  }
 
-  if (mode.tty.stdin)
+  if (mode.tty.stdin) {
     throw new CliError(
       "invalid_arguments",
       "Can't read a key from a terminal. Pipe the key, or run without --key to type it at a masked prompt.",
@@ -151,13 +155,15 @@ async function readKey(
         ],
       },
     );
+  }
 
   const key = await readStdin(false, signal);
 
-  if (key === "")
+  if (key === "") {
     throw new CliError("missing_input", "Can't sign in with an empty key from stdin.", {
       next: [{ label: "Pipe the key", argv: piped }],
     });
+  }
 
   return key;
 }
@@ -181,10 +187,11 @@ function parseMethod(value: string | undefined, piped: boolean): LoginMethod["ki
 
   if (value === "api_key") return "key";
 
-  if (value === "oauth" && piped)
+  if (value === "oauth" && piped) {
     throw new CliError("invalid_arguments", "Can't use --key with --method oauth.", {
       next: [{ label: "See the options", argv: ["nyte", "login", "--help"] }],
     });
+  }
 
   if (value === "oauth") return "oauth";
 

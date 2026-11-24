@@ -7,12 +7,13 @@ import type { HostState } from "../contract/bridge.ts";
 import type { ArrivalSubject, DesktopWindowOpen } from "../contract/desktop-window.ts";
 import { focusWithin, keyOwner } from "../lib/focus-owner.ts";
 import { shellActions } from "../tabs/shell-state.ts";
-import { folderPicker } from "../panes/open-workspace.tsx";
+import { activateWorkspace, folderPicker } from "../panes/open-workspace.tsx";
 import { APP_ACTIONS, clientCapabilities } from "../contract/client-actions.ts";
 import type { AppAction } from "../contract/client-actions.ts";
 import { focusNextPane, splitPanes } from "../panes/pane-context.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import {
@@ -20,16 +21,24 @@ import {
   firstSettingsSection,
   namesSettingsSection,
   showsSettingsSection,
-} from "../settings/sections.ts";
-import { activateWorkspace } from "../sidebar/use-show-session.ts";
-import { closeSettings } from "../settings/return.ts";
+} from "../settings-sections/sections.ts";
+import { closeSettings } from "../settings-sections/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { launch, toggleExplorer } from "../workbench/commands.ts";
-import { fileActions } from "../workbench/editor/file-store.ts";
-import { opensAsMarkdown } from "../workbench/editor/markdown-parse.ts";
-import { activeEditorFile, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "../workbench/model.ts";
+import { launch, toggleDock, toggleExplorer } from "./launch.ts";
+import { closeTab } from "./close-tab.ts";
+import { workbenchHasFocus } from "../workbench/focus-region.ts";
+import { focusedGuestSurface } from "../browser/browser-guests.tsx";
+import { fileActions } from "../editor/file-store.ts";
+import { opensAsMarkdown } from "../editor/markdown-parse.ts";
+import {
+  activeEditorFile,
+  browserSurface,
+  EDITOR_SLOT,
+  tabSlot,
+  workbenchShowsChat,
+} from "../workbench/model.ts";
 import { workbenchScope, workbenchViewKey } from "../workbench/paths.ts";
-import { activeWorkbenchTab, shownWorkbenchTab } from "../workbench/selectors.ts";
+import { activeWorkbenchTab, shownDockTab, shownWorkbenchTab } from "../workbench/selectors.ts";
 import { workbench } from "../workbench/store.ts";
 import { landAt, switchApp } from "./apps.ts";
 
@@ -48,25 +57,33 @@ function currentWorkspacePath(): string | undefined {
 
 function toggleTerminal(): void {
   const viewKey = workbenchViewKey(currentWorkspacePath());
+
+  if (appShape().panel === "chat") {
+    toggleDock(viewKey);
+
+    return;
+  }
+
   const view = workbench.getView(viewKey);
 
   const active = activeWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
 
   const terminal = view.tabs.find((tab) => tab.kind === "terminal" && tab.owner.kind === "user");
 
-  if (view.expanded && !workbenchShowsChat(view.layout) && active?.kind === "terminal")
+  if (view.expanded && !workbenchShowsChat(view.layout) && active?.kind === "terminal") {
     workbench.dispatch(viewKey, { kind: "toggle" });
-  else if (terminal !== undefined)
+  } else if (terminal !== undefined) {
     workbench.dispatch(viewKey, { kind: "activate", id: terminal.id });
-  else launch(viewKey, "terminal");
+  } else launch(viewKey, "terminal");
 }
 
 function toggleMarkdownSource(): boolean {
   if (
     keyOwner() !== undefined &&
     !focusWithin('[data-editor-panel] :is([data-slot="markdown-column"], diffs-container)')
-  )
+  ) {
     return false;
+  }
   const viewKey = workbenchViewKey(currentWorkspacePath());
   const view = workbench.getView(viewKey);
 
@@ -79,19 +96,60 @@ function toggleMarkdownSource(): boolean {
     file === undefined ||
     !opensAsMarkdown(file.path) ||
     queryClient.getQueryData<Document>(keys.document(file.path))?.kind !== "text"
-  )
+  ) {
     return false;
+  }
   fileActions.toggleSource(viewKey, file.path);
 
   return true;
 }
 
-export function openWindowInEditor(open: DesktopWindowOpen): void {
+function stepEditorHistory(step: "back" | "forward"): boolean {
+  if (keyOwner() !== undefined && !focusWithin("[data-editor-panel]")) return false;
+
+  const viewKey = workbenchViewKey(currentWorkspacePath());
+  const view = workbench.getView(viewKey);
+
+  const shown = shownWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
+
+  if (shown === null || tabSlot(shown) !== EDITOR_SLOT) return false;
+  fileActions[step](viewKey);
+
+  return true;
+}
+
+function closeFocusedWorkbenchTab(): boolean {
+  const viewKey = workbenchViewKey(currentWorkspacePath());
+  const view = workbench.getView(viewKey);
+  const docked = shownDockTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
+
+  const pageFocused =
+    docked?.kind === "browser" && focusedGuestSurface() === browserSurface(docked);
+
+  if (docked !== undefined && (pageFocused || focusWithin("[data-workbench-dock]"))) {
+    void closeTab(viewKey, docked.id);
+
+    return true;
+  }
+
+  const shown = shownWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
+
+  if (shown === null || !workbenchHasFocus(view)) return false;
+
+  const activeFile = tabSlot(shown) === EDITOR_SLOT ? activeEditorFile(view) : undefined;
+
+  void closeTab(viewKey, activeFile?.id ?? tabSlot(shown)).then((outcome) => {
+    if (activeFile !== undefined && outcome.kind === "closed") fileActions.focusActive(viewKey);
+  });
+
+  return true;
+}
+
+export function openWindowInEditor(open: Extract<DesktopWindowOpen, { kind: "file" }>): void {
   if (open.workspace !== undefined) commitHostWorkspace(open.workspace);
   const view = workbenchViewKey(open.workspace?.path);
 
-  if (open.kind === "file") fileActions.open(view, { path: open.path });
-  else launch(view, "editor");
+  fileActions.open(view, { path: open.path });
   workbench.dispatch(view, { kind: "maximize" });
 }
 
@@ -105,7 +163,7 @@ export function arriveInWindow(
   router: RegisteredRouter,
   subject: ArrivalSubject | undefined,
 ): void {
-  if (subject === undefined || windowApp() === "nyte") return;
+  if (subject === undefined || appShape().arrival === "ignore") return;
   uncoverPanes(router);
   void landAt(subject);
 }
@@ -131,6 +189,8 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
 
       return true;
     case "tab.close":
+      if (!settingsOpen(router) && closeFocusedWorkbenchTab()) return true;
+
       if (!windowTabs.strip) return false;
 
       if (settingsOpen(router)) closeSettings(router);
@@ -146,8 +206,12 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
       void activateWorkspace(null);
 
       return true;
-    case "settings.open":
-      return openSettings(router, read(action, APP_ACTIONS[action].input, input).page);
+    case "settings.open": {
+      const page = read(action, APP_ACTIONS[action].input, input).page;
+
+      return appShape().settings === "nyte" ? openSettingsInNyte(page) : openSettings(router, page);
+    }
+
     case "customize.open": {
       const selection = activeSelection(windowTabs.panes().layout.getSnapshot());
 
@@ -161,14 +225,15 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
 
       return true;
     case "sidebar.toggle":
-      if (windowApp() === "code") toggleExplorer(workbenchViewKey(currentWorkspacePath()));
-      else shellActions.toggleSidebar();
+      if (appShape().navigator === "files") {
+        toggleExplorer(workbenchViewKey(currentWorkspacePath()));
+      } else shellActions.toggleSidebar();
 
       return true;
     case "workbench.toggle":
       uncoverPanes(router);
       workbench.dispatch(workbenchViewKey(currentWorkspacePath()), {
-        kind: windowApp() === "code" ? "toggle-maximized" : "toggle",
+        kind: appShape().panel === "chat" ? "toggle-maximized" : "toggle",
       });
 
       return true;
@@ -205,6 +270,10 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
       return true;
     case "app.open":
       return switchApp(read(action, APP_ACTIONS[action].input, input).app);
+    case "history.back":
+      return stepEditorHistory("back");
+    case "history.forward":
+      return stepEditorHistory("forward");
     default: {
       const _exhaustive: never = action;
 
@@ -214,21 +283,32 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
 }
 
 function read<T extends TSchema>(action: AppAction, schema: T, input: Json): Static<T> {
-  if (!Value.Check(schema, input))
+  if (!Value.Check(schema, input)) {
     throw new SdkError("invalid", `That is not the input ${action} takes.`);
+  }
 
   return input;
+}
+
+function openSettingsInNyte(page: string | undefined): boolean {
+  const open = nyte.host.openSettings;
+
+  if (open === undefined) return false;
+  void open(page === undefined ? {} : { page });
+
+  return true;
 }
 
 function openSettings(router: RegisteredRouter, page: string | undefined): boolean {
   const open = settingsOpen(router);
 
   if (page === undefined) {
-    if (!open)
+    if (!open) {
       void router.navigate({
         to: "/settings/$section",
         params: { section: firstSettingsSection() },
       });
+    }
 
     return true;
   }

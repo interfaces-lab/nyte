@@ -3,11 +3,25 @@ import { asId } from "@nyte-ai/schema";
 import { DEFAULT_VIEW, EDITOR_SLOT, FOLLOW_BROWSE } from "./model.ts";
 import type { WorkbenchBrowse } from "./model.ts";
 import { workbenchStripTabs } from "./selectors.ts";
-import { createFileTabStore } from "./editor/file-store.ts";
+import { createFileTabStore } from "../editor/file-store.ts";
 import type { WorkbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
 import { reduceView } from "./view-reducer.ts";
-import { DEFAULT_WIDTH, workbenchPanelWidth, workbenchSeparatorValue } from "./width.ts";
+import type { WorkbenchViewAction } from "./view-reducer.ts";
+import {
+  clampWorkbenchWidthToBounds,
+  DEFAULT_WIDTH,
+  WORKBENCH_CENTER_WIDTH_MIN,
+  workbenchSeparatorValue,
+  workbenchWidthBounds,
+} from "./width.ts";
+
+function shownWidth(width: { readonly pixels: number }, stage: number): number {
+  return clampWorkbenchWidthToBounds(
+    width.pixels,
+    workbenchWidthBounds(stage, WORKBENCH_CENTER_WIDTH_MIN),
+  );
+}
 
 test("reopening Changes applies the requested scope and path to the open tab in one step", () => {
   const opened = reduceView(DEFAULT_VIEW, {
@@ -127,12 +141,13 @@ test.each([false, true])(
     files.actions.open(key, { path: "/workspace/file.ts" });
     files.actions.split(key, "after");
 
-    if (launched)
+    if (launched) {
       workbench.dispatch(key, {
         kind: "open",
         tab: { kind: "editor", id: "launcher" },
         activate: true,
       });
+    }
 
     for (const tab of files.getView(key).tabs) files.actions.close(key, tab.id);
 
@@ -156,14 +171,14 @@ test("the panel keeps its preferred pixel width as the stage changes", () => {
 
   const view = "/workspace";
 
-  expect(workbenchPanelWidth(store.getView(view).width, 1176)).toBe(588);
-  expect(workbenchPanelWidth(store.getView(view).width, 1424)).toBe(588);
-  expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(584);
-  expect(workbenchPanelWidth(store.getView(view).width, 696)).toBe(360);
+  expect(shownWidth(store.getView(view).width, 1176)).toBe(588);
+  expect(shownWidth(store.getView(view).width, 1424)).toBe(588);
+  expect(shownWidth(store.getView(view).width, 944)).toBe(584);
+  expect(shownWidth(store.getView(view).width, 696)).toBe(360);
 
   store.dispatch(view, { kind: "set-width", pixels: 700 });
-  expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(584);
-  expect(workbenchPanelWidth(store.getView(view).width, 2000)).toBe(700);
+  expect(shownWidth(store.getView(view).width, 944)).toBe(584);
+  expect(shownWidth(store.getView(view).width, 2000)).toBe(700);
   expect(stored.at(-1)?.views).toMatchObject([{ key: view, width: 700 }]);
 
   const reopened = createWorkbenchStore(() => ({ browser: true }), {
@@ -171,7 +186,7 @@ test("the panel keeps its preferred pixel width as the stage changes", () => {
     set: () => undefined,
   });
 
-  expect(workbenchPanelWidth(reopened.getView(view).width, 2000)).toBe(700);
+  expect(shownWidth(reopened.getView(view).width, 2000)).toBe(700);
 });
 
 test.each([
@@ -179,9 +194,15 @@ test.each([
   { name: "a 720 px stage at zoom 2", stage: 360, expected: { min: 100, max: 100, now: 100 } },
   { name: "a 900 px stage at zoom 3", stage: 300, expected: { min: 100, max: 100, now: 100 } },
 ])("the resize separator reports within its range on $name", (row) => {
-  const width = workbenchPanelWidth(DEFAULT_WIDTH, row.stage);
+  const width = shownWidth(DEFAULT_WIDTH, row.stage);
 
-  expect(workbenchSeparatorValue(width, row.stage)).toEqual(row.expected);
+  expect(
+    workbenchSeparatorValue(
+      width,
+      row.stage,
+      workbenchWidthBounds(row.stage, WORKBENCH_CENTER_WIDTH_MIN),
+    ),
+  ).toEqual(row.expected);
 });
 
 test.each([
@@ -207,11 +228,11 @@ test.each([
     set: () => undefined,
   });
 
-  expect(workbenchPanelWidth(store.getView("/workspace").width, 1400)).toBe(row.expected);
-  expect(workbenchPanelWidth(store.getView("/workspace").width, 2000)).toBe(row.expected);
+  expect(shownWidth(store.getView("/workspace").width, 1400)).toBe(row.expected);
+  expect(shownWidth(store.getView("/workspace").width, 2000)).toBe(row.expected);
   expect(store.getView("/workspace").tabs).toMatchObject([{ id: "files", kind: "editor" }]);
   store.dispatch("/workspace", { kind: "set-width", pixels: 640 });
-  expect(workbenchPanelWidth(store.getView("/workspace").width, 2000)).toBe(640);
+  expect(shownWidth(store.getView("/workspace").width, 2000)).toBe(640);
 });
 
 const other = { kind: "workspace", id: asId<"workspace">("other") } satisfies WorkbenchBrowse;
@@ -237,4 +258,53 @@ test.each([
   expect(next.browse).toEqual(row.expected);
   expect(next === start).toBe(row.same);
   expect({ ...next, browse: start.browse }).toEqual(start);
+});
+
+test.each([
+  { name: "a project it hasn't shown", actions: [], active: "editor" },
+  { name: "the workbench is toggled shut", actions: [{ kind: "toggle" }], active: "editor" },
+  {
+    name: "the terminal in front is toggled away",
+    actions: [
+      { kind: "add", tab: { id: "terminal", kind: "terminal", owner: { kind: "user" } } },
+      { kind: "toggle" },
+    ],
+    active: "editor",
+  },
+  {
+    name: "its last other tab closes",
+    actions: [
+      { kind: "add", tab: { id: "terminal", kind: "terminal", owner: { kind: "user" } } },
+      { kind: "close", id: "terminal" },
+    ],
+    active: "editor",
+  },
+  { name: "the Editor tab closes", actions: [{ kind: "close", id: "editor" }], active: undefined },
+] satisfies {
+  name: string;
+  actions: WorkbenchViewAction[];
+  active: string | undefined;
+}[])("a workbench that is the window's main area stays open on its Editor: $name", (row) => {
+  const initial = reduceView(DEFAULT_VIEW, {
+    kind: "open",
+    tab: { id: "editor", kind: "editor" },
+    activate: true,
+  });
+
+  const store = createWorkbenchStore(
+    () => ({ browser: true }),
+    undefined,
+    () => ({
+      initial,
+      main: true,
+    }),
+  );
+
+  for (const action of row.actions) store.dispatch("/workspace", action);
+  const view = store.getView("/workspace");
+  const editors = view.tabs.filter((tab) => tab.kind === "editor");
+
+  expect(view.expanded).toBe(true);
+  expect(editors).toHaveLength(1);
+  expect(view.active).toBe(row.active ?? editors[0]?.id);
 });

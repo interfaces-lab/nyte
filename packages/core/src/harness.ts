@@ -190,7 +190,6 @@ export async function setup(
       id: workspace,
       target: { kind: "test", locator: null },
       identity: asId("identity"),
-      projectSources: [],
       addedBy: asId("local"),
       createdAt: 0,
       isolation: null,

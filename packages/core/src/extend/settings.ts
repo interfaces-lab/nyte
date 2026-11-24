@@ -9,7 +9,6 @@ import type {
 import type { SettingsApi } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Setting, ResolvedSetting } from "../contract/plugin.ts";
-import { collectContributions } from "../engine/contributions.ts";
 import { WORKSPACE_TRUST } from "../env/trust.ts";
 import { dropScans, readTrust, trustChanged } from "../env/workspaces.ts";
 import { commit } from "../watch/commit.ts";
@@ -69,10 +68,11 @@ export function settingHandle<T>(
       if (!isJson(value)) throw new SdkError("invalid", `Setting ${id} takes a JSON value.`);
       const checked = await check(definition.schema, value);
 
-      if (checked.kind === "invalid")
+      if (checked.kind === "invalid") {
         throw new SdkError("invalid", `Setting ${id} rejects this value.`, {
           issues: checked.issues,
         });
+      }
 
       if (definition.scope === "host" || session === null) {
         await storeHostValue(kernel, definition, value);
@@ -82,10 +82,11 @@ export function settingHandle<T>(
 
       const outcome = await configure(kernel, session, MAIN, { settings: { [id]: value } }, true);
 
-      if (outcome.kind !== "configured")
+      if (outcome.kind !== "configured") {
         throw new SdkError("invalid", `Setting ${id} could not be configured: ${outcome.kind}.`, {
           issues: outcome.kind === "invalid" ? outcome.issues : [],
         });
+      }
     },
     watch: () => ({
       async *[Symbol.asyncIterator]() {
@@ -144,6 +145,7 @@ async function storeHostValue(
   const trust = id === WORKSPACE_TRUST ? await readTrust(kernel) : null;
 
   await commit(kernel, [{ name, target: await put(kernel.store, "kv", stored) }]);
+  await kernel.runtimePolicy.revoke(null);
   changed(kernel, id, null);
 
   if (trust !== null) void trustChanged(kernel, trust).catch(() => undefined);
@@ -151,8 +153,9 @@ async function storeHostValue(
   if (id === SKILL_PATHS) {
     dropScans(kernel);
 
-    for (const session of kernel.plugins.runtimes().keys())
+    for (const session of kernel.plugins.runtimes().keys()) {
       void kernel.plugins.reload(session).catch(() => undefined);
+    }
   }
 
   await Promise.all([
@@ -218,8 +221,9 @@ async function sealSecretEntry(
 ): Promise<Json> {
   if (!isJsonObject(written) || written.secret !== true) return written;
 
-  if (typeof written.value === "string")
+  if (typeof written.value === "string") {
     return { secret: true, ...(await sealText(kernel, written.value)) };
+  }
 
   if (isJsonObject(stored) && stored.secret === true && "ciphertext" in stored) return stored;
 
@@ -246,12 +250,13 @@ export async function configure(
   patch: ConfigurationPatch,
   activation = false,
 ): Promise<ConfigureOutcome> {
-  const selected = await attempt(`Configuring ${head}`, async () => {
+  const configured = await attempt(`Configuring ${head}`, async () => {
     const current = await requireSession(kernel.store, session);
     const entry = current.record.heads.find((other) => other.name === head);
 
-    if (entry === undefined)
+    if (entry === undefined) {
       throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
+    }
     const runtime = kernel.plugins.runtime(session);
 
     if (!activation) await runtime.ready;
@@ -261,15 +266,23 @@ export async function configure(
       head,
       selected: entry.selected,
       patch,
-      contributions: collectContributions(runtime),
+      contributions: runtime.contributions(),
     });
 
-    if (resolved.kind !== "exact") return resolved;
+    if (resolved.kind !== "exact") return { kind: "refused" as const, outcome: resolved };
 
     const record = {
       ...current.record,
       heads: current.record.heads.map((other) =>
-        other.name === head ? { ...other, selected: resolved } : other,
+        other.name === head
+          ? {
+              ...other,
+              selected: resolved,
+              historyEpoch:
+                (other.historyEpoch ?? 0) +
+                (patch.model !== undefined || patch.agent !== undefined ? 1 : 0),
+            }
+          : other,
       ),
     };
 
@@ -282,14 +295,46 @@ export async function configure(
       },
     ]);
 
-    return outcome.kind === "set" ? resolved : STALE;
+    return outcome.kind === "set"
+      ? {
+          kind: "configured" as const,
+          selected: resolved,
+          ids: changedSettingIds(entry.selected?.settings ?? {}, resolved.settings, patch.settings),
+        }
+      : STALE;
   });
 
-  if (selected.kind !== "exact") return selected;
+  if (configured.kind === "refused") return configured.outcome;
 
-  if (patch.settings !== undefined)
-    await settingsConfigured(kernel, session, Object.keys(patch.settings));
+  await kernel.runtimePolicy.revoke(session);
+  if (patch.model !== undefined || patch.agent !== undefined) {
+    await kernel.providerRuns.revoke(session, head, "route");
+  }
+
+  if (configured.ids.length > 0) await settingsConfigured(kernel, session, configured.ids);
   const ref = await kernel.store.refs.get(headRef(session, head));
 
-  return { kind: "configured", selected, revision: ref?.revision ?? EMPTY_REVISION };
+  return {
+    kind: "configured",
+    selected: configured.selected,
+    revision: ref?.revision ?? EMPTY_REVISION,
+  };
+}
+
+function changedSettingIds(
+  before: Readonly<Record<string, Json>>,
+  after: Readonly<Record<string, Json>>,
+  patched: Readonly<Record<string, Json>> | undefined,
+): readonly string[] {
+  const ids = new Set(Object.keys(patched ?? {}));
+
+  for (const [id, value] of Object.entries(after)) {
+    if (JSON.stringify(before[id]) !== JSON.stringify(value)) ids.add(id);
+  }
+
+  for (const id of Object.keys(before)) {
+    if (!Object.hasOwn(after, id)) ids.add(id);
+  }
+
+  return [...ids];
 }

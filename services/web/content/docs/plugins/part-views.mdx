@@ -87,11 +87,16 @@ A view's TSX can be up to 64 KB across all its files.
 `nyte/canvas` follows the user's theme in light and dark mode. Use it instead of your own colours and
 fonts.
 
+`Icon` takes one of the app's icon names, such as `git-branch`, `warning` or `circle-check`, and draws
+it in the colour of the text around it. With the kit's types, `name`
+only takes those names. A name the set lacks draws nothing and logs the closest names to the console.
+
 | Component                                                               | What it is                                                  |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `Stack`, `Grid`, `Divider`                                              | Flex layout, equal columns, a hairline                      |
 | `Section`, `Card`, `Callout`                                            | A titled group, a raised surface, a notice                  |
 | `Heading`, `Text`, `Code`, `Kbd`                                        | Text                                                        |
+| `Icon`                                                                  | A glyph from the app's icon set, by kebab-case `name`       |
 | `FileLink`                                                              | A workspace file that opens at a line                       |
 | `Stat`, `Delta`, `Badge`, `Meter`, `Spinner`                            | A labelled number, a change, a tag, a filled bar, a spinner |
 | `Table`, `KeyValue`, `DiffStat`                                         | Rows and columns, labelled facts, lines added and removed   |

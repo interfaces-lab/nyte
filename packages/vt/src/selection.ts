@@ -198,8 +198,9 @@ export function createSelection(context: Context): Selection {
     markCursorLine: () => {
       if (
         queryNumber(TerminalData.ACTIVE_SCREEN).getInt32(value, true) === TerminalScreen.ALTERNATE
-      )
+      ) {
         return null;
+      }
       const y = queryNumber(TerminalData.CURSOR_Y).getUint16(value, true);
       const cols = context.geometry().cols;
 

@@ -2,8 +2,8 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { loadDeferred, readDeferred } from "../lib/deferred.tsx";
 import { shineAgent } from "../light/light.ts";
-import type { ChatEdit } from "../workbench/editor/chat-changes.ts";
-import { lineChanges } from "../workbench/editor/line-changes.ts";
+import type { ChatEdit } from "../editor/chat-changes.ts";
+import { lineChanges } from "../editor/line-changes.ts";
 
 interface DesignPatch {
   readonly design: string;
@@ -19,7 +19,7 @@ interface Pending {
   readonly until: number;
 }
 
-const PLACE_MS = 5_000;
+const PLACE_MS = 5000;
 
 export const designFile = (design: string): boolean =>
   design.startsWith("design/") && (design.endsWith(".jsx") || design.endsWith(".css"));
@@ -61,12 +61,14 @@ export function followAgentLights(input: {
       entry.spans === undefined && entry.made.until > now ? [entry.made] : [],
     );
 
-    for (const entry of placed)
-      for (const span of entry.spans ?? [])
+    for (const entry of placed) {
+      for (const span of entry.spans ?? []) {
         shineAgent(
           { kind: "span", path: entry.made.path, ...span },
           { kind: "agent", session: entry.made.session },
         );
+      }
+    }
   };
 
   return {

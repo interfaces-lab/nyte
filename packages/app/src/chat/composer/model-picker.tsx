@@ -1,5 +1,4 @@
 import { create, props, when } from "@stylexjs/stylex";
-import { useNavigate } from "@tanstack/react-router";
 import { createContext, use, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { availableModes } from "@nyte-ai/schema";
@@ -34,7 +33,7 @@ import { useSetListing } from "../../data/catalog.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../../data/catalog.ts";
 import { useAccountLimits } from "../../data/usage.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
-import { showsSettingsSection } from "../../settings/sections.ts";
+import { showsSettingsSection } from "../../settings-sections/sections.ts";
 import {
   MODE_LABELS,
   modelIcon,
@@ -46,6 +45,7 @@ import {
   thinkingLevelsFor,
   usageLine,
 } from "./model-picker-state.ts";
+import { appActions } from "../../data/app-actions.ts";
 
 export interface ModelPickerChange {
   readonly option: DesktopModelOption;
@@ -199,7 +199,6 @@ export function ModelPicker({
   onChange,
 }: ModelPickerProps): ReactElement {
   const composer = use(ComposerPicker);
-  const navigate = useNavigate();
   const saved = useSetting(preferences.modelSettings);
   const [ownOpen, setOwnOpen] = useState(false);
   const open = openProp ?? ownOpen;
@@ -327,12 +326,7 @@ export function ModelPicker({
                     <MenuItem
                       variant="quiet"
                       icon="settings"
-                      onClick={() =>
-                        void navigate({
-                          to: "/settings/$section",
-                          params: { section: "providers" },
-                        })
-                      }
+                      onClick={() => appActions.run("settings.open", { page: "providers" })}
                     >
                       Manage Providers…
                     </MenuItem>
@@ -365,10 +359,11 @@ function Empty({
 
   if (unknown) return <EmptyText title="No models available" />;
 
-  if (connected)
+  if (connected) {
     return (
       <EmptyText title="Every model is hidden">Enable models in Settings › Providers.</EmptyText>
     );
+  }
 
   return (
     <EmptyText title="No providers connected">

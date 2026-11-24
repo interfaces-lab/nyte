@@ -37,8 +37,9 @@ export function localTransfers(root: string): Transfers {
 
     if (within === "") return { kind: "invalid", reason: "root" };
 
-    if (within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within))
+    if (within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within)) {
       return { kind: "invalid", reason: "outside" };
+    }
 
     return { kind: "inside", path: target };
   };
@@ -70,8 +71,9 @@ export function localTransfers(root: string): Transfers {
       entry.dev === taken.dev &&
       entry.ino === taken.ino;
 
-    if (taken !== null && !(kind === "move" && sameEntry))
+    if (taken !== null && !(kind === "move" && sameEntry)) {
       return { kind: "stale", reason: "exists" };
+    }
     await mkdir(dirname(target.path), { recursive: true });
 
     if (kind === "move") return renameRetrying(source.path, target.path);
@@ -104,18 +106,20 @@ export function localTransfers(root: string): Transfers {
       if (target.kind === "invalid") return target;
       const existing = await lstat(target.path).catch(missing);
 
-      if (existing !== null)
+      if (existing !== null) {
         return existing.isDirectory()
           ? { kind: "done" }
           : { kind: "invalid", reason: "not-a-folder" };
+      }
 
       try {
         await mkdir(target.path, { recursive: true });
       } catch (error) {
         const code = readErrorCode(error);
 
-        if (code === "EEXIST" || code === "ENOTDIR")
+        if (code === "EEXIST" || code === "ENOTDIR") {
           return { kind: "invalid", reason: "not-a-folder" };
+        }
 
         throw error;
       }
@@ -131,8 +135,9 @@ export function localTransfers(root: string): Transfers {
       if (entry === null) return { kind: "stale" };
       const holding = await holdingFolder(root);
 
-      if (holding === null || (await stat(holding)).dev !== entry.dev)
+      if (holding === null || (await stat(holding)).dev !== entry.dev) {
         return { kind: "unavailable" };
+      }
       const token = asId<"trash">(randomUUID());
       const held = join(holding, token, basename(target.path));
       await mkdir(dirname(held), { recursive: true });
@@ -155,8 +160,9 @@ export function localTransfers(root: string): Transfers {
 
       if (hold === undefined) return { kind: "stale", reason: "expired" };
 
-      if ((await lstat(hold.original).catch(missing)) !== null)
+      if ((await lstat(hold.original).catch(missing)) !== null) {
         return { kind: "stale", reason: "exists" };
+      }
       await mkdir(dirname(hold.original), { recursive: true });
       const moved = await renameRetrying(hold.held, hold.original);
 
@@ -222,8 +228,9 @@ async function holdingFolder(root: string): Promise<string | null> {
     const live = new Set([...holds.keys()].map(String));
     const entries = await readdir(holding).catch(missing);
 
-    for (const name of entries ?? [])
+    for (const name of entries ?? []) {
       if (!live.has(name)) await rm(join(holding, name), { recursive: true, force: true });
+    }
   }
 
   await mkdir(holding, { recursive: true });

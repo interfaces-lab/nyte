@@ -1,0 +1,14 @@
+{
+  "name": "@nyte-ai/example-multitask-mode",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@nyte-ai/plugin": "workspace:*",
+    "@types/node": "^26.6.6"
+  }
+}

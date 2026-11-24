@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = join(import.meta.dirname, "..");
 
 /**
  * @type {readonly {
@@ -96,7 +95,7 @@ export function selectIcons(env = process.env) {
   });
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] === import.meta.filename) {
   try {
     const results = selectIcons();
     const sets = new Set(results.map((result) => result.set));

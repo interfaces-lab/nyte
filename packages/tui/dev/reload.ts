@@ -24,11 +24,11 @@ const PROCESS_ENTRIES = [join(TUI, "src", "index.ts"), join(TUI, "src", "host-wo
 
 const QUIET_MS = 100;
 
-const SETTLE_MS = 1_000;
+const SETTLE_MS = 1000;
 
 const BUSY_RETRY_MS = 500;
 
-const FIRST_FRAME_MS = 1_000;
+const FIRST_FRAME_MS = 1000;
 
 const DURABLE = [
   "@opentui/core",
@@ -121,11 +121,12 @@ export async function reloadingMount(options: AppOptions): Promise<MountedApp> {
     const known = rest.length === 0 ? new Set<string>() : await (outside ??= processFiles());
     const elsewhere = rest.filter((file) => known.has(file) || file.startsWith(DEV));
 
-    if (elsewhere.length > 0)
+    if (elsewhere.length > 0) {
       inform(
         "warning",
         `${elsewhere.map((file) => relative(REPO, file)).join(", ")} changed outside the UI · restart nyte to apply`,
       );
+    }
 
     if (ui.length === 0) return;
     const busy = current.app.busy();
@@ -139,9 +140,11 @@ export async function reloadingMount(options: AppOptions): Promise<MountedApp> {
 
     const started = performance.now();
 
-    for (const file of ui)
-      for (const module of environment.moduleGraph.getModulesByFile(file) ?? [])
+    for (const file of ui) {
+      for (const module of environment.moduleGraph.getModulesByFile(file) ?? []) {
         environment.moduleGraph.invalidateModule(module);
+      }
+    }
 
     environment.runner.clearCache();
 
@@ -217,8 +220,9 @@ export async function reloadingMount(options: AppOptions): Promise<MountedApp> {
     if (name === null) return;
     const file = join(PACKAGES, name);
 
-    if (/\.tsx?$/u.test(file) && !/[/\\](node_modules|dist)[/\\]|[/\\]\.spike-/u.test(file))
+    if (/\.tsx?$/u.test(file) && !/[/\\](node_modules|dist)[/\\]|[/\\]\.spike-/u.test(file)) {
       queue([file]);
+    }
   });
 
   watcher.on("error", (cause) =>
@@ -254,8 +258,9 @@ export async function reloadingMount(options: AppOptions): Promise<MountedApp> {
 async function load(environment: RunnableDevEnvironment): Promise<MountModule> {
   const loaded = await environment.runner.import<Partial<MountModule>>(MOUNT);
 
-  if (loaded.mountApp === undefined || loaded.resumeOptions === undefined)
+  if (loaded.mountApp === undefined || loaded.resumeOptions === undefined) {
     throw new Error(`${relative(REPO, MOUNT)} does not export mountApp and resumeOptions.`);
+  }
 
   return { mountApp: loaded.mountApp, resumeOptions: loaded.resumeOptions };
 }

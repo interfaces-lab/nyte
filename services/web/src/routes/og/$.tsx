@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ImageResponse } from "takumi-js/response";
-import { findPage, type DocPage } from "~/lib/docs";
+import { findPage } from "~/lib/docs";
+import type { DocPage } from "~/lib/docs";
 import { appName, designRoute } from "~/lib/shared";
 import { LandingCard, PageCard, cardFonts, cardSize } from "./-design-card";
 
@@ -14,20 +15,23 @@ export const Route = createFileRoute("/og/$")({
           ? findPage(`/${splat.slice(0, -"/image.png".length)}`)
           : undefined;
 
-        if (!page)
+        if (!page) {
           return new Response(
             "Page image not found. Find a page path in /llms.txt, then request /og/<path>/image.png (for example, /og/docs/image.png).",
             { status: 404 },
           );
+        }
 
-        if (page.url === designRoute)
+        if (page.url === designRoute) {
           return new ImageResponse(<LandingCard page={page} />, {
             ...cardSize,
             fonts: cardFonts(),
           });
+        }
 
-        if (page.url.startsWith(`${designRoute}/`))
+        if (page.url.startsWith(`${designRoute}/`)) {
           return new ImageResponse(<PageCard page={page} />, { ...cardSize, fonts: cardFonts() });
+        }
 
         return new ImageResponse(<DocsCard page={page} />, cardSize);
       },

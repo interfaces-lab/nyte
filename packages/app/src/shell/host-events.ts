@@ -8,11 +8,11 @@ import {
   applyBrowserBoard,
   applyBrowserKey,
   applyBrowserPick,
-} from "../workbench/browser/browser-surfaces.ts";
-import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
-import { applyBrowserGuests } from "../workbench/browser/browser-guests.tsx";
+} from "../browser/browser-surfaces.ts";
+import { applyBrowserHistory } from "../browser/browser-history.ts";
+import { applyBrowserGuests } from "../browser/browser-guests.tsx";
 import { workbench } from "../workbench/store.ts";
-import { showNotifiedChat } from "../settings/return.ts";
+import { showNotifiedChat } from "../settings-sections/return.ts";
 
 export function useHostEvents(): void {
   useMountEffect(() => {
@@ -37,8 +37,9 @@ export function useHostEvents(): void {
         case "host_process_changed":
           queryClient.setQueryData(keys.hostProcess, event.state);
 
-          if (event.state.kind === "current" || event.state.kind === "stale")
+          if (event.state.kind === "current" || event.state.kind === "stale") {
             currentConnection()?.retry();
+          }
 
           return;
         case "server_changed":

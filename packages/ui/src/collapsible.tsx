@@ -5,10 +5,12 @@ import type { ComponentProps, ReactElement } from "react";
 import { focus } from "./styles/a11y.stylex.ts";
 import { media, space, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { appearance, motion, role } from "./styles/vars.stylex.ts";
-import { Icon, type GlyphSize } from "./icon.tsx";
+import { Icon } from "./icon.tsx";
+import type { GlyphSize } from "./icon.tsx";
 
 const styles = create({
   trigger: {
@@ -181,8 +183,9 @@ function CollapsiblePreview({
     <CollapsiblePrimitive.Trigger
       nativeButton={false}
       onClick={(event) => {
-        if (selecting(event) || !event.currentTarget.matches(PREVIEWING))
+        if (selecting(event) || !event.currentTarget.matches(PREVIEWING)) {
           event.preventBaseUIHandler();
+        }
       }}
       render={
         <div

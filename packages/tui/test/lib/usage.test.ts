@@ -9,7 +9,7 @@ function account(...used: readonly number[]): ProviderUsage {
     account: null,
     state: {
       kind: "ready",
-      observedAt: 1_000,
+      observedAt: 1000,
       stale: false,
       error: null,
       limits: used.map((share, index) => ({

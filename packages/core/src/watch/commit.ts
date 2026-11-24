@@ -14,7 +14,10 @@ import { put, readCall, readRefExpectation } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { publishSet } from "./watch.ts";
 
-type RunScope = { readonly session: SessionId; readonly run: RunId };
+interface RunScope {
+  readonly session: SessionId;
+  readonly run: RunId;
+}
 
 interface CallScope {
   readonly session: SessionId;
@@ -58,15 +61,17 @@ export async function commit(
   updates: readonly RefUpdate[],
   under: RunScope | null = null,
 ): Promise<SetOutcome> {
+  const prepared = await kernel.providerRuns.history(updates);
   const fenced =
     under === null
-      ? updates
-      : updates.map((update) => ({
+      ? prepared
+      : prepared.map((update) => ({
           ...update,
           fences: [...(update.fences ?? []), liveRef(under.session, under.run)],
         }));
 
   const outcome = await kernel.store.refs.set(fenced);
+  if (outcome.kind === "set") await kernel.providerRuns.committed(prepared);
   dev("store", "refs.set", { names: updates.map(({ name }) => name), outcome });
 
   if (outcome.kind === "fenced" && under !== null) kernel.runs.abort(under.run);
@@ -87,11 +92,12 @@ async function publish(
     const message = error instanceof Error ? error.message : String(error);
     dev("store", "publish failed", { retry, error: message });
 
-    if (retry < PUBLISH_RETRIES)
+    if (retry < PUBLISH_RETRIES) {
       setTimeout(
         () => void publish(kernel, updates, outcome, retry + 1),
         PUBLISH_BACKOFF_MS * 2 ** retry,
       );
+    }
   }
 }
 
@@ -134,8 +140,9 @@ export function changeCall(
 
       if (outcome.kind === "set") return { record: next.record, wrote: true, fenced: false };
 
-      if (outcome.kind === "fenced")
+      if (outcome.kind === "fenced") {
         return { record: found?.record ?? null, wrote: false, fenced: true };
+      }
     }
 
     throw new SdkError(

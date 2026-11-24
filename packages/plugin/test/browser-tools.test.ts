@@ -30,7 +30,7 @@ function fakeBrowser() {
       canGoBack: false,
       canGoForward: false,
     }),
-    watch: async function* () {},
+    async *watch() {},
     snapshot: async () => after("snapshot", snapshot),
     navigate: async (url) => after(`navigate ${url}`, applied),
     back: async () => applied,
@@ -55,7 +55,7 @@ function fakeBrowser() {
     open: async (input) => after(`open ${input.url}`, page),
     adopt: async () => page,
     list: async () => [{ id: asId("p1"), url: "https://nyte.test", title: "Nyte", holders: 1 }],
-    watch: async function* () {},
+    async *watch() {},
   };
 
   return { calls, browser };

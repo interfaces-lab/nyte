@@ -5,7 +5,7 @@ import { css, html } from "react-strict-dom";
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { PartId, SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
-import { healthMessage, useChat, useHealth } from "../connection/live.ts";
+import { linkMessage, useChat, useLink } from "../connection/live.ts";
 import { tokens, useTheme } from "../theme.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { CanvasWebView } from "./canvas-frame.tsx";
@@ -18,27 +18,31 @@ export function CanvasScreen({ sessionId, part }: { sessionId: SessionId; part: 
   const { client } = useHost();
   const handle = client.session(sessionId).part(part);
   const chat = useChat(client, sessionId, undefined);
-  const unavailable = healthMessage(useHealth(client));
+  const unavailable = linkMessage(useLink(client));
 
-  if (chat === undefined && unavailable !== undefined)
+  if (chat === undefined && unavailable !== undefined) {
     return <EmptyState title="Couldn't load the canvas" description={unavailable} />;
+  }
 
-  if (chat === undefined)
+  if (chat === undefined) {
     return (
       <html.div style={styles.loading}>
         <ActivityIndicator color={theme.muted} />
       </html.div>
     );
+  }
 
   const view = chat.view.parts.find((candidate) => candidate.id === part);
 
-  if (view === undefined)
+  if (view === undefined) {
     return <EmptyState title="Canvas not found" description="It's no longer in this chat." />;
+  }
 
   const checked = canvas.state["~standard"].validate(view.state);
 
-  if (checked instanceof Promise || checked.issues !== undefined)
+  if (checked instanceof Promise || checked.issues !== undefined) {
     return <EmptyState title="Canvas unavailable" description="This canvas can't be shown." />;
+  }
   const state = checked.value;
 
   return (

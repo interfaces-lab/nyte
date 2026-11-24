@@ -6,7 +6,7 @@ import type {
   ClientConnection,
   Freshness,
   HeadView,
-  Health,
+  LinkState,
   SessionsWindow,
 } from "@nyte-ai/sdk/client";
 
@@ -86,10 +86,10 @@ export function sessionLists(
   });
 }
 
-export function healthUpdates(connection: ClientConnection): AsyncIterable<Health> {
+export function linkUpdates(connection: ClientConnection): AsyncIterable<LinkState> {
   return liveValues((changed) => ({
-    read: () => connection.health.snapshot(),
-    close: connection.health.subscribe(changed),
+    read: () => connection.link.snapshot(),
+    close: connection.link.subscribe(changed),
   }));
 }
 
@@ -110,42 +110,6 @@ export function refusedSends(connection: ClientConnection): AsyncIterable<readon
     },
     close: connection.refused.subscribe(changed),
   }));
-}
-
-export async function whenOpen<T>(connection: ClientConnection, ask: () => Promise<T>): Promise<T> {
-  for (;;) {
-    const since = await openSince(connection);
-
-    const answer = await ask().then(
-      (value) => ({ value }),
-      (error: unknown) => ({ error }),
-    );
-
-    if ("value" in answer) return answer.value;
-    const health = connection.health.snapshot();
-
-    if (health.kind === "open" && health.since === since) throw answer.error;
-  }
-}
-
-function openSince(connection: ClientConnection): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const check = (): boolean => {
-      const health = connection.health.snapshot();
-
-      if (health.kind === "open") resolve(health.since);
-      else if (health.kind === "blocked") reject(health.error);
-      else return false;
-
-      return true;
-    };
-
-    if (check()) return;
-
-    const stop = connection.health.subscribe(() => {
-      if (check()) stop();
-    });
-  });
 }
 
 function liveValues<T>(open: (changed: () => void) => Opened<T>): AsyncIterable<T> {

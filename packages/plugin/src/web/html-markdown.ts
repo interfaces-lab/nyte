@@ -33,7 +33,7 @@ const blocks = new Set([
   "summary",
 ]);
 
-type Frame = {
+interface Frame {
   suppressed: boolean;
   link?: { href: string; title?: string };
   suspendedLink?: Frame["link"];
@@ -54,7 +54,7 @@ type Frame = {
   cell?: { start: number };
   caption?: { start: number };
   details?: { open: boolean; summary: boolean; previous?: Frame["details"] };
-};
+}
 
 type Chunk = string | { raw: string };
 
@@ -107,8 +107,9 @@ export function htmlToMarkdown(html: string): string {
     append(value);
     const pushed = output.at(-1);
 
-    if (output.length > before && typeof pushed === "string")
+    if (output.length > before && typeof pushed === "string") {
       output[output.length - 1] = { raw: pushed };
+    }
   };
 
   const take = (start: number) => {
@@ -213,10 +214,10 @@ export function htmlToMarkdown(html: string): string {
       }
 
       const escaped = part
-        .replace(/([\\`*_[\]<>|])/g, "\\$1")
-        .replace(/~/g, "\\~")
-        .replace(/^([#+-])/, "\\$1")
-        .replace(/^(\d+)\./, "$1\\.");
+        .replaceAll(/([\\`*_[\]<>|])/g, String.raw`\$1`)
+        .replaceAll("~", String.raw`\~`)
+        .replace(/^([#+-])/, String.raw`\$1`)
+        .replace(/^(\d+)\./, String.raw`$1\.`);
 
       append(escaped, true);
     }
@@ -275,7 +276,7 @@ export function htmlToMarkdown(html: string): string {
 
     for (;;) {
       const candidate = `${prefix}${payload}${payload.endsWith("\n") ? "" : "\n"}${fence}`;
-      const value = quote ? candidate.replace(/^/gm, quote) : candidate;
+      const value = quote ? candidate.replaceAll(/^/gm, quote) : candidate;
       const valueBytes = encoder.encode(value).byteLength;
 
       if (outputBytes + valueBytes <= CONTENT_BYTES) {
@@ -325,8 +326,9 @@ export function htmlToMarkdown(html: string): string {
 
       const details = activeDetails;
 
-      if (hidden || (details && !details.open && !details.summary && name !== "summary"))
+      if (hidden || (details && !details.open && !details.summary && name !== "summary")) {
         frame.suppressed = true;
+      }
       stack.push(frame);
 
       if (frame.suppressed) return;
@@ -334,8 +336,9 @@ export function htmlToMarkdown(html: string): string {
       if (activeCode && !activeCode.inline) {
         if (name === "br") activeCode.text += "\n";
 
-        if (name === "code" && attributes.class)
+        if (name === "code" && attributes.class) {
           activeCode.language = attributes.class.match(/(?:language-|lang-)([^\s]+)/)?.[1];
+        }
 
         return;
       }
@@ -465,7 +468,7 @@ export function htmlToMarkdown(html: string): string {
       }
 
       if (name === "img") {
-        const alt = (attributes.alt ?? "").replace(/([\\\]])/g, "\\$1");
+        const alt = (attributes.alt ?? "").replaceAll(/([\\\]])/g, String.raw`\$1`);
         const close = `](${destination(attributes.src ?? "")}${title(attributes.title)})`;
         const open = "![";
         const available = CONTENT_BYTES - outputBytes - encoder.encode(open + close).byteLength;
@@ -582,8 +585,9 @@ export function htmlToMarkdown(html: string): string {
       if (stopped) {
         if (fallbackOmittedDepth > 0 && omitted.has(name)) fallbackOmittedDepth--;
 
-        if (fallbackSuppressedDepth > 0 && depth < fallbackSuppressedDepth)
+        if (fallbackSuppressedDepth > 0 && depth < fallbackSuppressedDepth) {
           fallbackSuppressedDepth = 0;
+        }
 
         return;
       }
@@ -606,8 +610,9 @@ export function htmlToMarkdown(html: string): string {
         activeCode = undefined;
         finishCode(frame.linkCode);
 
-        if (frame.link && linkOpen)
+        if (frame.link && linkOpen) {
           append(`](${destination(frame.link.href)}${title(frame.link.title)})`);
+        }
         activeLink = undefined;
         linkOpen = false;
         activeCode = frame.resumedCode;
@@ -680,8 +685,9 @@ export function htmlToMarkdown(html: string): string {
         if (frame.link && (activeLink === frame.link || !activeLink)) {
           activeLink = frame.link;
 
-          if (linkOpen || (last && last !== "\n"))
+          if (linkOpen || (last && last !== "\n")) {
             append(`](${destination(frame.link.href)}${title(frame.link.title)})`);
+          }
           linkOpen = false;
           activeLink = undefined;
         }
@@ -727,9 +733,9 @@ export function htmlToMarkdown(html: string): string {
 
         if (frame.cell) {
           const value = take(frame.cell.start)
-            .replace(/[\t\r\n ]+/g, " ")
+            .replaceAll(/[\t\r\n ]+/g, " ")
             .trim()
-            .replace(/(?<!\\)\|/g, "\\|");
+            .replaceAll(/(?<!\\)\|/g, String.raw`\|`);
 
           activeTable?.row?.push(value);
         }
@@ -750,7 +756,7 @@ export function htmlToMarkdown(html: string): string {
 
       if (name === "caption" && frame.caption && activeTable) {
         activeTable.caption = take(frame.caption.start)
-          .replace(/[\t\r\n ]+/g, " ")
+          .replaceAll(/[\t\r\n ]+/g, " ")
           .trim();
 
         return;
@@ -770,7 +776,7 @@ export function htmlToMarkdown(html: string): string {
 
       if (table) {
         const loose = take(table.start)
-          .replace(/[\t\r\n ]+/g, " ")
+          .replaceAll(/[\t\r\n ]+/g, " ")
           .trim();
 
         const header = table.rows[0];
@@ -807,8 +813,9 @@ export function htmlToMarkdown(html: string): string {
     },
   });
 
-  for (let index = 0; index < html.length; index += 64 * 1024)
+  for (let index = 0; index < html.length; index += 64 * 1024) {
     parser.write(html.slice(index, index + 64 * 1024));
+  }
   parser.end();
 
   const normalized: string[] = [];
@@ -818,8 +825,8 @@ export function htmlToMarkdown(html: string): string {
     if (!pendingText) return;
 
     const lines = pendingText
-      .replace(/[ \t]+\n/g, (space) => (space.startsWith("  ") ? "  \n" : "\n"))
-      .replace(/\n{3,}/g, "\n\n")
+      .replaceAll(/[ \t]+\n/g, (space) => (space.startsWith("  ") ? "  \n" : "\n"))
+      .replaceAll(/\n{3,}/g, "\n\n")
       .split("\n");
 
     normalized.push(
@@ -862,8 +869,9 @@ export function htmlToText(html: string): string {
       if (
         skipDepth > 0 ||
         ["script", "style", "noscript", "iframe", "object", "embed"].includes(name)
-      )
+      ) {
         skipDepth++;
+      }
     },
     ontext(input) {
       if (skipDepth === 0) text += input;
@@ -896,15 +904,15 @@ function sliceBytes(value: string, bytes: number): string {
 }
 
 function destination(value: string): string {
-  return value.replace(/([\\()])/g, "\\$1").replace(/[\t\n\r ]+/g, "%20");
+  return value.replaceAll(/([\\()])/g, String.raw`\$1`).replaceAll(/[\t\n\r ]+/g, "%20");
 }
 
 function title(value: string | undefined): string {
   return value
     ? ` "${value
-        .replace(/[\t\n\r ]+/g, " ")
+        .replaceAll(/[\t\n\r ]+/g, " ")
         .trim()
-        .replace(/([\\"])/g, "\\$1")}"`
+        .replaceAll(/([\\"])/g, String.raw`\$1`)}"`
     : "";
 }
 

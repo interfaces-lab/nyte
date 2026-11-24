@@ -27,6 +27,7 @@ export type Range = {
 };
 
 export type Journal = {
+  started(): Promise<boolean>;
   head(): Promise<string>;
   append(changes: readonly Change[]): Promise<string>;
   range(from: string | null, to: string): Promise<Range>;
@@ -39,19 +40,23 @@ export function openJournal(path: string): Journal {
   const positions = new Map<string, number>([[ORIGIN, -1]]);
   let offset = 0;
   let rest = "";
+  let begun: Promise<void> | undefined;
 
-  const refresh = async (): Promise<void> => {
+  const begin = (): Promise<void> =>
+    (begun ??= mkdir(dirname(path), { recursive: true }).then(() => appendFile(path, "")));
+
+  const refresh = async (): Promise<"missing" | "read"> => {
     const handle = await open(path, "r").catch((error: unknown) => {
       if (readErrorCode(error) === "ENOENT") return null;
       throw error;
     });
 
-    if (handle === null) return;
+    if (handle === null) return "missing";
 
     try {
       const { size } = await handle.stat();
 
-      if (size <= offset) return;
+      if (size <= offset) return "read";
       const bytes = new Uint8Array(size - offset);
       await handle.read(bytes, 0, bytes.length, offset);
       offset = size;
@@ -66,6 +71,8 @@ export function openJournal(path: string): Journal {
         positions.set(line.id, lines.length);
         lines.push(line);
       }
+
+      return "read";
     } finally {
       await handle.close();
     }
@@ -80,14 +87,18 @@ export function openJournal(path: string): Journal {
   };
 
   return {
+    async started() {
+      return (await refresh()) !== "missing";
+    },
     async head() {
+      await begin();
       await refresh();
 
       return lines.at(-1)?.id ?? ORIGIN;
     },
     async append(changes) {
       const id = randomUUID();
-      await mkdir(dirname(path), { recursive: true });
+      await begin();
       await appendFile(path, `\n${JSON.stringify({ id, changes })}\n`);
       await refresh();
 

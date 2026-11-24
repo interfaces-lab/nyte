@@ -53,18 +53,18 @@ import {
 } from "./session-index.ts";
 import type { HostStamp } from "./session-index.ts";
 
-export type PostgresClient = {
+export interface PostgresClient {
   query(
     text: string,
     values?: readonly unknown[],
   ): Promise<{ readonly rows: readonly Record<string, unknown>[] }>;
   release(): void;
-};
+}
 
-export type PostgresPool = {
+export interface PostgresPool {
   connect(): Promise<PostgresClient>;
   end(): Promise<void>;
-};
+}
 
 const MIGRATION_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('nyte:store', 0))";
 
@@ -218,8 +218,9 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
               [created.name, created.target, revision],
             );
 
-            if (rows.length > 0)
+            if (rows.length > 0) {
               await updateSessionIndex(client, created.name, created.target, revision);
+            }
           }
 
           for (const relog of change.relogs) {
@@ -424,11 +425,12 @@ async function publish(
       ),
     );
 
-    if (locks.length > 0)
+    if (locks.length > 0) {
       await client.query(
         "SELECT pg_advisory_xact_lock(hashtextextended(key, 0)) FROM unnest($1::text[]) WITH ORDINALITY AS locks(key, ordinal) ORDER BY ordinal",
         [locks],
       );
+    }
 
     const directory = directorySessions(updates);
 
@@ -530,30 +532,33 @@ async function publish(
       const revision = mintRevision();
       revisions.push(revision);
 
-      if (update.target === null)
+      if (update.target === null) {
         await client.query("DELETE FROM refs WHERE name = $1", [update.name]);
-      else
+      } else {
         await client.query(
           "INSERT INTO refs (name, target, revision) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET target = excluded.target, revision = excluded.revision",
           [update.name, update.target, revision],
         );
+      }
       await updateSessionIndex(client, update.name, update.target, revision, stored);
       const session = parseSessionRef(update.name);
 
       if (session !== null) touched.set(session, revision);
     }
 
-    for (const [session, version] of touched)
+    for (const [session, version] of touched) {
       await client.query("UPDATE session_index SET version = $1 WHERE session = $2", [
         version,
         session,
       ]);
+    }
 
-    if (replaced.length > 0)
+    if (replaced.length > 0) {
       await client.query(
         "DELETE FROM objects WHERE id = ANY($1::text[]) AND bytes IS NULL AND (body::json ->> 'kind') IS DISTINCT FROM 'commit' AND NOT EXISTS (SELECT 1 FROM refs WHERE refs.target = objects.id)",
         [replaced],
       );
+    }
 
     const host = await stampDirectory(client, hostSeq + 1, directory.changed, removed);
     const at = Date.now();
@@ -619,6 +624,7 @@ async function updateSessionIndex(
     name,
     body === null ? null : decodeObject(body),
     revision,
-  ))
+  )) {
     await client.query(postgresSessionIndexQuery(change.text), change.values);
+  }
 }

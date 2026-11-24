@@ -64,8 +64,9 @@ export function withBrowserCors(input: {
     !(request.method === "OPTIONS"
       ? methods.includes(request.headers.get("access-control-request-method") ?? "")
       : methods.includes(request.method))
-  )
+  ) {
     return response;
+  }
   const headers = new Headers(response.headers);
   headers.set("access-control-allow-origin", origin);
   headers.set(

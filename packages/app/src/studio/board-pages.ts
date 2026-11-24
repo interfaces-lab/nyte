@@ -6,15 +6,10 @@ import type { BrowserBridge, BrowserSurfaceState } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { connected } from "../data/connection.ts";
 import { workspacePath } from "../data/workspaces.ts";
-import { parseWebUrl } from "../workbench/browser/browser-address.ts";
-import {
-  focusGuest,
-  guestGeneration,
-  placeGuest,
-  sizeGuest,
-} from "../workbench/browser/browser-guests.tsx";
-import type { GuestRect, GuestSlot } from "../workbench/browser/browser-guests.tsx";
-import { addPickToChat } from "../workbench/browser/browser-pick.ts";
+import { parseWebUrl } from "../browser/browser-address.ts";
+import { focusGuest, guestGeneration, placeGuest, sizeGuest } from "../browser/browser-guests.tsx";
+import type { GuestRect, GuestSlot } from "../browser/browser-guests.tsx";
+import { addPickToChat } from "../browser/browser-pick.ts";
 import {
   applyBrowserEvent,
   claimBrowserSurface,
@@ -22,19 +17,19 @@ import {
   onBrowserBoard,
   onBrowserPick,
   watchBrowserSurface,
-} from "../workbench/browser/browser-surfaces.ts";
-import type { BrowserBoardEvent } from "../workbench/browser/browser-surfaces.ts";
+} from "../browser/browser-surfaces.ts";
+import type { BrowserBoardEvent } from "../browser/browser-surfaces.ts";
 import { studioStyles } from "./studio.stylex.ts";
 
 const MAX_GUESTS = 5;
 
 const MAX_VIEWPORT = 10_000;
 
-const OPEN_INTERVAL_MS = 1_000;
+const OPEN_INTERVAL_MS = 1000;
 
-const GRACE_MS = 3_000;
+const GRACE_MS = 3000;
 
-const HANDOFF_MS = 1_000;
+const HANDOFF_MS = 1000;
 
 export type BrowserOwner = NonNullable<Parameters<BrowserBridge["open"]>[0]["owner"]>;
 
@@ -129,8 +124,9 @@ export function boardPages(input: {
           sequence <= frame.drawn ||
           taken.generation !== guestGeneration(guest.surface) ||
           taken.url !== guest.url
-        )
+        ) {
           return;
+        }
         frame.drawn = sequence;
         const still = frame.still ?? createStill(layer);
         frame.still = still;
@@ -153,8 +149,9 @@ export function boardPages(input: {
   const stilled = (frame: Frame, sequence: number): void => {
     const showing = frame.showing;
 
-    if (showing.kind !== "settling" || sequence <= showing.after || frame.drawn !== sequence)
+    if (showing.kind !== "settling" || sequence <= showing.after || frame.drawn !== sequence) {
       return;
+    }
     rest(frame);
   };
 
@@ -354,8 +351,9 @@ export function boardPages(input: {
 
       if (slot === null && sized) sizeGuest(guest.surface, width, height);
 
-      if (slot === null && guest.design && frame.state !== "still")
+      if (slot === null && guest.design && frame.state !== "still") {
         void designOff(guest).catch(() => undefined);
+      }
       const entered = slot?.interactive === true;
 
       if (entered !== guest.entered) {
@@ -383,8 +381,9 @@ export function boardPages(input: {
       next?.surface === active?.surface &&
       next?.entered === active?.entered &&
       (next === null || active === null || spanKey(next.key) === spanKey(active.key))
-    )
+    ) {
       return;
+    }
     active = next;
     input.onActive(next);
   };
@@ -452,7 +451,7 @@ export function boardPages(input: {
       const page = entry.page;
       const now = page.state === "still" ? 0 : ++clock;
 
-      if (found === undefined)
+      if (found === undefined) {
         return {
           key: entry.key,
           span: page.key,
@@ -467,6 +466,7 @@ export function boardPages(input: {
           guest: undefined,
           gone: undefined,
         };
+      }
 
       taken.add(found);
       clearTimeout(found.gone);
@@ -545,7 +545,7 @@ async function workspaceTrusted(owner: BrowserOwner): Promise<boolean> {
   const workspaces = await (await connected()).workspaces.list();
 
   return workspaces.some(
-    (workspace) => workspace.trusted === true && workspacePath(workspace) === path,
+    (workspace) => workspace.trust.state === "trusted" && workspacePath(workspace) === path,
   );
 }
 

@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, onTestFinished, vi, test } from "vitest";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
-import {
-  failedTransiently,
-  type RetryPolicy,
-  retryAssistantCall,
-  retryDelayMs,
-} from "../src/utils/retry.ts";
+import { failedTransiently, retryAssistantCall, retryDelayMs } from "../src/utils/retry.ts";
+import type { RetryPolicy } from "../src/utils/retry.ts";
 
 function fauxAssistantMessage(
   text: string,
@@ -149,7 +145,7 @@ describe("retryAssistantCall", () => {
   });
 
   test("caps agent retry delay (#8826)", async () => {
-    assert.equal(retryDelayMs({ baseDelayMs: 2000 }, 6), 60000);
+    assert.equal(retryDelayMs({ baseDelayMs: 2000 }, 6), 60_000);
     assert.equal(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 5000 }, 5), 5000);
     assert.equal(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 0 }, 5), 0);
 
@@ -269,7 +265,7 @@ describe("retryAssistantCall", () => {
     const policy: RetryPolicy = { enabled: true, maxRetries: 5, baseDelayMs: 10_000 };
     const onRetryFinished = vi.fn();
     const p = retryAssistantCall(produce, policy, controller.signal, { onRetryFinished });
-    await vi.advanceTimersByTimeAsync(9_999);
+    await vi.advanceTimersByTimeAsync(9999);
     assert.equal(vi.getTimerCount(), 1);
     controller.abort();
     const res = await p;

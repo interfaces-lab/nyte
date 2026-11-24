@@ -1,1 +1,4 @@
-{ "title": "workspaces", "pages": ["list", "inspect", "add", "forget", "clean-worktrees"] }
+{
+  "title": "workspaces",
+  "pages": ["list", "inspect", "add", "forget", "clean-worktrees", "scan-storage", "clean-storage"]
+}

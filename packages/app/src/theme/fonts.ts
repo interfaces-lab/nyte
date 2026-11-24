@@ -54,7 +54,7 @@ export function localFontFamily(selection: string): string | undefined {
 }
 
 function quotedCssFamily(family: string): string {
-  return `"${family.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  return `"${family.replaceAll("\\", String.raw`\\`).replaceAll('"', String.raw`\"`)}"`;
 }
 
 export function uiFontFamily(selection: UiFont): string {

@@ -1,7 +1,7 @@
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { Prose } from "../../chat/markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { UserMessageView } from "../../chat/transcript/turn-view.tsx";
 import { conversation } from "../../theme/schema.stylex.ts";
 

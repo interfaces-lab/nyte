@@ -1,4 +1,7 @@
-export type Choice<Value extends string> = { readonly value: Value; readonly label: string };
+export interface Choice<Value extends string> {
+  readonly value: Value;
+  readonly label: string;
+}
 
 export type Choices<Value extends string> = readonly [Choice<Value>, ...Choice<Value>[]];
 

@@ -119,44 +119,46 @@ test("the Code window reads Bun", async ({}, testInfo) => {
 
   await test.step("a 10,000-line Rust parser flung end to end", async () => {
     await hover(code, source(code, TRAIL.join("/")));
-    await scroll(code, ramp(20, 4_000, 40));
+    await scroll(code, ramp(20, 4000, 40));
     await scroll(
       code,
-      Array.from({ length: 40 }, () => 4_000),
+      Array.from({ length: 40 }, () => 4000),
     );
     await scroll(
       code,
-      Array.from({ length: 30 }, () => -8_000),
+      Array.from({ length: 30 }, () => -8000),
     );
   });
 
-  for (const path of OPENS)
+  for (const path of OPENS) {
     await test.step(`${path} from Quick Open`, async () => {
       opens.push(await quickOpen(code, path));
       await hover(code, source(code, path));
-      await scroll(code, ramp(200, 3_000, 25));
+      await scroll(code, ramp(200, 3000, 25));
     });
+  }
 
   await test.step(`${String(SWITCH_ROUNDS)} rounds over every open file`, async () => {
     const paths = [TRAIL.join("/"), ...OPENS];
 
-    for (let round = 0; round < SWITCH_ROUNDS; round += 1)
+    for (let round = 0; round < SWITCH_ROUNDS; round += 1) {
       for (const [index, path] of paths.entries()) {
         switches.push(await switchTo(code, path));
         await hover(code, source(code, path));
         await scroll(
           code,
-          Array.from({ length: 8 }, () => ((round + index) % 2 === 0 ? 2_500 : -2_500)),
+          Array.from({ length: 8 }, () => ((round + index) % 2 === 0 ? 2500 : -2500)),
         );
       }
+    }
   });
 
   await test.step("the last line of a 25,000-line, 1.5 MB test", async () => {
     await switchTo(code, LAST_LINE.path);
     await goTo(code, LAST_LINE.line, 1);
-    await hold(code, 1_000);
+    await hold(code, 1000);
     await goTo(code, 1, 1);
-    await hold(code, 1_500);
+    await hold(code, 1500);
   });
 
   const deltas = await frames.stop();
@@ -204,8 +206,9 @@ async function prepareBunHome(seed: string): Promise<void> {
 
   await copy(join(home, ".nyte"), seed);
 
-  if (!(await exists(join(BUN, ".git"))))
+  if (!(await exists(join(BUN, ".git")))) {
     await run("git", ["clone", "--depth", "1", BUN_REMOTE, BUN], { timeout: 600_000 });
+  }
 
   await copy(`${BUN}/.`, home);
   await writeFile(join(HOME, "ready"), "");
@@ -227,8 +230,8 @@ async function exists(path: string): Promise<boolean> {
 async function filmBounds(application: ElectronApplication) {
   return application.evaluate((electron) => {
     const area = electron.screen.getPrimaryDisplay().workArea;
-    const width = Math.min(1_600, area.width - 80);
-    const height = Math.min(1_000, area.height - 80);
+    const width = Math.min(1600, area.width - 80);
+    const height = Math.min(1000, area.height - 80);
 
     return {
       x: area.x + Math.round((area.width - width) / 2),
@@ -256,7 +259,7 @@ async function countdown(page: Page, seconds: number): Promise<void> {
       if (badge !== null) badge.textContent = text;
     }, String(left));
     process.stdout.write(`demo starts in ${String(left)}\n`);
-    await hold(page, 1_000);
+    await hold(page, 1000);
   }
 
   await page.evaluate(() => document.querySelector("#nyte-demo-countdown")?.remove());
@@ -307,9 +310,7 @@ async function switchTo(page: Page, path: string): Promise<number> {
 
   if (await tab.isVisible()) await tab.click();
   else {
-    await editor(page)
-      .getByRole("button", { name: /^Open files in group/u })
-      .click();
+    await page.getByRole("button", { name: "More", exact: true }).click();
     await page.getByRole("menuitem", { name: path, exact: true }).click();
   }
 
@@ -410,7 +411,7 @@ function summary(values: readonly number[]) {
 }
 
 function escape(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
 }
 
 function round(value: number): number {

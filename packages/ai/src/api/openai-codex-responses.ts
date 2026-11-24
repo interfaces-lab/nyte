@@ -17,16 +17,15 @@ import { runAssistantStream } from "./assistant-stream.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import {
   buildRequestBody,
-  type CodexRequest,
   CodexRequestError,
   codexStreamOptions,
   compressRequestBodyZstd,
   mapCodexEvents,
-  type OpenAICodexResponsesOptions,
   parseErrorResponse,
   parseSSE,
   retryableCodexRequest,
 } from "./openai-codex-protocol.ts";
+import type { CodexRequest, OpenAICodexResponsesOptions } from "./openai-codex-protocol.ts";
 import { streamOverWebSocket } from "./openai-codex-websocket.ts";
 import {
   buildSSEHeaders,

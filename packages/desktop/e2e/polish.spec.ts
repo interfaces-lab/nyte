@@ -67,15 +67,16 @@ async function capture(
   const { page } = target;
 
   const aria = await (scope ?? page.locator("body"))
-    .ariaSnapshot({ timeout: 5_000 })
+    .ariaSnapshot({ timeout: 5000 })
     .catch((cause: unknown) => `# not shown: ${String(cause).split("\n")[0] ?? ""}\n`);
 
   await writeFile(`${base}.aria.yml`, aria);
 
   await captureWindow(target, `${base}.png`);
 
-  if (JUDGED && committed && scope !== undefined)
+  if (JUDGED && committed && scope !== undefined) {
     await expect(scope).toMatchAriaSnapshot({ name: `${surface}-${state}.aria.yml` });
+  }
 }
 
 const BASELINE_PHASE_MS = 90_000;
@@ -104,9 +105,11 @@ async function phase(
 
       if (JUDGED) throw cause;
 
-      for (const [surface, state] of shows)
-        if (!(await exists(join(run.out, surface, `${state}-${LABEL}.png`))))
+      for (const [surface, state] of shows) {
+        if (!(await exists(join(run.out, surface, `${state}-${LABEL}.png`)))) {
           await capture(run, run.desktop(), surface, state);
+        }
+      }
     } finally {
       clearTimeout(timer);
       await writeFile(
@@ -119,8 +122,9 @@ async function phase(
 
 async function arrowTo(item: Locator, limit = 12): Promise<void> {
   for (let presses = 0; presses < limit; presses += 1) {
-    if (await item.evaluate((element) => element === document.activeElement).catch(() => false))
+    if (await item.evaluate((element) => element === document.activeElement).catch(() => false)) {
       return;
+    }
     await item.page().keyboard.press("ArrowDown");
   }
 
@@ -187,10 +191,11 @@ function busyOverContent(page: Page, text: string, ms: number): Promise<readonly
             '[aria-busy="true"], [role="progressbar"], [aria-label^="Loading"]',
           );
 
-          if (shown && busy !== null && busy !== undefined)
+          if (shown && busy !== null && busy !== undefined) {
             frames.push(
               `${Math.round(performance.now())} ${busy.tagName} ${busy.getAttribute("aria-label") ?? ""} ${(busy.textContent ?? "").slice(0, 40)}`,
             );
+          }
 
           if (performance.now() < end) requestAnimationFrame(sample);
           else done(frames);
@@ -340,10 +345,11 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
 
     run.notes["traffic light and sidebar toggle centers"] = centers;
 
-    if (JUDGED)
+    if (JUDGED) {
       expect(Math.abs(centers.trafficLights - centers.sidebarToggle)).toBeLessThanOrEqual(
         WINDOW_BUTTON_CENTRE_TOLERANCE,
       );
+    }
   });
 
   await phase(
@@ -715,7 +721,7 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
       run.notes["bounds after relaunch"] = await desktop.application.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0]?.getBounds(),
       );
-      const busy = busyOverContent(page, "passes now", 3_000);
+      const busy = busyOverContent(page, "passes now", 3000);
       await expect(messages(page).getByText(/passes now/u)).toBeVisible({ timeout: 30_000 });
       run.notes["busy frames over restored content"] = await busy;
       const resumeShifts = await layoutShifts(page);

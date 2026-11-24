@@ -19,26 +19,28 @@ import type { McpService } from "../mcp-server/server.ts";
 import { MCP_TOKEN_PREFIX } from "../mcp-server/token.ts";
 import { allowsOrigin, createHandler } from "./handler.ts";
 import type { HandlerOptions } from "./handler.ts";
+import { openRetirement } from "./retire.ts";
+import type { Retirement } from "./retire.ts";
 import type { SocketPeer } from "./socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
 
-type Cached = {
+interface Cached {
   readonly connection: Connection;
   readonly principal: PrincipalId;
   dispose: Disposer;
-};
+}
 
-type Flight = {
+interface Flight {
   readonly request: Request;
   readonly controller: AbortController;
   principal: PrincipalId | null;
-};
+}
 
-type Device = {
+interface Device {
   readonly principal: PrincipalId;
   readonly authority: ReadonlySet<Authority>;
   readonly token: string;
-};
+}
 
 type Identity = Device & { readonly headers?: Readonly<Record<string, string>> };
 
@@ -58,22 +60,30 @@ export async function listenFetch(
     readonly tailnet?: TailnetControl;
     readonly mcpServer?: McpService;
     readonly media?: MediaLinks | undefined;
+    readonly retirement?: Retirement;
   },
 ): Promise<SocketListener> {
   const { auth } = options;
 
-  if (auth.kind === "token" && auth.token.length < 16)
+  if (auth.kind === "token" && auth.token.length < 16) {
     throw new SdkError("invalid", "A listener token needs at least 16 characters.");
+  }
   const origin = new RegExp(ORIGIN_PATTERN);
   const invalid = options.origins?.find((candidate) => !origin.test(candidate));
 
-  if (invalid !== undefined)
+  if (invalid !== undefined) {
     throw new SdkError(
       "invalid",
       `${invalid} isn't a listener origin. Use https://example.com, https://*.example.com or http://localhost:<port>.`,
     );
+  }
   const { server } = host;
   const operations = await operationsDigest();
+
+  const retirement =
+    options.retirement ?? openRetirement(server, { supervisor: null, replaced: () => undefined });
+
+  const build = { version: server.version, operations, supervisor: retirement.supervisor };
   const cache = new Map<string, Cached>();
   const devices = new Map<string, Device>();
   const streams = new Map<PrincipalId, Set<Flight>>();
@@ -88,8 +98,9 @@ export async function listenFetch(
     if (cache.get(key) === entry) cache.delete(key);
     entry.dispose();
 
-    for (const [digest, device] of devices)
+    for (const [digest, device] of devices) {
       if (device.principal === entry.principal) devices.delete(digest);
+    }
     const open = streams.get(entry.principal);
     streams.delete(entry.principal);
 
@@ -99,8 +110,9 @@ export async function listenFetch(
   };
 
   const land = (flight: Flight): void => {
-    for (const [principal, open] of streams)
+    for (const [principal, open] of streams) {
       if (open.delete(flight) && open.size === 0) streams.delete(principal);
+    }
   };
 
   const connectionFor = (
@@ -137,8 +149,9 @@ export async function listenFetch(
       drop(key, entry, new SdkError("unauthenticated", "The principal was revoked.")),
     );
 
-    if (admitted.kind === "revoked")
+    if (admitted.kind === "revoked") {
       throw new SdkError("unauthenticated", "The principal was revoked.");
+    }
     entry.dispose = admitted.dispose;
     cache.set(key, entry);
 
@@ -182,7 +195,7 @@ export async function listenFetch(
   const externalCommit = (): void => {
     void rechecks
       .run(recheck)
-      .catch((error) => dev("listen", "device re-check failed", { error: String(error) }));
+      .catch((error: unknown) => dev("listen", "device re-check failed", { error: String(error) }));
   };
 
   const unwatchCommits = server.onExternalCommit(externalCommit);
@@ -198,10 +211,11 @@ export async function listenFetch(
       ? async (request) => {
           const verdict = await auth.authorize(request);
 
-          if ("deny" in verdict)
+          if ("deny" in verdict) {
             throw verdict.deny === "forbidden"
               ? new SdkError("denied", "This principal may not call the host.")
               : new SdkError("unauthenticated", "The request is not authorized.");
+          }
 
           return verdict;
         }
@@ -221,8 +235,9 @@ export async function listenFetch(
     if (pairing !== undefined) {
       const redeemed = await server.redeem(pairing);
 
-      if (redeemed === null)
+      if (redeemed === null) {
         throw new SdkError("unauthenticated", "The pairing code is unknown or has expired.");
+      }
       const device = {
         principal: redeemed.principal,
         authority: redeemed.authority,
@@ -235,12 +250,14 @@ export async function listenFetch(
 
     const token = /^Bearer\s+(\S+)\s*$/i.exec(header)?.[1];
 
-    if (token?.startsWith(MCP_TOKEN_PREFIX) === true)
+    if (token?.startsWith(MCP_TOKEN_PREFIX) === true) {
       throw new SdkError("denied", "An MCP token answers only at /mcp.");
+    }
 
     if (token !== undefined) {
-      if (await isListenerToken(token))
+      if (await isListenerToken(token)) {
         return { principal: TOKEN, authority: listenerAuthority, token };
+      }
       const remembered = await findDevice(token);
 
       if (remembered !== null) {
@@ -279,8 +296,9 @@ export async function listenFetch(
   };
 
   const issueTicket = async (request: Request): Promise<Response> => {
-    if (!allowsCaller(request))
+    if (!allowsCaller(request)) {
       return failure(new SdkError("denied", "This origin may not call the host."), {});
+    }
     const identity = await identify(request);
     const now = Date.now();
 
@@ -296,19 +314,22 @@ export async function listenFetch(
     const held = tickets.get(ticket);
     tickets.delete(ticket);
 
-    if (held === undefined || held.expires <= Date.now())
+    if (held === undefined || held.expires <= Date.now()) {
       throw new SdkError("unauthenticated", "The ticket is unknown, used or expired.");
+    }
 
     return held.identity;
   };
 
   const issueMedia = async (request: Request): Promise<Response> => {
-    if (!allowsCaller(request))
+    if (!allowsCaller(request)) {
       return failure(new SdkError("denied", "This origin may not call the host."), {});
+    }
     const identity = await identify(request);
 
-    if (!identity.authority.has("owner"))
+    if (!identity.authority.has("owner")) {
       throw new SdkError("denied", "Streaming a file needs owner authority.");
+    }
     const flight: Flight = { request, controller: new AbortController(), principal: null };
     connectionFor(flight, identity.principal, identity.authority, identity.token);
     land(flight);
@@ -321,15 +342,17 @@ export async function listenFetch(
   };
 
   const streamedMedia = (): MediaLinks => {
-    if (options.media === undefined)
+    if (options.media === undefined) {
       throw new SdkError("not_supported", "This host streams no files.");
+    }
 
     return options.media;
   };
 
   const admitSocket = async (request: Request): Promise<SocketPeer> => {
-    if (closing !== null)
+    if (closing !== null) {
       throw new SdkError("unavailable", "This listener is closed.", { retry: true });
+    }
 
     if (!allowsCaller(request)) throw new SdkError("denied", "This origin may not call the host.");
     const ticket = new URL(request.url).searchParams.get("ticket");
@@ -353,6 +376,8 @@ export async function listenFetch(
       tailnet: options.tailnet,
       mcpServer: options.mcpServer,
       execution: host.execution,
+      build,
+      retirement,
       signal: AbortSignal.any([generation.signal, controller.signal]),
       leave: () => land(flight),
     };
@@ -389,8 +414,9 @@ export async function listenFetch(
     request: Request,
     trace: { principal: PrincipalId | null },
   ): Promise<Response> => {
-    if (closing !== null)
+    if (closing !== null) {
       return failure(new SdkError("unavailable", "This listener is closed.", { retry: true }), {});
+    }
     const early = await options.before?.(request);
 
     if (early !== undefined) return early;
@@ -399,11 +425,12 @@ export async function listenFetch(
     if (request.method === "GET" && url.pathname === "/.nyte/identity") {
       const nonce = url.searchParams.get("nonce");
 
-      if (options.identity === undefined || nonce === null || nonce === "")
+      if (options.identity === undefined || nonce === null || nonce === "") {
         return failure(
           new SdkError("unknown", "This host answers no identity challenge."),
           cors(request),
         );
+      }
 
       return json(
         { ...(await options.identity.sign(nonce)), hostId: server.hostId },
@@ -415,15 +442,17 @@ export async function listenFetch(
 
     if (request.method === "POST" && url.pathname === MEDIA_PATH) return issueMedia(request);
 
-    if (request.method === "GET" && url.pathname.startsWith(`${MEDIA_PATH}/`))
+    if (request.method === "GET" && url.pathname.startsWith(`${MEDIA_PATH}/`)) {
       return streamedMedia().serve(
         url.pathname.slice(MEDIA_PATH.length + 1),
         request.headers.get("Range"),
       );
+    }
 
     if (request.method === "GET" && url.pathname === "/.nyte/describe") {
-      if (options.describe === undefined)
+      if (options.describe === undefined) {
         return failure(new SdkError("unknown", "This host describes nothing."), cors(request));
+      }
 
       return json(await options.describe(), cors(request));
     }
@@ -478,12 +507,13 @@ export async function listenFetch(
         : await host.execution.cover(execution.coverage);
 
   const disconnectClients = (): void => {
-    for (const [key, entry] of cache)
+    for (const [key, entry] of cache) {
       drop(
         key,
         entry,
         new SdkError("unavailable", "The host disconnected its clients.", { retry: true }),
       );
+    }
     devices.clear();
     generation.abort(
       new SdkError("unavailable", "The host disconnected its clients.", { retry: true }),
@@ -564,8 +594,9 @@ async function sameSecret(given: string, expected: string): Promise<boolean> {
   const [left, right] = await Promise.all([sha256(given), sha256(expected)]);
   let difference = left.length ^ right.length;
 
-  for (let index = 0; index < left.length; index += 1)
+  for (let index = 0; index < left.length; index += 1) {
     difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
+  }
 
   return difference === 0;
 }

@@ -41,8 +41,9 @@ function activityTitle(
   tense: ToolTense,
   names: ReadonlyMap<SessionId, string>,
 ): string {
-  if (toolClass.kind === "shell" && toolClass.description !== undefined)
+  if (toolClass.kind === "shell" && toolClass.description !== undefined) {
     return toolClass.description;
+  }
 
   return toolClass.kind === "delegate"
     ? toolTitle(toolClass, tense, delegateName(toolClass, names))
@@ -50,11 +51,12 @@ function activityTitle(
 }
 
 function activityState(part: ActivityPart, names: ReadonlyMap<SessionId, string>) {
-  if (part.kind === "thinking")
+  if (part.kind === "thinking") {
     return {
       title: part.streaming ? "Thinking" : "Thoughts",
       tone: part.streaming ? ("running" as const) : ("success" as const),
     };
+  }
 
   const status = toolStatus(part);
   const title = activityTitle(part.state.class, status.tense, names);
@@ -74,12 +76,13 @@ export function activitySummary(
   const active = states.findLast((state) => state.tone === "running");
   const failed = states.filter((state) => state.tone === "failure").length;
 
-  if (attention !== undefined)
+  if (attention !== undefined) {
     return failed === 0
       ? attention
       : { ...attention, title: `${attention.title} · ${failed} failed` };
+  }
 
-  if (failed > 0)
+  if (failed > 0) {
     return {
       title:
         active !== undefined
@@ -89,17 +92,19 @@ export function activitySummary(
             : `${failed} ${failed === 1 ? "tool failed" : "tools failed"}`,
       tone: "failure" as const,
     };
+  }
 
   if (active !== undefined) return active;
 
   if (states.length === 1) return states[0] ?? { title: "Activity", tone: "success" as const };
   const stopped = states.filter((state) => state.tone === "stopped").length;
 
-  if (stopped > 0)
+  if (stopped > 0) {
     return {
       title: `${stopped} ${stopped === 1 ? "tool stopped" : "tools stopped"}`,
       tone: "stopped" as const,
     };
+  }
 
   const reads = new Set<string>();
   const edits = new Set<string>();
@@ -109,8 +114,13 @@ export function activitySummary(
   let other = 0;
 
   for (const part of parts) {
-    if (part.kind !== "tool" || part.state.phase !== "settled" || part.state.outcome.kind !== "ok")
+    if (
+      part.kind !== "tool" ||
+      part.state.phase !== "settled" ||
+      part.state.outcome.kind !== "ok"
+    ) {
       continue;
+    }
     const tool = part.state.class;
 
     switch (tool.kind) {

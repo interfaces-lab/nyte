@@ -152,7 +152,10 @@ export const WORKSPACE_OPERATIONS = {
     kind: "command",
     input: wireObject({
       ...WORKSPACE,
-      patch: Type.Object({ projectResources: Type.Optional(nullable(Type.Boolean())) }),
+      patch: Type.Object({
+        trusted: Type.Optional(nullable(Type.Boolean())),
+        at: Type.Optional(Type.Union([Type.Literal("folder"), Type.Literal("parent")])),
+      }),
     }),
     output: WORKSPACE_CHANGE,
   },

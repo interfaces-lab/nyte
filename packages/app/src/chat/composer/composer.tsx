@@ -11,7 +11,8 @@ import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { useCatalog } from "../../data/catalog.ts";
-import { useHostHealth, useHostProcess } from "../../data/host.ts";
+import { useHostLink } from "../../data/host.ts";
+import { readLinkNotices } from "../../data/link-notices.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { SIDECHAT_COMMAND, usePluginCatalog } from "../../data/plugins.ts";
 import { sessionActions } from "../../data/session-rows.ts";
@@ -19,15 +20,22 @@ import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connected, connection } from "../../data/connection.ts";
 import { chatStore, resendMessage, stopChat, useChatStopping } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
-import { useChats } from "../../chats/index.ts";
+import { useChatFolder, useChats } from "../../chats/index.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { usePaneViewStateStore } from "../../panes/pane-context.tsx";
-import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
+import type { ComposerDocumentState, ComposerSubmission } from "../../panes/composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerSurface } from "./composer-frame.tsx";
 import { sessionModel } from "./model-picker-state.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
+import {
+  cycleModes,
+  modeControl,
+  modeTriggers,
+  runModeTrigger,
+  useSessionModes,
+} from "./composer-modes.tsx";
 import { ComposerQueue } from "./composer-queue.tsx";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
@@ -38,8 +46,14 @@ import { loadedPrompts } from "./composer-history.ts";
 import { deliveryChoices, draftEmpty, nextToSteer } from "./composer-keys.ts";
 import { deliver, draftCommands } from "./composer-send.ts";
 import { planSubmission } from "./composer-plan.ts";
-import { endedDraft, errorNotice, handedOff, shownDraft, shownNotice } from "./composer-draft.ts";
-import type { ComposerNotice } from "./composer-draft.ts";
+import {
+  endedDraft,
+  errorNotice,
+  handedOff,
+  shownDraft,
+  shownNotice,
+} from "../../panes/composer-draft.ts";
+import type { ComposerNotice } from "../../panes/composer-draft.ts";
 import { editBlock, FILES_WHILE_SAVING, saving } from "./composer-session.ts";
 import type { PendingRowAction } from "./composer-session.ts";
 import { composerSession } from "./composer-effects.ts";
@@ -59,11 +73,10 @@ import { QuestionDockContext, useQuestionDock } from "../trays/questions-state.t
 import { useCommitCount } from "../../lib/work-counts.ts";
 import { useDebouncedValue } from "../../lib/use-debounced-value.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { useChatFolder } from "../chat-folder.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 
-const OUTAGE_GRACE_MS = 1_500;
+const OUTAGE_GRACE_MS = 1500;
 
 function messageReceipt(sessionId: SessionId, message: UserMessage) {
   return connection().session(sessionId).receipt(asId<"receipt">(message.id));
@@ -143,7 +156,7 @@ export function Composer({
   const folder = useChatFolder();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const mac = nyte.platform === "darwin";
-  const health = useHostHealth();
+  const link = useHostLink();
 
   const asked = useChatStopping(sessionId) === "asked";
   const stopping = (status.kind === "working" && status.stopping) || asked;
@@ -152,14 +165,14 @@ export function Composer({
     store.value?.freshness.kind === "stale" ? store.value.freshness.since : undefined,
   );
 
-  const restarting = useHostProcess().data?.kind === "restarting";
-  const lost = !restarting && health !== undefined && health.kind !== "open";
-  const lostAWhile = useDebouncedValue(lost, OUTAGE_GRACE_MS);
-  const stale = !restarting && staleSince !== undefined;
-  const staleAWhile = useDebouncedValue(stale, OUTAGE_GRACE_MS);
+  const away = link === undefined ? null : readLinkNotices(link, false).composer;
+  const lostAWhile = useDebouncedValue(away !== null, OUTAGE_GRACE_MS);
+  const staleAWhile = useDebouncedValue(staleSince !== undefined, OUTAGE_GRACE_MS);
 
   const questions = useQuestionDock(sessionId);
   const pluginCatalog = usePluginCatalog(sessionId);
+  const modes = useSessionModes(sessionId, pluginCatalog.data?.settings);
+  const showsModes = questions === undefined && surface !== "side-chat";
   const floating = floatingMount !== null;
   const [portal] = useState(portalHost);
   const inlineSlot = useRef<HTMLDivElement | null>(null);
@@ -192,6 +205,8 @@ export function Composer({
     composer.editor()?.focus({ preventScroll: true });
   }, [composer, floatingMount, portal]);
 
+  const triggers = showsModes ? modeTriggers(modes, pluginCatalog.data?.commands ?? []) : [];
+
   const suggestionCatalog = composerSource(
     surface === "side-chat" && pluginCatalog.data !== undefined
       ? {
@@ -200,7 +215,10 @@ export function Composer({
             (command) => command.name !== SIDECHAT_COMMAND.name,
           ),
         }
-      : pluginCatalog.data,
+      : pluginCatalog.data && {
+          ...pluginCatalog.data,
+          commands: [...pluginCatalog.data.commands, ...triggers],
+        },
     pluginCatalog.isError,
   );
 
@@ -257,6 +275,8 @@ export function Composer({
     delivery: Delivery,
     document: ComposerDocumentState,
   ): Promise<void> => {
+    if (runModeTrigger({ modes, triggers, editor: composer.editor(), text: document.text })) return;
+
     if (!dispatch({ kind: "submit" })) return;
     const sentAttachments = attachments;
     const submittingTab = windowTabs.paneTabId();
@@ -348,12 +368,12 @@ export function Composer({
       .then(
         (outcome) => {
           switch (outcome.kind) {
+            case "sent":
+            case "missing":
+              return;
             case "revised":
               setRowAction(item.id, null);
 
-              return;
-            case "sent":
-            case "missing":
               return;
             default: {
               const _exhaustive: never = outcome;
@@ -461,29 +481,24 @@ export function Composer({
                   />
                 </div>
               )}
-              {lost && lostAWhile && (
-                <div
-                  role={health.kind === "blocked" ? "alert" : "status"}
-                  {...props(composerStyles.queued)}
-                >
-                  <Icon name={health.kind === "blocked" ? "warning" : "refresh"} />
-                  <span {...props(composerStyles.queuedText)}>
-                    {health.kind === "blocked"
-                      ? "Disconnected from the host."
-                      : "Reconnecting to the host…"}
-                  </span>
+              {away !== null && lostAWhile ? (
+                <div role={away.role} {...props(composerStyles.queued)}>
+                  <Icon name="refresh" />
+                  <span {...props(composerStyles.queuedText)}>{away.text}</span>
                 </div>
-              )}
-              {stale && staleAWhile && (
-                <div role="status" {...props(composerStyles.queued)}>
-                  <Icon name="clock" />
-                  <span {...props(composerStyles.queuedText)}>
-                    {`Chat last updated at ${new Date(staleSince).toLocaleTimeString(undefined, {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}.`}
-                  </span>
-                </div>
+              ) : (
+                staleSince !== undefined &&
+                staleAWhile && (
+                  <div role="status" {...props(composerStyles.queued)}>
+                    <Icon name="clock" />
+                    <span {...props(composerStyles.queuedText)}>
+                      {`Chat last updated at ${new Date(staleSince).toLocaleTimeString(undefined, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}.`}
+                    </span>
+                  </div>
+                )
               )}
               <ComposerQueue
                 pending={pending}
@@ -581,6 +596,8 @@ export function Composer({
                 ? () => steerPending(nextIdleQueued)
                 : undefined
             }
+            onCycleMode={showsModes ? cycleModes(modes) : undefined}
+            modes={showsModes ? modeControl(modes) : undefined}
             onRecall={
               questions === undefined && target === null
                 ? (direction) =>

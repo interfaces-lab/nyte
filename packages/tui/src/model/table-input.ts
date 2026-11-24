@@ -94,8 +94,9 @@ export function blockedBy(state: State): Blocked | null {
 
   const { chat } = state.facts;
 
-  if (chat === null || (chat.kind === "session" && chat.view === null))
+  if (chat === null || (chat.kind === "session" && chat.view === null)) {
     return { kind: "no-session" };
+  }
 
   const auth = pending.find((op) => op.kind === "auth");
 
@@ -172,8 +173,9 @@ export function waitingMessages(state: State): readonly Submission[] {
   if (
     state.facts.host === "open" &&
     (chat.folder.kind !== "folder" || !awaitingTrust(state, chat.folder.id))
-  )
+  ) {
     return [];
+  }
 
   return state.local.submissions.filter((sent) => sent.session === chat.id);
 }

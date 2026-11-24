@@ -35,6 +35,7 @@ import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionMenu, ConnectionRow, ConnectionStatus } from "../components/connection-list.tsx";
 import { cancelLogin, startLogin, useLoginAttempt } from "../account/login-attempts.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
+import { signInStyles } from "../account/sign-in.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { BrowserSignInPanel, DeviceCodePanel } from "../account/sign-in-panels.tsx";
@@ -160,7 +161,7 @@ function modelSummary(models: readonly DesktopModelOption[]): string {
       ? `${models.length} ${models.length === 1 ? "model" : "models"}`
       : `${shown} of ${models.length} models shown`;
 
-  return favorites === 0 ? count : `${count} \u00b7 ${favorites} starred`;
+  return favorites === 0 ? count : `${count} \u00B7 ${favorites} starred`;
 }
 
 function ApiKeyForm({
@@ -191,7 +192,7 @@ function ApiKeyForm({
         if (!pending && key.trim() !== "") onSubmit(key.trim());
       }}
     >
-      <div {...props(styles.keyRow)}>
+      <div {...props(signInStyles.keyRow)}>
         <Input
           ref={field}
           variant="code"
@@ -202,7 +203,7 @@ function ApiKeyForm({
           placeholder={`Paste your ${label}`}
           value={key}
           disabled={pending}
-          xstyle={styles.keyInput}
+          xstyle={signInStyles.keyInput}
           onValueChange={setKey}
         />
         <Button
@@ -259,7 +260,7 @@ function AccountNameForm({
         if (!pending && label !== "" && label !== current) onSubmit(label);
       }}
     >
-      <div {...props(styles.keyRow)}>
+      <div {...props(signInStyles.keyRow)}>
         <Input
           ref={field}
           aria-label={`${provider} account name`}
@@ -268,7 +269,7 @@ function AccountNameForm({
           placeholder="Account name"
           value={name}
           disabled={pending}
-          xstyle={styles.keyInput}
+          xstyle={signInStyles.keyInput}
           onValueChange={setName}
         />
         <Button
@@ -306,7 +307,13 @@ function ProviderRow({
   const running = useLoginAttempt(provider.id);
   const disconnected = provider.credential === "missing";
   const unknown = provider.credential === "unknown";
-  const attempt = disconnected ? running : undefined;
+  const attempt = running;
+
+  const refreshAccounts = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: ["model-accounts", provider.id] }),
+      client.invalidateQueries({ queryKey: ["account-limits"] }),
+    ]);
 
   const login = useMutation({
     mutationFn: (
@@ -316,6 +323,8 @@ function ProviderRow({
       if (outcome.kind === "cancelled") return;
       setKeyFormOpen(false);
       toast.add({ type: "success", title: `Connected to ${provider.name}` });
+
+      return refreshAccounts();
     },
     onError: (error) =>
       toast.add({
@@ -331,12 +340,6 @@ function ProviderRow({
     onError: () =>
       toast.add({ type: "error", title: `Couldn't sign out of ${provider.name}. Try again.` }),
   });
-
-  const refreshAccounts = () =>
-    Promise.all([
-      client.invalidateQueries({ queryKey: ["model-accounts", provider.id] }),
-      client.invalidateQueries({ queryKey: ["account-limits"] }),
-    ]);
 
   const rename = useMutation({
     mutationFn: (input: { readonly account: string; readonly label: string }) =>
@@ -432,7 +435,7 @@ function ProviderRow({
       status="Connected"
       loading={logout.isPending || switchAccount.isPending}
       disabled={login.isPending || setPreference.isPending}
-      finalFocus={() => nameField.current ?? true}
+      finalFocus={() => nameField.current ?? keyField.current ?? true}
     >
       {accounts.length > 1 ? (
         <MenuGroup>
@@ -472,11 +475,38 @@ function ProviderRow({
           >
             Rename Account…
           </MenuItem>
-          <MenuSeparator />
         </>
       )}
+      <MenuGroup>
+        <MenuGroupLabel>Add Account</MenuGroupLabel>
+        {browser !== undefined && (
+          <MenuItem
+            onClick={() => {
+              setRenameOpen(false);
+              setModelsOpen(false);
+              login.mutate({ kind: "browser" });
+            }}
+          >
+            Sign In
+          </MenuItem>
+        )}
+        {apiKey !== undefined && (
+          <MenuItem
+            icon="key"
+            onClick={() => {
+              login.reset();
+              setRenameOpen(false);
+              setModelsOpen(false);
+              setKeyFormOpen(true);
+            }}
+          >
+            Add API Key…
+          </MenuItem>
+        )}
+      </MenuGroup>
+      <MenuSeparator />
       <MenuItem variant="danger" onClick={() => logout.mutate()}>
-        Disconnect Provider
+        {accounts.length > 1 ? "Remove Account" : "Disconnect Provider"}
       </MenuItem>
     </ConnectionMenu>
   ) : (

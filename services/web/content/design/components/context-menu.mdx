@@ -89,18 +89,12 @@ values or functions of the underlying Base UI part's state. See [Theming](/desig
 `ContextMenu`, `ContextMenuTrigger`, `ContextMenuRadioGroup`, `ContextMenuGroup`, and `ContextMenuSub`
 pass through Base UI unstyled.
 
-The reference tables below come from Base UI, MIT, © Material-UI SAS.
+For every other prop, see Base UI's [Context Menu](https://base-ui.com/react/components/context-menu) reference.
 
 ### ContextMenu
 
 `onItemHighlighted` accepts `(item: HTMLElement | undefined, eventDetails) => void`.
 Details include `label` and `reason` (`"keyboard"`, `"pointer"`, or `"none"`).
-
-<include>../../base-ui-reference/context-menu/Root.md</include>
-
-### ContextMenuTrigger
-
-<include>../../base-ui-reference/context-menu/Trigger.md</include>
 
 ### ContextMenuContent
 
@@ -116,14 +110,6 @@ Only the positioning props in this table are accepted. `ref`, `className`, and `
 | `collisionAvoidance` | `CollisionAvoidance`                                                                                           | `{ fallbackAxisSide: "none" }`                                           |
 | `collisionPadding`   | `number \| Padding`                                                                                            | `8`                                                                      |
 | `tint`               | `Tint`                                                                                                         |                                                                          |
-
-#### Positioner
-
-<include>../../base-ui-reference/context-menu/Positioner.md</include>
-
-#### Popup
-
-<include>../../base-ui-reference/context-menu/Popup.md</include>
 
 ### ContextMenuSubContent
 
@@ -160,37 +146,17 @@ Styled row props match [Menu](/design/menu#menuitem). There is no switch item.
 | `layout`   | `"menu" \| "plain" \| "action"`    | `"menu"`    | `plain` removes leading content. `action` centers a compact row. |
 | `children` | `ReactNode`                        |             |                                                                  |
 
-<include>../../base-ui-reference/context-menu/Item.md</include>
-
 ### ContextMenuLinkItem
 
 Takes the styled row props above except `variant`.
-
-<include>../../base-ui-reference/context-menu/LinkItem.md</include>
 
 ### ContextMenuCheckboxItem
 
 Takes row props except `variant`. `closeOnClick` defaults to `false`.
 
-<include>../../base-ui-reference/context-menu/CheckboxItem.md</include>
-
-### ContextMenuRadioGroup
-
-<include>../../base-ui-reference/context-menu/RadioGroup.md</include>
-
 ### ContextMenuRadioItem
 
 Takes row props except `variant`. `closeOnClick` defaults to `true`.
-
-<include>../../base-ui-reference/context-menu/RadioItem.md</include>
-
-### ContextMenuGroup
-
-<include>../../base-ui-reference/context-menu/Group.md</include>
-
-### ContextMenuGroupLabel
-
-<include>../../base-ui-reference/context-menu/GroupLabel.md</include>
 
 ### ContextMenuSeparator
 
@@ -198,13 +164,9 @@ Takes row props except `variant`. `closeOnClick` defaults to `true`.
 | ------- | --------- | ------- |
 | `inset` | `boolean` | `false` |
 
-<include>../../base-ui-reference/context-menu/Separator.md</include>
-
 ### ContextMenuSub
 
 Accepts `onItemHighlighted` as described for `ContextMenu`.
-
-<include>../../base-ui-reference/context-menu/SubmenuRoot.md</include>
 
 ### ContextMenuSubTrigger
 
@@ -213,8 +175,6 @@ Takes `icon`, `leading`, and `layout` from the row table.
 | Prop    | Type        | Description                |
 | ------- | ----------- | -------------------------- |
 | `value` | `ReactNode` | Choice before the chevron. |
-
-<include>../../base-ui-reference/context-menu/SubmenuTrigger.md</include>
 
 ## Accessibility
 

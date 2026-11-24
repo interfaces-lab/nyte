@@ -11,11 +11,8 @@ import {
   Text,
   TextInput,
   View,
-  type ImageStyle,
-  type TextStyle,
-  type ViewInstance,
-  type ViewStyle,
 } from "react-native";
+import type { ImageStyle, TextStyle, ViewInstance, ViewStyle } from "react-native";
 import { captureRef } from "react-native-view-shot";
 import { Svg, Polyline } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,13 +21,8 @@ import { css, html } from "react-strict-dom";
 import { platformScopes } from "@nyte-ai/ui/platform-colors";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { prepareImage } from "../media/attachments.ts";
-import {
-  clearAnnotation,
-  readAnnotation,
-  writeAnnotation,
-  type AnnotationMark,
-  type AnnotationPoint,
-} from "../media/annotations.ts";
+import { clearAnnotation, readAnnotation, writeAnnotation } from "../media/annotations.ts";
+import type { AnnotationMark, AnnotationPoint } from "../media/annotations.ts";
 import {
   controls,
   overCamera,
@@ -46,11 +38,17 @@ const MARK_COLOR = platformScopes.dark.red.bgInteractiveStrong;
 
 const TAP_TOLERANCE = 8;
 
-type Spot = { x: number; y: number };
+interface Spot {
+  x: number;
+  y: number;
+}
 
-type Canvas = { width: number; height: number };
+interface Canvas {
+  width: number;
+  height: number;
+}
 
-type ResponderDeps = {
+interface ResponderDeps {
   size: Canvas | undefined;
   saving: boolean;
   nextNumber: number;
@@ -58,7 +56,7 @@ type ResponderDeps = {
   addMark: (mark: AnnotationMark) => void;
   setDrawing: (points: readonly Spot[] | undefined) => void;
   setSelected: (n: number) => void;
-};
+}
 
 function toSpot(x: number, y: number, size: Canvas): Spot {
   return {
@@ -195,7 +193,7 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
   }
 
   function undo() {
-    const last = marks[marks.length - 1];
+    const last = marks.at(-1);
 
     if (last === undefined) return;
     setMarks(marks.slice(0, -1));

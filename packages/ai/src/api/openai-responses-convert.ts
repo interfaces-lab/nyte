@@ -10,7 +10,8 @@ import type {
   ResponseFunctionToolCall,
   ResponseToolSearchOutputItemParam,
 } from "openai/resources/responses/responses.js";
-import { type Static, Type } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { TextSignatureV1Schema } from "@nyte-ai/schema/model";
 import type {
@@ -90,7 +91,7 @@ function parseTextSignature(
   return { id: signature };
 }
 
-type ToolResultOutputContent = Array<ResponseInputText | ResponseInputImage>;
+type ToolResultOutputContent = (ResponseInputText | ResponseInputImage)[];
 
 function convertToolResultOutput<TApi extends Api>(
   model: Model<TApi>,
@@ -167,7 +168,7 @@ export function convertResponsesMessages(
   const loadedToolNames = new Set<string>();
 
   const normalizeIdPart = (part: string): string => {
-    const sanitized = part.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const sanitized = part.replaceAll(/[^a-zA-Z0-9_-]/g, "_");
     const normalized = sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
 
     return normalized.replace(/_+$/, "");
@@ -229,20 +230,22 @@ export function convertResponsesMessages(
     const names = tools.map((tool) => tool.name);
     const callId = `pi_tool_load_${shortHash(`${seed}:${names.join(",")}`)}`;
 
-    messages.push({
-      type: "tool_search_call",
-      call_id: callId,
-      execution: "client",
-      status: "completed",
-      arguments: { query: names.join(" "), limit: names.length },
-    } satisfies ResponseInputItem);
-    messages.push({
-      type: "tool_search_output",
-      call_id: callId,
-      execution: "client",
-      status: "completed",
-      tools: convertResponsesTools(tools, { ...options.toolOptions, deferLoading: true }),
-    } satisfies ResponsesToolSearchOutputItem);
+    messages.push(
+      {
+        type: "tool_search_call",
+        call_id: callId,
+        execution: "client",
+        status: "completed",
+        arguments: { query: names.join(" "), limit: names.length },
+      } satisfies ResponseInputItem,
+      {
+        type: "tool_search_output",
+        call_id: callId,
+        execution: "client",
+        status: "completed",
+        tools: convertResponsesTools(tools, { ...options.toolOptions, deferLoading: true }),
+      } satisfies ResponsesToolSearchOutputItem,
+    );
   };
 
   const appendSystemToolAdditions = (message: SystemMessage, seed: string): void => {

@@ -1,0 +1,10 @@
+{
+  "$schema": "./theme.schema.json",
+  "title": "Harbor",
+  "accent": "#1d4ed8",
+  "homepage": "https://example.com/harbor",
+  "nested": {
+    "border": "#334155",
+    "padding": 12
+  }
+}

@@ -1,6 +1,6 @@
 import "./install.ts";
 import "../theme/faces.ts";
-import "../theme/boot.ts";
+import "../boot/theme.ts";
 import "../theme/focus-modality.ts";
 import "../theme/global.css";
 import { createBrowserHistory } from "@tanstack/react-router";
@@ -79,7 +79,7 @@ function mountApp(
     mountShell: () =>
       mount(
         <StrictMode>
-          <App appIcon="/icon.svg" router={router} />
+          <App appIcon={{ light: "/icon.svg", dark: "/icon.svg" }} router={router} />
           <AddFolderDialogHost />
         </StrictMode>,
       ),

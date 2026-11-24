@@ -46,6 +46,7 @@ export const {
   TooltipContent,
   Collapsible,
   Kbd,
+  Icon,
   Spinner,
   useColorScheme,
 } = kit;

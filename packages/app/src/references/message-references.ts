@@ -4,7 +4,8 @@ import { ExcerptSourceType } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import { type MentionFile, mentionFileAt, mentionFileSchema } from "../data/files.ts";
+import { mentionFileAt, mentionFileSchema } from "../data/files.ts";
+import type { MentionFile } from "../data/files.ts";
 
 export const messageReferenceSchema = Type.Union([
   Type.ReadonlyObject(
@@ -86,8 +87,9 @@ function parseLengthToken(kind: string, json: string): MessageReference | undefi
     return undefined;
   }
 
-  if (kind === "clipboard")
+  if (kind === "clipboard") {
     return Value.Check(clipboardBody, parsed) ? { kind: "clipboard", body: parsed } : undefined;
+  }
 
   return Value.Check(excerptPayload, parsed)
     ? { kind: "excerpt", source: parsed.source, text: parsed.text }
@@ -117,7 +119,7 @@ function nextLengthToken(
 }
 
 export function clipboardReferenceFromPaste(text: string): ClipboardReference | undefined {
-  const normalized = text.replace(/\r\n/gu, "\n").replace(/\n+$/u, "");
+  const normalized = text.replaceAll("\r\n", "\n").replace(/\n+$/u, "");
 
   if (normalized.length <= CLIPBOARD_PASTE_MAX_INLINE_CHARS) return undefined;
 
@@ -402,8 +404,9 @@ export function messageParts(text: string, options: DraftParseOptions): readonly
   let lengthToken = nextLengthToken(text, cursor);
 
   while (cursor < text.length) {
-    if (lengthToken !== undefined && lengthToken.start < cursor)
+    if (lengthToken !== undefined && lengthToken.start < cursor) {
       lengthToken = nextLengthToken(text, cursor);
+    }
 
     while (tokenIndex < tokens.length && (tokens[tokenIndex]?.index ?? 0) < cursor) {
       tokenIndex += 1;

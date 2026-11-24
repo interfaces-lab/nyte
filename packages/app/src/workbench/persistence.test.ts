@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { StorageArea } from "../lib/storage.ts";
 import { FIRST_GROUP, FOLLOW_BROWSE } from "./model.ts";
-import { createFileTabStore } from "./editor/file-store.ts";
+import { createFileTabStore } from "../editor/file-store.ts";
 import { persistable, workbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
 
@@ -25,7 +25,10 @@ function memoryArea(raw: string | null) {
   return { area, writes };
 }
 
-type StoredBrowse = { readonly kind: "follow" | "workspace"; readonly id?: string };
+interface StoredBrowse {
+  readonly kind: "follow" | "workspace";
+  readonly id?: string;
+}
 
 function snapshot(
   version: 7 | 8,

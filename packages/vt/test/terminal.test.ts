@@ -13,13 +13,13 @@ describe("terminal", () => {
     const lines = Array.from(
       { length: 12_000 },
       (_, i) =>
-        `\u001b[2m${String(i).padStart(6)}\u001b[0m \u001b[3${1 + (i % 6)}m[build]\u001b[0m compiling file-${i}.ts\r\n`,
+        `\u001B[2m${String(i).padStart(6)}\u001B[0m \u001B[3${1 + (i % 6)}m[build]\u001B[0m compiling file-${i}.ts\r\n`,
     );
 
     session.write(lines.join(""));
     const scrollbar = session.terminal.scrollbar();
 
-    expect(scrollbar.total).toBeGreaterThan(9_500);
+    expect(scrollbar.total).toBeGreaterThan(9500);
     expect(scrollbar.total).toBeLessThan(11_000);
     expect(scrollbar.length).toBe(40);
   });
@@ -45,10 +45,10 @@ describe("terminal", () => {
     session.write("BASE");
     expect(top()).toBe("BASE");
     session.write(
-      "\u001b[?2026h\u001b[H\u001b[2JFINISHED\u001b[?2026l\u001b[?2026h\u001b[H\u001b[2Jpart",
+      "\u001B[?2026h\u001B[H\u001B[2JFINISHED\u001B[?2026l\u001B[?2026h\u001B[H\u001B[2Jpart",
     );
     expect(top()).toBe("FINISHED");
-    session.write("ial\u001b[?2026l");
+    session.write("ial\u001B[?2026l");
     expect(top()).toBe("partial");
   });
 
@@ -56,13 +56,13 @@ describe("terminal", () => {
     const session = await openTerminal({ cols: 20, rows: 2 });
     vi.useFakeTimers({ toFake: ["performance"] });
 
-    session.write("BASE\u001b[?2026h\u001b[H\u001b[2Jstuck");
+    session.write("BASE\u001B[?2026h\u001B[H\u001B[2Jstuck");
     const held = session.terminal.frame(true);
     expect([screenText(session.terminal.screen)[0], held.held]).toEqual(["BASE", true]);
-    vi.advanceTimersByTime(1_050);
+    vi.advanceTimersByTime(1050);
     const released = session.terminal.frame(true);
     expect([screenText(session.terminal.screen)[0], released.held]).toEqual(["stuck", false]);
-    session.write("\u001b[H\u001b[2Jlive");
+    session.write("\u001B[H\u001B[2Jlive");
     expect(frameText(session.terminal)[0]).toBe("live");
   });
 
@@ -70,9 +70,9 @@ describe("terminal", () => {
     const session = await openTerminal();
 
     expect(session.terminal.alternateScroll()).toBe(false);
-    session.write("\u001b[?1049h");
+    session.write("\u001B[?1049h");
     expect(session.terminal.alternateScroll()).toBe(true);
-    session.write("\u001b[?1007l");
+    session.write("\u001B[?1007l");
     expect(session.terminal.alternateScroll()).toBe(false);
   });
 
@@ -81,19 +81,19 @@ describe("terminal", () => {
       cols: 20,
       rows: 3,
       palette: {
-        foreground: 0xffffff,
+        foreground: 0xff_ff_ff,
         background: 0,
-        cursor: 0xffffff,
-        ansi: [0x000000, 0xff0000],
+        cursor: 0xff_ff_ff,
+        ansi: [0x00_00_00, 0xff_00_00],
       },
     });
 
     session.terminal.write(new Uint8Array([0xe2, 0x82]));
     session.terminal.write(new Uint8Array([0xac]));
-    session.write(" \u001b[3");
-    session.write("1mred\u001b[0m");
+    session.write(" \u001B[3");
+    session.write("1mred\u001B[0m");
     expect(frameText(session.terminal)[0]).toBe("€ red");
-    expect(session.terminal.screen.fg[2]).toBe(0xff0000);
+    expect(session.terminal.screen.fg[2]).toBe(0xff_00_00);
     expect(session.terminal.screen.text(2)).toBe("r");
   });
 
@@ -101,7 +101,7 @@ describe("terminal", () => {
     const session = await openTerminal();
     const url = "https://ghostty.org/docs?q=é";
 
-    session.write(`ab\u001b]8;;${url}\u001b\\link\u001b]8;;\u001b\\cd`);
+    session.write(`ab\u001B]8;;${url}\u001B\\link\u001B]8;;\u001B\\cd`);
 
     expect(Array.from({ length: 8 }, (_, col) => session.terminal.hyperlink(col, 0))).toEqual([
       null,

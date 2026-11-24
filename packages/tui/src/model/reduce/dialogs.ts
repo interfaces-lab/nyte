@@ -89,8 +89,9 @@ export const dialogHandlers = {
       dialog?.id !== msg.dialog ||
       dialogText(dialog) === null ||
       (dialog.kind === "auth" ? (dialog.promptVersion ?? 0) : null) !== msg.promptVersion
-    )
+    ) {
       return stay(state);
+    }
 
     return msg.text === null
       ? stay(state)
@@ -154,11 +155,13 @@ export function openDialog(
 
       if (purpose.kind === "question") return reduce(state, { kind: "open-question" }, now);
 
-      if (purpose.kind === "skills" && liveChoices(state, purpose)?.length === 0)
+      if (purpose.kind === "skills" && liveChoices(state, purpose)?.length === 0) {
         return refuse(state, "No skills found. Add SKILL.md to .nyte/skills.", now, "info");
+      }
 
-      if (purpose.kind === "queue" && liveChoices(state, purpose)?.length === 0)
+      if (purpose.kind === "queue" && liveChoices(state, purpose)?.length === 0) {
         return refuse(state, "Nothing is queued", now, "info");
+      }
 
       const load = listRequest(purpose);
 
@@ -197,8 +200,9 @@ export function openDialog(
 
       if (session === null) return refuseUnstarted(state, now, "Wait for the chat to open");
 
-      if (busy(state))
+      if (busy(state)) {
         return refuse(state, "Wait for the current run before changing the chat branch", now);
+      }
 
       return push(
         minted.state,
@@ -232,7 +236,7 @@ export function openDialog(
         "pull-request": "Pull request",
       }[request.content];
 
-      if (request.content === "shortcuts")
+      if (request.content === "shortcuts") {
         return push(minted.state, {
           kind: "text",
           id,
@@ -240,9 +244,11 @@ export function openDialog(
           body: { kind: "ready", lines: shortcutLines(state) },
           scroll: 0,
         });
+      }
 
-      if (request.content === "usage" && followed === null)
+      if (request.content === "usage" && followed === null) {
         return refuse(state, "Wait for the chat to open", now);
+      }
 
       if (request.content === "pull-request") {
         const folder = followed === null ? null : chatFolder(followed);
@@ -295,24 +301,27 @@ export function openDialog(
       );
 
     case "auth": {
-      if (state.local.pending.some((op) => op.kind === "auth"))
+      if (state.local.pending.some((op) => op.kind === "auth")) {
         return refuse(state, "An authentication command is already running.", now);
+      }
 
-      if (request.provider === null)
+      if (request.provider === null) {
         return openDialog(
           state,
           { kind: "list", purpose: { kind: "provider", mode: request.mode } },
           now,
           reduce,
         );
+      }
       const pending: PendingOp = { kind: "auth", provider: request.provider, link: null };
 
       const authenticating = withLocal(minted.state, {
         pending: [...minted.state.local.pending, pending],
       });
 
-      if (request.mode === "logout")
+      if (request.mode === "logout") {
         return { state: authenticating, effects: [{ kind: "logout", provider: request.provider }] };
+      }
 
       return push(
         authenticating,
@@ -368,8 +377,9 @@ export function dialogCommand(state: State, input: DialogInput, now: number, red
     }
   }
 
-  if (dialog.kind === "list" && dialog.purpose.kind === "approval")
+  if (dialog.kind === "list" && dialog.purpose.kind === "approval") {
     return approvalCommand(state, dialog, dialog.purpose, input, now, reduce);
+  }
 
   const result = reduceDialog(dialog, input);
 
@@ -426,12 +436,13 @@ function approvalCommand(
   const result = reduceDialog(dialog, input);
   const after = result.dialog;
 
-  if (after === null)
+  if (after === null) {
     return reduce(
       state,
       { kind: "choose", dialog: dialog.id, choice: "deny", typed: null, action: null },
       now,
     );
+  }
 
   const next = withLocal(state, {
     approval: {
@@ -514,8 +525,9 @@ function loaded(state: State, msg: Extract<Outcome, { kind: "loaded" }>, now: nu
 
     if (dialog.kind === "tree" && data.kind === "tree") return withTree(dialog, data.tree);
 
-    if (dialog.kind === "text" && data.kind === "text")
+    if (dialog.kind === "text" && data.kind === "text") {
       return { ...dialog, body: { kind: "ready", lines: data.lines } };
+    }
 
     if (dialog.kind === "auth" && data.kind === "auth") {
       if (data.step.kind === "link") {

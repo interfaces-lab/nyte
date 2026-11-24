@@ -58,14 +58,15 @@ function segment(blocks: readonly Message[]): readonly Segment[] {
   const flush = (): void => {
     const [first] = run;
 
-    if (first !== undefined && run.length === 1)
+    if (first !== undefined && run.length === 1) {
       segments.push({ kind: "message", key: first.id, message: first });
-    else if (first !== undefined)
+    } else if (first !== undefined) {
       segments.push({
         kind: "agents",
         key: `agents:${first.id}:${String(run.length)}`,
         messages: run,
       });
+    }
     run = [];
   };
 

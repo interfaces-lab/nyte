@@ -235,11 +235,13 @@ export function installKeymap(options: KeymapOptions): () => void {
       if (!live()) return;
       const { local } = store.state();
 
-      if (local.notice !== null || local.watchedRun !== null)
+      if (local.notice !== null || local.watchedRun !== null) {
         store.dispatch({ kind: "dismiss-notice" });
+      }
 
-      if (renderer.hasSelection && !selectionKey(event) && !editingSelection(renderer))
+      if (renderer.hasSelection && !selectionKey(event) && !editingSelection(renderer)) {
         renderer.clearSelection();
+      }
 
       if (!typing() || !printable(event)) return;
       consume();

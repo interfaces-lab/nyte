@@ -1,7 +1,9 @@
 import { Button } from "@base-ui/react/button";
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 import { cn } from "cn";
-import { buttonStyle, type ButtonSize, type ButtonVariant } from "./button.tsx";
+import { buttonStyle } from "./button.tsx";
+import type { ButtonSize, ButtonVariant } from "./button.tsx";
 import { mergeStyleProps } from "./style.ts";
 
 const chatButtonVariants = cva("cn-button", {

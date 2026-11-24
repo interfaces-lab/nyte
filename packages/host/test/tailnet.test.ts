@@ -63,14 +63,17 @@ process.on("SIGTERM", () => {
 process.stdin.on("end", () => process.exit(0)).resume();
 `;
 
-type Run = {
+interface Run {
   readonly pid?: number;
   readonly args?: readonly string[];
   readonly key?: string | null;
   readonly logout?: true;
-};
+}
 
-type Answer = { readonly status: number; readonly body: unknown };
+interface Answer {
+  readonly status: number;
+  readonly body: unknown;
+}
 
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -399,7 +402,7 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
     expect((await until(() => status(quietSocket), stateIs("stopped"))).body).toMatchObject({
       reason: "hello_timeout",
     });
-    vi.advanceTimersByTime(1_000);
+    vi.advanceTimersByTime(1000);
     await until(
       () => runs(silent.home),
       (found) => found.length === 2,
@@ -416,12 +419,12 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
     vi.advanceTimersByTime(119_000);
 
     expect((await status(waitingSocket)).body).toMatchObject({ state: "starting" });
-    vi.advanceTimersByTime(1_000);
+    vi.advanceTimersByTime(1000);
 
     expect((await until(() => status(waitingSocket), stateIs("stopped"))).body).toMatchObject({
       reason: "start_timeout",
     });
-    vi.advanceTimersByTime(1_000);
+    vi.advanceTimersByTime(1000);
     await until(
       () => runs(stuck.home),
       (found) => found.length === 2,

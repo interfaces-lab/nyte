@@ -112,8 +112,9 @@ export function recordStart(
 }
 
 export function removeStart(storage: KeyValueStorage, scope: string, requestId: string): void {
-  if (readPendingStart(storage, scope)?.input.requestId === requestId)
+  if (readPendingStart(storage, scope)?.input.requestId === requestId) {
     storage.remove(startKey(scope));
+  }
 }
 
 export type StartOutcome =
@@ -152,8 +153,9 @@ export function readAsking(scope: string, requestId: string): boolean {
 async function start(client: Connection, input: StartInput): Promise<StartReceipt> {
   const workspace = (await client.workspaces.list()).find((row) => row.id === input.workspace);
 
-  if (workspace === undefined)
+  if (workspace === undefined) {
     return { kind: "refused", message: "This folder is no longer on the host." };
+  }
 
   const sessionId = asId<"session">(input.requestId);
 
@@ -166,8 +168,9 @@ async function start(client: Connection, input: StartInput): Promise<StartReceip
       content: await uploadDraft(client.workspace(workspace.id), input.content),
     });
   } catch (cause) {
-    if (!(cause instanceof SdkError) || (cause.code !== "unknown" && cause.code !== "invalid"))
+    if (!(cause instanceof SdkError) || (cause.code !== "unknown" && cause.code !== "invalid")) {
       throw cause;
+    }
 
     return {
       kind: "refused",
@@ -205,8 +208,9 @@ export async function askStart({
 
     const stored = readPendingStart(storage, scope);
 
-    if (stored?.input.requestId === input.requestId)
+    if (stored?.input.requestId === input.requestId) {
       storage.set(startKey(scope), JSON.stringify({ ...stored, receipt }));
+    }
 
     return receipt.kind === "accepted"
       ? { kind: "accepted", sessionId: asId<"session">(receipt.sessionId) }

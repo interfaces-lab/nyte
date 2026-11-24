@@ -30,7 +30,7 @@ function model(id: string, api = "test-api"): Model<string> {
     input: ["text"],
     cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1.25 },
     contextWindow: 10_000,
-    maxTokens: 1_000,
+    maxTokens: 1000,
   };
 }
 

@@ -2,11 +2,11 @@ import type { HostView, HostViewWire, Json, QueuedMessage, SessionView } from "@
 import { closable, coalesce } from "@nyte-ai/core/client";
 import type { Rows } from "./rows.ts";
 
-export type Sink<T> = {
+export interface Sink<T> {
   next(value: T): void;
   end(): void;
   fail(error: Error): void;
-};
+}
 
 const DONE = { done: true, value: undefined } as const;
 
@@ -14,7 +14,6 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
   return coalesce(
     pushed<HostView>((sink) => {
       let view: HostView | null = null;
-      let dropped = false;
       const frames = rows.watch("connection.watch", {}, opened)[Symbol.asyncIterator]();
 
       void (async () => {
@@ -23,8 +22,7 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
             const next = await frames.next();
 
             if (next.done === true) break;
-            view = hostView(next.value, rows.link.current(), rows.operations());
-            dropped = false;
+            view = hostView(next.value);
             sink.next(view);
           }
 
@@ -34,16 +32,10 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
         }
       })();
 
-      const unsubscribe = rows.link.subscribe((link) => {
-        if (link.kind === "connected" && dropped) return;
-        dropped = dropped || link.kind !== "connected";
+      const unsubscribe = rows.link.subscribe(() => {
+        const state = rows.link.snapshot();
 
-        if (view !== null) {
-          view = { ...view, link };
-          sink.next(view);
-        }
-
-        if (link.kind === "closed") sink.end();
+        if (state.kind === "refused" || state.kind === "closed") sink.end();
       });
 
       return () => {
@@ -88,11 +80,9 @@ export function withUnsent<
   };
 }
 
-function hostView(wire: HostViewWire, link: HostView["link"], operations: string | null): HostView {
+function hostView(wire: HostViewWire): HostView {
   return {
     id: wire.id,
-    link,
-    operations,
     name: wire.name,
     platform: wire.platform,
     version: wire.version,
@@ -103,7 +93,7 @@ function hostView(wire: HostViewWire, link: HostView["link"], operations: string
     defaultWorkspace: wire.defaultWorkspace,
     projects: wire.projects,
     authority: new Set(wire.authority),
-    routes: wire.routes ?? [],
+    routes: wire.routes,
   };
 }
 

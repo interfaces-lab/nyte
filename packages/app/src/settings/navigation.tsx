@@ -7,14 +7,15 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Row } from "@nyte-ai/ui/row";
 import { sidebarStyles as rail } from "../sidebar/sidebar.stylex.ts";
-import { SETTINGS_PAGES, type PageInfo } from "./pages.ts";
+import { SETTINGS_PAGES } from "./pages.ts";
+import type { PageInfo } from "./pages.ts";
 import { hostWatch } from "../data/watches.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { placePluginSettings } from "./plugin-pages.ts";
-import { customSection, settingsSectionGroups } from "./sections.ts";
-import type { OpenSection, SettingsSection } from "./sections.ts";
-import { closeSettings } from "./return.ts";
-import { settingsStyles as styles } from "./settings.stylex.ts";
+import { customSection, settingsSectionGroups } from "../settings-sections/sections.ts";
+import type { OpenSection, SettingsSection } from "../settings-sections/sections.ts";
+import { closeSettings } from "../settings-sections/return.ts";
+import { settingsStyles as styles } from "../settings-rows/settings.stylex.ts";
 
 export function SettingsNavigation({ section }: { readonly section: OpenSection }): ReactElement {
   const router = useRouter();

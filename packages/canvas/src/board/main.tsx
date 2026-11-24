@@ -70,8 +70,9 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
     case "chrome":
       applyDisplayMode(message.theme);
 
-      for (const entry of Object.entries(message.variables))
+      for (const entry of Object.entries(message.variables)) {
         mount.style.setProperty(entry[0], entry[1]);
+      }
 
       if (message.variables["--nyte-custom-chroma-scale"] !== undefined) applyTint();
       mount.className = document.documentElement.className;

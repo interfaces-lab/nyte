@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, describe, test, vi } from "vitest";
@@ -16,7 +17,7 @@ const LOGIN_METHODS = [
   { method: "copy_code", redirectUri: "https://platform.claude.com/oauth/code/callback" },
 ] satisfies { method: "browser" | "copy_code"; redirectUri: string }[];
 
-function jsonResponse(body: unknown, status: number = 200): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -174,7 +175,7 @@ describe("Anthropic OAuth", () => {
             const probe = createServer();
             await new Promise<void>((resolve, reject) => {
               probe.once("error", reject);
-              probe.listen(53692, "127.0.0.1", resolve);
+              probe.listen(53_692, "127.0.0.1", resolve);
             });
             await new Promise<void>((resolve) => probe.close(() => resolve()));
           }
@@ -350,7 +351,7 @@ describe("Anthropic OAuth callback server", () => {
     "completes $method login manually on its original redirect when the port is taken",
     async ({ method, redirectUri }) => {
       const blocker: Server = createServer();
-      await new Promise<void>((resolve) => blocker.listen(53692, "127.0.0.1", resolve));
+      await new Promise<void>((resolve) => blocker.listen(53_692, "127.0.0.1", resolve));
       let authUrl = "";
       const fetchMock = vi.fn(async (input: unknown, init?: RequestInit): Promise<Response> => {
         assert.equal(getUrl(input), TOKEN_URL);

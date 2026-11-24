@@ -1,6 +1,8 @@
-import { BlurView, type BlurViewProps } from "expo-blur";
+import { BlurView } from "expo-blur";
+import type { BlurViewProps } from "expo-blur";
 import type React from "react";
-import { StyleSheet, type ViewStyle } from "react-native";
+import { StyleSheet } from "react-native";
+import type { ViewStyle } from "react-native";
 import Animated, {
   Easing,
   LinearTransition,

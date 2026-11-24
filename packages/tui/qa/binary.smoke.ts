@@ -87,16 +87,17 @@ function records(stdout: string) {
 const ready = (pty: Pty) =>
   pty.waitFor((screen) => screen.text.includes("enter send") && !screen.text.includes("Loading"));
 
-const EXIT_BUDGET_MS = 2_000;
+const EXIT_BUDGET_MS = 2000;
 
 async function exitTimed(pty: Pty, from: number) {
   const status = await Promise.race([pty.exited(), Bun.sleep(EXIT_BUDGET_MS * 2).then(() => null)]);
   const elapsed = performance.now() - from;
 
-  if (status === null)
+  if (status === null) {
     throw new Error(
       `The TUI was still running ${String(EXIT_BUDGET_MS * 2)} ms after it was told to exit.`,
     );
+  }
 
   return { status, elapsed };
 }

@@ -150,8 +150,9 @@ function turnRows(view: HeadView, asked: boolean): readonly Row[] {
       showsTool(message) &&
       message.state.class.kind === "delegate" &&
       message.state.class.role === "await"
-    )
+    ) {
       continue;
+    }
 
     if (message.turn !== current) {
       current = message.turn;
@@ -196,8 +197,9 @@ function turnRows(view: HeadView, asked: boolean): readonly Row[] {
     ...unlanded.filter(showsAnswer),
   ];
 
-  for (const message of waiting)
+  for (const message of waiting) {
     rows.push({ kind: "prompt", key: `prompt:${message.id}`, message, pending });
+  }
 
   return rows;
 }
@@ -251,16 +253,18 @@ export function turnStatus(
         ? { kind: "waiting", question: true }
         : { kind: "working", activity: taskLabel(runMark(runStatus(execution))), startedAt };
     case "working": {
-      if (info.run === null)
+      if (info.run === null) {
         return blocks.some((message) => message.kind === "user") ? { kind: "unanswered" } : null;
+      }
 
-      if (live && execution.kind === "retrying")
+      if (live && execution.kind === "retrying") {
         return {
           kind: "retrying",
           until: execution.until,
           reason: execution.reason,
           attempt: execution.run.attempt,
         };
+      }
       const last = blocks.at(-1);
       const streaming = last?.kind === "part" && last.status.kind === "live";
 

@@ -1,6 +1,7 @@
 import type { ComponentProps } from "react";
 import { View } from "react-native";
-import { router, type Href } from "expo-router";
+import { router } from "expo-router";
+import type { Href } from "expo-router";
 import { Host } from "@expo/ui";
 import { Button, Label } from "@expo/ui/swift-ui";
 import {

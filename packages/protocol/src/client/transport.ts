@@ -11,7 +11,6 @@ import type { OperationName } from "../operations/declarations.ts";
 import { parseJson } from "../wire/json.ts";
 import {
   HOST_HEADER,
-  OPERATIONS_HEADER,
   decodeError,
   parseOutputFrames,
   parseSse,
@@ -19,17 +18,17 @@ import {
 } from "../wire/wire.ts";
 import { createStreamClient, hostAnswer } from "./stream-client.ts";
 
-export type TransportOptions = {
+export interface TransportOptions {
   readonly url: string;
   headers(): Promise<Readonly<Record<string, string>>>;
   readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
-};
+}
 
 /** Returns a byte reader over a response body: its size from `Content-Length` and its mime from `X-Nyte-Mime` when the host sent them (§40w), and the file version the host read when it sent one (`X-Nyte-Version`, §40h). */
 export type ResponseReader = ByteReader & { readonly version?: FileVersion };
 
 /** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `frames` (a stream row's event-stream JSON frames), `output` (`job.output`'s framed octets as byte, `gap` and `exit` frames), `bytes` (an octet answer as a reader), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the first response that carried one, error answers included, §43j; a later response naming another host throws `stale` with that host's id, its answer unread); only a `TypeError` from `fetch` is `unavailable`, any other exception reaching the caller as thrown (§47m); `return()` on a `frames` or `output` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes, and `linkLost` tells an operation's answer from a failure of the link. */
-export type Transport = {
+export interface Transport {
   invoke(name: OperationName, input: Json, options?: RequestOptions): Promise<Json>;
   frames(name: OperationName, input: Json): AsyncIterable<Json>;
   output(input: Json): AsyncIterable<OutputFrame>;
@@ -42,8 +41,7 @@ export type Transport = {
   ): Promise<Json>;
   credential(): string | null;
   host(): HostId | null;
-  operations(): string | null;
-};
+}
 
 const DONE = { done: true, value: undefined } as const;
 
@@ -55,7 +53,6 @@ export function createTransport(options: TransportOptions): Transport {
   const send = options.fetch ?? fetch;
   let credential: string | null = null;
   let host: HostId | null = null;
-  let operations: string | null = null;
 
   const post = async (
     name: string,
@@ -84,7 +81,6 @@ export function createTransport(options: TransportOptions): Transport {
     }
 
     if (answered !== null) host = asId<"host">(answered);
-    operations = response.headers.get(OPERATIONS_HEADER) ?? operations;
     credential = response.headers.get("X-Nyte-Credential") ?? credential;
 
     if (response.ok) return response;
@@ -172,7 +168,6 @@ export function createTransport(options: TransportOptions): Transport {
     },
     credential: () => credential,
     host: () => host,
-    operations: () => operations,
   };
 }
 

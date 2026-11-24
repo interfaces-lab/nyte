@@ -27,7 +27,7 @@ async function closeMenus(page: Page): Promise<void> {
 async function clickAction(row: Locator, action: Locator): Promise<void> {
   await expect(async () => {
     await row.hover();
-    await action.click({ timeout: 1_000 });
+    await action.click({ timeout: 1000 });
   }).toPass();
 }
 
@@ -163,8 +163,9 @@ test("the navigation journey", async ({ desktop }) => {
       "General Settings",
       "Appearance",
       "Providers",
-    ])
+    ]) {
       await expect(actions.getByRole("option", { name, exact: true })).toBeVisible();
+    }
 
     const total = await results.getByRole("option").count();
     const count = dialog.getByText(/^\d+ results$/u);

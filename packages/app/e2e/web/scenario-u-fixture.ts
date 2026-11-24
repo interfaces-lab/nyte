@@ -47,18 +47,20 @@ export function restaurantReplies(input: {
       first?.role !== "user" ||
       contentText(first.content, "") !== RESTAURANT_PROMPT ||
       titleReply(request) !== null
-    )
+    ) {
       return null;
+    }
     const last = request.context.messages.at(-1);
 
-    if (last?.role === "toolResult")
+    if (last?.role === "toolResult") {
       input.log?.(
         `NYTE_E2E_U ${JSON.stringify({ tool: last.toolName, text: contentText(last.content).slice(0, 600) })}`,
       );
+    }
 
     if (last?.role === "user" && last !== first) return resumedAnswer(request);
 
-    if (last?.role === "user")
+    if (last?.role === "user") {
       return {
         timing: PACE,
         content: [
@@ -66,6 +68,7 @@ export function restaurantReplies(input: {
           { type: "toolCall", id: "skill", name: "read", arguments: { path: input.skill } },
         ],
       };
+    }
 
     if (last?.role !== "toolResult") return null;
 
@@ -223,8 +226,9 @@ export async function prepareScenarioU(home: string): Promise<ScenarioU> {
   });
   const address = server.address();
 
-  if (address === null || typeof address === "string")
+  if (address === null || typeof address === "string") {
     throw new Error("The places site has no port.");
+  }
 
   return {
     origin: `http://127.0.0.1:${String(address.port)}`,

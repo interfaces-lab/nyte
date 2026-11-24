@@ -4,7 +4,7 @@ import { Matches, useRouter } from "@tanstack/react-router";
 import { useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { AboutDialog } from "./about-dialog.tsx";
 import type { ReactElement } from "react";
-import { followLight, keepCodeWorkbench } from "../commands/apps.ts";
+import { followLight } from "../commands/apps.ts";
 import { WorkspaceDialogHost } from "../panes/open-workspace.tsx";
 import { ProjectDialogHost } from "../projects/project-dialog.tsx";
 import { performAction } from "../commands/offered-actions.ts";
@@ -19,16 +19,18 @@ import { Button } from "@nyte-ai/ui/button";
 import { Loader } from "@nyte-ai/ui/loader";
 import { ToastProvider } from "@nyte-ai/ui/toast";
 import { Titlebar } from "./titlebar.tsx";
-import { PaneControllerProvider } from "../panes/pane-context.tsx";
+import { WindowPanesProvider } from "../tabs/window-panes.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
-import { useHostProcess, useHostBuildMismatch } from "../data/host.ts";
+import { useHostLink, useHostProcess } from "../data/host.ts";
+import { readLinkNotices } from "../data/link-notices.ts";
 import { useHostProcessAction } from "../environments/host-process.tsx";
 import { startupConnection } from "../data/startup.ts";
 import type { StartupProblem } from "../data/startup.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar } from "../theme/schema.stylex.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import {
   clientCapabilities,
   resolveClientAction,
@@ -37,9 +39,11 @@ import {
 import { useWindowTabsSync } from "../tabs/use-window-tabs.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { closeSettings } from "../settings/index.ts";
+import { closeSettings } from "../settings-sections/return.ts";
+import { SettingsNavigation } from "../settings/index.ts";
 import { settingsRoute } from "./routes.tsx";
-import { BrowserGuestHost } from "../workbench/browser/browser-guests.tsx";
+import { BrowserGuestHost } from "../browser/browser-guests.tsx";
+import { noteFocusRegion } from "../workbench/focus-region.ts";
 
 const styles = create({
   shell: {
@@ -64,6 +68,7 @@ const styles = create({
     backgroundColor: role.surfaceMaterial,
     overflow: "clip",
   },
+  bare: { backgroundColor: "transparent" },
   card: {
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
@@ -88,62 +93,61 @@ const styles = create({
 });
 
 const STARTUP_FAILURE = {
+  network: "Can’t reach the host.",
   authentication: "The host refused this app. Pair with it again.",
   incompatible: "This host runs another version of Nyte. Update both, then try again.",
   server: "The host hit an error while opening your workspace.",
 } as const satisfies Readonly<Record<StartupProblem, string>>;
 
-function ConnectionFailure(): ReactElement | null {
-  const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
+function HostBanner(): ReactElement | null {
+  const startup = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
+  const link = useHostLink();
+  const hostState = useHostProcess().data?.kind;
+  const act = useHostProcessAction();
+  const [dismissed, setDismissed] = useState<string>();
 
-  if (connection.kind === "unreachable")
+  if (startup.kind === "unreachable") {
     return (
       <div role="status" {...props(styles.connectionFailure)}>
         <Loader />
         <span>Can&rsquo;t reach the host. Reconnecting&hellip;</span>
       </div>
     );
+  }
 
-  if (connection.kind !== "failed") return null;
+  if (startup.kind === "failed") {
+    return (
+      <div role="alert" {...props(styles.connectionFailure)}>
+        <span>{STARTUP_FAILURE[startup.problem]}</span>
+        <Button variant="outline" onClick={startup.retry}>
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
-  return (
-    <div role="alert" {...props(styles.connectionFailure)}>
-      <span>{STARTUP_FAILURE[connection.problem]}</span>
-      <Button variant="outline" onClick={connection.retry}>
-        Try Again
-      </Button>
-    </div>
-  );
-}
+  const banner =
+    link === undefined ? null : readLinkNotices(link, nyte.host.hostProcess !== undefined).banner;
 
-function ReleaseNotice(): ReactElement | null {
-  const mismatch = useHostBuildMismatch();
-  const hostProcess = nyte.host.hostProcess;
-  const restarting = useHostProcess().data?.kind === "restarting";
-  const act = useHostProcessAction();
-  const [dismissed, setDismissed] = useState<string>();
-
-  if (mismatch === undefined || mismatch.operations === dismissed) return null;
+  if (banner === null || banner.text === dismissed) return null;
 
   return (
-    <div role="status" {...props(styles.connectionFailure)}>
-      <span>
-        {hostProcess === undefined
-          ? "This host runs a different build of Nyte than this app, so some features may not work. Update Nyte on the host."
-          : "Nyte Host is running a different build than this app, so some features may not work."}
-      </span>
-      {hostProcess !== undefined && (
+    <div role={banner.role} {...props(styles.connectionFailure)}>
+      <span>{banner.text}</span>
+      {banner.restart && (
         <Button
           variant="outline"
-          loading={act.isPending || restarting}
+          loading={act.isPending || hostState === "restarting"}
           onClick={() => act.mutate("restart")}
         >
           Restart Host…
         </Button>
       )}
-      <Button variant="ghost" onClick={() => setDismissed(mismatch.operations)}>
-        Dismiss
-      </Button>
+      {banner.role === "status" && (
+        <Button variant="ghost" onClick={() => setDismissed(banner.text)}>
+          Dismiss
+        </Button>
+      )}
     </div>
   );
 }
@@ -152,9 +156,9 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   return (
     <TooltipProvider>
       <ToastProvider>
-        <PaneControllerProvider>
+        <WindowPanesProvider>
           <ShellChrome appIcon={appIcon} />
-        </PaneControllerProvider>
+        </WindowPanesProvider>
       </ToastProvider>
     </TooltipProvider>
   );
@@ -165,17 +169,18 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const page = useStagePage();
   const { about } = useOverlays();
   const root = useRef<HTMLDivElement | null>(null);
-  const pushing = useSidebarSwipe(root);
-  const code = windowApp() === "code";
+  const chatSidebar = appShape().navigator === "chats";
+  const pushing = useSidebarSwipe(root, chatSidebar);
   const sidebarCollapsed = useSidebar().state === "collapsed";
   const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
   useWindowTabsSync();
 
+  const settingsShown = (): boolean =>
+    shellRouter.state.matches.some((match) => match.routeId === settingsRoute.id);
+
   const onKeyDown = useEffectEvent((event: KeyboardEvent): void => {
-    const settingsOpen = shellRouter.state.matches.some(
-      (match) => match.routeId === settingsRoute.id,
-    );
+    const settingsOpen = settingsShown();
 
     if (settingsOpen && event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
       event.preventDefault();
@@ -200,8 +205,9 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       clientCapabilities(nyte.host),
     );
 
-    if (action?.action !== undefined && runAction(shellRouter, action.action, action.input ?? {}))
+    if (action?.action !== undefined && runAction(shellRouter, action.action, action.input ?? {})) {
       event.preventDefault();
+    }
   });
 
   useMountEffect(() => {
@@ -211,32 +217,44 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
     return () => window.removeEventListener("keydown", listener);
   });
 
-  const onSwitchKey = useEffectEvent((event: KeyboardEvent): void => {
-    const action = resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host));
+  const onEarlyKey = useEffectEvent((event: KeyboardEvent): void => {
+    const action = resolveClientAction(
+      event,
+      mac,
+      settingsShown() ? "settings" : (page?.kind ?? "workspace"),
+      clientCapabilities(nyte.host),
+    );
 
-    if (action?.action !== "app.open" || !runAction(shellRouter, action.action, action.input ?? {}))
+    if (
+      action?.early !== true ||
+      action.action === undefined ||
+      !runAction(shellRouter, action.action, action.input ?? {})
+    ) {
       return;
+    }
     event.preventDefault();
     event.stopPropagation();
   });
 
   useMountEffect(() => {
-    const listener = (event: KeyboardEvent): void => onSwitchKey(event);
+    const listener = (event: KeyboardEvent): void => onEarlyKey(event);
     window.addEventListener("keydown", listener, true);
 
     return () => window.removeEventListener("keydown", listener, true);
   });
 
   useMountEffect(() => {
-    if (windowApp() !== "code") return undefined;
-    const leaveLight = followLight();
-    const leaveWorkbench = keepCodeWorkbench();
+    const listener = (event: Event): void => noteFocusRegion(event.target);
+    window.addEventListener("focusin", listener, true);
+    window.addEventListener("pointerdown", listener, true);
 
     return () => {
-      leaveLight();
-      leaveWorkbench();
+      window.removeEventListener("focusin", listener, true);
+      window.removeEventListener("pointerdown", listener, true);
     };
   });
+
+  useMountEffect(() => (appShape().arrival === "file" ? followLight() : undefined));
 
   useMountEffect(() => appActions.serve((name, input) => performAction(shellRouter, name, input)));
 
@@ -257,20 +275,22 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       <Titlebar />
       <div {...props(styles.stage)}>
         <SessionDndProvider>
-          {!code && (
+          {chatSidebar && (
             <SidebarPane>
-              <Sidebar />
+              <Sidebar
+                renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}
+              />
             </SidebarPane>
           )}
           <main
             {...props(
               styles.surface,
+              appShape().surface === "solid" && styles.bare,
               strip && styles.card,
               strip && sidebarCollapsed && styles.cardSidebarHidden,
             )}
           >
-            <ConnectionFailure />
-            <ReleaseNotice />
+            <HostBanner />
             <Matches />
           </main>
         </SessionDndProvider>

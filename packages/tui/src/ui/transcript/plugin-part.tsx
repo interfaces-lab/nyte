@@ -38,12 +38,13 @@ export function PluginPart(props: { readonly message: PartMessage }): JSX.Elemen
   const fallback = (): JSX.Element => {
     const { message } = props;
 
-    if (!isPart(message, canvas))
+    if (!isPart(message, canvas)) {
       return (
         <text id={`part:${message.id}`} fg={app.kit.theme().dim} wrapMode="none" truncate>
           {`[${message.partKind}] ${readRawPart(message).body.replaceAll(/\s+/gu, " ").trim()}`}
         </text>
       );
+    }
 
     return (
       <text id={`part:${message.id}`} wrapMode="word">

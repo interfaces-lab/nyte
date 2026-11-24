@@ -33,7 +33,7 @@ import {
 } from "./message-scroller.tsx";
 import { Timeline } from "./timeline.tsx";
 
-type ChatScreenProps = {
+interface ChatScreenProps {
   state: HeadView;
   mark: TaskState;
   heads: readonly HeadName[];
@@ -60,7 +60,7 @@ type ChatScreenProps = {
   changes: HeadView["changes"] | undefined;
   onAskMerge: () => void;
   subagent: { parentName: string; onOpenParent: () => void } | undefined;
-};
+}
 
 export function ChatScreen({
   state,

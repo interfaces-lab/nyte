@@ -2,13 +2,13 @@ import { Value } from "typebox/value";
 import type { AccountState } from "@nyte-ai/connect/host";
 import type { AccountStore } from "./account-store.ts";
 
-type SignInKeeper = {
+interface SignInKeeper {
   readonly state: () => AccountState;
   readonly report: (next: AccountState) => void;
   readonly readToken: () => Promise<string | null>;
   readonly writeToken: (token: string | null) => void;
   readonly signOut: () => void;
-};
+}
 
 export function createSignInKeeper(
   store: AccountStore | undefined,
@@ -55,8 +55,9 @@ export function createSignInKeeper(
     if (
       next.kind === state.kind &&
       (next.kind !== "signed_in" || (state.kind === "signed_in" && state.label === next.label))
-    )
+    ) {
       return;
+    }
     state = next;
     keep();
     onChange();

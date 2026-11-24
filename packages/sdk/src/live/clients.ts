@@ -15,8 +15,9 @@ export function openClientsStore(join: Join): ClientsStore {
   const leave = join("host", {
     attach(live, subscribe) {
       stop = live.onEvent((event) => {
-        if (event.scope !== "host" || event.kind !== "live" || !Array.isArray(event.clients))
+        if (event.scope !== "host" || event.kind !== "live" || !Array.isArray(event.clients)) {
           return;
+        }
         const rows = event.clients.filter((row) => clientRows.Check(row));
         const next = keepRows(new Map(rows.map((row) => [row.id, row])), snapshot);
 

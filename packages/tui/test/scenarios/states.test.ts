@@ -7,7 +7,7 @@ import { startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
 import { SAMPLE_ANSWER, saveFrame, saveProof } from "./scenario.ts";
 
-const LONG_LINES = 3_000;
+const LONG_LINES = 3000;
 
 async function answered(tui: Tui, prompt: string, answer: string, shows: string): Promise<void> {
   tui.fixture.reply({ content: [{ type: "text", text: answer }] });

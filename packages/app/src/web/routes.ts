@@ -47,8 +47,9 @@ function readRoute(hostId: HostId) {
 export function holdRoute(hostId: HostId): void {
   const stored = readRoute(hostId);
 
-  if (stored !== undefined)
+  if (stored !== undefined) {
     writeStored(localArea(), routeKey(hostId), { ...stored, heldUntil: Date.now() + HOLD_MS });
+  }
 }
 
 export async function directRoute(hostId: HostId): Promise<string | undefined> {
@@ -106,12 +107,12 @@ export function followRoutes(hostId: HostId): void {
   };
 
   let unhealthy: ReturnType<typeof setTimeout> | undefined;
-  const followed = installedLive((current) => current.health);
+  const followed = installedLive((current) => current.link);
 
-  const checkHealth = (): void => {
-    const health = followed.read();
+  const checkLink = (): void => {
+    const link = followed.read();
 
-    if (!state.direct || health?.kind === "open") {
+    if (!state.direct || link?.kind === "open") {
       clearTimeout(unhealthy);
       unhealthy = undefined;
 
@@ -125,8 +126,8 @@ export function followRoutes(hostId: HostId): void {
   };
 
   watch.subscribe(remember);
-  followed.subscribe(checkHealth);
-  checkHealth();
+  followed.subscribe(checkLink);
+  checkLink();
   remember();
 }
 

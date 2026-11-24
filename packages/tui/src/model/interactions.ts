@@ -122,8 +122,9 @@ function acceptCompletion(input: TableInput): Interaction | null {
 }
 
 function acceptCompletionThenAlternate(input: TableInput): Interaction | null {
-  if (input.completion?.queueable !== true)
+  if (input.completion?.queueable !== true) {
     return input.completion?.ownsEnter === true ? on({ kind: "noop" }, "send", true) : null;
+  }
   const alternate = alternateDelivery(input);
 
   return on({ kind: "completion", action: { kind: "accept", alternate } }, alternate, true);
@@ -134,12 +135,13 @@ function closeCompletion(): Interaction | null {
 }
 
 function refuseWhileShell(input: TableInput): Interaction | null {
-  if (input.draft.kind === "shell")
+  if (input.draft.kind === "shell") {
     return on(
       { kind: "refuse", reason: "A local command is running. Esc stops it; your draft is kept." },
       "send",
       true,
     );
+  }
 
   if (input.draft.kind !== "message" || input.runsCommand) return null;
 
@@ -203,7 +205,7 @@ function answerOrOpenQuestion(input: TableInput): Interaction | null {
 
   if (input.draft.command !== null) return null;
 
-  if (!input.draft.plain)
+  if (!input.draft.plain) {
     return on(
       {
         kind: "send",
@@ -212,6 +214,7 @@ function answerOrOpenQuestion(input: TableInput): Interaction | null {
       },
       "send",
     );
+  }
 
   return on(
     {
@@ -268,12 +271,13 @@ function hiddenNone(input: TableInput): Interaction | null {
 }
 
 function treeOrRefuse(input: TableInput): Interaction | null {
-  if (input.draft.kind === "message")
+  if (input.draft.kind === "message") {
     return on(
       { kind: "refuse", reason: "Clear the draft before opening the tree" },
       "tree (twice)",
       true,
     );
+  }
 
   if (input.blocked !== null) return on({ kind: "noop" }, "tree (twice)", true);
 
@@ -591,8 +595,9 @@ function otherInteraction(
 
   if (input.blocked !== null) return OFF;
 
-  if (command === "chat.commands.open")
+  if (command === "chat.commands.open") {
     return on({ kind: "open", dialog: { kind: "list", purpose: { kind: "palette" } } }, "help");
+  }
 
   if (input.completion !== null) return OFF;
 
@@ -651,11 +656,12 @@ function otherInteraction(
     case "chat.history.next":
       if (input.cursor.row !== "last" && input.cursor.row !== "only") return OFF;
 
-      if (input.draft.kind === "empty" && !input.browsing && input.tasks > 0)
+      if (input.draft.kind === "empty" && !input.browsing && input.tasks > 0) {
         return on(
           { kind: "open", dialog: { kind: "list", purpose: { kind: "tasks", section: "active" } } },
           "view tasks",
         );
+      }
 
       return on({ kind: "history", direction: "next" }, "next history", true);
     default:

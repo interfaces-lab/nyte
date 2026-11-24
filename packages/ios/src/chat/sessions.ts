@@ -4,7 +4,7 @@ import { sessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
-import { healthMessage, updatedLabel, useHealth, useSessions } from "../connection/live.ts";
+import { linkMessage, updatedLabel, useLink, useSessions } from "../connection/live.ts";
 import type { ClientConnection } from "@nyte-ai/sdk/client";
 import type { Theme } from "../theme.ts";
 import { hasRun } from "../view-helpers.ts";
@@ -105,7 +105,7 @@ export function useSessionList(client: ClientConnection, search = "") {
   })?.sessions;
 
   const { newerHost } = useHost();
-  const health = healthMessage(useHealth(client));
+  const health = linkMessage(useLink(client));
   const failure = listed?.freshness.kind === "stale" ? listed.freshness.error : null;
   const current = listed?.sessions;
   const [seen, setSeen] = useState(current);

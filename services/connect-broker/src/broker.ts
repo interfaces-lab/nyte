@@ -54,8 +54,9 @@ function browserMethods(url: URL): readonly string[] {
   if (url.pathname === BROKER_ROUTES.linkTransactionLookup) return ["POST"];
   const transaction = TRANSACTION_PATH.exec(url.pathname);
 
-  if (transaction !== null)
+  if (transaction !== null) {
     return transaction[2] === "approve" || transaction[2] === "deny" ? ["POST"] : [];
+  }
   const match = ENVIRONMENT_PATH.exec(url.pathname);
 
   if (match === null) return [];
@@ -140,30 +141,35 @@ async function route(context: Context, request: Request): Promise<Response> {
   if (match === null) throw new Refusal("not_found");
   const [, environmentId = "", action, devices, deviceId, release] = match;
 
-  if (action === "lease")
+  if (action === "lease") {
     return method === "POST"
       ? issueLease(context, request, environmentId)
       : methodNotAllowed("POST");
+  }
 
-  if (action === "relay")
+  if (action === "relay") {
     return method === "GET"
       ? connectRelay(context, request, environmentId)
       : methodNotAllowed("GET");
+  }
 
-  if (devices === undefined)
+  if (devices === undefined) {
     return method === "DELETE"
       ? removeEnvironment(context, request, environmentId)
       : methodNotAllowed("DELETE");
+  }
 
-  if (deviceId === undefined)
+  if (deviceId === undefined) {
     return method === "POST"
       ? enrollDevice(context, request, environmentId)
       : methodNotAllowed("POST");
+  }
 
-  if (release !== undefined)
+  if (release !== undefined) {
     return method === "POST"
       ? releaseDevice(context, request, { environmentId, deviceId })
       : methodNotAllowed("POST");
+  }
 
   return method === "DELETE"
     ? removeDevice(context, request, { environmentId, deviceId })
@@ -191,19 +197,21 @@ export function createBroker(dependencies: Dependencies) {
         waitUntil: (task) => execution.waitUntil(task),
       });
 
-      if (context === undefined)
+      if (context === undefined) {
         return cors(publicRelay ? relayRefusal("internal") : refusal("internal"));
+      }
 
       try {
         return cors(await (publicRelay ? relayPublic(context, request) : route(context, request)));
       } catch (error) {
-        if (error instanceof Refusal)
+        if (error instanceof Refusal) {
           return cors(
             refusal(error.code, {
               status: error.status,
               headers: error.status === 429 || error.status === 503 ? { "retry-after": "60" } : {},
             }),
           );
+        }
         log.error("request.failed", { error: errorName(error) });
 
         return cors(publicRelay ? relayRefusal("internal") : refusal("internal"));

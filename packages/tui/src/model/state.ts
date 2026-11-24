@@ -14,7 +14,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { ModelMode } from "@nyte-ai/schema/model";
-import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
+import type { Freshness, HeadView, LinkState } from "@nyte-ai/sdk/client";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { SlashIndex } from "../lib/slash.ts";
@@ -33,7 +33,7 @@ export interface State {
 
 export interface Facts {
   readonly host: "opening" | "open";
-  readonly health: Health;
+  readonly link: LinkState;
   readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
   readonly hostSettings: readonly SettingInfo[];

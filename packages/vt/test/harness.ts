@@ -32,7 +32,7 @@ export async function openTerminal(
     rows: 24,
     cell: { width: 8, height: 16 },
     scrollback: 10_000,
-    palette: { foreground: 0xdddddd, background: 0x101010, cursor: 0xffffff, ansi: [] },
+    palette: { foreground: 0xdd_dd_dd, background: 0x10_10_10, cursor: 0xff_ff_ff, ansi: [] },
     cursor: { style: "block", blink: false },
     newlineMode: false,
     ...options,

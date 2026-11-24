@@ -1,5 +1,8 @@
-import type { Part, PartDefinition, PartState, Renderer } from "@nyte-ai/core";
 import type {
+  Part,
+  PartDefinition,
+  PartState,
+  Renderer,
   HookEntry as SideHookEntry,
   HookHandler as SideHookHandler,
   HookName as SideHookName,

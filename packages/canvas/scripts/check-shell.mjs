@@ -45,7 +45,9 @@ window.addEventListener("message", (event) => {
 frame.src = "/index.html";
 </script></body></html>`;
 
-const server = createServer(async (request, response) => {
+const server = createServer((request, response) => void serve(request, response));
+
+async function serve(request, response) {
   const path = new URL(request.url ?? "/", "http://localhost").pathname;
 
   if (path === "/host.html") {
@@ -68,7 +70,7 @@ const server = createServer(async (request, response) => {
     response.writeHead(404);
     response.end();
   }
-});
+}
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
@@ -85,8 +87,9 @@ for (const entry of fixtures) {
   const outcome = await compileCanvas(source, files);
   const name = entry.name.replace(/\.tsx$/, "");
 
-  if (outcome.kind !== "compiled")
+  if (outcome.kind !== "compiled") {
     throw new Error(`${name} did not compile: ${JSON.stringify(outcome.errors)}`);
+  }
   modules.push({ name, module: { runtime: outcome.runtime, code: outcome.code, title: name } });
 }
 
@@ -173,8 +176,9 @@ for (const theme of ["light", "dark"]) {
       `${name} ${theme}: height ${String(sizes.at(-1))}${errors.length > 0 ? ` errors ${JSON.stringify(errors)}` : ""}${consoleErrors.length > 0 ? ` console ${JSON.stringify(consoleErrors)}` : ""}\n`,
     );
 
-    if (errors.length > 0 || consoleErrors.length > 0)
+    if (errors.length > 0 || consoleErrors.length > 0) {
       failures.push({ fixture: name, theme, errors, consoleErrors });
+    }
     await page.close();
   }
 }
@@ -194,15 +198,17 @@ for (const theme of ["light", "dark"]) {
           const data = JSON.parse(text);
           window.__received.push(data);
 
-          if (data.method === "ui/initialize")
+          if (data.method === "ui/initialize") {
             window.dispatchEvent(
               new MessageEvent("message", {
                 data: Object.assign({}, config.initializeResult, { id: data.id }),
               }),
             );
+          }
 
-          if (data.method === "ui/notifications/initialized")
+          if (data.method === "ui/notifications/initialized") {
             window.dispatchEvent(new MessageEvent("message", { data: config.render }));
+          }
         },
       };
     },
@@ -254,24 +260,25 @@ for (const theme of ["light", "dark"]) {
   results.push({
     fixture: `inline ${modules[0].name}`,
     theme: "dark",
-    height: received.filter((m) => m.method === "ui/notifications/size-changed").at(-1)?.params
-      .height,
+    height: received.findLast((m) => m.method === "ui/notifications/size-changed")?.params.height,
     file,
     runtime: inline.runtime === CANVAS_RUNTIME,
   });
 
-  if (errors.length > 0 || consoleErrors.length > 0)
+  if (errors.length > 0 || consoleErrors.length > 0) {
     failures.push({ fixture: "inline", errors, consoleErrors });
+  }
   await page.close();
 }
 
 await browser.close();
 server.close();
 
-for (const result of results)
+for (const result of results) {
   console.log(
     `${result.fixture} ${result.theme}: height ${String(result.height)} → ${result.file}`,
   );
+}
 
 if (failures.length > 0) {
   console.error(JSON.stringify(failures, null, 2));

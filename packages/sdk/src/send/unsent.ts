@@ -4,11 +4,11 @@ import type { HeadView } from "../view/head-view.ts";
 import { withUnsent } from "../connection/watch.ts";
 import { sameJson } from "../live/store.ts";
 
-type Laid = {
+interface Laid {
   readonly view: HeadView;
   readonly unsent: readonly QueuedMessage[];
   readonly result: HeadView;
-};
+}
 
 export function laidSends(
   journal: JournalLoop,

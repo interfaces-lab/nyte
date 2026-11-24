@@ -85,17 +85,19 @@ const CredentialAccountsSchema = Type.Object({
 });
 
 export function readCredentialAccounts(value: unknown): CredentialAccounts | undefined {
-  if (Value.Check(CredentialSchema, value))
+  if (Value.Check(CredentialSchema, value)) {
     return {
       active: "default",
       accounts: [{ id: "default", label: "Default", credential: value }],
     };
+  }
 
   if (!Value.Check(CredentialAccountsSchema, value)) return undefined;
   const ids = new Set(value.accounts.map((account) => account.id));
 
-  if (ids.size !== value.accounts.length || (value.active !== null && !ids.has(value.active)))
+  if (ids.size !== value.accounts.length || (value.active !== null && !ids.has(value.active))) {
     return undefined;
+  }
 
   return value;
 }

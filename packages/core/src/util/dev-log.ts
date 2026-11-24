@@ -36,13 +36,11 @@ export function dev(
   if (dev.sink === NOOP && tap === undefined) return;
 
   try {
-    const fields = data instanceof Function ? data() : data;
+    const fields = typeof data === "function" ? data() : data;
     const json = fields === undefined ? "{}" : JSON.stringify(fields, replacer);
     dev.sink(`DEV:${area} ${message} ${json}`);
     tap?.(area, message, json);
-  } catch {
-    return;
-  }
+  } catch {}
 }
 
 dev.sink = typeof process !== "undefined" && process.env.NYTE_DEV !== undefined ? CONSOLE : NOOP;
@@ -144,9 +142,7 @@ export function fault(area: string, message: string, data?: Record<string, unkno
   try {
     const json = data === undefined ? "{}" : JSON.stringify(data, replacer);
     faults({ at: Date.now(), area, message, data: json });
-  } catch {
-    return;
-  }
+  } catch {}
 }
 
 fault.listen = (listener: (fault: Fault) => void): (() => void) => {

@@ -1,9 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { readGroups } from "./tokens.mjs";
 
-const packages = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const packages = join(import.meta.dirname, "../..");
 
 const lockPath = join(packages, "ui/test/token-lock.json");
 
@@ -41,8 +40,9 @@ for (const file of handleFiles) {
 
     for (const [key, value] of Object.entries(values)) {
       for (const [, property] of String(value).matchAll(/var\((--nyte-[\w-]+)/g)) {
-        if (!declared.has(property))
+        if (!declared.has(property)) {
           problems.push(`${file} ${name}.${key} reads undeclared ${property}`);
+        }
       }
     }
   }
@@ -50,12 +50,13 @@ for (const file of handleFiles) {
 
 const lock = JSON.stringify({ groups, handles });
 
-if (process.argv.includes("--update"))
+if (process.argv.includes("--update")) {
   writeFileSync(lockPath, `${JSON.stringify(JSON.parse(lock), null, 2)}\n`);
-else if (JSON.stringify(JSON.parse(readFileSync(lockPath, "utf8"))) !== lock)
+} else if (JSON.stringify(JSON.parse(readFileSync(lockPath, "utf8"))) !== lock) {
   problems.push(
     "The token surface changed. Review it, then run `pnpm --dir packages/ui lock:tokens`.",
   );
+}
 
 if (problems.length > 0) {
   console.error(problems.join("\n"));

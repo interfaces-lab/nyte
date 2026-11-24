@@ -54,7 +54,7 @@ const LABELS: readonly (readonly [string, (v: ViewBuilder) => ViewBuilder, strin
   ],
   [
     "an unsent message retrying shows its reason",
-    (v) => v.unsent("b", { retrying: { at: 9_000, reason: "offline" } }).live("run-1"),
+    (v) => v.unsent("b", { retrying: { at: 9000, reason: "offline" } }).live("run-1"),
     "retrying · offline",
     false,
   ],

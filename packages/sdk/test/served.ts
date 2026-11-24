@@ -123,7 +123,7 @@ export function readOperation(request: Request): string {
 export async function until<T>(
   source: AsyncIterable<T>,
   done: (value: T) => boolean | Promise<boolean>,
-  ms = 5_000,
+  ms = 5000,
 ): Promise<T> {
   const iterator = source[Symbol.asyncIterator]();
   let timer: ReturnType<typeof setTimeout> | undefined;

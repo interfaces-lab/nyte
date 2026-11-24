@@ -177,7 +177,7 @@ export const hostOperations = {
     OPERATIONS["workspaces.add"].input,
     {
       target: { kind: "local", path: "/repo" },
-      options: { projectResources: false, expect: { identity } },
+      options: { trusted: false, expect: { identity } },
     },
     { target: { kind: "local", path: "/repo" }, options: { expect: {} } },
   ),
@@ -190,6 +190,11 @@ export const hostOperations = {
     OPERATIONS["workspaces.cleanWorktrees"].input,
     {},
     1,
+  ),
+  "workspaces.cleanStorage input": operation(
+    OPERATIONS["workspaces.cleanStorage"].input,
+    { items: ["caches:npm"] },
+    { items: "caches:npm" },
   ),
   "sessions.start input": operation(
     OPERATIONS["sessions.start"].input,
@@ -228,6 +233,12 @@ export const hostOperations = {
     OPERATIONS["sessions.read"].output,
     { seq: 42, ids: [session], rows: [sessionInfo] },
     { seq: 42, ids: [session] },
+  ),
+  "host.activity input": operation(OPERATIONS["host.activity"].input, {}, 1),
+  "host.activity output": operation(
+    OPERATIONS["host.activity"].output,
+    { runs: 1, jobs: 0 },
+    { runs: -1, jobs: 0 },
   ),
   "host.tailnet.status input": operation(OPERATIONS["host.tailnet.status"].input, {}, 1),
   "host.tailnet.status output": operation(

@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { asId } from "@nyte-ai/schema";
 import { shellActions, useStagePage } from "../tabs/shell-state.ts";
+import { WindowPanesProvider } from "../tabs/window-panes.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import {
   focusNextPane,
@@ -76,7 +77,7 @@ test.each([560, 640])("split availability and execution agree at window width %s
 
 afterAll(() => vi.unstubAllGlobals());
 
-test("new chat leaves Customize and selects the blank pane through the shared pane action", () => {
+test("new chat leaves Customize and selects the blank pane", () => {
   const controller = windowTabs.panes();
   const id = asId<"session">("previous-chat");
   selectSession(controller, id);
@@ -88,10 +89,7 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
     isServer: true,
   });
 
-  let actions: PaneActions | undefined;
-
-  function Probe({ inspect }: { readonly inspect: (value: PaneActions) => void }) {
-    inspect(usePaneActions());
+  function Probe() {
     const page = useStagePage();
     const panes = usePaneLayout((layout) => chatPanes(layout).length);
 
@@ -105,19 +103,14 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
   const render = () =>
     renderToStaticMarkup(
       <RouterContextProvider router={router}>
-        <PaneControllerProvider>
-          <Probe
-            inspect={(value) => {
-              actions = value;
-            }}
-          />
-        </PaneControllerProvider>
+        <WindowPanesProvider>
+          <Probe />
+        </WindowPanesProvider>
       </RouterContextProvider>,
     );
 
   expect(render()).toBe("<span>customize:1</span>");
-  assert.ok(actions);
-  actions.newChat();
+  windowTabs.newChat();
   expect(render()).toBe("<span>workspace:1</span>");
   const layout = paneLayout(controller);
   assert.equal(chatPanes(layout).length, 1);

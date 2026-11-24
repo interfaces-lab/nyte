@@ -35,6 +35,7 @@ const HostMessageType = Type.Union([HostCommandType, Type.Object({ kind: Type.Li
 const HostReportType = Type.Union([
   Type.Object({ kind: Type.Literal("listening"), address: Type.String() }),
   Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
+  Type.Object({ kind: Type.Literal("store-newer"), message: Type.String() }),
   Type.Object({ kind: Type.Literal("revoked") }),
   Type.Object({ kind: Type.Literal("replaced") }),
   Type.Object({ kind: Type.Literal("closed") }),
@@ -49,6 +50,8 @@ export const hostMessages = Compile(HostMessageType);
 const hostReports = Compile(HostReportType);
 
 export type HostWorkerEntry = string | URL;
+
+export class NewerStoreFailure extends Error {}
 
 interface HostThread {
   readonly address: string;
@@ -101,6 +104,11 @@ function launch(
         return;
       case "failed":
         fail(new Error(report.message));
+        void worker.terminate();
+
+        return;
+      case "store-newer":
+        fail(new NewerStoreFailure(report.message));
         void worker.terminate();
 
         return;

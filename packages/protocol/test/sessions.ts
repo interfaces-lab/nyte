@@ -240,7 +240,7 @@ export function random(seed: number): () => number {
   let state = seed >>> 0;
 
   return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
+    state = (state + 0x6d_2b_79_f5) >>> 0;
     let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
     mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
 
@@ -284,7 +284,7 @@ export function interleave(
         events.push({ seq: asSeq(0), at, head: null, kind: "catalog", id: catalog(next) });
         break;
       case "seen":
-        if (commits.length > 0)
+        if (commits.length > 0) {
           events.push({
             seq: asSeq(0),
             at,
@@ -293,6 +293,7 @@ export function interleave(
             principal: asId(principal),
             commit: pick(commits),
           });
+        }
         break;
       case "background":
         events.push({ seq: asSeq(0), at, head: MAIN, kind: "background", item: job(next) });

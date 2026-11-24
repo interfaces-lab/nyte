@@ -7,16 +7,19 @@ export type XStyle = StyleXArray<
   null | undefined | boolean | CompiledStyles | readonly [CompiledStyles, InlineStyles]
 >;
 
-type Compiled = {
+interface Compiled {
   readonly className?: string;
   readonly style?: ReturnType<typeof props>["style"] | CSSProperties;
-};
+}
 
 type ClassName<State> = string | ((state: State) => string | undefined);
 
 type Style<State> = CSSProperties | ((state: State) => CSSProperties | undefined);
 
-export type StaticStyleProps = { readonly className?: string; readonly style?: CSSProperties };
+export interface StaticStyleProps {
+  readonly className?: string;
+  readonly style?: CSSProperties;
+}
 
 export type StyledProps<Props, Style extends XStyle = XStyle> = Omit<
   Props,
@@ -27,13 +30,16 @@ export type StyledProps<Props, Style extends XStyle = XStyle> = Omit<
   xstyle?: Style;
 };
 
-export type StateStyledProps<State> = {
+export interface StateStyledProps<State> {
   readonly className?: ClassName<State>;
   readonly style?: Style<State>;
-};
+}
 
-function resolve<State, Value>(value: Value | ((state: State) => Value), state: State): Value {
-  return value instanceof Function ? value(state) : value;
+function resolve<State, Value extends object | string | undefined>(
+  value: Value | ((state: State) => Value),
+  state: State,
+): Value {
+  return typeof value === "function" ? value(state) : value;
 }
 
 export function mergeStyleProps(
@@ -51,7 +57,11 @@ export function mergeStyleProps<State>(
   className?: ClassName<State>,
   style?: Style<State>,
 ): StateStyledProps<State> {
-  if (base instanceof Function || className instanceof Function || style instanceof Function) {
+  if (
+    typeof base === "function" ||
+    typeof className === "function" ||
+    typeof style === "function"
+  ) {
     const merge = (state: State) => {
       const compiled = resolve(base, state);
 

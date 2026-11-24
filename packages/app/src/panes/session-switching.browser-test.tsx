@@ -20,7 +20,7 @@ import type { HostState } from "../contract/nyte.ts";
 import { PaneControllerProvider } from "./pane-context.tsx";
 import { SessionDndProvider } from "./session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { SessionScreen } from "./session-screen.tsx";
+import { SessionScreen } from "../shell/session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import "../theme/tokens.stylex.ts";
 import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
@@ -169,7 +169,7 @@ function chat(name: Name): Chat {
     seenThrough: null,
     background: [],
     configuration: { selected: configuration, effective: configuration },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   } as const satisfies Omit<SessionView, "messages">;
@@ -274,7 +274,7 @@ async function pageToStart(container: HTMLElement, name: Name) {
   const start = fetches.length;
 
   const toTop = async (): Promise<void> => {
-    viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -1_000, bubbles: true }));
+    viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -1000, bubbles: true }));
     viewport.scrollTop = 100;
     await frame();
     viewport.scrollTop = 0;
@@ -345,8 +345,9 @@ export async function run(): Promise<string> {
       const at = await frame();
       const text = container.innerText;
 
-      if (text.includes(`${name} question ${String(TURNS)}`) && text.includes(latest))
+      if (text.includes(`${name} question ${String(TURNS)}`) && text.includes(latest)) {
         return at - started;
+      }
 
       if (performance.now() - started > 10_000) throw new Error(`Timed out showing ${name}`);
     }
@@ -378,13 +379,14 @@ export async function run(): Promise<string> {
       container.innerText.includes("Show Earlier Steps") ||
       !container.innerText.includes(`charlie question ${String(TURNS)}`)
     ) {
-      if (performance.now() - gapStarted > 10_000)
+      if (performance.now() - gapStarted > 10_000) {
         throw new Error("The earlier steps never loaded");
+      }
       await frame();
     }
 
     const gapClosed = performance.now() - gapStarted;
-    await pause(1_000);
+    await pause(1000);
     const beforeSwitching = fetches.length;
     const switches: string[] = [];
     let slowest = 0;

@@ -8,7 +8,7 @@ import { serial } from "@nyte-ai/schema/serial";
 import { createUpdateController } from "./update-controller.ts";
 import type { UpdateLogDetails } from "./update-controller.ts";
 import { updateLabel } from "@nyte-ai/app/contract/update-label.ts";
-import type { DesktopUpdateActivity } from "../../shared/update-activity.ts";
+import type { HostActivity } from "@nyte-ai/schema";
 import { UpdateSettingsStore } from "./update-settings.ts";
 
 const UPDATE_INTERVAL_MS = 6 * 60 * 60_000;
@@ -24,7 +24,7 @@ export async function registerUpdates({
   publishChannel,
 }: {
   readonly item: MenuItem;
-  readonly activity: () => Promise<DesktopUpdateActivity>;
+  readonly activity: () => Promise<HostActivity>;
   readonly confirmQuit: () => boolean;
   readonly beforeRelaunch: () => Promise<void>;
   readonly publish: (state: UpdateState) => void;
@@ -90,7 +90,7 @@ export async function registerUpdates({
   const applyChannel = (): void => {
     autoUpdater.channel = channel === "nightly" ? "nightly" : "latest";
     autoUpdater.allowPrerelease = channel === "nightly";
-    autoUpdater.allowDowngrade = true;
+    autoUpdater.allowDowngrade = false;
   };
 
   applyChannel();
@@ -161,8 +161,9 @@ export async function registerUpdates({
       operations.run(async () => {
         if (next === channel) return channel;
 
-        if (updates.state().kind === "installing")
+        if (updates.state().kind === "installing") {
           throw new Error("Nyte is restarting to install an update. Change the channel afterward.");
+        }
 
         await saveChannel(next);
         applyChannel();
@@ -176,8 +177,9 @@ export async function registerUpdates({
 }
 
 function localFeedUrl(port: string | undefined): string | undefined {
-  if (port === undefined || !/^[1-9]\d{0,4}$/u.test(port) || Number(port) > 65_535)
+  if (port === undefined || !/^[1-9]\d{0,4}$/u.test(port) || Number(port) > 65_535) {
     return undefined;
+  }
 
   return `http://127.0.0.1:${port}`;
 }

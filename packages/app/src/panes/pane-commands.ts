@@ -112,8 +112,9 @@ export function dropTarget(
   if (
     hit === undefined ||
     (hit.pane.selection.kind === "session" && hit.pane.selection.sessionId === dragged)
-  )
+  ) {
     return undefined;
+  }
   const placement = placementInRect(hit.rect, point, panes.length > 1);
 
   if (placement === undefined) return undefined;
@@ -234,7 +235,7 @@ function dropSession(
   if (target === undefined || source?.pane === pane) return [];
   const selection: PaneSelection = { kind: "session", sessionId };
 
-  if (placement === "center")
+  if (placement === "center") {
     return source === undefined
       ? inPane(layout, pane, selection)
       : [
@@ -242,6 +243,7 @@ function dropSession(
           { kind: "set-content", tab: source.tab, content: chatContent(target.selection) },
           { kind: "focus", pane },
         ];
+  }
 
   const place = { kind: "edge", pane, ...EDGES[placement] } as const;
 

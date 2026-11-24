@@ -80,9 +80,7 @@ function Row(props: {
   const effort = () => {
     const levels = props.row.info.thinking;
     const level = draft().effort;
-    const bars = "■".repeat(
-      level === "off" ? 0 : Math.max(0, levels.findIndex((candidate) => candidate === level) + 1),
-    );
+    const bars = "■".repeat(level === "off" ? 0 : Math.max(0, levels.indexOf(level) + 1));
     const empty = "□".repeat(Math.max(0, levels.length - bars.length));
 
     return wide()
@@ -263,8 +261,9 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
 
     if (models.kind === "loading") return { text: "Loading models…", tone: "dim" as const };
 
-    if (models.kind === "failed")
+    if (models.kind === "failed") {
       return { text: "Could not load models. Close and try /model again.", tone: "error" as const };
+    }
 
     return {
       text:
@@ -283,7 +282,7 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
     const move = `${keycap("model.previous", "symbol")}${keycap("model.next", "symbol")}`;
     const change = `${keycap("model.decrease", "symbol")}${keycap("model.increase", "symbol")}`;
 
-    if (width() + 5 < 80)
+    if (width() + 5 < 80) {
       return joinHints([
         move,
         ...(active === null ? [] : [`${change} ${active}`]),
@@ -291,6 +290,7 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
         hint("picker.accept", "confirm", "symbol"),
         keycap("picker.close"),
       ]);
+    }
 
     return joinHints([
       `${move} select`,

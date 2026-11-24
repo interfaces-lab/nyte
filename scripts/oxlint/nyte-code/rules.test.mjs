@@ -137,6 +137,20 @@ console.log(value);
 console.log(value); // oxlint-disable-line no-console -- prints the result`,
   },
   {
+    rule: "nyte-code/no-app-identity",
+    rejected: `const code = windowApp() === "code";
+if ("studio" !== windowApp()) open();
+switch (windowApp()) {
+  case "nyte":
+    break;
+}`,
+    rejectedLines: [1, 2, 3],
+    accepted: `const shape = APP_SHAPES[windowApp()];
+if (to === windowApp()) focus();
+const files = appShape().navigator === "files";
+const stored = workbenchPersistence(area, windowApp());`,
+  },
+  {
     rule: "nyte-code/no-cross-package-relative-imports",
     directory: "packages/app/src",
     packageRoots: ["packages/app", "packages/app/modules/native", "packages/core"],

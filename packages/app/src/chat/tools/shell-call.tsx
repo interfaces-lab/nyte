@@ -40,7 +40,10 @@ type ShellTokenType =
   | "command"
   | "text";
 
-type ShellToken = { readonly type: ShellTokenType; readonly text: string };
+interface ShellToken {
+  readonly type: ShellTokenType;
+  readonly text: string;
+}
 
 const SHELL_TOKEN =
   /"(?:[^"\\]|\\.)*"|'[^']*'|\$\{[^}]+\}|\$\w+|&&|\|\||>>|[|;><]|--?\w[\w-]*|\s+|\S+/gu;

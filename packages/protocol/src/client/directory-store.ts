@@ -59,9 +59,9 @@ export function openDirectoryStore(
         row.parent === (parents.kind === "roots" ? null : parents.session)) &&
       (pinned === undefined || row.pinned === pinned) &&
       (query === undefined || (row.name?.toLowerCase().includes(query) ?? false))
-    )
+    ) {
       rows.set(row.id, row);
-    else rows.delete(row.id);
+    } else rows.delete(row.id);
   };
 
   const resume = (next: SessionsRead): void => {

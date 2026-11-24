@@ -9,7 +9,7 @@ import type { Execution, HostView, SessionInfo, WorkspaceInfo } from "@nyte-ai/s
 import { asId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { PaneControllerProvider } from "../panes/pane-context.tsx";
+import { WindowPanesProvider } from "../tabs/window-panes.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { queryClient } from "../data/query-client.ts";
@@ -21,6 +21,7 @@ import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
 import { Sidebar } from "./sidebar.tsx";
+import { SettingsNavigation } from "../settings/index.ts";
 
 const STORED = "nyte.desktop.sidebar.v3";
 
@@ -43,8 +44,7 @@ function folder(id: string): WorkspaceInfo {
     target: { kind: "local", path: `/work/${id}` },
     identity: asId("identity"),
     availability: { kind: "available" },
-    projectResources: null,
-    trusted: true,
+    trust: { state: "trusted", by: { kind: "folder", path: null } },
     projectSources: [],
     addedBy: asId("tester"),
     writers: [],
@@ -96,8 +96,6 @@ const updates: string[] = [];
 
 const host: HostView = {
   id: asId<"host">("scripted"),
-  link: { kind: "connected" },
-  operations: null,
   name: "Test",
   platform: "linux",
   version: "0.0.0",
@@ -108,6 +106,7 @@ const host: HostView = {
   defaultWorkspace: asId<"workspace">("home"),
   projects: [],
   authority: new Set(),
+  routes: [],
 };
 
 const scripted = scriptedConnection({
@@ -318,8 +317,9 @@ async function hoverButtonsSitBesideTheAge(): Promise<void> {
   const age = quiet.querySelector<HTMLElement>('[data-slot="row-meta"]');
   const actions = quiet.querySelector<HTMLElement>('[data-slot="row-actions"]');
 
-  if (pin === null || age === null || actions === null)
+  if (pin === null || age === null || actions === null) {
     throw new Error("Missing the hover buttons or the age");
+  }
   const box = pin.getBoundingClientRect();
   check(box.width === 24 && box.height === 24, `pin is ${String(box.width)} px, not 24`);
   check(age.checkVisibility() && age.getBoundingClientRect().width > 0, "the age stays visible");
@@ -475,11 +475,13 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider>
+            <WindowPanesProvider>
               <SessionDndProvider>
-                <Sidebar />
+                <Sidebar
+                  renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}
+                />
               </SessionDndProvider>
-            </PaneControllerProvider>
+            </WindowPanesProvider>
           </TooltipProvider>
         </RouterContextProvider>
       </QueryClientProvider>,

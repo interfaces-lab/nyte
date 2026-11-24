@@ -1,7 +1,8 @@
 import { relayAddress, Uuid } from "@nyte-ai/connect";
 import { SdkError } from "@nyte-ai/sdk";
 import { SHARE_LOCATION } from "./connect-copy.ts";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
 const connectionProperties = {
@@ -50,8 +51,9 @@ export function parseStoredConnection(
       policy === undefined ||
       origin !== policy.origin ||
       fields.url !== relayAddress(policy.origin, environmentId)
-    )
+    ) {
       throw new Error("The saved account connection is outside this build's Nyte Connect.");
+    }
 
     return {
       kind: "managed",
@@ -60,8 +62,9 @@ export function parseStoredConnection(
     };
   }
 
-  if (!Value.Check(ConnectionSchema, value))
+  if (!Value.Check(ConnectionSchema, value)) {
     throw new Error("Enter a name, the address and the token.");
+  }
 
   return { kind: "manual", connection: parseConnection(value) };
 }
@@ -76,8 +79,9 @@ export function parseConnection(value: Connection): Connection {
   const name = value.name.trim();
   const token = value.token.trim();
 
-  if (!name || !token || value.url === "")
+  if (!name || !token || value.url === "") {
     throw new Error("Enter a name, the address and the token.");
+  }
   let url: URL;
 
   try {
@@ -95,8 +99,9 @@ export function parseConnection(value: Connection): Connection {
     throw new Error("Use the HTTPS address Nyte shows on your computer.");
   }
 
-  if (url.username || url.password || url.search || url.hash)
+  if (url.username || url.password || url.search || url.hash) {
     throw new Error("Enter only the address. The token has its own field.");
+  }
   url.search = "";
   url.hash = "";
 

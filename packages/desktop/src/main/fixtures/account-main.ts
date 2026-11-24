@@ -73,7 +73,7 @@ let accountModuleRequests = 0;
 
 let accountModuleMode: "hold" | "fail" | "serve" = "hold";
 
-const releaseAccountModule: Array<() => void> = [];
+const releaseAccountModule: (() => void)[] = [];
 
 const server = createServer((request, response) => {
   const path = new URL(request.url ?? "/", "http://localhost").pathname;
@@ -433,7 +433,7 @@ async function run(): Promise<void> {
   app.exit(0);
 }
 
-run().catch((error) => {
+run().catch((error: unknown) => {
   console.error(error);
   app.exit(1);
 });

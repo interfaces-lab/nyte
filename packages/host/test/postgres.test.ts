@@ -4,7 +4,8 @@ import { envelope } from "@nyte-ai/core/store";
 import { afterAll, describe, expect, it } from "vitest";
 import { postgresStore } from "../src/index.ts";
 import type { PostgresClient, PostgresPool } from "../src/index.ts";
-import { storeConformance, storeMigrationConformance } from "./store-conformance.ts";
+import { storeConformance } from "./store-conformance.ts";
+import { storeMigrationConformance } from "./store-migration-conformance.ts";
 
 true satisfies Pool extends PostgresPool ? true : false;
 

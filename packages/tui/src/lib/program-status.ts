@@ -25,14 +25,16 @@ export function readProgramStatus(
   execution: Execution | undefined,
   watched: RunId | null,
 ): ProgramState {
-  if (execution !== undefined && execution.kind !== "idle")
+  if (execution !== undefined && execution.kind !== "idle") {
     return { state: "working", msg: "Working" };
+  }
   const last = execution?.lastRun ?? null;
 
   if (last?.end.kind === "failed") return { state: "error", msg: last.end.failure.message };
 
-  if (last !== null && last.id === watched && last.end.kind === "completed")
+  if (last !== null && last.id === watched && last.end.kind === "completed") {
     return { state: "done", msg: "Finished" };
+  }
 
   return { state: "idle", msg: "Ready" };
 }

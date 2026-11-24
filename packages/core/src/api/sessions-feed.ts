@@ -131,8 +131,9 @@ export function sessionChanges(
 
           for (const entry of await Promise.all(
             sessions.map(async (id) => ({ id, info: await sessionInfo(kernel, id, principal) })),
-          ))
+          )) {
             note(entry.id, entry.info);
+          }
 
           if (external) {
             external = false;

@@ -26,11 +26,12 @@ export function reconcile<K, V>(
   open: (key: K) => V,
   close: (value: V) => void,
 ): void {
-  for (const [key, value] of held)
+  for (const [key, value] of held) {
     if (!wanted.has(key)) {
       close(value);
       held.delete(key);
     }
+  }
 
   for (const key of wanted) if (!held.has(key)) held.set(key, open(key));
 }

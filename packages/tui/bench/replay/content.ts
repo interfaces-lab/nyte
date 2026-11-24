@@ -30,7 +30,7 @@ export function answerText(index: number): string {
   ].join("\n");
 }
 
-export const STREAM_TOKENS = 1_500;
+export const STREAM_TOKENS = 1500;
 
 export function streamedText(): string {
   return Array.from({ length: 12 }, (_, index) => answerText(index)).join("\n\n");
@@ -38,7 +38,7 @@ export function streamedText(): string {
 
 export const BIG_FILE = "big.ts";
 
-const BIG_LINES = 1_500;
+const BIG_LINES = 1500;
 
 export function bigBefore(): string {
   return `${Array.from({ length: BIG_LINES }, (_, i) => `export const value${String(i)} = ${String(i)};`).join("\n")}\n`;

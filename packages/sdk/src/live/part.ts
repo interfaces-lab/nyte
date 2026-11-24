@@ -6,14 +6,19 @@ import { sessionChanges } from "../event-checks.ts";
 import { freshnessCell, listenerSet, readRetries, request } from "./store.ts";
 import type { Freshness, Join, Live } from "./store.ts";
 
-export type PartSnapshot = { readonly part: PartView | null };
+export interface PartSnapshot {
+  readonly part: PartView | null;
+}
 
 export interface PartStore extends Live<PartSnapshot | null> {
   freshness(): Freshness;
   close(): void;
 }
 
-type Held = { readonly seq: number; readonly row: PartView | null };
+interface Held {
+  readonly seq: number;
+  readonly row: PartView | null;
+}
 
 export function openPartStore(
   input: { readonly session: SessionId; readonly part: PartId },

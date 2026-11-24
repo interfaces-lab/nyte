@@ -15,8 +15,9 @@ export async function createDeviceSecret(
 ): Promise<{ readonly token: string; readonly digest: string }> {
   const bytes = await crypto.randomBytes(DEVICE_TOKEN_BYTES);
 
-  if (bytes.length !== DEVICE_TOKEN_BYTES)
+  if (bytes.length !== DEVICE_TOKEN_BYTES) {
     throw new Error("The random source returned the wrong number of bytes.");
+  }
   const token = base64Url(bytes);
 
   return { token, digest: base64ToBase64Url(await crypto.sha256Base64(token)) };
@@ -87,7 +88,7 @@ export async function awaitAcceptance(input: {
   return "cancelled";
 }
 
-export const RELEASE_TIMEOUT_MS = 5_000;
+export const RELEASE_TIMEOUT_MS = 5000;
 
 export type Release = "removed" | "unconfirmed";
 

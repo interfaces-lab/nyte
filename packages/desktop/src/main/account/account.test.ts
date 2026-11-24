@@ -242,8 +242,9 @@ describe("packaged renderer files", () => {
         url: "nyte-desktop://account/assets/%E0%A4%A",
         expected: { kind: "refused", status: 400 },
       },
-    ])
+    ]) {
       expect(resolveRendererFile(row.roots, row.url), row.url).toEqual(row.expected);
+    }
   });
 });
 
@@ -271,8 +272,9 @@ test("renderer messages accept a JWT token answer and the three reports with a b
     { check: accountReport, message: { kind: "unreachable" }, valid: true },
     { check: accountReport, message: { kind: "signed_in", label: "" }, valid: false },
     { check: accountReport, message: { kind: "signed_in", label: "x".repeat(321) }, valid: false },
-  ])
+  ]) {
     expect(row.check.Check(row.message), JSON.stringify(row.message)).toBe(row.valid);
+  }
 });
 
 describe("account operations", () => {
@@ -390,7 +392,7 @@ test("a secrets key that cannot be read keeps the saved sign-in", async () => {
 test("a saved sign-in the keychain cannot open stays until this run signs in or out", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
   const path = join(directory, "account.json");
-  const saves: Array<Parameters<AccountStore["save"]>[0]> = [];
+  const saves: Parameters<AccountStore["save"]>[0][] = [];
 
   class RecordingStore extends AccountStore {
     override save(signIn: Parameters<AccountStore["save"]>[0]): Promise<void> {

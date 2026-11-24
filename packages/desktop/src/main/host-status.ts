@@ -1,16 +1,16 @@
-import { supersedes } from "@nyte-ai/service/outdated-host";
-import type { AgentRegistration, ServingHost } from "./host-agent.ts";
-import type { HostLinkState } from "../host/host-link.ts";
+import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
+import type { LinkState } from "@nyte-ai/sdk/client";
+import type { AgentRegistration } from "./host-agent.ts";
 
-export type HostStatus = "running" | "issues" | "stopped";
+export type HostStatus = "running" | "restarting" | "issues" | "stopped";
 
-export type HostIssue = "approval" | "unreachable";
+export type HostIssue = "approval" | "unreachable" | "update-host" | "update-app";
 
 export interface HostProbe {
   readonly pid: number | null;
   readonly alive: boolean;
   readonly registration: AgentRegistration;
-  readonly link: HostLinkState["kind"];
+  readonly link: LinkState;
 }
 
 export interface HostReading {
@@ -20,44 +20,55 @@ export interface HostReading {
 
 export function readHostStatus(probe: HostProbe): HostReading {
   const approval = probe.registration === "requires-approval";
+  const { link } = probe;
 
-  if (probe.pid === null || !probe.alive)
+  if (link.kind === "away" && (link.reason === "replacing" || link.reason === "restarting")) {
+    return { status: "restarting", issues: approval ? ["approval"] : [] };
+  }
+
+  if (probe.pid === null || !probe.alive) {
     return { status: "stopped", issues: approval ? ["approval"] : [] };
+  }
 
-  const issues = (["approval", "unreachable"] as const).filter((issue) =>
-    issue === "approval" ? approval : probe.link === "unreachable",
-  );
+  const issues: readonly HostIssue[] = [
+    ...(approval ? (["approval"] as const) : []),
+    ...(link.kind === "away" || link.kind === "refused" ? [linkIssue(link)] : []),
+  ];
 
   return { status: issues.length === 0 ? "running" : "issues", issues };
 }
 
-export interface HostUpdateProbe {
-  readonly link: HostLinkState;
-  readonly appVersion: string;
+function linkIssue(link: Extract<LinkState, { readonly kind: "away" | "refused" }>): HostIssue {
+  if (link.kind === "away") return "unreachable";
+
+  if (link.reason === "update-host") return "update-host";
+
+  return link.reason === "update-client" ? "update-app" : "unreachable";
 }
 
-export type HostUpdate = "current" | "stale" | "offline";
+export function readHostProcess(link: LinkState): HostProcess {
+  switch (link.kind) {
+    case "open": {
+      const stale = link.match.kind === "host-older" && link.match.replace === "manual";
 
-export function readHostUpdate(probe: HostUpdateProbe): HostUpdate {
-  if (probe.link.kind !== "connected") return "offline";
+      return {
+        kind: stale ? "stale" : "current",
+        version: link.version,
+        startedAt: link.startedAt,
+      };
+    }
+    case "away":
+      return link.reason === "lost" || link.reason === "stopping"
+        ? { kind: "offline" }
+        : { kind: "restarting" };
+    case "connecting":
+    case "refused":
+    case "closed":
+      return { kind: "offline" };
+    default: {
+      const _exhaustive: never = link;
 
-  if (probe.link.compatible && probe.link.version === probe.appVersion) return "current";
-
-  return "stale";
-}
-
-export interface HostRetireProbe extends HostUpdateProbe {
-  readonly serving: ServingHost | null;
-  readonly job: number | null;
-}
-
-export function retiresHost(probe: HostRetireProbe): boolean {
-  const serving = probe.serving;
-
-  if (probe.link.kind !== "connected" || serving === null) return false;
-
-  return (
-    supersedes(probe.appVersion, probe.link.version) &&
-    (serving.own || (probe.job !== null && probe.job !== serving.pid))
-  );
+      return _exhaustive;
+    }
+  }
 }

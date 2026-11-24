@@ -1,0 +1,160 @@
+{
+  "language": "ruby",
+  "servers": [
+    "ruby-lsp"
+  ],
+  "vscode": {
+    "extension": "Shopify.ruby-lsp",
+    "source": "https://github.com/Shopify/ruby-lsp/blob/main/vscode/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "main.rb",
+          "after": "stats = hub.",
+          "says": "stats"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "main.rb",
+          "after": "hub =   NotifyHub::H",
+          "says": "Hub"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "main.rb",
+          "after": "hub =   NotifyHub::H",
+          "says": "lib/notify_hub/hub.rb"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "main.rb",
+          "after": "hub =   NotifyHub::H"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "lib/notify_hub/stats.rb",
+          "after": "class Cou",
+          "says": "lib/notify_hub/stats.rb"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "lib/notify_hub/stats.rb",
+          "says": "Counts"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "lib/notify_hub/hub.rb",
+          "after": "@chan",
+          "says": "Create Attribute Reader"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "main.rb",
+          "says": "hub = NotifyHub::Hub.new"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": true,
+      "note": "ruby-lsp sets formatter to auto and detects none when no rubocop or syntax_tree gem is in the project, matching VS Code on a bare Ruby project."
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "main.rb",
+          "after": "hub =   NotifyHub::H",
+          "says": "hub = NotifyHub::Hub.new"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": false,
+      "vscode": true,
+      "note": "ruby-lsp advertises documentRangeFormattingProvider unconditionally, but returns nothing when formatter auto-detects to none (no rubocop or syntax_tree gem in the project), matching VS Code."
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "lib/notify_hub/stats.rb",
+          "after": "class Cou",
+          "says": "lib/notify_hub/stats.rb"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "lib/notify_hub/hub.rb",
+          "says": "assigned but unused variable"
+        }
+      ],
+      "servers": [
+        "ruby-lsp"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import type { Health } from "@nyte-ai/sdk/client";
+import type { LinkState } from "@nyte-ai/sdk/client";
 import {
   ANSWER_COMPOSER_PLACEHOLDER,
   BUSY_COMPOSER_PLACEHOLDER,
@@ -35,7 +35,7 @@ import type { TranscriptModel } from "./transcript.ts";
 export interface ScreenModel {
   readonly opening: boolean;
   readonly waiting: readonly string[];
-  readonly health: HealthNotice | null;
+  readonly host: HostNotice | null;
   readonly updated: number | null;
   readonly run: RunModel;
   readonly question: QuestionModel | null;
@@ -70,11 +70,16 @@ export interface PreviewModel {
   readonly part: DraftPart;
 }
 
-export type HealthNotice =
+export type HostNotice =
   | { readonly kind: "reconnecting"; readonly at: number }
-  | { readonly kind: "unreachable" }
+  | { readonly kind: "updating" }
+  | { readonly kind: "restarting" }
+  | { readonly kind: "stopped" }
+  | { readonly kind: "other-host" }
   | { readonly kind: "signed-out" }
-  | { readonly kind: "outdated" };
+  | { readonly kind: "update-host" }
+  | { readonly kind: "update-nyte" }
+  | { readonly kind: "restart-host" };
 
 interface TasksLine {
   readonly text: string;
@@ -100,8 +105,9 @@ function placeholderFor(
 
   if (screen.blocked !== null) return blockedReason(screen.blocked);
 
-  if (screen.run.kind !== "idle")
+  if (screen.run.kind !== "idle") {
     return screen.followUp === "steer" ? BUSY_COMPOSER_PLACEHOLDER : "Queue a follow-up";
+  }
 
   return COMPOSER_PLACEHOLDER;
 }
@@ -138,8 +144,9 @@ function livePreview(state: State, markers: readonly MarkerSpan[]): PreviewModel
   const marker = state.local.preview;
   const part = marker === null ? undefined : state.local.draft.parts.get(marker);
 
-  if (marker === null || part === undefined || !markers.some((span) => span.marker === marker))
+  if (marker === null || part === undefined || !markers.some((span) => span.marker === marker)) {
     return null;
+  }
 
   return { marker, part };
 }
@@ -172,7 +179,7 @@ export function deriveScreen(state: State, held: Pick<ScreenModel, "hints"> | nu
   return {
     opening: view === null && (blank === null || (starting && waiting.length === 0)),
     waiting,
-    health: healthNotice(state.facts.health),
+    host: hostNotice(state.facts.link),
     updated:
       session?.view !== null && session?.freshness?.kind === "stale"
         ? session.freshness.since
@@ -220,44 +227,54 @@ export function deriveScreen(state: State, held: Pick<ScreenModel, "hints"> | nu
   };
 }
 
-function healthNotice(health: Health): HealthNotice | null {
-  switch (health.kind) {
+function hostNotice(link: LinkState): HostNotice | null {
+  switch (link.kind) {
     case "connecting":
-    case "open":
+    case "closed":
       return null;
-    case "retrying":
-      return { kind: "reconnecting", at: health.at };
-    case "blocked":
-      switch (health.reason) {
-        case "offline":
-          return { kind: "unreachable" };
-        case "auth":
-          return { kind: "signed-out" };
-        case "version":
-          return { kind: "outdated" };
-        default: {
-          const _exhaustive: never = health.reason;
+    case "open":
+      if (link.match.kind !== "host-older" || link.match.replace === "when-idle") return null;
 
-          return _exhaustive;
-        }
-      }
-
+      return { kind: link.match.replace === "manual" ? "restart-host" : "update-host" };
+    case "away":
+      return AWAY[link.reason] ?? { kind: "reconnecting", at: link.retryAt };
+    case "refused":
+      return REFUSED[link.reason];
     default: {
-      const _exhaustive: never = health;
+      const _exhaustive: never = link;
 
       return _exhaustive;
     }
   }
 }
 
+const AWAY = {
+  replacing: { kind: "updating" },
+  restarting: { kind: "restarting" },
+  stopping: { kind: "stopped" },
+  lost: null,
+} as const satisfies Record<
+  Extract<LinkState, { readonly kind: "away" }>["reason"],
+  HostNotice | null
+>;
+
+const REFUSED = {
+  "other-host": { kind: "other-host" },
+  auth: { kind: "signed-out" },
+  "update-host": { kind: "update-host" },
+  "update-client": { kind: "update-nyte" },
+} as const satisfies Record<Extract<LinkState, { readonly kind: "refused" }>["reason"], HostNotice>;
+
 function blockedStatus(state: State, question: QuestionModel | null): ProgramState | null {
   const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
 
-  if (auth?.step.kind === "link")
+  if (auth?.step.kind === "link") {
     return { state: "blocked", kind: "auth", msg: `Sign in to ${auth.name}` };
+  }
 
-  if (auth?.step.kind === "secret" || auth?.step.kind === "choose")
+  if (auth?.step.kind === "secret" || auth?.step.kind === "choose") {
     return { state: "blocked", kind: "auth", msg: auth.step.prompt };
+  }
   const session = followedSession(state);
 
   const approval = currentApproval(
@@ -265,15 +282,17 @@ function blockedStatus(state: State, question: QuestionModel | null): ProgramSta
     state.facts.tasks,
   );
 
-  if (approval !== null)
+  if (approval !== null) {
     return {
       state: "blocked",
       kind: "permission",
       msg: `${approvalHeading(approval)} ${approvalPrompt(approval).detail}`,
     };
+  }
 
-  if (question !== null && !question.late)
+  if (question !== null && !question.late) {
     return { state: "blocked", kind: "question", msg: questionTitle(question) };
+  }
   const alert = session === null ? null : headAttention(session.info).alert;
 
   return alert?.state === "waiting"

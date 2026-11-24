@@ -13,7 +13,7 @@ import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import type { TabPanes } from "../tabs/window-store.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
+import { WindowTabStrip } from "../shell/window-tab-strip.tsx";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
@@ -28,8 +28,7 @@ const folder: WorkspaceInfo = {
   target: { kind: "local", path: PATH },
   identity: asId("folder"),
   availability: { kind: "available" },
-  projectResources: true,
-  trusted: true,
+  trust: { state: "trusted", by: { kind: "folder", path: null } },
   projectSources: [],
   addedBy: asId("local"),
   writers: [],
@@ -56,7 +55,7 @@ installScripted(
     sessions: [chat],
     workspaces: [folder],
     git: {
-      watch: async function* () {
+      async *watch() {
         yield status;
         await new Promise<never>(() => undefined);
       },
@@ -79,13 +78,7 @@ function Stage({ panes }: { readonly panes: TabPanes }): ReactElement {
         <SessionDndProvider>
           <ChatCardGroup placement="row">
             <div style={{ width: 240 }}>
-              <SessionRow
-                session={chat}
-                selected={false}
-                draggable
-                unreachable={false}
-                showUpdated={false}
-              />
+              <SessionRow session={chat} selected={false} unreachable={false} showUpdated={false} />
             </div>
           </ChatCardGroup>
         </SessionDndProvider>
@@ -129,7 +122,7 @@ function Stage({ panes }: { readonly panes: TabPanes }): ReactElement {
 }
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   for (;;) {
     const value = read();

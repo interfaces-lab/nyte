@@ -132,8 +132,9 @@ function safeUrl(
     url.password !== "" ||
     url.port !== "" ||
     (hostnames !== undefined && !hostnames.includes(url.hostname))
-  )
+  ) {
     return undefined;
+  }
 
   return url.href;
 }
@@ -223,7 +224,7 @@ const USER_CODE = /one-time code\W*([A-Z0-9]{4}-[A-Z0-9]{4})\b/iu;
 
 const PRINTED_URL = /https:\/\/\S+/u;
 
-const SIGN_IN_LINE_LIMIT = 4_096;
+const SIGN_IN_LINE_LIMIT = 4096;
 
 type SignInStart =
   | { readonly kind: "code"; readonly deviceCode: GitHubDeviceCode }
@@ -359,13 +360,14 @@ async function readAuth(gh: Gh, cwd: string): Promise<Auth> {
 
   if (result.kind === "failed") return { kind: "error", message: RECOVERY.account };
 
-  if (result.code !== 0)
+  if (result.code !== 0) {
     return {
       kind: "error",
       message: /unknown flag: --(?:json|jq)\b/u.test(result.stderr)
         ? RECOVERY.update
         : RECOVERY.account,
     };
+  }
 
   const entries = parseJson(authSchema, result.stdout);
 
@@ -374,11 +376,12 @@ async function readAuth(gh: Gh, cwd: string): Promise<Auth> {
 
   if (active === undefined) return { kind: "signed_out" };
 
-  if (active.state !== "success")
+  if (active.state !== "success") {
     return {
       kind: "error",
       message: active.state === "error" ? RECOVERY.signIn : RECOVERY.account,
     };
+  }
 
   return { kind: "ready", login: active.login };
 }
@@ -472,8 +475,9 @@ export function localGitHubAccount(options?: {
 
       const state = await readAccountState(gh, home);
 
-      if ((result.kind === "completed" && result.code === 0) || state.kind !== "ready")
+      if ((result.kind === "completed" && result.code === 0) || state.kind !== "ready") {
         return state;
+      }
 
       return { kind: "error", message: RECOVERY.signOut };
     },
@@ -509,7 +513,7 @@ export function localGitHub(options?: {
     }
 
     const rank = (name: string): number => {
-      const position = REMOTE_PRIORITY.findIndex((candidate) => candidate === name);
+      const position = REMOTE_PRIORITY.indexOf(name);
 
       return position < 0 ? REMOTE_PRIORITY.length : position;
     };
@@ -558,8 +562,9 @@ export function localGitHub(options?: {
         : { kind: "ready", pullRequest };
     }
 
-    if (result.kind === "completed" && /no (?:open )?pull requests? found/iu.test(result.stderr))
+    if (result.kind === "completed" && /no (?:open )?pull requests? found/iu.test(result.stderr)) {
       return { kind: "none" };
+    }
 
     return { kind: "error", message: RECOVERY.pullRequest };
   };
@@ -575,11 +580,13 @@ export function localGitHub(options?: {
     const repository = found[0];
     const located = repository === undefined ? {} : { repository };
 
-    if (auth.kind !== "ready")
+    if (auth.kind !== "ready") {
       return { state: { ...located, pullRequest: { kind: "unavailable" } }, auth, head: undefined };
+    }
 
-    if (repository === undefined)
+    if (repository === undefined) {
       return { state: { pullRequest: NO_PULL_REQUEST }, auth, head: undefined };
+    }
     const head = await readHead(cwd, repository, found);
 
     return {
@@ -606,8 +613,9 @@ export function localGitHub(options?: {
 
     if (head === undefined) return { kind: "detached" };
 
-    if (pullRequest.kind === "ready" && pullRequest.pullRequest.state === "OPEN")
+    if (pullRequest.kind === "ready" && pullRequest.pullRequest.state === "OPEN") {
       return { kind: "exists", pullRequest: pullRequest.pullRequest };
+    }
 
     const title = input.title?.trim() ?? "";
     const body = input.body ?? "";

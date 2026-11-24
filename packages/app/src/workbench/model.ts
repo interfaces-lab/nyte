@@ -1,9 +1,8 @@
 import type { JobId, PartId, SessionId, TurnId, WorkspaceId } from "@nyte-ai/sdk";
 import type { IconName } from "@nyte-ai/ui/icon";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import type { DesktopApp } from "../contract/desktop-app.ts";
-import { windowApp } from "../contract/nyte.ts";
-import { DEFAULT_WIDTH, type WorkbenchWidth } from "./width.ts";
+import { DEFAULT_WIDTH } from "./width.ts";
+import type { WorkbenchWidth } from "./width.ts";
 
 export type WorkbenchTabId = string;
 
@@ -19,7 +18,7 @@ export type WorkbenchChangesScope =
   | { readonly kind: "turn"; readonly turnId: TurnId }
   | { readonly kind: "commit"; readonly oid: string };
 
-export type TerminalOwner =
+type TerminalOwner =
   | { readonly kind: "user" }
   | { readonly kind: "job"; readonly workspace: WorkspaceId; readonly job: JobId };
 
@@ -169,31 +168,6 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
   },
 };
 
-const LAUNCH_ORDER = Object.freeze([
-  "editor",
-  "changes",
-  "design",
-  "browser",
-  "terminal",
-] satisfies LaunchKind[]);
-
-const APP_LAUNCHERS = {
-  nyte: LAUNCH_ORDER,
-  code: ["editor", "changes", "browser", "terminal"],
-  studio: ["design"],
-} as const satisfies { readonly [App in DesktopApp]: readonly LaunchKind[] };
-
-export function workbenchLaunchers(
-  scope: WorkbenchScope,
-  capabilities: ClientCapabilities,
-): readonly LaunchKind[] {
-  const offered: readonly LaunchKind[] = APP_LAUNCHERS[windowApp()];
-
-  return LAUNCH_ORDER.filter(
-    (kind) => offered.includes(kind) && WORKBENCH_KINDS[kind].available(scope, capabilities),
-  );
-}
-
 export function workbenchTabAvailable(
   scope: WorkbenchScope,
   kind: WorkbenchTabKind,
@@ -289,7 +263,7 @@ export function workbenchNarrow(layout: WorkbenchLayout): boolean {
   return layout.kind === "maximized" && layout.narrow;
 }
 
-export interface EditorGroup {
+interface EditorGroup {
   readonly id: EditorGroupId;
   readonly active: WorkbenchTabId | null;
 }
@@ -302,6 +276,22 @@ export type WorkbenchBrowse =
 
 export const FOLLOW_BROWSE = Object.freeze({ kind: "follow" }) satisfies WorkbenchBrowse;
 
+/** The panel under the Editor where the workbench is the window's main area. Every other tab opens in it. */
+export interface WorkbenchDock {
+  readonly open: boolean;
+  /** The tab it shows. A closed or missing tab falls back to the last one. */
+  readonly active: WorkbenchTabId | null;
+  readonly height: number;
+  readonly maximized: boolean;
+}
+
+export const DEFAULT_DOCK = Object.freeze({
+  open: false,
+  active: null,
+  height: 280,
+  maximized: false,
+}) satisfies WorkbenchDock;
+
 export interface WorkbenchViewState {
   readonly tabs: readonly WorkbenchTab[];
   readonly active: WorkbenchTabId | null;
@@ -313,6 +303,7 @@ export interface WorkbenchViewState {
   readonly width: WorkbenchWidth;
   readonly sidebars: readonly string[];
   readonly browse: WorkbenchBrowse;
+  readonly dock: WorkbenchDock;
 }
 
 export interface WorkbenchSnapshot {
@@ -330,6 +321,7 @@ export const DEFAULT_VIEW = Object.freeze({
   groups: Object.freeze([Object.freeze({ id: FIRST_GROUP, active: null })]),
   group: FIRST_GROUP,
   browse: FOLLOW_BROWSE,
+  dock: DEFAULT_DOCK,
 }) satisfies WorkbenchViewState;
 
 export function activeEditorFile(view: WorkbenchViewState): KindTab<"file"> | undefined {

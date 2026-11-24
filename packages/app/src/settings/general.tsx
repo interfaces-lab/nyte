@@ -7,13 +7,17 @@ import { modifierKeyLabel } from "../chat/composer/composer-keys.ts";
 import { DESKTOP_SETTING_SCHEMAS } from "../contract/desktop-settings.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
-import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
-import { settingsStyles as styles } from "./settings.stylex.ts";
+import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "../settings-rows/rows.tsx";
+import { settingsStyles as styles } from "../settings-rows/settings.stylex.ts";
 import { nyte } from "../contract/nyte.ts";
 
 const keepAwake = pluginSetting("desktop.keepAwake", DESKTOP_SETTING_SCHEMAS.keepAwake);
 
 const pauseOnSleep = pluginSetting("desktop.pauseOnSleep", DESKTOP_SETTING_SCHEMAS.pauseOnSleep);
+
+const countInstalls = pluginSetting("metrics.countInstalls", Type.Boolean());
+
+const shareUsage = pluginSetting("metrics.shareUsage", Type.Boolean());
 
 const workspaceTrust = pluginSetting(
   "workspaceTrust",
@@ -119,6 +123,18 @@ export function GeneralSettings(): ReactElement {
           title="Pause agents while asleep"
           description="Stop model requests while the computer sleeps. Chats continue when it wakes"
           needs={["desktop"]}
+        />
+      </SettingsSection>
+      <SettingsSection title="Privacy">
+        <SwitchRow
+          setting={countInstalls}
+          title="Count installs"
+          description="When Nyte installs or updates, send its version, system and chip type. No ID is sent"
+        />
+        <SwitchRow
+          setting={shareUsage}
+          title="Share usage statistics"
+          description="Once a day, send request and token counts for each provider and model. No ID, prompts or files"
         />
       </SettingsSection>
     </>

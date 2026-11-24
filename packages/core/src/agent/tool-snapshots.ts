@@ -15,21 +15,23 @@ import type { SnapshotScope } from "../contract/workspace.ts";
 import { anotherChatLive, ownedChanges } from "../env/session-changes.ts";
 import { runRef } from "../store/refs.ts";
 import { attempt, load, put, STALE } from "../store/session.ts";
+import { fault } from "../util/dev-log.ts";
 import { commit } from "../watch/commit.ts";
 
+// oxlint-disable-next-line typescript/consistent-type-definitions -- stored as Json, which needs the implicit index signature only a type alias has
 export type ToolBaseline = {
   readonly snapshot: SnapshotId;
   readonly seq: Seq;
   readonly contended: boolean;
 };
 
-export type ToolChanges = {
+export interface ToolChanges {
   readonly files: readonly FileChange[] | null;
   readonly thread: readonly FileChange[] | null;
   readonly snapshot: SnapshotId | null;
   readonly path: string | null;
   readonly unattributed: boolean;
-};
+}
 
 export const NO_CHANGES: ToolChanges = {
   files: null,
@@ -40,6 +42,19 @@ export const NO_CHANGES: ToolChanges = {
 };
 
 export async function baseline(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+  toolClass: ToolClass,
+): Promise<ToolBaseline | null> {
+  return captureBaseline(kernel, session, run, toolClass).catch((cause: unknown) => {
+    fault("snapshots", "baseline failed", { session, run, error: errorText(cause) });
+
+    return null;
+  });
+}
+
+async function captureBaseline(
   kernel: Kernel,
   session: SessionId,
   run: RunId,
@@ -88,11 +103,26 @@ export async function toolChanges(
   before: ToolBaseline,
   toolClass: ToolClass,
 ): Promise<ToolChanges> {
+  return measureChanges(kernel, session, before, toolClass).catch((cause: unknown) => {
+    fault("snapshots", "tool changes failed", { session, error: errorText(cause) });
+
+    return NO_CHANGES;
+  });
+}
+
+async function measureChanges(
+  kernel: Kernel,
+  session: SessionId,
+  before: ToolBaseline,
+  toolClass: ToolClass,
+): Promise<ToolChanges> {
   const snapshots = await kernel.environments.snapshots(session);
 
   if (snapshots === null) return NO_CHANGES;
   const path = await editedPath(kernel, session, toolClass);
   const to = await snapshots.capture(captureScope(toolClass, path));
+
+  if (!snapshots.comparable(before.snapshot, to)) return { ...NO_CHANGES, snapshot: to };
   const changed = fileChanges(await snapshots.diff(before.snapshot, to));
 
   const unattributed =
@@ -107,15 +137,17 @@ export async function toolChanges(
   const thread =
     files.length === 0 && !unattributed
       ? null
-      : fileChanges(
-          await ownedChanges(
-            kernel.store,
-            snapshots,
-            session,
-            to,
-            files.map((file) => file.path),
-          ),
-        );
+      : await ownedChanges(
+          kernel.store,
+          snapshots,
+          session,
+          to,
+          files.map((file) => file.path),
+        ).then(fileChanges, (cause: unknown) => {
+          fault("snapshots", "thread changes failed", { session, error: errorText(cause) });
+
+          return null;
+        });
 
   return { files, thread, snapshot: to, path, unattributed };
 }
@@ -171,4 +203,8 @@ function fileChanges(set: ChangeSet): readonly FileChange[] {
 
     return file.from === undefined ? change : { ...change, from: file.from };
   });
+}
+
+function errorText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

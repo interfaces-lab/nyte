@@ -17,7 +17,7 @@ import { OwnerRow, one } from "./store/rows.ts";
 
 const CLERK_API = "https://api.clerk.com/v1";
 
-const CLERK_TIMEOUT_MS = 3_000;
+const CLERK_TIMEOUT_MS = 3000;
 
 const CLERK_REPLY_LIMIT = 65_536;
 
@@ -107,8 +107,9 @@ export async function verifySession(
     throw new Refusal("unauthorized");
   }
 
-  if (typeof claims !== "object" || claims === null || "act" in claims)
+  if (typeof claims !== "object" || claims === null || "act" in claims) {
     throw new Refusal("unauthorized");
+  }
 
   if (!Value.Check(SessionClaims, claims)) throw new Refusal("unauthorized");
   const audiences = typeof claims.aud === "string" ? [claims.aud] : claims.aud;
@@ -118,8 +119,9 @@ export async function verifySession(
     !audiences.includes(origin) ||
     (claims.azp !== undefined && !clerk.authorizedParties.includes(claims.azp)) ||
     (claims.sts !== undefined && claims.sts !== "active")
-  )
+  ) {
     throw new Refusal("unauthorized");
+  }
 
   const [owner, denied, count] = await context.db.batch([
     ownerStatement(context.db, claims.sub),
@@ -191,8 +193,9 @@ async function lookupOwner(context: Context, userId: string): Promise<OwnerLooku
     ? await clerkCall(context, { method: "GET", path: `/users/${userId}` })
     : undefined;
 
-  if (answer?.status === 200 && Value.Check(ClerkUser, answer.body) && answer.body.id === userId)
+  if (answer?.status === 200 && Value.Check(ClerkUser, answer.body) && answer.body.id === userId) {
     return { kind: "found", label: userLabel(answer.body), status: clerkStanding(answer.body) };
+  }
 
   if (answer?.status === 404) return { kind: "absent" };
   context.log.warn("owner.lookup_failed", { status: answer?.status ?? 0 });

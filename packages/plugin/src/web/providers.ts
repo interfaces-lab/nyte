@@ -59,9 +59,9 @@ const parallelResponse = Type.Object({
  * @category plugins
  * @since 0.1.0
  */
-export const adapters: {
-  readonly [P in ShippedProvider]: (input: SearchInput) => Promise<readonly SearchResult[]>;
-} = {
+export const adapters: Readonly<
+  Record<ShippedProvider, (input: SearchInput) => Promise<readonly SearchResult[]>>
+> = {
   async tavily({ query, key, fetch, signal }) {
     const response = await fetch("https://api.tavily.com/search", {
       method: "POST",
@@ -221,8 +221,9 @@ async function callTool(
   for (const frame of frames) {
     const message = parse(frame);
 
-    if (typeof message === "object" && message !== null && "result" in message)
+    if (typeof message === "object" && message !== null && "result" in message) {
       return message.result;
+    }
   }
 
   return undefined;
@@ -232,18 +233,21 @@ async function answered(response: Response, provider: ShippedProvider): Promise<
   const body = new TextDecoder().decode(await readCapped(response, MAX_RESPONSE_BYTES));
   const name = PROVIDERS.find((known) => known.id === provider)?.name ?? provider;
 
-  if (response.status === 401)
+  if (response.status === 401) {
     throw new Error(
       `${name} refused the search (HTTP 401). Set a key in Settings > Web search, or with /websearch-key ${provider} <key>.`,
     );
+  }
 
-  if (response.status === 429)
+  if (response.status === 429) {
     throw new Error(
       `${name} is rate limiting searches (HTTP 429). Try again later, or set a key in Settings > Web search, or with /websearch-key ${provider} <key>.`,
     );
+  }
 
-  if (!response.ok)
+  if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${body.trim().slice(0, 200) || response.statusText}`);
+  }
 
   return body;
 }

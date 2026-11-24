@@ -130,7 +130,7 @@ function messageRow(message: Message): ChatRow | undefined {
 }
 
 function activityPart(message: Message): ActivityPart | undefined {
-  if (isPart(message, tool))
+  if (isPart(message, tool)) {
     return {
       kind: "tool",
       id: message.id,
@@ -139,14 +139,16 @@ function activityPart(message: Message): ActivityPart | undefined {
       elided: message.elided,
       status: message.status,
     };
+  }
 
-  if (isPart(message, thinking))
+  if (isPart(message, thinking)) {
     return {
       kind: "thinking",
       id: message.id,
       text: message.state.markdown,
       streaming: message.status.kind === "live",
     };
+  }
 
   return undefined;
 }
@@ -155,12 +157,13 @@ export function runStatusLabel(
   execution: Extract<ChatRow, { kind: "status" }>["execution"],
   mark: TaskState,
 ): string {
-  if (execution.kind === "live")
+  if (execution.kind === "live") {
     return execution.stopping
       ? "Stopping…"
       : execution.phase === "responding"
         ? "Replying…"
         : "Using tools…";
+  }
 
   if (execution.kind === "retrying") return `${execution.reason}. Retrying…`;
 
@@ -178,12 +181,13 @@ export function conversationRows(view: HeadView): ChatRow[] {
   const closeTurn = () => {
     const state = turn === undefined ? undefined : ends.get(turn);
 
-    if (state?.kind === "ended" && state.end.kind !== "completed")
+    if (state?.kind === "ended" && state.end.kind !== "completed") {
       rows.push({
         kind: "failure",
         id: `failure:${String(turn)}`,
         failure: state.end.kind === "failed" ? state.end.failure : STOPPED,
       });
+    }
   };
 
   const lead = view.leadingPrompt;
@@ -223,12 +227,13 @@ export function conversationRows(view: HeadView): ChatRow[] {
   closeTurn();
   rows.push(...view.queue.flatMap((message) => messageRow(message) ?? []));
 
-  if (view.execution.kind !== "idle")
+  if (view.execution.kind !== "idle") {
     rows.push({
       kind: "status",
       id: `status:${view.execution.run.id}`,
       execution: view.execution,
     });
+  }
 
   return rows;
 }

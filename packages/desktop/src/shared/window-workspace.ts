@@ -9,41 +9,30 @@ export function restorableFolder(workspace: WorkspaceInfo | null): SelectedWorks
     workspace.availability.kind === "unavailable" ||
     workspace.target.kind !== "local" ||
     !("path" in workspace.target) ||
-    (workspace.trusted === null && workspace.projectSources.length > 0)
-  )
+    (workspace.trust.state === "undecided" && workspace.trust.notice === "ask")
+  ) {
     return undefined;
+  }
   const path = workspace.target.path;
 
   return { id: workspace.id, path, name: basename(path) };
 }
 
-interface WindowWorkspace {
-  readonly seed: string | undefined;
-  readonly shown: string | undefined;
-}
-
 export function createWindowWorkspaces() {
-  const windows = new Map<HostWindow, WindowWorkspace>();
+  const windows = new Map<HostWindow, string | undefined>();
 
   return {
-    opened(window: HostWindow, seed: string | undefined): void {
-      windows.set(window, { seed, shown: seed });
+    opened(window: HostWindow, path: string | undefined): void {
+      windows.set(window, path);
     },
     shown(window: HostWindow, path: string | undefined): void {
-      const entry = windows.get(window);
-
-      if (entry !== undefined) windows.set(window, { seed: entry.seed, shown: path });
+      if (windows.has(window)) windows.set(window, path);
     },
     windowEnded(window: HostWindow, end: WindowEnd): void {
-      const entry = windows.get(window);
-
-      if (entry === undefined) return;
-
       if (end === "closed") windows.delete(window);
-      else windows.set(window, { seed: entry.seed, shown: entry.seed });
     },
     workspace(window: HostWindow): string | undefined {
-      return windows.get(window)?.shown;
+      return windows.get(window);
     },
   };
 }

@@ -118,12 +118,13 @@ export function recoveryCopy(
   failure: Exclude<ConnectFailure, { kind: "cancelled" }>,
   saved: SavedConnection,
 ): ConnectCopy {
-  if (failure.kind === "refused" && saved.kind === "managed")
+  if (failure.kind === "refused" && saved.kind === "managed") {
     return {
       title: "Not accepted",
       body: `${saved.connection.name} no longer accepts this iPhone. Pick it from your Nyte account again.`,
       retry: "Try again",
     };
+  }
 
   return connectCopy(failure);
 }

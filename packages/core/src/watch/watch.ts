@@ -40,14 +40,14 @@ import type { FoldCheckpointing } from "../fold/checkpoint.ts";
 import { emptyFold, fold } from "../fold/fold.ts";
 import { withPair } from "./project.ts";
 
-type Entry = {
+interface Entry {
   state: FoldState;
   holders: number;
   linger: ReturnType<typeof setTimeout> | undefined;
   feed: FoldFeed;
   readonly checkpoints: FoldCheckpointing;
   readonly listeners: Set<(state: FoldState) => void>;
-};
+}
 
 interface FoldFeed {
   readonly ready: Promise<void>;
@@ -63,12 +63,12 @@ type Feeds = Pick<
 
 type LiveStreams = ReadonlyMap<SessionId, ReadonlyMap<PartId, LiveStream>>;
 
-type Sequence = {
+interface Sequence {
   published: number | null;
   logged: number;
   readonly queue: Serial;
   linger: ReturnType<typeof setTimeout> | undefined;
-};
+}
 
 const LOG_PAGE = 512;
 
@@ -105,12 +105,13 @@ export function createFoldCache(kernel: Feeds): FoldCache {
 
           if (restored === null) return 0;
 
-          for (const name of restored.heads.keys())
+          for (const name of restored.heads.keys()) {
             restored = withPair(
               restored,
               name,
               readHeadPair(await kernel.store.refs.get(headRef(session, name))),
             );
+          }
 
           entry.state = restored;
 
@@ -246,12 +247,13 @@ export async function publishSet(
     events.push({ at: outcome.at, ...event, seq });
   }
 
-  for (const [session, events] of logged)
+  for (const [session, events] of logged) {
     kernel.publisher.logged(
       session,
       Math.min(...events.map((event) => event.seq)),
       Math.max(...events.map((event) => event.seq)),
     );
+  }
 
   for (const [session, events] of logged) {
     const created = tracing.enabled
@@ -326,8 +328,9 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
       const events = await kernel.store.refs.log(session, asSeq(from), LOG_PAGE);
       const missing = events.filter((event) => event.seq < before);
 
-      for (const item of await paired(kernel, session, missing, NO_PAIRS))
+      for (const item of await paired(kernel, session, missing, NO_PAIRS)) {
         emit(session, state, item);
+      }
 
       if (missing.length < LOG_PAGE) return;
       from = state.published;
@@ -345,10 +348,11 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
 
       const published = state.queue.run(async () => {
         for (const item of items) {
-          if (state.published !== null && item.event.seq > state.published + 1)
-            await fill(session, state, item.event.seq).catch((error) =>
+          if (state.published !== null && item.event.seq > state.published + 1) {
+            await fill(session, state, item.event.seq).catch((error: unknown) =>
               dev("bus", "gap read failed", { session, error: String(error) }),
             );
+          }
 
           emit(session, state, item);
         }
@@ -368,8 +372,9 @@ function trackStreams(bus: SessionBus): LiveStreams {
 
   bus.subscribeAll((session, event) => {
     if (event.kind === "part" && event.change === "created") {
-      if (event.partKind !== "text" && event.partKind !== "thinking" && event.partKind !== "tool")
+      if (event.partKind !== "text" && event.partKind !== "thinking" && event.partKind !== "tool") {
         return;
+      }
       const created = streams.get(session) ?? new Map<PartId, LiveStream>();
       streams.set(session, created);
       created.set(event.part, {
@@ -391,11 +396,12 @@ function trackStreams(bus: SessionBus): LiveStreams {
       if (current === undefined) return;
 
       if ("progress" in event) parts.set(event.part, { ...current, progress: event.progress });
-      else if (current.markdown !== null)
+      else if (current.markdown !== null) {
         parts.set(event.part, {
           ...current,
           markdown: "append" in event ? current.markdown + event.append : event.markdown,
         });
+      }
 
       return;
     }
@@ -403,25 +409,26 @@ function trackStreams(bus: SessionBus): LiveStreams {
     const current =
       event.kind === "part" || event.kind === "call" ? parts.get(event.part) : undefined;
 
-    if (event.kind === "part" && event.change === "updated" && current !== undefined)
+    if (event.kind === "part" && event.change === "updated" && current !== undefined) {
       parts.set(event.part, {
         ...current,
         markdown: readStateMarkdown(event.state),
         progress: null,
       });
-    else if (event.kind === "call" && event.change === "intent" && current !== undefined)
+    } else if (event.kind === "call" && event.change === "intent" && current !== undefined) {
       parts.set(event.part, { ...current, markdown: null, progress: null });
-    else if (
+    } else if (
       (event.kind === "part" &&
         event.change !== "updated" &&
         event.change !== "waiting" &&
         event.change !== "answered") ||
       (event.kind === "call" && event.change === "settled")
-    )
+    ) {
       parts.delete(event.part);
-    else if (event.kind === "commit" && event.body.kind === "part") parts.delete(event.body.part);
-    else if (event.kind === "run" && event.change === "ended")
+    } else if (event.kind === "commit" && event.body.kind === "part") parts.delete(event.body.part);
+    else if (event.kind === "run" && event.change === "ended") {
       for (const [part, live] of parts) if (live.run === event.run) parts.delete(part);
+    }
 
     if (parts.size === 0) streams.delete(session);
   });
@@ -476,8 +483,9 @@ function openFoldFeed(
     const waiting = held ?? [];
     held = null;
 
-    for (const item of waiting)
+    for (const item of waiting) {
       if (!failed || item.event.kind === "patch" || item.event.seq <= through + 1) accept(item);
+    }
   };
 
   const read = (waiting: FeedItem[]): Promise<void> => {
@@ -485,7 +493,7 @@ function openFoldFeed(
 
     reading = readPast().then(
       () => release(false),
-      (error) => {
+      (error: unknown) => {
         mark = undefined;
         release(true);
 
@@ -514,7 +522,7 @@ function openFoldFeed(
     }
 
     dev("fold", "gap", { session, through, seq: event.seq });
-    read([item]).catch((error) =>
+    read([item]).catch((error: unknown) =>
       dev("fold", "gap read failed", { session, error: String(error) }),
     );
   };
@@ -555,14 +563,16 @@ function openFoldFeed(
       if (!open) return;
 
       for (const [part, live] of streams.get(session) ?? []) {
-        if (live.markdown !== null)
+        if (live.markdown !== null) {
           push({ event: { kind: "patch", part, markdown: live.markdown }, head: null });
+        }
 
-        if (live.progress !== null)
+        if (live.progress !== null) {
           push({ event: { kind: "patch", part, progress: live.progress }, head: null });
+        }
       }
     },
-    (error) => {
+    (error: unknown) => {
       release(true);
 
       throw error;
@@ -580,8 +590,9 @@ function openFoldFeed(
         mark !== undefined &&
         through >= kernel.publisher.loggedThrough(session) &&
         mark === (await kernel.store.commitMark?.())
-      )
+      ) {
         return;
+      }
 
       return held === null ? read([]) : reading;
     },
@@ -697,10 +708,11 @@ export function pollStore(kernel: Kernel): Disposer {
 
     if (stopped) return;
 
-    if (mark === undefined || mark !== seen)
-      await readExternal(mark).catch((error) =>
+    if (mark === undefined || mark !== seen) {
+      await readExternal(mark).catch((error: unknown) =>
         dev("poll", "external read failed", { error: String(error) }),
       );
+    }
   };
 
   const timer = setInterval(() => {

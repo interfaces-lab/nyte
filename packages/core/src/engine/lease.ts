@@ -45,7 +45,7 @@ export function holdLease(
           if (!held) return lose("refused");
           renewed = Date.now();
         },
-        (error) => {
+        (error: unknown) => {
           fault("lease", "renewal failed", {
             what,
             error: error instanceof Error ? error.message : String(error),

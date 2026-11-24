@@ -10,7 +10,7 @@ import { hostFailure, readHostUrl } from "./host-socket.ts";
 
 const HELP = { next: [{ label: "See the options", argv: ["nyte", "events", "--help"] }] };
 
-const FIRST_RETRY_MS = 1_000;
+const FIRST_RETRY_MS = 1000;
 
 const RETRY_CAP_MS = 30_000;
 
@@ -18,7 +18,7 @@ const GIVE_UP_MS = 5 * 60_000;
 
 const UNITS = new Map([
   ["ms", 1],
-  ["s", 1_000],
+  ["s", 1000],
   ["m", 60_000],
   ["h", 3_600_000],
 ]);
@@ -43,8 +43,9 @@ export async function eventsCommand(input: {
   let hostSeq: number | null = null;
 
   const print = (event: SocketEvent): void => {
-    if (event.scope === "host" && event.kind === "change" && event.seq !== null)
+    if (event.scope === "host" && event.kind === "change" && event.seq !== null) {
       hostSeq = event.seq;
+    }
     input.output.result(
       `${JSON.stringify(Object.fromEntries(Object.entries(event).filter((entry) => entry[0] !== "c" && entry[0] !== "type")))}\n`,
     );
@@ -105,8 +106,9 @@ async function reconnect(
       if (
         !(error instanceof CliError) ||
         (error.reason !== "host_not_running" && error.reason !== "network_error")
-      )
+      ) {
         throw error;
+      }
       last = error;
 
       return undefined;
@@ -116,11 +118,12 @@ async function reconnect(
 
     if (socket !== undefined) return socket;
 
-    if (quit.aborted)
+    if (quit.aborted) {
       void attempt.then(
         (late) => late?.close(),
         () => undefined,
       );
+    }
   }
 
   if (stop.aborted) return undefined;
@@ -209,7 +212,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 function spoken(ms: number): string {
-  const seconds = Math.max(1, Math.round(ms / 1_000));
+  const seconds = Math.max(1, Math.round(ms / 1000));
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
 
@@ -230,16 +233,17 @@ function parseEventsArgs(args: readonly string[], mode: Mode) {
     return result instanceof Promise || result.issues !== undefined;
   });
 
-  if (bad !== undefined)
+  if (bad !== undefined) {
     throw new CliError(
       "invalid_arguments",
       `Can't follow scope ${bad}. Use host, session/<ID> or client/<ID>.`,
       HELP,
     );
+  }
 
   const timeout = readTimeout(parsed.value("timeout"));
 
-  if (timeout === undefined && mode.ci)
+  if (timeout === undefined && mode.ci) {
     throw new CliError("missing_input", "Can't follow events in CI without --timeout.", {
       next: [
         {
@@ -248,6 +252,7 @@ function parseEventsArgs(args: readonly string[], mode: Mode) {
         },
       ],
     });
+  }
 
   return {
     scopes,
@@ -266,12 +271,13 @@ function readTimeout(text: string | undefined): number | undefined {
     0,
   );
 
-  if (parts.map((part) => part[0]).join("") !== text || total === 0)
+  if (parts.map((part) => part[0]).join("") !== text || total === 0) {
     throw new CliError(
       "invalid_arguments",
       `Can't read --timeout ${text} as a duration. Use a number and a unit, such as 30s or 10m.`,
       HELP,
     );
+  }
 
   return total;
 }

@@ -131,8 +131,9 @@ const rendererUrl = registerRenderer({
 async function run(): Promise<void> {
   const compiled = await compileCanvas(await readFile(source, "utf8"));
 
-  if (compiled.kind === "failed")
+  if (compiled.kind === "failed") {
     throw new Error(compiled.errors.map((error) => error.text).join("\n"));
+  }
   module = JSON.stringify({ runtime: compiled.runtime, code: compiled.code, title: "Fixture" });
   await app.whenReady();
 
@@ -152,15 +153,17 @@ async function run(): Promise<void> {
     assert.ok(Value.Check(Seen, seen));
     const last = seen.heights.at(-1);
 
-    if (seen.errors.length > 0)
+    if (seen.errors.length > 0) {
       throw new Error(`The shell reported: ${seen.errors.join("; ")}\n${consoleLines.join("\n")}`);
+    }
 
     if (last !== undefined && last > 48) break;
 
-    if (Date.now() > deadline)
+    if (Date.now() > deadline) {
       throw new Error(
         `No height after 20s (initialized: ${String(seen.initialized)}, heights: ${seen.heights.join(",")})\n${consoleLines.join("\n")}`,
       );
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
@@ -172,8 +175,11 @@ run().then(
     writeFileSync(join(directory, "result.txt"), "passed");
     app.exit(0);
   },
-  (error: Error) => {
-    writeFileSync(join(directory, "result.txt"), error.stack ?? error.message);
+  (error: unknown) => {
+    writeFileSync(
+      join(directory, "result.txt"),
+      error instanceof Error ? (error.stack ?? error.message) : String(error),
+    );
     app.exit(0);
   },
 );

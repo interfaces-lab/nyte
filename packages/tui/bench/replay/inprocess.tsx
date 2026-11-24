@@ -118,10 +118,11 @@ async function paced(done: () => boolean, limitMs: number): Promise<void> {
   const deadline = performance.now() + limitMs;
 
   while (!done()) {
-    if (performance.now() > deadline)
+    if (performance.now() > deadline) {
       throw new Error(
         `Timed out in run ${tui.store.screen().run.kind}:\n${tui.captureCharFrame()}`,
       );
+    }
     const started = performance.now();
     tui.clock.advance(FRAME_MS);
     await frame();
@@ -226,11 +227,12 @@ const cpu = process.cpuUsage(cpuBefore);
 
 Bun.gc(true);
 
-if (heapDir !== undefined)
+if (heapDir !== undefined) {
   writeFileSync(
     join(heapDir, `${scenario}-${String(process.pid)}.heapsnapshot`),
     Bun.generateHeapSnapshot("v8"),
   );
+}
 
 const result: InprocessResult = {
   scenario,

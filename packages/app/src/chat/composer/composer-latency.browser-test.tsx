@@ -9,8 +9,9 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { ComposerFrame } from "./composer-frame.tsx";
-import type { ComposerDocumentState } from "./composer-document.ts";
-import { Prose } from "../markdown/prose.tsx";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
+import { Prose } from "../../markdown/prose.tsx";
+import { errorMessage } from "../../contract/errors.ts";
 
 const WORDS =
   "the quick brown fox jumps over the lazy dog while the model streams tokens into the transcript and the composer must keep every keystroke on its own frame".split(
@@ -162,10 +163,12 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
     () =>
       failure !== undefined ||
       document.querySelector("[aria-multiline][aria-label='Message']") !== null,
-    5_000,
+    5000,
   );
 
-  if (failure !== undefined) throw failure;
+  if (failure !== undefined) {
+    throw failure instanceof Error ? failure : new Error(errorMessage(failure), { cause: failure });
+  }
   const editor = editorElement();
   editor.focus();
 
@@ -196,7 +199,7 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
     await wait(KEY_INTERVAL_MS);
   }
 
-  await within(() => (samples.at(-1)?.length ?? 0) >= TYPED.length, 1_000);
+  await within(() => (samples.at(-1)?.length ?? 0) >= TYPED.length, 1000);
   sampling = false;
 
   let maxCharsPerFrame = 0;

@@ -1,5 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
-import type { WindowDrafts } from "../chat/composer/drafts.ts";
+import type { WindowDrafts } from "../drafts/drafts.ts";
 import type { PaneId } from "../panes/layout.ts";
 import type { LayoutStore } from "../panes/layout-store.ts";
 import type { PaneCommand, PaneFocus } from "../panes/pane-commands.ts";
@@ -22,45 +22,47 @@ export interface TabPanes {
 }
 
 export class WindowStore {
-  #state: WindowState;
-  readonly #drafts: () => WindowDrafts;
-  readonly #listeners = new Set<() => void>();
-  readonly #focusListeners = new Set<(tabId: string, pane: PaneId) => void>();
-  readonly #tabs = new Map<string, TabPanes>();
+  private state: WindowState;
+  private readonly drafts: () => WindowDrafts;
+  private readonly listeners = new Set<() => void>();
+  private readonly focusListeners = new Set<(tabId: string, pane: PaneId) => void>();
+  private readonly tabs = new Map<string, TabPanes>();
 
   constructor(state: WindowState, drafts: () => WindowDrafts) {
-    this.#state = state;
-    this.#drafts = drafts;
+    this.state = state;
+    this.drafts = drafts;
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
-    this.#listeners.add(listener);
+    this.listeners.add(listener);
 
-    return () => this.#listeners.delete(listener);
+    return () => this.listeners.delete(listener);
   };
 
-  readonly getSnapshot = (): WindowState => this.#state;
+  readonly getSnapshot = (): WindowState => this.state;
 
   restore(state: WindowState): void {
-    this.#state = state;
+    this.state = state;
   }
 
   dispatch(action: WindowAction): void {
-    const before = this.#state;
+    const before = this.state;
 
     const after = reduce(before, action, newId, (tabId, pane) =>
       this.viewState(tabId).readBlank(pane),
     );
 
-    this.#state = after;
+    this.state = after;
 
-    for (const tabId of this.#tabs.keys())
-      if (!after.tabs.some((tab) => tab.id === tabId)) this.#tabs.delete(tabId);
+    for (const tabId of this.tabs.keys()) {
+      if (!after.tabs.some((tab) => tab.id === tabId)) this.tabs.delete(tabId);
+    }
 
-    if (after !== before) for (const listener of this.#listeners) listener();
+    if (after !== before) for (const listener of this.listeners) listener();
 
-    for (const [tabId, pane] of focusRequests(before, after, action))
+    for (const [tabId, pane] of focusRequests(before, after, action)) {
       this.requestFocus(tabId, pane);
+    }
   }
 
   run(tabId: string, command: PaneCommand, focus?: PaneFocus): void {
@@ -72,13 +74,13 @@ export class WindowStore {
       if (requested === tabId) listener(pane);
     };
 
-    this.#focusListeners.add(scoped);
+    this.focusListeners.add(scoped);
 
-    return () => this.#focusListeners.delete(scoped);
+    return () => this.focusListeners.delete(scoped);
   }
 
   requestFocus(tabId: string, pane: PaneId): void {
-    for (const listener of this.#focusListeners) listener(tabId, pane);
+    for (const listener of this.focusListeners) listener(tabId, pane);
   }
 
   viewState(tabId: string): SessionViewStateStore {
@@ -86,35 +88,35 @@ export class WindowStore {
   }
 
   tab(tabId: string): TabPanes {
-    const known = this.#tabs.get(tabId);
+    const known = this.tabs.get(tabId);
 
     if (known !== undefined) return known;
 
     const panes: TabPanes = {
       window: this,
       tabId,
-      viewState: new SessionViewStateStore(this.#drafts(), tabId),
+      viewState: new SessionViewStateStore(this.drafts(), tabId),
       layout: {
         subscribe: this.subscribe,
-        getSnapshot: () => shownLayout(this.#state, tabId),
+        getSnapshot: () => shownLayout(this.state, tabId),
         dispatch: (...actions) => this.dispatch({ kind: "arrange", tabId, actions }),
         onFocusRequest: (listener) => this.onFocusRequest(tabId, listener),
         requestFocus: (pane) => this.requestFocus(tabId, pane),
       },
     };
 
-    this.#tabs.set(tabId, panes);
+    this.tabs.set(tabId, panes);
 
     return panes;
   }
 
   newChat(tabId: string, start: DraftStart = {}): void {
-    this.viewState(tabId).startNewDraft(shownLayout(this.#state, tabId).focus[0], start);
+    this.viewState(tabId).startNewDraft(shownLayout(this.state, tabId).focus[0], start);
     this.run(tabId, { kind: "show", selection: BLANK }, "always");
   }
 
   selectDraft(tabId: string, draftId: string): void {
-    const visible = this.#paneShowingDraft(tabId, draftId);
+    const visible = this.paneShowingDraft(tabId, draftId);
 
     if (visible !== undefined) {
       this.run(tabId, { kind: "focus", pane: visible.pane }, "always");
@@ -122,14 +124,14 @@ export class WindowStore {
       return;
     }
 
-    const focused = shownLayout(this.#state, tabId).focus[0];
+    const focused = shownLayout(this.state, tabId).focus[0];
 
     if (!this.viewState(tabId).activateDraft(focused, draftId)) return;
     this.run(tabId, { kind: "show", selection: BLANK }, "always");
   }
 
   removeDraft(tabId: string, draftId: string): void {
-    const visible = this.#paneShowingDraft(tabId, draftId);
+    const visible = this.paneShowingDraft(tabId, draftId);
 
     if (!this.viewState(tabId).removeDraft(draftId)) return;
 
@@ -142,18 +144,20 @@ export class WindowStore {
     sessionId: SessionId,
     composer?: ComposerViewState,
   ): void {
-    const visible = this.#paneShowingDraft(tabId, draftId);
+    const visible = this.paneShowingDraft(tabId, draftId);
     const viewState = this.viewState(tabId);
 
-    if (composer !== undefined)
+    if (composer !== undefined) {
       viewState.updateDraft(sessionId, (draft) => ({ ...draft, composer }));
+    }
 
-    if (visible !== undefined)
+    if (visible !== undefined) {
       this.run(tabId, {
         kind: "show-in",
         pane: visible.pane,
         selection: { kind: "session", sessionId },
       });
+    }
     viewState.removeDraft(draftId);
   }
 
@@ -163,10 +167,10 @@ export class WindowStore {
     return () => this.dispatch({ kind: "unhide-chat", sessionId });
   }
 
-  #paneShowingDraft(tabId: string, draftId: string): ChatPane | undefined {
+  private paneShowingDraft(tabId: string, draftId: string): ChatPane | undefined {
     const viewState = this.viewState(tabId);
 
-    return chatPanes(shownLayout(this.#state, tabId)).find(
+    return chatPanes(shownLayout(this.state, tabId)).find(
       (pane) => pane.selection.kind === "blank" && viewState.readBlank(pane.pane).id === draftId,
     );
   }

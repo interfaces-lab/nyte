@@ -14,24 +14,27 @@ import type { Message as ViewMessage, UserContent } from "@nyte-ai/sdk";
 import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../../canvas/client-plugins.tsx";
+import { disclosureStyles } from "../../canvas/disclosure.stylex.ts";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelMode, ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../../preferences/index.ts";
+import { useNowMinute } from "../../lib/use-now-minute.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { usePluginCatalog } from "../../data/plugins.ts";
-import { Prose } from "../markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { SubagentGroupView, SubagentReportLine } from "../tools/subagent-call.tsx";
 import { ResponseView } from "./reply-view.tsx";
 import { AnswerLine } from "./answer-line.tsx";
-import type { ComposerSubmission } from "../composer/composer-document.ts";
+import { ActionLine } from "./action-line.tsx";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { attachComposerFiles } from "../composer/composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
-import { useChatFolder } from "../chat-folder.ts";
+import { useChatFolder } from "../../chats/index.ts";
 import { composerMessageContent } from "../composer/composer-plan.ts";
 import { uploadComposerContent } from "../composer/composer-send.ts";
 import { composerSource } from "../composer/composer-suggestions.tsx";
@@ -313,8 +316,9 @@ export function UserMessageView({
               surface="follow-up"
               document={edit.document}
               onDocumentChange={(document) => {
-                if (document.text !== edit.document.text && rowRef.current !== null)
+                if (document.text !== edit.document.text && rowRef.current !== null) {
                   transcript.reveal(rowRef.current);
+                }
                 patchEdit({ kind: "document", document });
               }}
               onSubmit={save}
@@ -370,8 +374,9 @@ function DismissOnOutsideClick({
         pressStartedInPopup ||
         insidePopup(event.target) ||
         event.composedPath().includes(row)
-      )
+      ) {
         return;
+      }
       dismiss();
     };
 
@@ -403,12 +408,12 @@ function HistoryDisclosure({
   children: ReactNode;
 }): ReactElement {
   return (
-    <Collapsible.Root xstyle={turnStyles.history}>
-      <Collapsible.Trigger xstyle={turnStyles.disclosureToggle}>
+    <Collapsible.Root xstyle={disclosureStyles.root}>
+      <Collapsible.Trigger xstyle={disclosureStyles.toggle}>
         {label}
         <Collapsible.Chevron />
       </Collapsible.Trigger>
-      <Collapsible.Panel xstyle={turnStyles.historyBody}>{children}</Collapsible.Panel>
+      <Collapsible.Panel xstyle={disclosureStyles.body}>{children}</Collapsible.Panel>
     </Collapsible.Root>
   );
 }
@@ -417,12 +422,13 @@ function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
 
   if (isPart(message, compaction)) {
-    if (message.status.kind === "live")
+    if (message.status.kind === "live") {
       return (
         <StatusMarker role="status" variant="retrying">
           Summarizing chat context…
         </StatusMarker>
       );
+    }
 
     return message.state.summary === null ? null : (
       <HistoryDisclosure label="Chat context summarized">
@@ -453,8 +459,9 @@ function TurnPartView({
   cwd: string | undefined;
   density: ToolCallDensity;
 }): ReactElement | null {
-  if (showsThinking(message))
+  if (showsThinking(message)) {
     return <ThinkingLine message={message} text={message.state.markdown} />;
+  }
 
   if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
 
@@ -477,6 +484,12 @@ function userRow(
 
     case "answer": {
       const line = <AnswerLine message={view.message} held={view.held} />;
+
+      return view.wrapped ? <div {...props(liveTurnStyles.root)}>{line}</div> : line;
+    }
+
+    case "action": {
+      const line = <ActionLine label={view.label} held={view.held} />;
 
       return view.wrapped ? <div {...props(liveTurnStyles.root)}>{line}</div> : line;
     }
@@ -534,7 +547,7 @@ export function TurnItemView({
     case "step": {
       const step = stepRowView(row);
 
-      if (step.kind === "entry")
+      if (step.kind === "entry") {
         return (
           <StepEntryView
             entry={step.entry}
@@ -545,6 +558,7 @@ export function TurnItemView({
             live={false}
           />
         );
+      }
 
       return (
         <StepGroupFactsView
@@ -562,24 +576,8 @@ export function TurnItemView({
       return <SubagentGroupView messages={row.messages} cwd={cwd} />;
     case "response":
       return <ResponseView row={row} />;
-    case "failure": {
-      const failure = failureNotice(row.failure);
-
-      return (
-        <StatusMarker
-          role={failure.tone === "danger" ? "alert" : "status"}
-          variant={failure.tone === "danger" ? "destructive" : "default"}
-        >
-          {failure.text}
-          {failure.recovery !== undefined && (
-            <>
-              {" "}
-              <RecoveryAction recovery={failure.recovery} />
-            </>
-          )}
-        </StatusMarker>
-      );
-    }
+    case "failure":
+      return <TurnFailure row={row} />;
 
     default: {
       const _exhaustive: never = row;
@@ -587,4 +585,27 @@ export function TurnItemView({
       return _exhaustive;
     }
   }
+}
+
+function TurnFailure({
+  row,
+}: {
+  readonly row: Extract<TurnItemRow, { kind: "failure" }>;
+}): ReactElement {
+  const failure = failureNotice(row.failure, useNowMinute());
+
+  return (
+    <StatusMarker
+      role={failure.tone === "danger" ? "alert" : "status"}
+      variant={failure.tone === "danger" ? "destructive" : "default"}
+    >
+      {failure.text}
+      {failure.recovery !== undefined && (
+        <>
+          {" "}
+          <RecoveryAction recovery={failure.recovery} />
+        </>
+      )}
+    </StatusMarker>
+  );
 }

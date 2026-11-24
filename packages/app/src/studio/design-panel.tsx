@@ -107,8 +107,9 @@ function DesignBoard(input: {
             onValueChange={(value) => {
               const next = value[0];
 
-              if (next === "day" || next === "night")
+              if (next === "day" || next === "night") {
                 setChosen((next === "night") === dark ? null : next === "night");
+              }
             }}
           >
             <Toggle value="day" size="xs">

@@ -2,11 +2,11 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { SdkErrorCode } from "@nyte-ai/sdk";
 
-export type IpcFailure = {
+export interface IpcFailure {
   readonly code: SdkErrorCode;
   readonly message: string;
   readonly correlationId?: string;
-};
+}
 
 export type IpcResult<T> =
   | { readonly ok: true; readonly value: T }

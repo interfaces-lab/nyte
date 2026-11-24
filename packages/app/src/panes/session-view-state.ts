@@ -4,9 +4,8 @@ import type { ModelRef, SessionId, Thinking } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import type { PaneId } from "./layout.ts";
-import type { WindowDrafts } from "../chat/composer/drafts.ts";
-import { NO_SENDING, persistedDraft, restorable } from "../chat/composer/composer-draft.ts";
-import type { SessionDraft } from "../chat/composer/composer-draft.ts";
+import { NO_SENDING, persistedDraft, restorable } from "./composer-draft.ts";
+import type { SessionDraft } from "./composer-draft.ts";
 
 const KEPT_SESSION_VIEWS = 64;
 
@@ -43,6 +42,8 @@ export interface DraftChoice {
 export interface BlankViewState {
   readonly composer: ComposerViewState;
   readonly choice: DraftChoice | undefined;
+  /** The modes picked on this draft, on or off, by setting id. The new chat starts with them. */
+  readonly modes?: Readonly<Record<string, boolean>>;
   readonly project?: ProjectId;
   /** The folder picked for this draft, or null for Home. */
   readonly folder?: string | null;
@@ -95,7 +96,7 @@ export const DEFAULT_SESSION_VIEW_STATE: SessionViewState = {
   stepGroups: new Map(),
 };
 
-export function composerHasContent(composer: ComposerViewState): boolean {
+function composerHasContent(composer: ComposerViewState): boolean {
   return composer.draft.trim() !== "" || composer.attachments.length > 0;
 }
 
@@ -143,33 +144,66 @@ function storedChanged(left: ComposerViewState, right: ComposerViewState): boole
   );
 }
 
-export class SessionViewStateStore {
-  readonly #window: WindowDrafts;
-  readonly #tabId: string;
+export interface DraftStore {
+  readonly sessions: Map<SessionId, SessionViewState>;
+  subscribe(listener: () => void): () => void;
+  subscribeKey(key: string, listener: () => void): () => void;
+  notify(key: string): void;
+  listedDrafts(): readonly ChatDraft[];
+  drafts(): readonly ChatDraft[];
+  pane(
+    tabId: string,
+    paneId: PaneId,
+  ): { active: ChatDraft; readonly parked: Map<string, ChatDraft> };
+  find(draftId: string):
+    | {
+        readonly kind: "active" | "parked";
+        readonly tabId: string;
+        readonly paneId: PaneId;
+        readonly draft: ChatDraft;
+      }
+    | undefined;
+  createDraft(): ChatDraft;
+  saveDraft(previous: ChatDraft, next: ChatDraft): void;
+  saveSession(sessionId: SessionId, previous: SessionDraft, next: SessionDraft): void;
+  saveSteps(sessionId: SessionId, stepGroups: ReadonlyMap<string, boolean>): void;
+  save(
+    owner: string,
+    previous: ComposerViewState,
+    next: ComposerViewState,
+    record: undefined,
+  ): void;
+  persist(): void;
+  emit(): void;
+}
 
-  constructor(drafts: WindowDrafts, tabId: string) {
-    this.#window = drafts;
-    this.#tabId = tabId;
+export class SessionViewStateStore {
+  private readonly window: DraftStore;
+  private readonly tabId: string;
+
+  constructor(drafts: DraftStore, tabId: string) {
+    this.window = drafts;
+    this.tabId = tabId;
   }
 
-  readonly subscribe = (listener: () => void): (() => void) => this.#window.subscribe(listener);
+  readonly subscribe = (listener: () => void): (() => void) => this.window.subscribe(listener);
 
-  readonly listedDrafts = (): readonly ChatDraft[] => this.#window.listedDrafts();
+  readonly listedDrafts = (): readonly ChatDraft[] => this.window.listedDrafts();
 
   subscribeDraft(sessionId: SessionId, listener: () => void): () => void {
-    return this.#window.subscribeKey(`session:${sessionId}`, listener);
+    return this.window.subscribeKey(`session:${sessionId}`, listener);
   }
 
   persist(): void {
-    this.#window.persist();
+    this.window.persist();
   }
 
   readSession(sessionId: SessionId): SessionViewState {
-    return this.#window.sessions.get(sessionId) ?? DEFAULT_SESSION_VIEW_STATE;
+    return this.window.sessions.get(sessionId) ?? DEFAULT_SESSION_VIEW_STATE;
   }
 
   writeSession(sessionId: SessionId, state: SessionViewState): void {
-    const sessions = this.#window.sessions;
+    const sessions = this.window.sessions;
     const known = sessions.get(sessionId);
     const previous = known?.draft ?? DEFAULT_SESSION_VIEW_STATE.draft;
     sessions.delete(sessionId);
@@ -182,13 +216,15 @@ export class SessionViewStateStore {
         if (draftKept(kept.draft)) continue;
         sessions.delete(id);
 
-        if (kept.stepGroups.size > 0)
-          this.#window.saveSteps(id, DEFAULT_SESSION_VIEW_STATE.stepGroups);
+        if (kept.stepGroups.size > 0) {
+          this.window.saveSteps(id, DEFAULT_SESSION_VIEW_STATE.stepGroups);
+        }
       }
     }
 
-    if ((known ?? DEFAULT_SESSION_VIEW_STATE).stepGroups !== state.stepGroups)
-      this.#window.saveSteps(sessionId, state.stepGroups);
+    if ((known ?? DEFAULT_SESSION_VIEW_STATE).stepGroups !== state.stepGroups) {
+      this.window.saveSteps(sessionId, state.stepGroups);
+    }
 
     if (previous === state.draft) return;
     const before = persistedDraft(previous);
@@ -199,10 +235,11 @@ export class SessionViewStateStore {
       restorable(previous) !== restorable(state.draft) ||
       previous.sending !== state.draft.sending ||
       previous.omitted !== state.draft.omitted
-    )
-      this.#window.saveSession(sessionId, previous, state.draft);
+    ) {
+      this.window.saveSession(sessionId, previous, state.draft);
+    }
 
-    this.#window.notify(`session:${sessionId}`);
+    this.window.notify(`session:${sessionId}`);
   }
 
   updateSession(
@@ -223,11 +260,11 @@ export class SessionViewStateStore {
   }
 
   readBlank(paneId: PaneId): ChatDraft {
-    return this.#window.pane(this.#tabId, paneId).active;
+    return this.window.pane(this.tabId, paneId).active;
   }
 
   writeBlank(paneId: PaneId, state: BlankViewState): void {
-    const drafts = this.#window.pane(this.#tabId, paneId);
+    const drafts = this.window.pane(this.tabId, paneId);
     const current = drafts.active;
 
     if (current === state) return;
@@ -247,21 +284,23 @@ export class SessionViewStateStore {
     if (
       storedChanged(current.composer, next.composer) ||
       current.choice !== next.choice ||
+      current.modes !== next.modes ||
       current.project !== next.project ||
       current.folder !== next.folder
-    )
-      this.#window.saveDraft(current, next);
+    ) {
+      this.window.saveDraft(current, next);
+    }
   }
 
   drafts(): readonly ChatDraft[] {
-    return this.#window.drafts();
+    return this.window.drafts();
   }
 
   startNewDraft(paneId: PaneId, start: DraftStart): void {
-    const drafts = this.#window.pane(this.#tabId, paneId);
+    const drafts = this.window.pane(this.tabId, paneId);
     const current = drafts.active;
     const kept = !draftHasContent(current);
-    const base = kept ? current : this.#window.createDraft();
+    const base = kept ? current : this.window.createDraft();
     const folder = start.folder === undefined ? base.folder : start.folder;
 
     if (
@@ -269,8 +308,9 @@ export class SessionViewStateStore {
       current.project === start.project &&
       current.folder === folder &&
       start.composer === undefined
-    )
+    ) {
       return;
+    }
 
     if (!kept) drafts.parked.set(current.id, current);
 
@@ -284,67 +324,68 @@ export class SessionViewStateStore {
 
     drafts.active = next;
 
-    if (start.composer !== undefined) this.#window.saveDraft(base, next);
-    this.#window.emit();
+    if (start.composer !== undefined) this.window.saveDraft(base, next);
+    this.window.emit();
   }
 
   activateDraft(paneId: PaneId, draftId: string): boolean {
-    const located = this.#window.find(draftId);
+    const located = this.window.find(draftId);
 
     if (located === undefined || !draftHasContent(located.draft)) return false;
 
-    if (located.kind === "active" && located.tabId === this.#tabId && located.paneId === paneId)
+    if (located.kind === "active" && located.tabId === this.tabId && located.paneId === paneId) {
       return true;
+    }
 
-    const target = this.#window.pane(this.#tabId, paneId);
+    const target = this.window.pane(this.tabId, paneId);
 
     if (draftHasContent(target.active)) {
       target.parked.set(target.active.id, target.active);
     }
 
-    const source = this.#window.pane(located.tabId, located.paneId);
+    const source = this.window.pane(located.tabId, located.paneId);
 
     if (located.kind === "active") {
-      source.active = this.#window.createDraft();
+      source.active = this.window.createDraft();
     } else {
       source.parked.delete(draftId);
     }
 
     target.active = located.draft;
-    this.#window.emit();
+    this.window.emit();
 
     return true;
   }
 
   removeDraft(draftId: string): boolean {
-    const located = this.#window.find(draftId);
+    const located = this.window.find(draftId);
 
     if (located === undefined) return false;
-    const drafts = this.#window.pane(located.tabId, located.paneId);
+    const drafts = this.window.pane(located.tabId, located.paneId);
 
     if (located.kind === "active") {
-      drafts.active = this.#window.createDraft();
+      drafts.active = this.window.createDraft();
     } else {
       drafts.parked.delete(draftId);
     }
 
-    this.#window.save(
+    this.window.save(
       `draft:${draftId}`,
       located.draft.composer,
       DEFAULT_COMPOSER_VIEW_STATE,
       undefined,
     );
-    this.#window.emit();
+    this.window.emit();
 
     return true;
   }
 
   readDraft(draftId: string): ChatDraft | undefined {
-    return this.#window.find(draftId)?.draft;
+    return this.window.find(draftId)?.draft;
   }
 
   beginSend(paneId: PaneId, composer: ComposerViewState): DraftStatus | undefined {
-    const drafts = this.#window.pane(this.#tabId, paneId);
+    const drafts = this.window.pane(this.tabId, paneId);
     const current = drafts.active;
 
     if (current.status.kind === "waiting" || current.status.kind === "starting") return undefined;
@@ -358,38 +399,38 @@ export class SessionViewStateStore {
     };
 
     drafts.active = next;
-    this.#window.saveDraft(current, next);
-    this.#window.emit();
+    this.window.saveDraft(current, next);
+    this.window.emit();
 
     return status;
   }
 
   commitSend(draftId: string, waiting: DraftStatus): boolean {
-    if (this.#window.find(draftId)?.draft.status !== waiting) return false;
-    this.#setStatus(draftId, { kind: "starting" });
+    if (this.window.find(draftId)?.draft.status !== waiting) return false;
+    this.setStatus(draftId, { kind: "starting" });
 
     return true;
   }
 
   cancelSend(draftId: string): void {
-    if (this.#window.find(draftId)?.draft.status.kind !== "waiting") return;
-    this.#setStatus(draftId, EDITING);
+    if (this.window.find(draftId)?.draft.status.kind !== "waiting") return;
+    this.setStatus(draftId, EDITING);
   }
 
   failSend(draftId: string, failure: DraftFailure): void {
-    this.#setStatus(draftId, failure);
+    this.setStatus(draftId, failure);
   }
 
-  #setStatus(draftId: string, status: DraftStatus): void {
-    const located = this.#window.find(draftId);
+  private setStatus(draftId: string, status: DraftStatus): void {
+    const located = this.window.find(draftId);
 
     if (located === undefined) return;
-    const drafts = this.#window.pane(located.tabId, located.paneId);
+    const drafts = this.window.pane(located.tabId, located.paneId);
     const next = { ...located.draft, status };
 
     if (located.kind === "active") drafts.active = next;
     else drafts.parked.set(draftId, next);
-    this.#window.emit();
+    this.window.emit();
   }
 }
 

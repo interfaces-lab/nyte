@@ -51,7 +51,7 @@ import { loadedTools } from "./transcript.ts";
 import { stepPluginApi } from "../extend/plugin-api.ts";
 import { offeredTools, toolSource } from "../extend/registry.ts";
 import { changesEvents } from "../fold/changes.ts";
-import { withFold } from "../watch/reads.ts";
+import { findSender, withFold } from "../watch/reads.ts";
 import { settling } from "../store/parts.ts";
 import { partRef, runRef } from "../store/refs.ts";
 import {
@@ -174,8 +174,9 @@ export async function executeCall(
     readCall(kernel.store, session, asId<"call">(`${HOOK}${call}`)),
   ]);
 
-  if (steps.some((found) => found?.record.waits.some((outcome) => outcome.kind === "stopped")))
+  if (steps.some((found) => found?.record.waits.some((outcome) => outcome.kind === "stopped"))) {
     controller.abort();
+  }
 
   try {
     return await perform(kernel, {
@@ -284,8 +285,9 @@ export function stoppableTool(kernel: Kernel): typeof tool {
         return undefined;
       }
 
-      for (const call of [context.part.id, `${HOOK}${context.part.id}`])
+      for (const call of [context.part.id, `${HOOK}${context.part.id}`]) {
         await kernel.waits.callStopped(context.session, asId<"call">(call));
+      }
 
       return undefined;
     },
@@ -346,8 +348,9 @@ async function perform(
           }
         : async () => planned.outcome,
     async settle(ended) {
-      if ((await kernel.store.refs.get(runRef(session, run))) === null)
+      if ((await kernel.store.refs.get(runRef(session, run))) === null) {
         return { result: STOPPED, updates: [] };
+      }
       concluded ??= conclude(kernel, where, ended, before, planned.class);
       const settled = await concluded;
 
@@ -392,13 +395,14 @@ async function plan(
 
   const definition = shown.definition;
 
-  if (where.argumentsError !== undefined)
+  if (where.argumentsError !== undefined) {
     return {
       kind: "settle",
       outcome: failed(`Invalid arguments for ${name}: ${where.argumentsError}`),
       args: where.args,
       class: custom,
     };
+  }
 
   const proposed: ToolCall = {
     call,
@@ -420,29 +424,32 @@ async function plan(
   if (where.signal.aborted) {
     const found = await readCall(kernel.store, session, call);
 
-    if (found === null || callPhase(found.record).kind === "intended")
+    if (found === null || callPhase(found.record).kind === "intended") {
       return { kind: "settle", outcome: STOPPED, args: where.args, class: proposed.class };
+    }
   }
 
-  if (gate.action === "reject")
+  if (gate.action === "reject") {
     return {
       kind: "settle",
       outcome: { kind: "rejected", reason: gate.reason },
       args: where.args,
       class: proposed.class,
     };
+  }
 
-  if (gate.action === "error")
+  if (gate.action === "error") {
     return {
       kind: "settle",
       outcome: failed(gate.message),
       args: where.args,
       class: proposed.class,
     };
+  }
   const args = gate.action === "modify" ? gate.value.args : where.args;
   const checked = await definition.parameters["~standard"].validate(args);
 
-  if (checked.issues !== undefined)
+  if (checked.issues !== undefined) {
     return {
       kind: "settle",
       outcome: failed(
@@ -451,15 +458,17 @@ async function plan(
       args,
       class: custom,
     };
+  }
   const known = classifyToolCall(definition, checked.value, call);
 
-  if (known === null)
+  if (known === null) {
     return {
       kind: "settle",
       outcome: failed(`${name} could not classify its call.`),
       args,
       class: custom,
     };
+  }
 
   return {
     kind: "execute",
@@ -537,10 +546,11 @@ async function execute(
   let before: ToolBaseline | null = null;
 
   try {
-    if (snapshotted)
+    if (snapshotted) {
       before = await durable.memo("nyte:snapshot", () =>
         baseline(kernel, session, run, planned.class),
       );
+    }
 
     const [env, found, hidden] = await Promise.all([
       kernel.environments.attach(session),
@@ -589,18 +599,20 @@ async function validateToolResult(
 ): Promise<ToolOutcome> {
   const parts = result.parts ?? [];
 
-  if (definition.output === undefined)
+  if (definition.output === undefined) {
     return {
       kind: "ok",
       content: result.content,
       output: isJson(result.output) ? result.output : null,
       parts,
     };
+  }
 
   const checked = await definition.output["~standard"].validate(result.output);
 
-  if (checked.issues !== undefined)
+  if (checked.issues !== undefined) {
     return failed(`${definition.name} returned output its schema rejects.`);
+  }
 
   return {
     kind: "ok",
@@ -733,7 +745,7 @@ export async function settlement(
       : changesEvents(await withFold(kernel, session, (state) => state.changes), settled.thread)),
   ];
 
-  if (found.record.status.kind === "failed" || found.record.status.kind === "settled")
+  if (found.record.status.kind === "failed" || found.record.status.kind === "settled") {
     return [
       {
         name,
@@ -743,6 +755,7 @@ export async function settlement(
       },
       ...based,
     ];
+  }
 
   const landed = await settling(store, {
     session,
@@ -837,16 +850,18 @@ export function createInvocation(
     get api() {
       const own = input.runtime.api(input.owner);
 
-      if (own === undefined)
+      if (own === undefined) {
         throw new SdkError(
           "unavailable",
           `Plugin ${input.owner} is no longer active in session ${session}.`,
         );
+      }
 
       return stepPluginApi(kernel, own, context, session);
     },
     workspace: sdk.workspace(input.workspace),
     env: input.env,
+    sender: () => findSender(kernel, session, head),
     progress(update) {
       publishPatch(kernel, session, run, {
         kind: "patch",

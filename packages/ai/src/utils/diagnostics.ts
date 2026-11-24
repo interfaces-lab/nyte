@@ -28,8 +28,9 @@ export function createAssistantMessageDiagnostic(
   return { type, timestamp: Date.now(), error: extractDiagnosticError(cause), details };
 }
 
-export function appendAssistantMessageDiagnostic<
-  T extends { diagnostics?: AssistantMessageDiagnostic[] },
->(message: T, diagnostic: AssistantMessageDiagnostic): void {
+export function appendAssistantMessageDiagnostic(
+  message: { diagnostics?: AssistantMessageDiagnostic[] },
+  diagnostic: AssistantMessageDiagnostic,
+): void {
   message.diagnostics = [...(message.diagnostics ?? []), diagnostic];
 }

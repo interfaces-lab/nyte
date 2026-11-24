@@ -71,12 +71,13 @@ export function createOpenWith(options: {
   const openSoon = (): void => {
     if (!ready || !reachable) return;
 
-    for (const path of pending.splice(0))
+    for (const path of pending.splice(0)) {
       opening = opening.then(() =>
         openPath(path).catch((cause: unknown) =>
           options.failed(path, cause instanceof Error ? cause.message : String(cause)),
         ),
       );
+    }
   };
 
   return {

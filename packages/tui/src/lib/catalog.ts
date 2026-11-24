@@ -19,12 +19,10 @@ export function modelId(ref: ModelRef): string {
 }
 
 export function clampThinking(model: ModelInfo, level: Thinking): Thinking {
-  const rank = THINKING_LEVELS.findIndex((candidate) => candidate === level);
+  const rank = THINKING_LEVELS.indexOf(level);
 
   return (
-    model.thinking.findLast(
-      (candidate) => THINKING_LEVELS.findIndex((known) => known === candidate) <= rank,
-    ) ??
+    model.thinking.findLast((candidate) => THINKING_LEVELS.indexOf(candidate) <= rank) ??
     model.thinking[0] ??
     "off"
   );

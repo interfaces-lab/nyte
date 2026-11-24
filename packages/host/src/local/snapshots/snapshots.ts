@@ -29,6 +29,12 @@ type Manifest = Readonly<Record<string, string>>;
 
 type Tree = { readonly files: Manifest; readonly incomplete: boolean };
 
+const SNAPSHOT_KINDS = ["journal", "git"] as const;
+
+type SnapshotKind = (typeof SNAPSHOT_KINDS)[number];
+
+const EMPTY_TREE: Tree = { files: {}, incomplete: false };
+
 type Seen = { readonly stamp: string; readonly hash: string };
 
 type Discovery =
@@ -90,8 +96,6 @@ const STORE_CONCURRENCY = 32;
 
 const CHUNK = 64 * 1024;
 
-const JOURNAL = "journal:";
-
 const DISCOVERY_LIMIT = 5_000;
 
 export function localSnapshots(
@@ -99,7 +103,21 @@ export function localSnapshots(
   options: { readonly store: string; readonly git?: string; readonly limit?: number },
 ): SnapshotsApi {
   const binary = options.git ?? "git";
-  const journal = openJournal(join(options.store, "journals", `${sha256(root)}.ndjson`));
+  const key = sha256(root);
+  const journal = openJournal(join(options.store, "journals", `${key}.ndjson`));
+  const prefix = (kind: SnapshotKind): string => `${kind}:${key.slice(0, 16)}:`;
+
+  const readSnapshot = (id: SnapshotId) => {
+    const kind = SNAPSHOT_KINDS.find((candidate) => id.startsWith(prefix(candidate)));
+
+    return kind === undefined ? null : { kind, value: id.slice(prefix(kind).length) };
+  };
+
+  const comparable = (from: SnapshotId, to: SnapshotId): boolean => {
+    const kinds = [from, to].filter((id) => id !== "").map((id) => readSnapshot(id)?.kind);
+
+    return kinds.every((kind) => kind !== undefined) && new Set(kinds).size <= 1;
+  };
   const known = new Map<string, Seen | null>();
   let discovery: Discovery = { kind: "unwalked" };
   let observing: Promise<unknown> = Promise.resolve();
@@ -149,7 +167,9 @@ export function localSnapshots(
   };
 
   const repository = (): Promise<Repository | null> => {
-    repositoryLookup ??= findRepository();
+    repositoryLookup ??= journal
+      .started()
+      .then((journaled) => (journaled ? null : findRepository()));
 
     return repositoryLookup;
   };
@@ -165,7 +185,7 @@ export function localSnapshots(
   const gitSnapshot = async (repo: Repository): Promise<SnapshotId> => {
     const first = await index.write(repo);
     const tree = await checked(first.code === 0 ? first : await index.writeEmpty(repo));
-    const id = asId<"snapshot">(`git:${tree}`);
+    const id = asId<"snapshot">(`${prefix("git")}${tree}`);
 
     if (!fresh.includes(tree) && !keptTrees.has(tree)) fresh.push(tree);
 
@@ -415,7 +435,7 @@ export function localSnapshots(
     const changes = scope.kind === "workspace" ? await discover() : await observePaths(scope.paths);
     const id = changes.length === 0 ? await journal.head() : await journal.append(changes);
 
-    return asId<"snapshot">(`${JOURNAL}${id}`);
+    return asId<"snapshot">(`${prefix("journal")}${id}`);
   };
 
   const capture = async (scope: SnapshotScope): Promise<SnapshotId> => {
@@ -455,11 +475,18 @@ export function localSnapshots(
       }
     | { readonly kind: "tree"; readonly from: Tree; readonly to: Tree }
   > => {
-    if (to.startsWith(JOURNAL)) {
-      const range = await journal.range(
-        from.startsWith(JOURNAL) ? from.slice(JOURNAL.length) : null,
-        to.slice(JOURNAL.length),
+    if (!comparable(from, to)) {
+      throw new SdkError(
+        "invalid",
+        `Snapshots ${from} and ${to} weren't taken in one history of ${root}.`,
       );
+    }
+
+    if (from === "" && to === "") return { kind: "tree", from: EMPTY_TREE, to: EMPTY_TREE };
+    const value = (id: SnapshotId): string => readSnapshot(id)?.value ?? "";
+
+    if ([from, to].some((id) => readSnapshot(id)?.kind === "journal")) {
+      const range = await journal.range(from === "" ? null : value(from), value(to));
 
       return {
         kind: "tree",
@@ -468,17 +495,6 @@ export function localSnapshots(
       };
     }
 
-    const kinds = new Set([from, to].flatMap((id) => (id === "" ? [] : id.split(":", 1))));
-
-    if (kinds.size > 1)
-      throw new SdkError("invalid", `Snapshots ${from} and ${to} are of two kinds.`);
-
-    if (kinds.has("tree") || kinds.size === 0)
-      return {
-        kind: "tree",
-        from: await readWalkedTree(options.store, from),
-        to: await readWalkedTree(options.store, to),
-      };
     const repo = await repository();
 
     if (repo === null)
@@ -491,7 +507,7 @@ export function localSnapshots(
           }).then(checked))
         : "";
 
-    const tree = (id: SnapshotId): string => (id === "" ? empty : id.slice("git:".length));
+    const tree = (id: SnapshotId): string => (id === "" ? empty : value(id));
 
     return { kind: "git", repo, from: tree(from), to: tree(to) };
   };
@@ -547,6 +563,7 @@ export function localSnapshots(
 
   return {
     capture,
+    comparable,
     async diff(from, to): Promise<ChangeSet> {
       const started = Date.now();
       const files = await changed(from, to);
@@ -704,39 +721,6 @@ async function keep(path: string, contents: string | Uint8Array): Promise<void> 
   } finally {
     await rm(temporary, { force: true });
   }
-}
-
-async function readWalkedTree(store: string, id: SnapshotId): Promise<Tree> {
-  if (id === "") return { files: {}, incomplete: false };
-
-  if (!id.startsWith("tree:")) throw new SdkError("invalid", `${id} is not a walked snapshot.`);
-
-  const text = await readFile(
-    join(store, "trees", `${id.slice("tree:".length)}.json`),
-    "utf8",
-  ).catch(() => null);
-
-  if (text === null) throw new SdkError("unknown", `No snapshot ${id} is stored.`);
-  const value: unknown = JSON.parse(text);
-
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("files" in value) ||
-    typeof value.files !== "object" ||
-    value.files === null ||
-    Array.isArray(value.files)
-  )
-    throw new SdkError("internal", `Snapshot ${id} is malformed.`);
-
-  return {
-    incomplete: "incomplete" in value && value.incomplete === true,
-    files: Object.fromEntries(
-      Object.entries(value.files).flatMap(([path, hash]) =>
-        typeof hash === "string" ? [[path, hash]] : [],
-      ),
-    ),
-  };
 }
 
 function compareTrees(before: Tree, after: Tree) {

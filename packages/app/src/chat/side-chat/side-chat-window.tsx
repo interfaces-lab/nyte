@@ -15,7 +15,7 @@ import { addToChat, ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { useChatWindow } from "../../window/index.ts";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type {
@@ -35,7 +35,7 @@ import {
   useSideChats,
   useSideChatWindow,
 } from "./side-chats.ts";
-import type { SideChatShown } from "./side-chat-state.ts";
+import type { SideChatShown } from "../../window/index.ts";
 import type { PaneId } from "../../panes/layout.ts";
 
 const SIZE = { width: 380, height: 520 };
@@ -239,8 +239,9 @@ export function SideChatWindow({
 function keepFocus(handle: ComposerEditorHandle): void {
   const active = document.activeElement;
 
-  if (active !== null && active !== document.body && active.closest(SIDE_CHAT_DIALOG) === null)
+  if (active !== null && active !== document.body && active.closest(SIDE_CHAT_DIALOG) === null) {
     return;
+  }
 
   handle.focus({ preventScroll: true });
 }

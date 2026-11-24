@@ -65,6 +65,7 @@ export type Seq = number & { readonly __brand: "seq" };
 
 export type EnvironmentIdentity = Id<"environment-identity">;
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Brand is the type this guard asserts; it is how asId and asSeq brand a value without a cast.
 function branded<Brand extends Base, Base>(_value: Base): _value is Brand {
   return true;
 }

@@ -125,15 +125,16 @@ const SURVEY_ROUNDS = 8;
 function renderReply(request: Request): Reply | undefined {
   const first = request.context.messages.find((message) => message.role === "user");
 
-  if (first?.role !== "user" || contentText(first.content, "") !== "/render-change")
+  if (first?.role !== "user" || contentText(first.content, "") !== "/render-change") {
     return undefined;
+  }
   const title = titleReply(request);
 
   if (title !== null) return { content: [{ type: "text", text: title }] };
   const text = lastUserText(request);
   const wrote = request.context.messages.at(-1)?.role === "toolResult";
 
-  if (text === "/render-change" && !wrote)
+  if (text === "/render-change" && !wrote) {
     return {
       content: [
         {
@@ -144,6 +145,7 @@ function renderReply(request: Request): Reply | undefined {
         },
       ],
     };
+  }
 
   return {
     content: [{ type: "text", text: wrote ? paragraphs(40) : `Echo: ${text}` }],
@@ -161,8 +163,9 @@ function surveyReply(request: Request): Reply | undefined {
   const round = request.context.messages.filter((message) => message.role === "toolResult").length;
   const timing = { deltaMs: 25 };
 
-  if (round >= SURVEY_ROUNDS)
+  if (round >= SURVEY_ROUNDS) {
     return { content: [{ type: "text", text: paragraphs(4) }], tokens: 80, timing };
+  }
 
   return {
     content: [
@@ -190,8 +193,9 @@ function warmReply(request: Request): Reply | undefined {
 
   if (title !== null) return { content: [{ type: "text", text: title }] };
 
-  if (request.context.messages.at(-1)?.role === "toolResult")
+  if (request.context.messages.at(-1)?.role === "toolResult") {
     return { content: [{ type: "text", text: WARM_REPLY }] };
+  }
 
   return {
     content: [
@@ -293,7 +297,7 @@ function ciAnswer(input: E2eAnswerOptions): (request: Request) => Reply | undefi
         chars: read.length,
         clipped: read.includes("characters cut from the middle"),
         head: read.slice(0, 160),
-        tail: read.slice(-1_000),
+        tail: read.slice(-1000),
       })}`,
     );
 
@@ -331,8 +335,9 @@ export function e2eAnswers(input: E2eAnswerOptions): (request: Request) => Reply
     if (survey !== undefined) return survey;
     const text = lastUserText(request);
 
-    if (request.context.messages.at(-1)?.role === "toolResult")
+    if (request.context.messages.at(-1)?.role === "toolResult") {
       return { content: [{ type: "text", text: "Both agents are working in the background." }] };
+    }
 
     const title = titleReply(request);
 

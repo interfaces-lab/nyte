@@ -8,6 +8,7 @@ import {
   ArrowLeftToLine,
   ArrowRight,
   ArrowUp,
+  Atom,
   Ban,
   Bell,
   BellDot,
@@ -27,6 +28,7 @@ import {
   ChevronsUpDown,
   CircleCheck,
   CircleX,
+  ClipboardList,
   Clock,
   Cloud,
   CloudCog,
@@ -42,8 +44,8 @@ import {
   Eye,
   File,
   FileDiff,
-  FilePlus,
   FilePenLine,
+  FilePlus,
   FileText,
   Folder,
   FolderOpen,
@@ -65,6 +67,7 @@ import {
   Keyboard,
   Laptop,
   Layers2,
+  Lightbulb,
   LayoutGrid,
   List,
   ListChecks,
@@ -84,9 +87,9 @@ import {
   PanelRight,
   PanelsTopLeft,
   Paperclip,
-  PencilLine,
   PenLine,
   PenTool,
+  PencilLine,
   Pin,
   PinOff,
   Plus,
@@ -114,8 +117,8 @@ import {
   UserKey,
   X,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { createElement } from "react";
 import {
   siAmp,
@@ -142,8 +145,8 @@ import {
   siReact,
   siTypescript,
   siVercel,
-  type SimpleIcon,
 } from "simple-icons";
+import type { SimpleIcon } from "simple-icons";
 
 import type { FilledIconName, Glyph, GlyphProps, IconName } from "../icon-names.ts";
 import { NyteGlyph } from "./nyte.ts";
@@ -205,6 +208,7 @@ export const GLYPHS = {
   "arrow-right": lucide(ArrowRight),
   "arrow-up": lucide(ArrowUp),
   "arrow-wall-left": lucide(ArrowLeftToLine),
+  atom: lucide(Atom),
   bell: lucide(Bell),
   "bezier-pointer": lucide(PenTool),
   bolt: lucide(Zap),
@@ -270,6 +274,7 @@ export const GLYPHS = {
   keyboard: lucide(Keyboard),
   laptop: lucide(Laptop),
   layers: lucide(Layers2),
+  lightbulb: lucide(Lightbulb),
   linear: brand(siLinear),
   list: lucide(List),
   loader: lucide(Loader),
@@ -301,6 +306,7 @@ export const GLYPHS = {
   pencil: lucide(PencilLine),
   phone: lucide(Smartphone),
   pin: lucide(Pin),
+  plan: lucide(ClipboardList),
   plus: lucide(Plus),
   "provider-acp": genericAgent,
   "provider-claude-code": brand(siClaude),

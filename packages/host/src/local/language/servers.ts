@@ -1,154 +1,100 @@
-import { readFile, stat } from "node:fs/promises";
-import { dirname, extname, join, sep } from "node:path";
-import { compile } from "@nyte-ai/schema";
-import type { Json, LanguageName } from "@nyte-ai/schema";
-import { Type } from "typebox";
+import { stat } from "node:fs/promises";
+import { dirname, join, sep } from "node:path";
+import { findLanguage } from "@nyte-ai/schema";
+import { BASH_LANGUAGE_SERVER } from "./servers/bash-language-server.ts";
+import { CLANGD } from "./servers/clangd.ts";
+import { GOPLS } from "./servers/gopls.ts";
+import { JDTLS } from "./servers/jdtls.ts";
+import { LUA_LANGUAGE_SERVER } from "./servers/lua-language-server.ts";
+import { MARKSMAN } from "./servers/marksman.ts";
+import { OXLINT } from "./servers/oxlint.ts";
+import { POSTGRES_LANGUAGE_SERVER } from "./servers/postgres-language-server.ts";
+import { RUBY_LSP } from "./servers/ruby-lsp.ts";
+import { RUFF } from "./servers/ruff.ts";
+import { RUST_ANALYZER } from "./servers/rust-analyzer.ts";
+import { SOURCEKIT_LSP } from "./servers/sourcekit-lsp.ts";
+import { TOMBI } from "./servers/tombi.ts";
+import { TY } from "./servers/ty.ts";
+import { TYPESCRIPT_LANGUAGE_SERVER } from "./servers/typescript-language-server.ts";
+import { VSCODE_CSS_LANGUAGE_SERVER } from "./servers/vscode-css-language-server.ts";
+import { VSCODE_ESLINT_LANGUAGE_SERVER } from "./servers/vscode-eslint-language-server.ts";
+import { VSCODE_HTML_LANGUAGE_SERVER } from "./servers/vscode-html-language-server.ts";
+import { VSCODE_JSON_LANGUAGE_SERVER } from "./servers/vscode-json-language-server.ts";
+import { YAML_LANGUAGE_SERVER } from "./servers/yaml-language-server.ts";
+import type { CompleteSpec } from "./spec.ts";
 
-const PackageManifest = compile(Type.Object({ version: Type.String() }));
+export const SERVERS: readonly CompleteSpec[] = [
+  CLANGD,
+  GOPLS,
+  LUA_LANGUAGE_SERVER,
+  JDTLS,
+  TY,
+  RUFF,
+  TOMBI,
+  SOURCEKIT_LSP,
+  RUST_ANALYZER,
+  TYPESCRIPT_LANGUAGE_SERVER,
+  VSCODE_ESLINT_LANGUAGE_SERVER,
+  OXLINT,
+  RUBY_LSP,
+  POSTGRES_LANGUAGE_SERVER,
+  YAML_LANGUAGE_SERVER,
+  BASH_LANGUAGE_SERVER,
+  VSCODE_JSON_LANGUAGE_SERVER,
+  VSCODE_CSS_LANGUAGE_SERVER,
+  VSCODE_HTML_LANGUAGE_SERVER,
+  MARKSMAN,
+].map((spec) => ({
+  requiresRootMarker: false,
+  probe: ["--version"],
+  arguments: [],
+  install: null,
+  runtime: null,
+  initializationOptions: null,
+  settings: {},
+  ...spec,
+}));
 
-/** How to find, start and configure one language server. */
-export type ServerSpec = {
-  readonly language: LanguageName;
-  readonly program: string;
-  readonly arguments: readonly string[];
-  readonly languageIds: Readonly<Record<string, string>>;
-  readonly markers: readonly string[];
-  readonly hint: string;
-  readonly settings: Json;
-  /** The initialization options for a server at `root`, and what it runs on when the server does not say, such as the TypeScript it found. */
-  prepare(root: string): Promise<{ readonly options: Json; readonly runsOn: string | null }>;
-};
-
-const GO_OPTIONS = {
-  usePlaceholders: false,
-  completeUnimported: true,
-  staticcheck: true,
-  semanticTokens: true,
-  hints: { parameterNames: true, constantValues: true },
-  analyses: { nilness: true, unusedparams: true, unusedwrite: true, shadow: true, useany: true },
-} as const;
-
-const TYPESCRIPT_PREFERENCES = {
-  includeInlayParameterNameHints: "literals",
-  includeInlayParameterNameHintsWhenArgumentMatchesName: false,
-  includeInlayFunctionParameterTypeHints: true,
-  includeInlayVariableTypeHints: false,
-  includeInlayPropertyDeclarationTypeHints: false,
-  includeInlayFunctionLikeReturnTypeHints: false,
-  includeInlayEnumMemberValueHints: true,
-  includeCompletionsWithSnippetText: true,
-  useLabelDetailsInCompletionEntries: true,
-  completeFunctionCalls: false,
-} as const;
-
-const TYPESCRIPT_LANGUAGE = {
-  inlayHints: {
-    parameterNames: { enabled: "literals", suppressWhenArgumentMatchesName: true },
-    parameterTypes: { enabled: true },
-    enumMemberValues: { enabled: true },
-    ...TYPESCRIPT_PREFERENCES,
-  },
-  suggest: { completeFunctionCalls: false },
-} as const;
-
-export const SERVERS: readonly ServerSpec[] = [
-  {
-    language: "go",
-    program: "gopls",
-    arguments: [],
-    languageIds: { ".go": "go" },
-    markers: ["go.work", "go.mod"],
-    hint: "Install gopls: go install golang.org/x/tools/gopls@latest",
-    settings: { gopls: GO_OPTIONS },
-    prepare: async () => ({ options: GO_OPTIONS, runsOn: null }),
-  },
-  {
-    language: "typescript",
-    program: "typescript-language-server",
-    arguments: ["--stdio"],
-    languageIds: {
-      ".ts": "typescript",
-      ".mts": "typescript",
-      ".cts": "typescript",
-      ".tsx": "typescriptreact",
-      ".js": "javascript",
-      ".mjs": "javascript",
-      ".cjs": "javascript",
-      ".jsx": "javascriptreact",
-    },
-    markers: ["tsconfig.json", "jsconfig.json", "package.json"],
-    hint: "Install the TypeScript language server: npm install -g typescript-language-server typescript",
-    settings: { typescript: TYPESCRIPT_LANGUAGE, javascript: TYPESCRIPT_LANGUAGE },
-    async prepare(root) {
-      const typescript = await findUpward(root, join("node_modules", "typescript"));
-
-      const manifest =
-        typescript === null
-          ? null
-          : await readFile(join(typescript, "package.json"), "utf8").catch(() => null);
-
-      const version = manifest === null ? null : readPackageVersion(manifest);
-
-      return {
-        options: {
-          preferences: TYPESCRIPT_PREFERENCES,
-          ...(typescript === null || version === null
-            ? {}
-            : { tsserver: { path: join(typescript, "lib", "tsserver.js") } }),
-        },
-        runsOn: version === null ? null : `TypeScript ${version}`,
-      };
-    },
-  },
-];
-
-/** The server for `path` by its extension, with the language id LSP knows the file by. */
-export function findServer(
+export async function findServers(
   path: string,
-): { readonly spec: ServerSpec; readonly languageId: string } | null {
-  const extension = extname(path).toLowerCase();
+  workspace: string,
+): Promise<{
+  readonly languageId: string;
+  readonly servers: readonly { readonly spec: CompleteSpec; readonly root: string }[];
+} | null> {
+  const language = findLanguage(path);
 
-  for (const spec of SERVERS) {
-    const languageId = spec.languageIds[extension];
+  if (language === null) return null;
 
-    if (languageId !== undefined) return { spec, languageId };
+  const servers = await Promise.all(
+    SERVERS.filter((spec) => spec.languages.includes(language.name)).map(async (spec) => {
+      const marked = await findMarkedFolder(spec, path, workspace);
+
+      return marked === null && spec.requiresRootMarker
+        ? []
+        : [{ spec, root: marked ?? workspace }];
+    }),
+  );
+
+  return { languageId: language.id, servers: servers.flat() };
+}
+
+async function findMarkedFolder(
+  spec: CompleteSpec,
+  path: string,
+  workspace: string,
+): Promise<string | null> {
+  for (
+    let folder = dirname(path);
+    folder === workspace || folder.startsWith(`${workspace}${sep}`);
+    folder = dirname(folder)
+  ) {
+    for (const marker of spec.rootMarkers) {
+      if ((await stat(join(folder, marker)).catch(() => null)) !== null) return folder;
+    }
+
+    if (folder === workspace) return null;
   }
 
   return null;
-}
-
-/** The nearest folder from the file's up to `workspace` holding one of the spec's markers; `workspace` when none does. */
-export async function findProjectRoot(
-  spec: ServerSpec,
-  path: string,
-  workspace: string,
-): Promise<string> {
-  for (
-    let folder = dirname(path);
-    folder.startsWith(`${workspace}${sep}`);
-    folder = dirname(folder)
-  )
-    for (const marker of spec.markers)
-      if ((await stat(join(folder, marker)).catch(() => null)) !== null) return folder;
-
-  return workspace;
-}
-
-async function findUpward(from: string, name: string): Promise<string | null> {
-  const candidate = join(from, name);
-
-  if ((await stat(candidate).catch(() => null)) !== null) return candidate;
-  const parent = dirname(from);
-
-  return parent === from ? null : findUpward(parent, name);
-}
-
-function readPackageVersion(text: string): string | null {
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return PackageManifest.Check(value) ? value.version : null;
-  } catch {
-    return null;
-  }
 }

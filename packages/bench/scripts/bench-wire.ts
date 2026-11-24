@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import { connect, createServer } from "node:net";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,7 @@ import { Value } from "typebox/value";
 import { fakeModels, lastUserText, titleReply } from "../src/index.ts";
 import type { Reply, Request } from "../src/index.ts";
 
-const SELF = fileURLToPath(import.meta.url);
+const SELF = import.meta.filename;
 
 const SAVED = fileURLToPath(new URL("../wire/loopback.json", import.meta.url));
 
@@ -45,7 +45,7 @@ const APP = { tail: 40, page: 200 } as const;
 
 const SEED = { chats: 200, exchanges: 100, renamed: 7 } as const;
 
-const DELTA = { chars: 10, ms: 5, streamed: 4_400 } as const;
+const DELTA = { chars: 10, ms: 5, streamed: 4400 } as const;
 
 const QUIET_MS = 750;
 
@@ -115,7 +115,7 @@ type Frame = Static<typeof FrameSchema>;
 
 type Direction = "down" | "up";
 
-type Entry = {
+interface Entry {
   readonly client: string;
   readonly step: string;
   readonly direction: Direction;
@@ -124,13 +124,23 @@ type Entry = {
   readonly kind: string;
   readonly bytes: number;
   readonly text: string;
-};
+}
 
-type Tally = { readonly up: number; readonly down: number };
+interface Tally {
+  readonly up: number;
+  readonly down: number;
+}
 
-type Pipe = { ws: boolean; readonly client: Socket; readonly upstream: Socket };
+interface Pipe {
+  ws: boolean;
+  readonly client: Socket;
+  readonly upstream: Socket;
+}
 
-type Handshake = { offered: string | null; accepted: string | null };
+interface Handshake {
+  offered: string | null;
+  accepted: string | null;
+}
 
 type Proxy = Awaited<ReturnType<typeof openProxy>>;
 
@@ -138,7 +148,7 @@ type Client = Awaited<ReturnType<typeof openClient>>;
 
 type Chat = ReturnType<typeof openChat>;
 
-type Meter = {
+interface Meter {
   readonly name: string;
   readonly proxy: Proxy;
   step: string;
@@ -146,9 +156,12 @@ type Meter = {
   flying: number;
   readonly fetch: (url: string, init?: RequestInit) => Promise<Response>;
   readonly socket: (inner: SocketLike) => SocketLike;
-};
+}
 
-type Deflated = { readonly alone: number; readonly shared: number };
+interface Deflated {
+  readonly alone: number;
+  readonly shared: number;
+}
 
 const STEPS = [
   { key: "S1", title: "stream text", labels: ["S1"] },
@@ -161,7 +174,7 @@ const STEPS = [
   { key: "S6", title: "reconnect", labels: ["S6"] },
 ] as const;
 
-const GIT = { cwd: dirname(SELF), encoding: "utf8" } as const;
+const GIT = { cwd: import.meta.dirname, encoding: "utf8" } as const;
 
 const entries: Entry[] = [];
 
@@ -220,8 +233,9 @@ async function bench(): Promise<void> {
   const streamed = await seed(0, "Seed.");
   const history = await seed(1, exchange(0));
 
-  for (let index = 1; index < SEED.exchanges; index += 1)
+  for (let index = 1; index < SEED.exchanges; index += 1) {
     await (await host.session(history).send(exchange(index))).settled();
+  }
 
   const fillers: SessionId[] = [];
 
@@ -258,14 +272,14 @@ async function bench(): Promise<void> {
 
   const drop = async () => {
     b.meter.proxy.drop();
-    await until(() => b.connection.health.snapshot().kind !== "open", "the drop");
+    await until(() => b.connection.link.snapshot().kind !== "open", "the drop");
   };
 
   await measure(
     b.meter,
     "S6",
     drop,
-    () => b.connection.health.snapshot().kind === "open" && loaded(),
+    () => b.connection.link.snapshot().kind === "open" && loaded(),
   );
   chatH.close();
   await b.close();
@@ -301,8 +315,9 @@ async function bench(): Promise<void> {
     progress(`wrote every message to ${await save(parsed.values.dump, `${lines}\n`)}`);
   }
 
-  if (parsed.values.json !== undefined)
+  if (parsed.values.json !== undefined) {
     progress(`wrote ${await save(parsed.values.json, `${JSON.stringify(report, null, 2)}\n`)}`);
+  }
   const against = parsed.values.gate
     ? SAVED
     : parsed.values.compare === undefined
@@ -351,7 +366,7 @@ function answer(request: Request): Reply {
   if (asked === "Run it.") return { content: [text("word ".repeat(200))] };
   const numbered = /^Exchange (\d+) /u.exec(asked);
 
-  return { content: [text(numbered === null ? "Ok." : prose(Number(numbered[1]) + 1_000, 400))] };
+  return { content: [text(numbered === null ? "Ok." : prose(Number(numbered[1]) + 1000, 400))] };
 }
 
 function paced(request: Request, source: AssistantMessageEventStream): AssistantMessageEventStream {
@@ -388,7 +403,7 @@ function prose(seed: number, length: number): string {
 }
 
 function title(index: number): string {
-  return `Chat ${String(index).padStart(3, "0")} ${prose(index + 7_000, 31)}`;
+  return `Chat ${String(index).padStart(3, "0")} ${prose(index + 7000, 31)}`;
 }
 
 function exchange(index: number): string {
@@ -604,8 +619,9 @@ function frameKind(frame: Frame, named: (id: string) => string): string {
     return frame.type === "closed" ? "text closed" : "text progress";
   }
 
-  if (frame.type === "result" || frame.type === "error")
+  if (frame.type === "result" || frame.type === "error") {
     return `${frame.type} ${named(frame.id ?? "")}`;
+  }
 
   if (frame.type !== "event") return frame.type ?? "?";
   const scope = (frame.scope ?? "?").split("/")[0] ?? "?";
@@ -646,8 +662,9 @@ async function openProxy(target: string) {
     upstream.on("data", (chunk: Buffer) => {
       const head = chunk.toString("latin1", 0, 12);
 
-      if (pipe.ws && head.startsWith("HTTP/1.1 101"))
+      if (pipe.ws && head.startsWith("HTTP/1.1 101")) {
         handshake.accepted = extensions(chunk.toString("latin1"));
+      }
       client.write(chunk);
     });
 
@@ -717,8 +734,9 @@ async function summarize(handshake: Handshake): Promise<Report> {
 
     if (spec.key === "S2") Object.assign(extra, toolBytes(ws));
 
-    if (spec.key.startsWith("S3") || spec.key === "S6")
+    if (spec.key.startsWith("S3") || spec.key === "S6") {
       extra["round trips"] = chosen.filter(asksHost).length;
+    }
     const sequence = chosen.flatMap((entry) => (asksHost(entry) ? [entry.kind] : []));
     const step = { title: spec.title, down, up, extra, sequence };
 

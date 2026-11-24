@@ -333,9 +333,6 @@ importers:
       pdfjs-dist:
         specifier: 5.4.296
         version: 5.4.296
-      qrcode-generator:
-        specifier: ^2.0.4
-        version: 2.0.4
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -659,6 +656,9 @@ importers:
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema
+      culori:
+        specifier: ^4.0.2
+        version: 4.0.2
       typebox:
         specifier: ^1.4.7
         version: 1.4.7
@@ -669,6 +669,9 @@ importers:
       '@cfworker/json-schema':
         specifier: ^4.1.6
         version: 4.1.6
+      '@types/culori':
+        specifier: ^4.0.1
+        version: 4.0.1
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
@@ -821,6 +824,30 @@ importers:
         specifier: ^8.23.0
         version: 8.23.0
 
+  packages/examples/ask-mode:
+    devDependencies:
+      '@nyte-ai/bench':
+        specifier: workspace:*
+        version: link:../../bench
+      '@nyte-ai/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../../host
+      '@nyte-ai/plugin':
+        specifier: workspace:*
+        version: link:../../plugin
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:../../schema
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      vitest:
+        specifier: ^5.1.0
+        version: 5.1.0(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))
+
   packages/examples/cloudflare:
     dependencies:
       '@nyte-ai/ai':
@@ -851,6 +878,49 @@ importers:
       wrangler:
         specifier: ^4.163.0
         version: 4.163.0(@cloudflare/workers-types@5.20261116.1)(@types/node@26.6.6)
+
+  packages/examples/multitask-mode:
+    devDependencies:
+      '@nyte-ai/plugin':
+        specifier: workspace:*
+        version: link:../../plugin
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+
+  packages/examples/plan-mode:
+    dependencies:
+      '@nyte-ai/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@nyte-ai/plugin':
+        specifier: workspace:*
+        version: link:../../plugin
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:../../schema
+      typebox:
+        specifier: ^1.4.7
+        version: 1.4.7
+    devDependencies:
+      '@nyte-ai/bench':
+        specifier: workspace:*
+        version: link:../../bench
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../../host
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      vitest:
+        specifier: ^5.1.0
+        version: 5.1.0(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))
 
   packages/examples/tui-chat:
     dependencies:
@@ -1678,6 +1748,22 @@ importers:
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))
+      wrangler:
+        specifier: ^4.163.0
+        version: 4.163.0(@cloudflare/workers-types@5.20261116.1)(@types/node@26.6.6)
+
+  services/metrics:
+    dependencies:
+      typebox:
+        specifier: ^1.4.7
+        version: 1.4.7
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261116.1
+        version: 5.20261116.1
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
       wrangler:
         specifier: ^4.163.0
         version: 4.163.0(@cloudflare/workers-types@5.20261116.1)(@types/node@26.6.6)
@@ -7228,6 +7314,9 @@ packages:
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
+  '@types/culori@4.0.1':
+    resolution: {integrity: sha512-43M51r/22CjhbOXyGT361GZ9vncSVQ39u62x5eJdBQFviI8zWp2X5jzqg7k4M6PVgDQAClpy2bUe2dtwEgEDVQ==}
+
   '@types/d3-array@3.2.2':
     resolution: {integrity: sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw==}
 
@@ -8844,6 +8933,10 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  culori@4.0.2:
+    resolution: {integrity: sha512-1+BhOB8ahCn4O0cep0Sh2l9KCOfOdY+BXJnKMHFFzDEouSr/el18QwXEMRlOj9UY5nCeA8UN3a/82rUWRBeyBw==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   d3-array@1.2.4:
     resolution: {integrity: sha512-KHW6M86R+FUPYGb3R5XiYjXPq7VzwxZ22buHhAEVG5ztoEcZZMLov530mmccaqA1GghZArjQV46fuc8kUqhhHw==}
@@ -12232,9 +12325,6 @@ packages:
   pvutils@1.2.0:
     resolution: {integrity: sha512-BbubeCEyTuQjVMakvJQ/Sxbc93F2pwmbsxONT/ZRrwU7Ua38d8unYTwXpTVLAKJ4BDuH9IGztCjQcd/N/39Dvg==}
     engines: {node: '>=16.0.0'}
-
-  qrcode-generator@2.0.4:
-    resolution: {integrity: sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==}
 
   qs@6.16.0:
     resolution: {integrity: sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==}
@@ -20479,6 +20569,8 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
+  '@types/culori@4.0.1': {}
+
   '@types/d3-array@3.2.2': {}
 
   '@types/d3-chord@3.0.6': {}
@@ -22485,6 +22577,8 @@ snapshots:
   cssesc@3.0.0: {}
 
   csstype@3.2.3: {}
+
+  culori@4.0.2: {}
 
   d3-array@1.2.4: {}
 
@@ -26632,8 +26726,6 @@ snapshots:
       tslib: 2.8.1
 
   pvutils@1.2.0: {}
-
-  qrcode-generator@2.0.4: {}
 
   qs@6.16.0:
     dependencies:

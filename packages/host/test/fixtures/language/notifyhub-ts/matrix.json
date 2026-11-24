@@ -1,0 +1,161 @@
+{
+  "language": "typescript",
+  "servers": [
+    "typescript-language-server"
+  ],
+  "vscode": {
+    "extension": "vscode.typescript-language-features",
+    "source": "https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageProvider.ts"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "const stats = hub.",
+          "says": "stats"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "await hub.sub",
+          "says": "Hub.submit(message: Message, signal: AbortSignal): Promise<void>"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "const hub = new H",
+          "says": "src/hub.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "for (const mess",
+          "says": "src/hub.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "src/stats.ts",
+          "after": "function bu",
+          "says": "src/stats.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "src/hub.ts",
+          "says": "Hub"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "src/channels/webhook.ts",
+          "after": "const retr",
+          "says": "Remove unused declaration"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "src/index.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "src/index.ts",
+          "after": "const hub = new H"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "src/stats.ts",
+          "after": "export interface Cou",
+          "says": "src/stats.ts"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "src/channels/webhook.ts",
+          "says": "not assignable to type 'number'"
+        }
+      ],
+      "servers": [
+        "typescript-language-server"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}

@@ -1,4 +1,3 @@
-import { asId } from "@nyte-ai/schema";
 import {
   AdvanceReportSchema,
   ProjectDraftSchema,
@@ -35,6 +34,7 @@ import {
   RemoveHeadOutcomeSchema,
   RemoveSessionOutcomeSchema,
   RepairPageSchema,
+  HostActivitySchema,
   SendOptionsSchema,
   SessionCatalogViewSchema,
   SessionEventSchema,
@@ -56,6 +56,7 @@ import {
   UserStatusSchema,
   ViewOptionsSchema,
   WorkspaceCommandOutcomeSchema,
+  asId,
   asSeq,
 } from "../../src/index.ts";
 import {
@@ -284,6 +285,7 @@ export const sessionCases = {
     { kind: "waiting", until: null },
     { kind: "retry" },
   ),
+  HostActivitySchema: sample(HostActivitySchema, { runs: 0, jobs: 2 }, { runs: 0 }),
   RepairPageSchema: sample(
     RepairPageSchema,
     { runnable: [{ session, head }], next: cursor },
@@ -325,7 +327,6 @@ export const sessionCases = {
     HostViewWireSchema,
     {
       id: host,
-      link: { kind: "reconnecting", since: 1, attempts: 2 },
       name: "mac",
       platform: "darwin",
       version: "0.1.0",
@@ -337,8 +338,9 @@ export const sessionCases = {
       projects: [project],
       authority: ["participant", "owner"],
       principal,
+      routes: [],
     },
-    { id: host, link: { kind: "connected" }, authority: [] },
+    { id: host, authority: [] },
   ),
   CredentialSourceWireSchema: sample(
     CredentialSourceWireSchema,

@@ -33,7 +33,7 @@ describe("continuing a cut-off response", () => {
     const { session, receipt } = await host.sessions.start({ id, content: "Go." });
 
     await until(() => (logged.some((event) => label(event) === "run:retrying") ? true : undefined));
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(2000);
     expect((await receipt.settled()).kind).toBe("completed");
 
     const view = await session.view();

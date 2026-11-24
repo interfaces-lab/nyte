@@ -58,7 +58,7 @@ export const NO_PARTS: DraftParts = new Map();
 
 export const PASTE_COLLAPSE_LINES = 8;
 
-export const PASTE_COLLAPSE_CHARS = 2_000;
+export const PASTE_COLLAPSE_CHARS = 2000;
 
 export function draftModel(draft: Draft): DraftModel {
   if (draft.text === "") return { kind: "empty" };
@@ -240,7 +240,7 @@ function markerFor(parts: DraftParts, part: DraftPart): string {
       return `[Paste #${String(nextNumber(parts, "paste"))} ${size}]`;
     }
     case "shell":
-      return uniqueMarker(parts, `[Shell ${part.command.trim().replace(/\s+/gu, " ")}]`);
+      return uniqueMarker(parts, `[Shell ${part.command.trim().replaceAll(/\s+/gu, " ")}]`);
     case "excerpt":
       return uniqueMarker(parts, `[${excerptLabel(part.source, part.text)}]`);
     default: {
@@ -309,9 +309,9 @@ export function draftFromContent(content: UserContent): DraftSnapshot {
     for (const [index, item] of content.entries()) {
       if (item.kind === "text") text += item.text;
       else if (item.kind === "reference") text += `@${fileUrl(item.path)}`;
-      else if (item.kind === "excerpt")
+      else if (item.kind === "excerpt") {
         text += add({ kind: "excerpt", source: item.source, text: item.text });
-      else if (item.kind === "skill") {
+      } else if (item.kind === "skill") {
         const next = content[index + 1];
 
         text +=
@@ -378,13 +378,14 @@ export function draftContent(draft: DraftSnapshot, inputs: ContentInputs): UserC
 
     if (value === "") return;
 
-    if (last?.kind === "text")
+    if (last?.kind === "text") {
       content[content.length - 1] = { kind: "text", text: last.text + value };
-    else content.push({ kind: "text", text: value });
+    } else content.push({ kind: "text", text: value });
   };
 
-  if (leading !== undefined)
+  if (leading !== undefined) {
     content.push({ kind: "skill", name: leading.name, location: leading.location });
+  }
   const rest = leading !== undefined && parsed.kind === "command" ? parsed.command.argument : text;
 
   const spans = [
@@ -415,21 +416,21 @@ export function draftContent(draft: DraftSnapshot, inputs: ContentInputs): UserC
     const blob =
       part?.kind === "image" ? (part.blob ?? inputs.uploads.get(span.marker)) : undefined;
 
-    if (skill !== undefined)
+    if (skill !== undefined) {
       content.push({ kind: "skill", name: skill.name, location: skill.location });
-    else if (part?.kind === "file") content.push({ kind: "reference", path: part.path });
+    } else if (part?.kind === "file") content.push({ kind: "reference", path: part.path });
     else if (part?.kind === "paste") say(part.text);
-    else if (part?.kind === "excerpt")
+    else if (part?.kind === "excerpt") {
       content.push({ kind: "excerpt", source: part.source, text: part.text });
-    else if (part?.kind === "shell") say(shellBlock(part.command, part.output, part.exit));
-    else if (part?.kind === "image" && blob !== undefined)
+    } else if (part?.kind === "shell") say(shellBlock(part.command, part.output, part.exit));
+    else if (part?.kind === "image" && blob !== undefined) {
       content.push({
         kind: "file",
         blob,
         mime: part.mime,
         name: `${span.marker.slice(1, -1).toLowerCase().replace(" ", "-")}.${part.mime.slice("image/".length)}`,
       });
-    else say(span.marker);
+    } else say(span.marker);
   }
 
   say(rest.slice(cursor));

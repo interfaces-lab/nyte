@@ -170,12 +170,13 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 
   const { store } = root;
 
-  if (invalid.length > 0)
+  if (invalid.length > 0) {
     store.dispatch({
       kind: "inform",
       tone: "warning",
       text: ignoredSettingsText(invalid),
     });
+  }
   void store.runner.exited.then(({ code }) => closing.resolve(code));
 
   const opening = options.host.then(async (link) => {
@@ -201,16 +202,18 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
       next.selection !== current.selection ||
       next.dragging !== current.dragging ||
       next.hyperlinks !== current.hyperlinks
-    )
+    ) {
       store.dispatch({ kind: "terminal", terminal: next });
+    }
   };
 
   const onSelection = (): void => {
     syncTerminal();
     const text = renderer.getSelection()?.getSelectedText() ?? "";
 
-    if (store.state().facts.settings.copyOnSelect && text !== "")
+    if (store.state().facts.settings.copyOnSelect && text !== "") {
       store.dispatch({ kind: "copy-text", text });
+    }
   };
 
   const onFocus = (): void => {
@@ -234,8 +237,10 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   if (options.hungUp.aborted) hangUp();
 
   renderer.root.onMouseDown = (event) => {
-    if (store.state().facts.settings.copyOnSelect || event.button !== Number(MouseButton.RIGHT))
+    // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- MouseButton is a numeric enum; Number() compares it as the number event.button holds
+    if (store.state().facts.settings.copyOnSelect || event.button !== Number(MouseButton.RIGHT)) {
       return;
+    }
 
     const selection = renderer.getSelection();
 
@@ -321,8 +326,9 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 
   store.runner.boot(options.boot);
 
-  if (options.draft !== undefined && options.draft !== "")
+  if (options.draft !== undefined && options.draft !== "") {
     store.dispatch({ kind: "draft-restored", text: options.draft });
+  }
   options.typeahead?.release();
   store.runner.run({ kind: "refresh-workspace", cwd: options.cwd });
 

@@ -206,7 +206,7 @@ describe("turn findings (CORE-DIET D3)", () => {
       id: "material",
       contribute: {
         modelContext: [
-          { model: { provider: "test", id: "model" }, contextWindow: 2_000, compactAt: 100 },
+          { model: { provider: "test", id: "model" }, contextWindow: 2000, compactAt: 100 },
         ],
       },
       hooks: {
@@ -241,7 +241,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     const receipt = await session.send("Second?");
 
     await until(() => (logged.some((event) => label(event) === "run:retrying") ? true : undefined));
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(2000);
     const end = await receipt.settled();
 
     assert(end.kind === "completed");
@@ -297,7 +297,7 @@ describe("turn findings (CORE-DIET D3)", () => {
       logged.filter((event) => label(event) === "run:retrying").length >= count ? true : undefined;
 
     await until(() => retries(2));
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(2000);
     await until(() => retries(3));
 
     const second = (await session.view()).messages.find(
@@ -386,7 +386,7 @@ describe("turn findings (CORE-DIET D3)", () => {
       id: "broken",
       contribute: {
         modelContext: [
-          { model: { provider: "test", id: "model" }, contextWindow: 2_000, compactAt: 100 },
+          { model: { provider: "test", id: "model" }, contextWindow: 2000, compactAt: 100 },
         ],
       },
       hooks: {

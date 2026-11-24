@@ -64,11 +64,11 @@ const styles = create({
   footer: { paddingInline: row.paddingInlineMd, paddingBlockEnd: space.s1 },
 });
 
-type ChatCard = {
+interface ChatCard {
   readonly label: string;
   readonly sessions: readonly SessionId[];
   readonly footer?: ReactNode;
-};
+}
 
 const ChatCardHandle = createContext<
   ReturnType<typeof createPreviewCardHandle<ChatCard>> | undefined

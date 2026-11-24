@@ -13,7 +13,7 @@ export function lazyStream(
       for await (const event of inner) outer.push(event);
       outer.end(await inner.result());
     })
-    .catch((cause) => {
+    .catch((cause: unknown) => {
       const message: AssistantMessage = {
         ...emptyAssistantOutput(model),
         stopReason: "error",
@@ -48,8 +48,9 @@ export function lazyApi(
       lazyStream(model, async () => {
         const implementation = await load();
 
-        if (!implementation.fetchDeferred)
+        if (!implementation.fetchDeferred) {
           throw new Error("API does not support deferred responses");
+        }
 
         return implementation.fetchDeferred(model, handle, options);
       });

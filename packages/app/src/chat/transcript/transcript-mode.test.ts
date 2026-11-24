@@ -89,23 +89,23 @@ test.each<[string, TranscriptMode, readonly TranscriptEvent[], TranscriptMode]>(
 });
 
 test("the reader's input explains movement for 250 ms, and a held scrollbar for as long as it's held", () => {
-  const wheeledUp = { at: 1_000, upward: true, pressed: false };
+  const wheeledUp = { at: 1000, upward: true, pressed: false };
   const wheeledDown = { ...wheeledUp, upward: false };
   const held = { ...NO_INPUT, pressed: true };
 
-  expect([1_250, 1_251].map((now) => steeringUp(wheeledUp, now))).toEqual([true, false]);
-  expect([steeringUp(wheeledDown, 1_100), touching(wheeledDown, 1_100)]).toEqual([false, true]);
-  expect([steeringUp(held, 9_000), touching(NO_INPUT, 0)]).toEqual([true, false]);
+  expect([1250, 1251].map((now) => steeringUp(wheeledUp, now))).toEqual([true, false]);
+  expect([steeringUp(wheeledDown, 1100), touching(wheeledDown, 1100)]).toEqual([false, true]);
+  expect([steeringUp(held, 9000), touching(NO_INPUT, 0)]).toEqual([true, false]);
 });
 
 const quiet: TranscriptScroll = {
   mode: following,
   input: NO_INPUT,
-  last: { offset: 500, height: 2_000 },
+  last: { offset: 500, height: 2000 },
   written: null,
 };
 
-function sample(offset: number, height = 2_000, frameInput = false) {
+function sample(offset: number, height = 2000, frameInput = false) {
   return { offset, height, clientHeight: 600, frameInput, now: 10_000 };
 }
 
@@ -113,42 +113,42 @@ test.each<[string, TranscriptScroll, ReturnType<typeof sample>, TranscriptMode, 
   [
     "rule 5: the transcript's own write lands within 1.5 px and keeps the hold while a frame has input",
     { ...quiet, mode: held, written: 401 },
-    sample(400, 2_000, true),
+    sample(400, 2000, true),
     held,
     false,
   ],
   [
     "rule 5: a write 2 px off its target while a frame has input is the reader's",
     { ...quiet, mode: held, written: 402 },
-    sample(400, 2_000, true),
+    sample(400, 2000, true),
     reading,
     true,
   ],
   [
     "rule 5: a foreign scroll up while a frame has input is the reader's",
     quiet,
-    sample(498, 2_000, true),
+    sample(498, 2000, true),
     reading,
     true,
   ],
   [
     "rule 4: a foreign scroll down while a frame has input drops the anchor, and reaching the end follows",
     { ...quiet, mode: held },
-    sample(1_400, 2_000, true),
+    sample(1400, 2000, true),
     following,
     true,
   ],
   [
     "rule 5: content shrinking under the view while a frame has input is never the reader's",
     quiet,
-    sample(300, 1_500, true),
+    sample(300, 1500, true),
     following,
     false,
   ],
   [
     "rule 5: content shrinking under a held view keeps the hold",
     { ...quiet, mode: held },
-    sample(300, 1_500, true),
+    sample(300, 1500, true),
     held,
     false,
   ],
@@ -161,8 +161,8 @@ test.each<[string, TranscriptScroll, ReturnType<typeof sample>, TranscriptMode, 
   ],
   [
     "rule 5: dragging the scrollbar up leaves the end even within 4 px",
-    { ...quiet, input: { ...NO_INPUT, pressed: true }, last: { offset: 1_400, height: 2_000 } },
-    sample(1_398),
+    { ...quiet, input: { ...NO_INPUT, pressed: true }, last: { offset: 1400, height: 2000 } },
+    sample(1398),
     reading,
     false,
   ],
@@ -174,10 +174,10 @@ test.each<[string, TranscriptScroll, ReturnType<typeof sample>, TranscriptMode, 
 });
 
 test("a write is remembered where the view can go, so a write past the end reads as the transcript's own", () => {
-  const wrote = wroteScroll(quiet, 2_400, 1_400);
+  const wrote = wroteScroll(quiet, 2400, 1400);
 
-  expect([wrote.written, wroteScroll(quiet, -20, 1_400).written]).toEqual([1_400, 0]);
-  expect(sampleScroll(wrote, sample(1_400, 2_000, true)).cancel).toBe(false);
+  expect([wrote.written, wroteScroll(quiet, -20, 1400).written]).toEqual([1400, 0]);
+  expect(sampleScroll(wrote, sample(1400, 2000, true)).cancel).toBe(false);
 });
 
 function measure(
@@ -199,7 +199,7 @@ test.each<[string, TranscriptScroll, SettleMeasure, TranscriptMode, SettleAction
   ["rules 1-4: following within 1 px stays", quiet, measure(1), following, { kind: "none" }],
   [
     "rule 5: following while the reader steers up doesn't pull back",
-    { ...quiet, input: { at: 9_900, upward: true, pressed: false } },
+    { ...quiet, input: { at: 9900, upward: true, pressed: false } },
     measure(300),
     following,
     { kind: "none" },
@@ -227,7 +227,7 @@ test.each<[string, TranscriptScroll, SettleMeasure, TranscriptMode, SettleAction
   ],
   [
     "rule 4: the reader's input keeps Reading near the end",
-    { ...quiet, mode: reading, input: { at: 9_900, upward: false, pressed: false } },
+    { ...quiet, mode: reading, input: { at: 9900, upward: false, pressed: false } },
     measure(3),
     reading,
     { kind: "none" },
@@ -385,13 +385,13 @@ test.each<
   ],
   [
     "after the wait a present asks again, keeping the button",
-    [near, failed(0), at(1_000)],
+    [near, failed(0), at(1000)],
     { loads: 2, loading: true, stalled: true },
     "load",
   ],
   [
     "each failure in a row doubles the wait",
-    [near, failed(0), at(1_000), failed(1_000), at(2_999), at(3_000)],
+    [near, failed(0), at(1000), failed(1000), at(2999), at(3000)],
     { loads: 3, loading: true, stalled: true },
     "load",
   ],

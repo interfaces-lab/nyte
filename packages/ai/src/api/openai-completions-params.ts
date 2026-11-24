@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import type OpenAI from "openai";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {
   CacheRetention,
@@ -16,13 +16,15 @@ import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import { clampThinkingBudgetToAnswerRoom, thinkingBudgetForLevel } from "./simple-options.ts";
 import {
-  type ResolvedOpenAICompletionsCompat,
   resolveCompat,
-  type CompletionsMessage,
   getCompatCacheControl,
   applyAnthropicCacheControl,
   convertMessages,
   convertTools,
+} from "./openai-completions-convert.ts";
+import type {
+  ResolvedOpenAICompletionsCompat,
+  CompletionsMessage,
 } from "./openai-completions-convert.ts";
 
 export interface OpenAICompletionsOptions extends StreamOptions {
@@ -103,7 +105,7 @@ export function buildParams(
       cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined,
   };
 
-  if (compat.supportsUsageInStreaming !== false) {
+  if (compat.supportsUsageInStreaming) {
     params.stream_options = { include_usage: true };
   }
 

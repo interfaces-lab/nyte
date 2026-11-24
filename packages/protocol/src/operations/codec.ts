@@ -13,7 +13,7 @@ import type {
 import { unchecked } from "../wire/json.ts";
 import { rawPart } from "./raw-parts.ts";
 
-type Node = { readonly [key: string]: unknown };
+type Node = Readonly<Record<string, unknown>>;
 
 type Definitions = Readonly<Record<string, Node>>;
 
@@ -21,34 +21,36 @@ type Path = readonly (string | number)[];
 
 type Plan = Inert | Composite | Choice;
 
-type Inert = { readonly form: "inert" };
+interface Inert {
+  readonly form: "inert";
+}
 
-type Composite = {
+interface Composite {
   readonly form: "composite";
   readonly properties: Map<string, Plan> | null;
   rest: Plan | null;
   items: Items | null;
   readonly nulled: string[];
-};
+}
 
-type Items = {
+interface Items {
   readonly plan: Plan;
   readonly kinds: ReadonlySet<string> | null;
   readonly reads: (value: unknown) => boolean;
-};
+}
 
-type Choice = {
+interface Choice {
   readonly form: "choice";
   readonly members: Candidate[];
   readonly kinded: Map<string, readonly Candidate[]>;
   readonly unkinded: Candidate[];
-};
+}
 
-type Candidate = {
+interface Candidate {
   readonly plan: Plan;
   readonly kinds: ReadonlySet<string> | null;
   readonly check: (value: unknown) => boolean;
-};
+}
 
 const INERT: Inert = { form: "inert" };
 
@@ -65,7 +67,7 @@ const BYTE_ROWS = {
   "files.bytes": true,
   "documents.bytes": true,
   "page.capture": true,
-} as const satisfies { readonly [N in ByteName]: true };
+} as const satisfies Readonly<Record<ByteName, true>>;
 
 export function namesOperation(name: string): name is OperationName {
   return Object.hasOwn(OPERATIONS, name);
@@ -88,7 +90,7 @@ export function decodeInput<N extends OperationName>(name: N, value: unknown): O
   const unknown: Unknown[] = [];
   collect(plan(schema), value, [], unknown);
 
-  if (unknown.length > 0)
+  if (unknown.length > 0) {
     throw new SdkError(
       "invalid",
       `${name} does not take ${unknown.map((field) => pointer(field.path)).join(", ")}${sharedTakes(unknown)}.`,
@@ -100,6 +102,7 @@ export function decodeInput<N extends OperationName>(name: N, value: unknown): O
         })),
       },
     );
+  }
 
   return input;
 }
@@ -195,11 +198,12 @@ function compilePlan(start: Node, scope: Definitions, memo: Map<Node, Plan>): Pl
 
     const kinds = new Set(choice.members.flatMap((candidate) => [...(candidate.kinds ?? [])]));
 
-    for (const kind of kinds)
+    for (const kind of kinds) {
       choice.kinded.set(
         kind,
         choice.members.filter((candidate) => candidate.kinds?.has(kind) ?? true),
       );
+    }
     choice.unkinded.push(...choice.members.filter((candidate) => candidate.kinds === null));
 
     return choice;
@@ -253,7 +257,10 @@ function compilePlan(start: Node, scope: Definitions, memo: Map<Node, Plan>): Pl
   return composite;
 }
 
-type Unknown = { readonly path: Path; readonly takes: readonly string[] };
+interface Unknown {
+  readonly path: Path;
+  readonly takes: readonly string[];
+}
 
 function sharedTakes(unknown: readonly Unknown[]): string {
   const parents = new Set(unknown.map((field) => pointer(field.path.slice(0, -1))));
@@ -280,9 +287,11 @@ function collect(plan: Plan, value: unknown, path: Path, found: Unknown[]): void
   if (Guard.IsArray(value)) {
     const { items } = plan;
 
-    if (items !== null)
-      for (const [index, item] of value.entries())
+    if (items !== null) {
+      for (const [index, item] of value.entries()) {
         collect(items.plan, item, [...path, index], found);
+      }
+    }
 
     return;
   }
@@ -292,9 +301,9 @@ function collect(plan: Plan, value: unknown, path: Path, found: Unknown[]): void
   for (const [key, field] of Object.entries(value)) {
     const known = plan.properties?.get(key) ?? plan.rest;
 
-    if (known === null)
+    if (known === null) {
       found.push({ path: [...path, key], takes: [...(plan.properties?.keys() ?? [])] });
-    else collect(known, field, [...path, key], found);
+    } else collect(known, field, [...path, key], found);
   }
 }
 
@@ -321,10 +330,11 @@ function encode(plan: Plan, value: unknown): Json | undefined {
 
   const items = plan.items;
 
-  if (value instanceof Set || Guard.IsArray(value))
+  if (value instanceof Set || Guard.IsArray(value)) {
     return items === null
       ? toJson(value)
       : encodeItems(value instanceof Set ? [...value] : value, items.plan);
+  }
 
   if (typeof value !== "object" || value === null) return toJson(value);
 
@@ -358,7 +368,7 @@ function encodeFields(
   nulled: readonly string[],
 ): Json {
   if (value instanceof Map) {
-    const record: { [key: string]: Json } = {};
+    const record: Record<string, Json> = {};
 
     for (const entry of value) {
       const key = String(entry[0]);
@@ -376,7 +386,7 @@ function encodeFields(
   if (!Guard.IsObjectNotArray(value)) return {};
   const keys = Object.keys(value);
 
-  let copy: { [key: string]: Json } | null =
+  let copy: Record<string, Json> | null =
     Object.getPrototypeOf(value) === Object.prototype ? null : {};
 
   for (let index = 0; index < keys.length; index += 1) {
@@ -393,21 +403,22 @@ function encodeFields(
     if (json !== undefined) put(copy, key, json);
   }
 
-  for (const key of nulled)
+  for (const key of nulled) {
     if (!Object.hasOwn(copy ?? value, key)) {
       copy ??= copyFields(value, keys, keys.length);
       put(copy, key, null);
     }
+  }
 
   return copy ?? walked(value);
 }
 
 function copyFields(
-  value: { readonly [key: string]: unknown },
+  value: Readonly<Record<string, unknown>>,
   keys: readonly string[],
   end: number,
-): { [key: string]: Json } {
-  const copy: { [key: string]: Json } = {};
+): Record<string, Json> {
+  const copy: Record<string, Json> = {};
 
   for (const key of keys.slice(0, end)) put(copy, key, walked(value[key]));
 
@@ -590,8 +601,9 @@ function toJson(value: unknown): Json | undefined {
 
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
 
-  if (value instanceof Uint8Array)
+  if (value instanceof Uint8Array) {
     return btoa(Array.from(value, (byte) => String.fromCharCode(byte)).join(""));
+  }
 
   if (value instanceof Set) return encodeItems([...value], INERT);
 
@@ -602,15 +614,15 @@ function toJson(value: unknown): Json | undefined {
   return encodeFields(value, null, INERT, []);
 }
 
-function put(record: { [key: string]: Json }, key: string, json: Json): void {
-  if (key === "__proto__")
+function put(record: Record<string, Json>, key: string, json: Json): void {
+  if (key === "__proto__") {
     Object.defineProperty(record, key, {
       value: json,
       enumerable: true,
       writable: true,
       configurable: true,
     });
-  else record[key] = json;
+  } else record[key] = json;
 }
 
 function readNode(value: unknown): Node | null {

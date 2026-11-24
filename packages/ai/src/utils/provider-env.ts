@@ -15,7 +15,7 @@ function getBunSandboxEnvValue(name: string): string | undefined {
     procEnvCache = new Map();
 
     try {
-      const data = process.getBuiltinModule("node:fs").readFileSync("/proc/self/environ", "utf-8");
+      const data = process.getBuiltinModule("node:fs").readFileSync("/proc/self/environ", "utf8");
 
       for (const entry of data.split("\0")) {
         const variable = /^([^=]+)=(.*)$/su.exec(entry);

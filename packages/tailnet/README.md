@@ -10,7 +10,7 @@ pnpm --dir packages/tailnet build
 
 The build writes `dist/nyte-tailnet` for this machine. `build.mjs` stamps the version into the binary from `NYTE_RELEASE_VERSION`, or from `@nyte-ai/host`'s version when that is unset. `nyte-tailnet --version` prints it.
 
-On macOS and Linux, the TUI build puts `nyte-tailnet` beside `nyte` in `packages/tui/dist`. It ships next to `nyte` in every release tarball, in the installers, and in the desktop app's resources, signed with the app. The host runs the `nyte-tailnet` in its own executable's directory and refuses one whose hello names another version.
+On macOS and Linux, the TUI build puts `nyte-tailnet` beside `nyte` in `packages/tui/dist`. It ships next to `nyte` in every release tarball, in the installers, and in the desktop app's resources, signed with the app. The host runs the `nyte-tailnet` in its own executable's directory. It refuses one whose hello names another version.
 
 ## Command line
 
@@ -37,9 +37,9 @@ No flag takes the auth key itself. The sidecar clears `TS_AUTHKEY` and the other
 
 ## How it works
 
-Stdin is the host's lease. The host keeps the pipe open for the sidecar's life and never writes to it. When the sidecar reads end of file, because the host closed it or died, even by `SIGKILL`, it shuts the node down and exits within a second.
+Stdin is the host's lease. The host keeps the pipe open for the sidecar's life and never writes to it. When the host closes the pipe or dies, even by `SIGKILL`, the sidecar reads end of file. It then shuts the node down and exits within a second.
 
-One node runs per state directory. Before it starts `tsnet`, the sidecar takes an exclusive `flock` on `<dir>/nyte-tailnet.lock` and writes its pid and a random instance id there. `--logout` takes the lock too. A second sidecar on the same directory prints `{ "state": "stopped", "reason": "locked", "holder": <pid>, ... }` and exits 1. The kernel drops the lock when the holder exits.
+One node runs per state directory. Before it starts `tsnet`, the sidecar takes an exclusive `flock` on `<dir>/nyte-tailnet.lock`. It writes its pid and a random instance id there. `--logout` takes the lock too. A second sidecar on the same directory prints `{ "state": "stopped", "reason": "locked", "holder": <pid>, ... }` and exits 1. The kernel drops the lock when the holder exits.
 
 Once it is running, the node fetches its certificate and serves HTTPS on port 443. The tailnet needs MagicDNS and HTTPS certificates turned on.
 
@@ -63,7 +63,7 @@ The first stdout line is the handshake:
 { "type": "hello", "protocol": 1, "version": "0.0.24" }
 ```
 
-The host refuses another `protocol`, with reason `protocol`, and a `version` other than its own, with reason `version`. Every later line is a status, one JSON line per change:
+The host refuses another `protocol` with reason `protocol`. It refuses a `version` other than its own with reason `version`. Every later line is a status, one JSON line per change:
 
 ```json
 { "state": "running", "dnsName": "nyte.example.ts.net", "https": "available", "access": "owner", "tags": [] }

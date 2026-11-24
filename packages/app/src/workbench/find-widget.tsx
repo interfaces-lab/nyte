@@ -11,7 +11,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-export interface FindQuery {
+interface FindQuery {
   readonly text: string;
   readonly caseSensitive: boolean;
   readonly wholeWord: boolean;

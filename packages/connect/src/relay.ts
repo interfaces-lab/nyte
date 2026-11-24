@@ -5,7 +5,7 @@ import { Value } from "typebox/value";
 import { base64Url, fromBase64Url } from "./encoding.ts";
 import { CompactJws, DESKTOP_ROUTES, RELAY_PREFIX, UUID_PATTERN } from "./schemas.ts";
 
-export const RELAY_AUTH_TIMEOUT_MS = 5_000;
+export const RELAY_AUTH_TIMEOUT_MS = 5000;
 
 export const RELAY_PENDING_LIMIT = 4;
 
@@ -23,7 +23,7 @@ export const RELAY_MESSAGE_LIMIT_BYTES = 1_048_576;
 
 export const RELAY_PING_INTERVAL_MS = 20_000;
 
-export const RELAY_RETRY_MIN_MS = 1_000;
+export const RELAY_RETRY_MIN_MS = 1000;
 
 export const RELAY_RETRY_MAX_MS = 60_000;
 
@@ -74,9 +74,9 @@ export const RELAY_SOCKET = {
   ticket: "/.nyte/ws/ticket",
 } as const;
 
-const literal = (text: string) => text.replaceAll(".", "\\.");
+const literal = (text: string) => text.replaceAll(".", String.raw`\.`);
 const OPERATION = RELAY_OPERATIONS.map(literal).join("|");
-const QUERY = "\\?(?:[A-Za-z0-9*._~+=&-]|%[0-9A-Fa-f]{2})*";
+const QUERY = String.raw`\?(?:[A-Za-z0-9*._~+=&-]|%[0-9A-Fa-f]{2})*`;
 
 export const RelayPath = Type.String({
   maxLength: 2048,
@@ -88,7 +88,7 @@ export const RelaySocketPath = Type.String({
   pattern: `^${literal(RELAY_SOCKET.socket)}\\?ticket=[A-Za-z0-9_-]{1,128}$`,
 });
 
-const HEADER_VALUE = "^[\\x20-\\x7e]*$";
+const HEADER_VALUE = String.raw`^[\x20-\x7e]*$`;
 
 const HeaderValue = Type.String({ maxLength: 8192, pattern: HEADER_VALUE });
 
@@ -201,8 +201,9 @@ export function parseDesktopFrame(message: unknown): DesktopFrame | undefined {
 export function encodeChunks(bytes: Uint8Array): string[] {
   const chunks: string[] = [];
 
-  for (let offset = 0; offset < bytes.byteLength; offset += RELAY_CHUNK_BYTES)
+  for (let offset = 0; offset < bytes.byteLength; offset += RELAY_CHUNK_BYTES) {
     chunks.push(base64Url(bytes.subarray(offset, offset + RELAY_CHUNK_BYTES)));
+  }
 
   return chunks;
 }
@@ -301,13 +302,15 @@ export function publicRelayTarget(url: URL): PublicRelayTarget | undefined {
   const [, environmentId = "", route = ""] = match;
   const path = `${route}${url.search}`;
 
-  if (route === RELAY_SOCKET.socket)
+  if (route === RELAY_SOCKET.socket) {
     return Value.Check(RelaySocketPath, path) ? { kind: "socket", environmentId, path } : undefined;
+  }
 
   if (!Value.Check(RelayPath, path) || route === DESKTOP_ROUTES.enroll) return undefined;
 
-  if (route === DESKTOP_ROUTES.device)
+  if (route === DESKTOP_ROUTES.device) {
     return url.search === "" ? { kind: "release", environmentId, path } : undefined;
+  }
 
   return route === RELAY_DISCOVERY.identity || route === RELAY_DISCOVERY.describe
     ? { kind: "discovery", environmentId, path }

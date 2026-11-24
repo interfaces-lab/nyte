@@ -89,8 +89,9 @@ export function descends(tree: Tree, id: number, ancestor: number): boolean {
     let current: number | null = id;
     current !== null;
     current = tree.boxes[current]?.parent ?? null
-  )
+  ) {
     if (current === ancestor) return true;
+  }
 
   return false;
 }
@@ -105,9 +106,11 @@ export function offsetParts(
   const parts: Part[] = [];
 
   if (text) {
-    for (const property of [`padding-${side}`, `border-${side}-width`])
-      if ((box.lengths[property] ?? 0) !== 0)
+    for (const property of [`padding-${side}`, `border-${side}-width`]) {
+      if ((box.lengths[property] ?? 0) !== 0) {
         parts.push({ kind: "declared", box: box.id, property, px: box.lengths[property] ?? 0 });
+      }
+    }
   }
 
   for (let child = box; child.parent !== null && child.id !== stop;) {
@@ -165,13 +168,14 @@ export function offsetParts(
         );
       }
 
-      if (siblings.length > 0)
+      if (siblings.length > 0) {
         step.push({
           kind: "declared",
           box: parent.id,
           property: gap,
           px: (parent.lengths[gap] ?? 0) * siblings.length,
         });
+      }
     }
 
     const explained = step.reduce((total, part) => total + part.px, 0);
@@ -194,13 +198,14 @@ export function stepParts(tree: Tree, previous: SnapBox, row: SnapBox): Part[] {
 
   const parent = row.parent === null ? undefined : tree.boxes[row.parent];
 
-  if (parent !== undefined && previous.parent === row.parent)
+  if (parent !== undefined && previous.parent === row.parent) {
     parts.push({
       kind: "declared",
       box: parent.id,
       property: "row-gap",
       px: parent.lengths["row-gap"] ?? 0,
     });
+  }
 
   return parts.filter((part) => part.px !== 0);
 }

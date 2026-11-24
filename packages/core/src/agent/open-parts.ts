@@ -1,5 +1,4 @@
-import type { Failure, HeadName, Json, RefUpdate, SessionId } from "@nyte-ai/schema";
-import type { PartId } from "@nyte-ai/schema";
+import type { Failure, HeadName, Json, RefUpdate, SessionId, PartId } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { text, thinking } from "../contract/parts.ts";
 import { decodePartRecord } from "../contract/records.ts";
@@ -20,11 +19,11 @@ export const ABORTED: Failure = { class: "aborted", message: "The run was stoppe
 
 export const THOUGHTS = "\n\n";
 
-type ThoughtSignature = {
+interface ThoughtSignature {
   readonly length: number;
   readonly signature: string | null;
   readonly redacted: boolean;
-};
+}
 
 export interface OpenPart {
   readonly part: PartId;

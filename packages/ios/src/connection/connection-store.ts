@@ -1,9 +1,5 @@
-import {
-  parseStoredConnection,
-  serializeConnection,
-  type ManagedPolicy,
-  type SavedConnection,
-} from "./connection.ts";
+import { parseStoredConnection, serializeConnection } from "./connection.ts";
+import type { ManagedPolicy, SavedConnection } from "./connection.ts";
 
 export interface ConnectionStorage {
   readonly read: () => Promise<string | null>;

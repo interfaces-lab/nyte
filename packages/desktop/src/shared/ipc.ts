@@ -76,6 +76,7 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.attach",
   "host.browser.setEntered",
   "host.switchApp",
+  "host.openSettings",
 ] as const;
 
 const HOST_PROCESS_PATHS = [
@@ -89,12 +90,6 @@ const HOST_PROCESS_PATHS = [
   "host.server.connect",
   "host.server.disconnect",
   "host.remote.state",
-  "host.remote.start",
-  "host.remote.stop",
-  "host.remote.configure",
-  "host.remote.clear",
-  "host.remote.pair",
-  "host.remote.revoke",
   "host.remote.configureTailnet",
   "host.remote.signOutTailnet",
   "host.connect.state",
@@ -117,7 +112,7 @@ export type MainCallPath = (typeof MAIN_OPERATION_PATHS)[number];
 
 export type HostCallPath = (typeof HOST_PROCESS_PATHS)[number];
 
-export type DesktopBridge = {
+export interface DesktopBridge {
   readonly clientSurface: NyteBridge["clientSurface"];
   readonly platform: NyteBridge["platform"];
   readonly machineName: NyteBridge["machineName"];
@@ -143,6 +138,7 @@ export type DesktopBridge = {
     | "pathForFile"
     | "onEvent"
     | "switchApp"
+    | "openSettings"
   > &
     Required<
       Pick<
@@ -162,10 +158,10 @@ export type DesktopBridge = {
         | "browser"
         | "attention"
         | "setUnsavedEdits"
-        | "setWorkspacePath"
+        | "setWorkspace"
       >
     >;
-};
+}
 
 type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
   ? Head extends keyof T

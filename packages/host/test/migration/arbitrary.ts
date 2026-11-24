@@ -3,7 +3,7 @@ import { compile, isJson, isJsonObject } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import type { TSchema } from "typebox";
 
-type JsonObject = { readonly [key: string]: Json };
+type JsonObject = Readonly<Record<string, Json>>;
 
 export const ID = fc.constantFrom("a", "b", "c", "d");
 
@@ -11,7 +11,7 @@ const STRING = fc.oneof(ID, fc.string({ maxLength: 6 }));
 
 const NUMBER = fc.oneof(
   fc.integer({ min: 0, max: 2_000_000_000_000 }),
-  fc.integer({ min: -1_000, max: 1_000 }),
+  fc.integer({ min: -1000, max: 1000 }),
   fc
     .double({ min: -1e9, max: 1e9, noNaN: true, noDefaultInfinity: true })
     .filter((value) => !Object.is(value, -0)),
@@ -20,8 +20,9 @@ const NUMBER = fc.oneof(
 function jsonSchema(schema: TSchema): JsonObject {
   const value: unknown = JSON.parse(JSON.stringify(schema));
 
-  if (!isJson(value) || !isJsonObject(value))
+  if (!isJson(value) || !isJsonObject(value)) {
     throw new TypeError("A schema serializes to an object.");
+  }
 
   return value;
 }
@@ -41,9 +42,11 @@ function definitions(root: JsonObject): ReadonlyMap<string, JsonObject> {
     if (typeof node.$id === "string") found.set(node.$id, node);
     const defs = node.$defs;
 
-    if (isJsonObject(defs))
-      for (const [name, definition] of Object.entries(defs))
+    if (isJsonObject(defs)) {
+      for (const [name, definition] of Object.entries(defs)) {
         if (isJsonObject(definition)) found.set(name, definition);
+      }
+    }
 
     for (const child of Object.values(node)) visit(child);
   };
@@ -100,7 +103,7 @@ export function schemaArbitrary(schema: TSchema, depth = 3): fc.Arbitrary<Json> 
 
     const allOf = members(node, "allOf");
 
-    if (allOf.length > 0)
+    if (allOf.length > 0) {
       return walk(
         {
           type: "object",
@@ -113,6 +116,7 @@ export function schemaArbitrary(schema: TSchema, depth = 3): fc.Arbitrary<Json> 
         },
         left,
       );
+    }
 
     switch (node.type) {
       case "null":
@@ -123,7 +127,7 @@ export function schemaArbitrary(schema: TSchema, depth = 3): fc.Arbitrary<Json> 
         return STRING;
       case "integer":
         return fc.integer({
-          min: typeof node.minimum === "number" ? node.minimum : -1_000,
+          min: typeof node.minimum === "number" ? node.minimum : -1000,
           max: 1_000_000,
         });
       case "number":
@@ -140,10 +144,11 @@ export function schemaArbitrary(schema: TSchema, depth = 3): fc.Arbitrary<Json> 
           ? Object.values(node.patternProperties).filter(isJsonObject)
           : [];
 
-        if (patterns.length > 0 && Object.keys(properties).length === 0)
+        if (patterns.length > 0 && Object.keys(properties).length === 0) {
           return fc.dictionary(STRING, fc.oneof(...patterns.map((item) => walk(item, left))), {
             maxKeys: left > 0 ? 3 : 1,
           });
+        }
 
         return fc.record(
           Object.fromEntries(

@@ -8,7 +8,8 @@ export type JsonValue =
 
 import { Type } from "typebox";
 import type { Api, ProviderId } from "./model.ts";
-import type { Tool, ToolReference } from "./tool.ts";
+import type { ContextOccupancy } from "../models.ts";
+import type { ProviderCheckpointSeal, Tool, ToolReference } from "./tool.ts";
 import { object, typed } from "./typed.ts";
 
 export interface TextSignatureV1 {
@@ -136,6 +137,9 @@ export interface AssistantMessage {
   usage: Usage;
   stopReason: StopReason;
   deferred?: DeferredHandle;
+  contextOccupancy?: ContextOccupancy;
+  sessionCheckpoint?: ProviderCheckpointSeal;
+  providerBoundary?: { readonly kind: "continue" };
   errorMessage?: string;
   rawStopReason?: string;
   endTurn?: boolean;

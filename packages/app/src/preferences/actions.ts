@@ -59,11 +59,13 @@ export function namesSettingAction(name: string): name is keyof typeof SETTING_A
 export function runSettingAction(name: keyof typeof SETTING_ACTIONS, input: Json): Json {
   const preference: NamedPreference = SETTING_ACTIONS[name];
 
-  if (!isJsonObject(input) || Object.keys(input).some((key) => key !== "value"))
+  if (!isJsonObject(input) || Object.keys(input).some((key) => key !== "value")) {
     throw new SdkError("invalid", `${name} takes { value }, or {} to read.`);
+  }
 
-  if (input.value !== undefined && !preference.accept(input.value))
+  if (input.value !== undefined && !preference.accept(input.value)) {
     throw new SdkError("invalid", `That is not a value ${name} takes.`);
+  }
 
   return { value: preference.get() };
 }

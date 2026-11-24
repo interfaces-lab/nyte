@@ -26,7 +26,7 @@ description: Find why CI failed on the current pull request and fix it.
 3. Run the failing test with bash, fix the code, rerun it until it passes.
 `;
 
-const EXCERPT = "not ok 1 - sum adds\\n  Expected values to be strictly equal:\\n\\n  -1 !== 3";
+const EXCERPT = String.raw`not ok 1 - sum adds\n  Expected values to be strictly equal:\n\n  -1 !== 3`;
 
 export const CI_CANVAS = `import { Badge, Callout, Card, Code, Stack, Table, Text } from "${KIT_SPECIFIER}";
 

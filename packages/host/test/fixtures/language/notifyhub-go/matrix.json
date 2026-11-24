@@ -1,0 +1,166 @@
+{
+  "language": "go",
+  "servers": [
+    "gopls"
+  ],
+  "vscode": {
+    "extension": "golang.go",
+    "source": "https://github.com/golang/vscode-go/blob/master/extension/package.json"
+  },
+  "features": {
+    "completion": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "stats := h.",
+          "says": "Stats"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "hover": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "stats := h.Sta",
+          "says": "func (h *hub.Hub) Stats() hub.Stats"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "definition": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "h := hub.N",
+          "says": "hub/hub.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "typeDefinition": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "for _, mess",
+          "says": "hub/hub.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "references": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "after": "func bu",
+          "says": "hub/stats.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "symbols": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "says": "Counts"
+        },
+        {
+          "file": "summary.gotmpl",
+          "says": "summary"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "codeActions": {
+      "probes": [
+        {
+          "file": "hub/hub.go",
+          "after": "channel Channel, verb",
+          "says": "Remove unused parameter"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "format": {
+      "probes": [
+        {
+          "file": "main.go"
+        },
+        {
+          "file": "go.mod"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "formatRange": {
+      "probes": [
+        {
+          "file": "main.go",
+          "after": "h := hub.N"
+        }
+      ],
+      "servers": [],
+      "answers": false,
+      "vscode": false
+    },
+    "rename": {
+      "probes": [
+        {
+          "file": "hub/stats.go",
+          "after": "type Cou",
+          "says": "hub/stats.go"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    },
+    "diagnostics": {
+      "probes": [
+        {
+          "file": "hub/hub.go",
+          "says": "nil dereference"
+        }
+      ],
+      "servers": [
+        "gopls"
+      ],
+      "answers": true,
+      "vscode": true
+    }
+  }
+}

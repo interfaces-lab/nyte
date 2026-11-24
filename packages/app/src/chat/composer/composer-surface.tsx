@@ -20,9 +20,9 @@ import {
   composerContent,
   composerReference,
   composerReferencesPlugin,
-} from "./composer-document.ts";
+} from "../../panes/composer-document.ts";
 import type { MentionFile } from "../../data/files.ts";
-import { openConversationLink } from "../markdown/external-link.ts";
+import { openConversationLink } from "../../markdown/external-link.ts";
 import { messageParts } from "../../references/message-references.ts";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../../references/reference-opener.tsx";
@@ -88,7 +88,7 @@ function linkDecorations(doc: ProseMirrorNode, className: string): DecorationSet
       text,
       lineEdge(parent.maybeChild(index - 1)),
       lineEdge(parent.maybeChild(index + 1)),
-    ))
+    )) {
       decorations.push(
         Decoration.inline(pos + range.start, pos + range.end, {
           nodeName: "a",
@@ -96,6 +96,7 @@ function linkDecorations(doc: ProseMirrorNode, className: string): DecorationSet
           class: className,
         }),
       );
+    }
   });
 
   return DecorationSet.create(doc, decorations);
@@ -132,13 +133,14 @@ function selectedReferences(): Plugin {
             composerReference(node) !== undefined &&
             pos >= selection.from &&
             pos + node.nodeSize <= selection.to
-          )
+          ) {
             decorations.push(
               Decoration.node(pos, pos + node.nodeSize, {
                 "data-composer-selected": "",
                 class: SELECTED_MARKER,
               }),
             );
+          }
         });
 
         return DecorationSet.create(state.doc, decorations);
@@ -165,8 +167,9 @@ function composerLinkHandlers(opener: ReferenceOpener | undefined) {
       if (event.button === 1) intercept(event);
     },
     onKeyDownCapture: (event: KeyboardEvent): void => {
-      if (event.key === "Enter" && event.target instanceof HTMLAnchorElement)
+      if (event.key === "Enter" && event.target instanceof HTMLAnchorElement) {
         event.stopPropagation();
+      }
     },
   };
 }
@@ -347,7 +350,7 @@ function ReadOnlyMessage({ draft }: { readonly draft: string }): ReactElement {
 }
 
 export function ComposerReadOnly({ text }: { readonly text: string }) {
-  const draft = text.replaceAll(/\n{3,}/gu, "\n\n").replace(/^\n+|\n+$/gu, "");
+  const draft = text.replaceAll(/\n{3,}/gu, "\n\n").replaceAll(/^\n+|\n+$/gu, "");
 
   return <ReadOnlyMessage draft={draft} />;
 }

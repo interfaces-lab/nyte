@@ -38,7 +38,7 @@ export function fromBase64Url(text: string): Uint8Array | undefined {
     const value = DIGITS.get(text.charCodeAt(index));
 
     if (value === undefined) return undefined;
-    buffer = ((buffer << 6) | value) & 0xffffff;
+    buffer = ((buffer << 6) | value) & 0xff_ff_ff;
     bits += 6;
 
     if (bits >= 8) {
@@ -74,8 +74,9 @@ export function namesBrokerOrigin(origin: string): boolean {
 }
 
 export function relayAddress(origin: string, environmentId: string): string {
-  if (!namesBrokerOrigin(origin))
+  if (!namesBrokerOrigin(origin)) {
     throw new Error("The connect origin must be a canonical https:// origin.");
+  }
 
   if (!UUID.test(environmentId)) throw new Error("An environment id is a lowercase v4 UUID.");
 

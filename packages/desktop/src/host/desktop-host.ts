@@ -1,15 +1,14 @@
 import { basename, join } from "node:path";
-import { serial } from "@nyte-ai/schema/serial";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
-import { API_REVISION, asId } from "@nyte-ai/schema";
+import { asId } from "@nyte-ai/schema";
+import type { HostActivity } from "@nyte-ai/schema";
 import { connect, createSendJournal, SdkError } from "@nyte-ai/sdk/client";
-import type { ClientConnection, Connection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
+import type { ClientConnection, LinkState, SessionInfo } from "@nyte-ai/sdk/client";
 import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type {
   HostEvent,
   OpenWorkspaceOutcome,
   RegisterWorkspaceOutcome,
-  RemoteAccessPluginId,
   RemoteAccessState,
   SelectedWorkspace,
   ServerConnectionProblem,
@@ -30,23 +29,19 @@ import { planAttention, reconcileReminders } from "../shared/attention.ts";
 import type { AttentionDelivery, AttentionReminder, AttentionSeen } from "../shared/attention.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
-import { busyTaskCount } from "../shared/update-activity.ts";
-import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
 import { restorableFolder } from "../shared/window-workspace.ts";
 import { registerFolder } from "@nyte-ai/app/contract/register-folder.ts";
 import { desktopSettings } from "./host-settings.ts";
 import { ExpectedHostError } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
-import type { HostLink } from "./host-link.ts";
-import type { RemoteAccessPlugins } from "./connections/remote-access-plugin.ts";
 import { ServerSettingsStore } from "./connections/server-settings.ts";
 import type { SavedServer } from "./connections/server-settings.ts";
 
 export interface DesktopHostDependencies {
   readonly home: string;
-  readonly link: Pick<HostLink, "connection" | "follow" | "attach">;
+  readonly connection: Promise<ClientConnection>;
+  readonly appVersion: string;
   readonly usageScan: UsageScanReader;
-  readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
   readonly keepAwake?: (awake: boolean) => void;
   readonly settingsChanged?: (settings: DesktopSettings) => void;
@@ -58,45 +53,10 @@ export interface DesktopHostDependencies {
 
 type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
 
-const NOT_SERVED = {
-  code: "unavailable",
-  message: "Cloudflare Tunnel isn't served by the Nyte host yet. Use Tailscale.",
-} as const;
-
 function working(session: SessionInfo): boolean {
   return session.heads.some(
     (head) => head.execution.kind === "live" || head.execution.kind === "retrying",
   );
-}
-
-async function listSessions(host: Connection): Promise<readonly SessionInfo[]> {
-  let page = await host.sessions.list({ parents: { kind: "all" } });
-  const rows = [...page.items];
-
-  while (page.next !== null) {
-    page = await host.sessions.list({ parents: { kind: "all" }, cursor: page.next });
-    rows.push(...page.items);
-  }
-
-  return rows;
-}
-
-async function busyTerminals(host: Connection): Promise<number> {
-  const busy = await Promise.all(
-    (await host.workspaces.list()).map(async ({ id }) => {
-      const workspace = host.workspace(id);
-
-      const running = (await workspace.jobs.list()).filter(
-        (job) => job.pty !== null && job.state.kind === "running",
-      );
-
-      const idle = await Promise.all(running.map((job) => workspace.job(job.id).idle()));
-
-      return idle.filter((at) => !at).length;
-    }),
-  );
-
-  return busy.reduce((total, count) => total + count, 0);
 }
 
 const WATCH_RETRY_MS = 250;
@@ -130,40 +90,52 @@ const SERVER_PROBLEMS = {
     message: "A different host answered at this address. Pair with it again.",
   },
   server: { kind: "server", message: "The server could not answer. Try again later." },
-} as const satisfies { readonly [K in ServerConnectionProblem["kind"]]: ServerConnectionProblem };
+} as const satisfies Readonly<Record<ServerConnectionProblem["kind"], ServerConnectionProblem>>;
 
 function serverProblem(cause: unknown): ServerConnectionProblem {
   if (!(cause instanceof SdkError) || cause.code === "unavailable") return SERVER_PROBLEMS.network;
 
-  if (cause.code === "unauthenticated" || cause.code === "denied")
+  if (cause.code === "unauthenticated" || cause.code === "denied") {
     return SERVER_PROBLEMS.authentication;
+  }
 
   if (cause.code === "stale") return SERVER_PROBLEMS.incompatible;
 
   return SERVER_PROBLEMS.server;
 }
 
-function linkedServer(url: string, view: HostView): ServerState {
-  const { link } = view;
+function linkedServer(url: string, state: LinkState): ServerState | null {
+  switch (state.kind) {
+    case "connecting":
+      return null;
+    case "open":
+      return { kind: "connected", baseUrl: url, version: state.version };
+    case "away":
+    case "closed":
+      return { kind: "unavailable", baseUrl: url, problem: SERVER_PROBLEMS.network };
+    case "refused":
+      return {
+        kind: "unavailable",
+        baseUrl: url,
+        problem:
+          state.reason === "auth" ? SERVER_PROBLEMS.authentication : SERVER_PROBLEMS.incompatible,
+      };
+    default: {
+      const _exhaustive: never = state;
 
-  if (link.kind === "connected") return { kind: "connected", baseUrl: url, version: view.version };
-
-  const problem =
-    link.kind === "reconnecting" || link.reason === "client"
-      ? SERVER_PROBLEMS.network
-      : link.reason === "revoked"
-        ? SERVER_PROBLEMS.authentication
-        : SERVER_PROBLEMS.incompatible;
-
-  return { kind: "unavailable", baseUrl: url, problem };
+      return _exhaustive;
+    }
+  }
 }
 
 export function throwForRenderer(cause: unknown): never {
-  if (cause instanceof ConnectError)
+  if (cause instanceof ConnectError) {
     throw new ExpectedHostError({ code: "unavailable", message: cause.message });
+  }
 
-  if (cause instanceof SdkError)
+  if (cause instanceof SdkError) {
     throw new ExpectedHostError({ code: cause.code, message: cause.message });
+  }
 
   throw cause;
 }
@@ -175,27 +147,26 @@ interface ServerWatch {
   state: ServerState | undefined;
 }
 
-const SERVER_CLIENT = {
-  kind: "app",
-  name: "Nyte",
-  version: `api-${String(API_REVISION)}`,
-} as const;
+function serverClient(version: string) {
+  return { kind: "app", name: "Nyte", version } as const;
+}
 
-async function probeServer(url: string, token: string) {
+async function probeServer(url: string, token: string, version: string) {
   const connection = await connect({
     url,
     credentials: { kind: "token", token },
-    client: SERVER_CLIENT,
+    client: serverClient(version),
     journal: createSendJournal(),
   });
 
   try {
-    for await (const view of connection.watch())
+    for await (const view of connection.watch()) {
       return {
         hostId: connection.hostId,
         publicKey: connection.publicKey ?? null,
         version: view.version,
       };
+    }
     throw new SdkError("unavailable", "The server closed before it described itself.");
   } finally {
     await connection.close();
@@ -203,33 +174,31 @@ async function probeServer(url: string, token: string) {
 }
 
 export class DesktopHost {
-  readonly #deps: DesktopHostDependencies;
-  readonly #connect: ConnectRuntime;
-  readonly #usageScan: UsageScanReader;
-  readonly #servers: ServerSettingsStore;
-  #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
-  #tailnet: string | undefined;
-  #rows: readonly SessionInfo[] = [];
-  readonly #watching = new AbortController();
-  #rowsFollowed = false;
-  #awake = false;
-  readonly #since = Date.now();
-  #seen: AttentionSeen | undefined;
-  #badge = 0;
-  readonly #reminders = new Map<
+  private readonly deps: DesktopHostDependencies;
+  private readonly connect: ConnectRuntime;
+  private readonly usageScan: UsageScanReader;
+  private readonly servers: ServerSettingsStore;
+  private settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
+  private tailnet: string | undefined;
+  private rows: readonly SessionInfo[] = [];
+  private readonly watching = new AbortController();
+  private awake = false;
+  private readonly since = Date.now();
+  private seen: AttentionSeen | undefined;
+  private badge = 0;
+  private readonly reminders = new Map<
     string,
     { readonly signature: string; readonly timer: ReturnType<typeof setInterval> }
   >();
-  readonly #remoteOperations = serial();
-  #server: Promise<ServerWatch | undefined> | undefined;
-  #closing: Promise<void> | undefined;
+  private server: Promise<ServerWatch | undefined> | undefined;
+  private closing: Promise<void> | undefined;
 
   constructor(dependencies: DesktopHostDependencies) {
-    this.#deps = dependencies;
-    this.#servers = new ServerSettingsStore(join(dependencies.home, ".nyte", "server.json"));
-    this.#usageScan = dependencies.usageScan;
+    this.deps = dependencies;
+    this.servers = new ServerSettingsStore(join(dependencies.home, ".nyte", "server.json"));
+    this.usageScan = dependencies.usageScan;
 
-    this.#connect =
+    this.connect =
       dependencies.connect ??
       new ConnectRuntime({
         config: undefined,
@@ -238,102 +207,103 @@ export class DesktopHost {
         onChange: () => this.remoteChanged(),
       });
 
-    this.#followView();
+    this.followView();
   }
 
-  #followView(): void {
-    const stop = this.#deps.link.follow((view) => {
-      const tailnet = JSON.stringify(view.tailnet ?? null);
+  private followView(): void {
+    void this.deps.connection.then(
+      async (connection) => {
+        this.followRows(connection);
 
-      if (this.#tailnet !== undefined && this.#tailnet !== tailnet) this.#remoteChanged();
-      this.#tailnet = tailnet;
-      this.#settings = desktopSettings(view);
-      this.#deps.settingsChanged?.(this.#settings);
-      this.#followRows();
-      this.#holdAwake();
+        for await (const view of connection.watch()) {
+          if (this.watching.signal.aborted) return;
+          const tailnet = JSON.stringify(view.tailnet ?? null);
 
-      if (this.#seen !== undefined) this.#attend();
+          if (this.tailnet !== undefined && this.tailnet !== tailnet) this.remoteChanged();
+          this.tailnet = tailnet;
+          this.settings = desktopSettings(view);
+          this.deps.settingsChanged?.(this.settings);
+          this.holdAwake();
+
+          if (this.seen !== undefined) this.attend();
+        }
+      },
+      () => undefined,
+    );
+  }
+
+  private followRows(connection: ClientConnection): void {
+    const directory = connection.sessions.open({ parents: { kind: "all" } });
+
+    const stop = directory.subscribe(() => {
+      const snapshot = directory.snapshot();
+
+      if (snapshot === null) return;
+      this.rows = snapshot.ids.flatMap((id) => {
+        const row = snapshot.rows.get(id);
+
+        return row === undefined ? [] : [row];
+      });
+      this.holdAwake();
+      this.attend();
     });
 
-    this.#watching.signal.addEventListener("abort", stop, { once: true });
-  }
-
-  #followRows(): void {
-    if (this.#rowsFollowed || this.#watching.signal.aborted) return;
-    this.#rowsFollowed = true;
-
-    const detach = this.#deps.link.attach((connection) => {
-      const directory = connection.sessions.open({ parents: { kind: "all" } });
-
-      const stop = directory.subscribe(() => {
-        const snapshot = directory.snapshot();
-
-        if (snapshot === null) return;
-        this.#rows = snapshot.ids.flatMap((id) => {
-          const row = snapshot.rows.get(id);
-
-          return row === undefined ? [] : [row];
-        });
-        this.#holdAwake();
-        this.#attend();
-      });
-
-      return () => {
+    this.watching.signal.addEventListener(
+      "abort",
+      () => {
         stop();
         directory.close();
-      };
-    });
-
-    this.#watching.signal.addEventListener("abort", detach, { once: true });
+      },
+      { once: true },
+    );
   }
 
-  readonly #call: ClientConnection["call"] = async (name, input) =>
-    (await this.#deps.link.connection()).call(name, input);
+  private readonly callHost: ClientConnection["call"] = async (name, input) =>
+    (await this.deps.connection).call(name, input);
 
-  #attend(): void {
-    if (this.#closing !== undefined) return;
+  private attend(): void {
+    if (this.closing !== undefined) return;
 
     const plan = planAttention({
-      previous: this.#seen,
-      rows: this.#rows,
-      settings: this.#settings,
-      since: this.#since,
+      previous: this.seen,
+      rows: this.rows,
+      settings: this.settings,
+      since: this.since,
     });
 
-    this.#seen = plan.seen;
+    this.seen = plan.seen;
 
-    for (const delivery of plan.deliveries) this.#deps.alert?.(delivery);
+    for (const delivery of plan.deliveries) this.deps.alert?.(delivery);
 
-    if (plan.badge !== this.#badge) {
-      this.#badge = plan.badge;
-      this.#deps.badge?.(plan.badge);
+    if (plan.badge !== this.badge) {
+      this.badge = plan.badge;
+      this.deps.badge?.(plan.badge);
     }
 
-    this.#remind(plan.reminders);
+    this.remind(plan.reminders);
   }
 
-  #remind(reminders: readonly AttentionReminder[]): void {
-    const every = this.#settings.remindMinutes * 60_000;
-    const changes = reconcileReminders(this.#reminders, reminders, every);
+  private remind(reminders: readonly AttentionReminder[]): void {
+    const every = this.settings.remindMinutes * 60_000;
+    const changes = reconcileReminders(this.reminders, reminders, every);
 
     for (const id of changes.stop) {
-      clearInterval(this.#reminders.get(id)?.timer);
-      this.#reminders.delete(id);
+      clearInterval(this.reminders.get(id)?.timer);
+      this.reminders.delete(id);
     }
 
     for (const reminder of changes.start) {
-      const timer = setInterval(() => this.#deps.alert?.(reminder.delivery), every);
-      this.#reminders.set(reminder.id, { signature: reminder.signature, timer });
+      const timer = setInterval(() => this.deps.alert?.(reminder.delivery), every);
+      this.reminders.set(reminder.id, { signature: reminder.signature, timer });
     }
   }
 
-  #holdAwake(): void {
-    const awake =
-      this.#closing === undefined && this.#settings.keepAwake && this.#rows.some(working);
+  private holdAwake(): void {
+    const awake = this.closing === undefined && this.settings.keepAwake && this.rows.some(working);
 
-    if (awake === this.#awake) return;
-    this.#awake = awake;
-    this.#deps.keepAwake?.(awake);
+    if (awake === this.awake) return;
+    this.awake = awake;
+    this.deps.keepAwake?.(awake);
   }
 
   call<P extends CallPath>(
@@ -341,101 +311,76 @@ export class DesktopHost {
     path: P,
     input: CallInput<P>,
   ): Promise<CallOutput<P>> {
-    return callTable(this.#handlers, window, path, input);
+    return callTable(this.handlers, window, path, input);
   }
 
-  readonly #handlers: CallTable = {
+  private readonly handlers: CallTable = {
     "host.endpoint": async () => {
-      const connection = await this.#deps.link.connection();
+      const connection = await this.deps.connection;
 
       return {
         url: HOST_PORT_ORIGIN,
+        version: this.deps.appVersion,
         credentials: { kind: "token", token: "" },
         expect:
           connection.publicKey === undefined
             ? undefined
             : { hostId: connection.hostId, publicKey: connection.publicKey },
-        ...(this.#deps.mediaOrigin === undefined ? {} : { mediaOrigin: this.#deps.mediaOrigin }),
+        ...(this.deps.mediaOrigin === undefined ? {} : { mediaOrigin: this.deps.mediaOrigin }),
       };
     },
-    "host.restore": (_window, { session }) => this.#chatFolder(session),
-    "host.openWorkspace": (_window, { path }) => this.#openWorkspace(path, false),
+    "host.restore": (_window, { session }) => this.chatFolder(session),
+    "host.openWorkspace": (_window, { path }) => this.openWorkspace(path, false),
     "host.registerWorkspace": (_window, { path }) => this.registerWorkspace(path),
-    "host.trustWorkspace": (_window, { path }) => this.#openWorkspace(path, true),
-    "host.usage": async (_window, usageWindow) => this.#usageScan.scan({ window: usageWindow }),
-    "host.server.state": () => this.#serverState(),
-    "host.server.connect": (_window, input) => this.#connectServer(input),
+    "host.trustWorkspace": (_window, { path }) => this.openWorkspace(path, true),
+    "host.usage": async (_window, usageWindow) => this.usageScan.scan({ window: usageWindow }),
+    "host.server.state": () => this.serverState(),
+    "host.server.connect": (_window, input) => this.connectServer(input),
     "host.server.disconnect": async () => {
-      await this.#servers.clear();
-      await this.#watchServer(undefined);
-      this.#deps.emitHostEvent({ kind: "server_changed" });
+      await this.servers.clear();
+      await this.watchServer(undefined);
+      this.deps.emitHostEvent({ kind: "server_changed" });
     },
-    "host.remote.state": () => this.#remoteState(),
-    "host.remote.start": async () => {
-      throw new ExpectedHostError(NOT_SERVED);
-    },
-    "host.remote.stop": async () => undefined,
-    "host.remote.configure": async (_window, { plugin, ...settings }) => {
-      await this.#remoteOperations.run(() => this.#remotePlugin(plugin).configure(settings));
-      this.#remoteChanged();
-    },
-    "host.remote.clear": async (_window, { plugin }) => {
-      await this.#remoteOperations.run(() => this.#remotePlugin(plugin).clear());
-      this.#remoteChanged();
-    },
-    "host.remote.pair": async (_window, { plugin, name }) => {
-      const pairing = await this.#remoteOperations.run(() =>
-        this.#remotePlugin(plugin).pair({ name }),
-      );
-
-      this.#remoteChanged();
-
-      return pairing;
-    },
-    "host.remote.revoke": async (_window, input) => {
-      await this.#remoteOperations.run(() =>
-        this.#remotePlugin(input.plugin).revoke({ deviceId: input.deviceId }),
-      );
-      this.#remoteChanged();
-    },
+    "host.remote.state": () => this.remoteState(),
     "host.remote.configureTailnet": async (_window, { enabled }) => {
-      const node = await this.#tailnetNode();
+      const node = await this.tailnetNode();
 
-      if (node.state === "unavailable")
+      if (node.state === "unavailable") {
         throw new ExpectedHostError({
           code: "unavailable",
           message: "This Mac's Nyte host has no Tailscale node. Reinstall Nyte to get it back.",
         });
+      }
 
-      await this.#call("host.tailnet.configure", {
+      await this.callHost("host.tailnet.configure", {
         enabled,
         hostname: node.dnsName?.split(".")[0] ?? "nyte",
         tags: node.tags,
         access: node.access,
       });
-      this.#remoteChanged();
+      this.remoteChanged();
     },
     "host.remote.signOutTailnet": async () => {
-      await this.#call("host.tailnet.logout", {});
-      this.#remoteChanged();
+      await this.callHost("host.tailnet.logout", {});
+      this.remoteChanged();
     },
-    "host.connect.state": () => this.#connect.view(),
-    "host.connect.link": () => this.#connect.link(),
-    "host.connect.cancel": () => this.#connect.cancel(),
+    "host.connect.state": () => this.connect.view(),
+    "host.connect.link": () => this.connect.link(),
+    "host.connect.cancel": () => this.connect.cancel(),
     "host.connect.setEnabled": (_window, { enabled }) =>
-      this.#connect.setEnabled({ enabled, share: null }),
-    "host.connect.unlink": () => this.#connect.unlink(),
-    "host.connect.revokeDevice": (_window, input) => this.#connect.revokeDevice(input),
-    "host.connect.openAccount": () => this.#connect.openAccount(),
-    "host.connect.signOut": () => this.#connect.signOut(),
+      this.connect.setEnabled({ enabled, share: null }),
+    "host.connect.unlink": () => this.connect.unlink(),
+    "host.connect.revokeDevice": (_window, input) => this.connect.revokeDevice(input),
+    "host.connect.openAccount": () => this.connect.openAccount(),
+    "host.connect.signOut": () => this.connect.signOut(),
   } satisfies HostCalls;
 
   registerWorkspace(path: string): Promise<RegisterWorkspaceOutcome> {
-    return registerFolder(() => this.#deps.link.connection(), path, false, "local");
+    return registerFolder(() => this.deps.connection, path, false, "local");
   }
 
   async localWorkspaces(): Promise<readonly SelectedWorkspace[]> {
-    const host = await this.#deps.link.connection();
+    const host = await this.deps.connection;
 
     return (await host.workspaces.list()).flatMap((workspace) =>
       workspace.availability.kind === "available" &&
@@ -447,49 +392,41 @@ export class DesktopHost {
   }
 
   remoteChanged(): void {
-    this.#remoteChanged();
+    this.deps.emitHostEvent({ kind: "remote_access_changed" });
   }
 
   suspend(): void {
-    if (!this.#settings.pauseOnSleep) return;
-    void this.#call("host.execution.pause", {}).catch(() => undefined);
+    if (!this.settings.pauseOnSleep) return;
+    void this.callHost("host.execution.pause", {}).catch(() => undefined);
   }
 
   resume(): void {
-    this.#connect.resume();
-    void this.#call("host.execution.resume", {}).catch(() => undefined);
+    this.connect.resume();
+    void this.callHost("host.execution.resume", {}).catch(() => undefined);
   }
 
   accountChanged(): void {
-    this.#connect.accountChanged();
+    this.connect.accountChanged();
   }
 
   close(): Promise<void> {
-    this.#closing ??= (async () => {
-      this.#watching.abort();
-      this.#holdAwake();
-      this.#remind([]);
-      await this.#connect.close().catch(() => undefined);
-      await this.#usageScan.close();
+    this.closing ??= (async () => {
+      this.watching.abort();
+      this.holdAwake();
+      this.remind([]);
+      await this.connect.close().catch(() => undefined);
+      await this.usageScan.close();
     })();
 
-    return this.#closing;
+    return this.closing;
   }
 
-  async updateActivity(): Promise<DesktopUpdateActivity> {
-    const opened = await this.#deps.link.connection().catch(() => undefined);
-    const rows = opened === undefined ? [] : await listSessions(opened);
-    const terminalCommandCount = opened === undefined ? 0 : await busyTerminals(opened);
-
-    const taskCount = busyTaskCount(rows);
-
-    return taskCount === 0 && terminalCommandCount === 0
-      ? { kind: "idle" }
-      : { kind: "busy", taskCount, terminalCommandCount };
+  async updateActivity(): Promise<HostActivity> {
+    return (await this.deps.connection).host.activity();
   }
 
-  async #chatFolder(session: string): Promise<SelectedWorkspace | undefined> {
-    const host = await this.#deps.link.connection();
+  private async chatFolder(session: string): Promise<SelectedWorkspace | undefined> {
+    const host = await this.deps.connection;
 
     const info = await host
       .session(asId<"session">(session))
@@ -506,22 +443,17 @@ export class DesktopHost {
     );
   }
 
-  async #openWorkspace(path: string, trust: boolean): Promise<OpenWorkspaceOutcome> {
-    const registered = await registerFolder(
-      () => this.#deps.link.connection(),
-      path,
-      trust,
-      "local",
-    );
+  private async openWorkspace(path: string, trust: boolean): Promise<OpenWorkspaceOutcome> {
+    const registered = await registerFolder(() => this.deps.connection, path, trust, "local");
 
     return registered.kind === "failed"
       ? registered
       : { kind: "opened", workspace: registered.workspace, needsTrust: registered.needsTrust };
   }
 
-  async #serverState(): Promise<ServerState> {
-    this.#server ??= this.#servers.read().then((saved) => this.#startServer(saved));
-    const watch = await this.#server;
+  private async serverState(): Promise<ServerState> {
+    this.server ??= this.servers.read().then((saved) => this.startServer(saved));
+    const watch = await this.server;
 
     if (watch === undefined) return { kind: "none" };
     await watch.first.promise;
@@ -529,9 +461,9 @@ export class DesktopHost {
     return watch.state ?? { kind: "none" };
   }
 
-  async #connectServer(input: { readonly baseUrl: string; readonly token: string }) {
-    const answered = await probeServer(input.baseUrl, input.token).catch((cause: unknown) =>
-      serverProblem(cause),
+  private async connectServer(input: { readonly baseUrl: string; readonly token: string }) {
+    const answered = await probeServer(input.baseUrl, input.token, this.deps.appVersion).catch(
+      (cause: unknown) => serverProblem(cause),
     );
 
     if ("kind" in answered) return { kind: "failed" as const, message: answered.message };
@@ -543,21 +475,21 @@ export class DesktopHost {
       token: input.token,
     };
 
-    await this.#servers.write(saved);
-    await this.#watchServer(saved);
-    this.#deps.emitHostEvent({ kind: "server_changed" });
+    await this.servers.write(saved);
+    await this.watchServer(saved);
+    this.deps.emitHostEvent({ kind: "server_changed" });
 
     return { kind: "connected" as const, baseUrl: input.baseUrl, version: answered.version };
   }
 
-  async #watchServer(saved: SavedServer | undefined): Promise<void> {
-    const previous = await this.#server;
+  private async watchServer(saved: SavedServer | undefined): Promise<void> {
+    const previous = await this.server;
     previous?.stop.abort();
-    this.#server = Promise.resolve(this.#startServer(saved));
+    this.server = Promise.resolve(this.startServer(saved));
   }
 
-  #startServer(saved: SavedServer | undefined): ServerWatch | undefined {
-    if (saved === undefined || this.#closing !== undefined) return undefined;
+  private startServer(saved: SavedServer | undefined): ServerWatch | undefined {
+    if (saved === undefined || this.closing !== undefined) return undefined;
 
     const watch: ServerWatch = {
       saved,
@@ -566,18 +498,18 @@ export class DesktopHost {
       state: undefined,
     };
 
-    void this.#followServer(watch);
+    void this.followServer(watch);
 
     return watch;
   }
 
-  async #connectSaved(watch: ServerWatch): Promise<Connection> {
+  private async connectSaved(watch: ServerWatch): Promise<ClientConnection> {
     const saved = watch.saved;
 
     const connection = await connect({
       url: saved.url,
       credentials: { kind: "token", token: saved.token },
-      client: SERVER_CLIENT,
+      client: serverClient(this.deps.appVersion),
       journal: createSendJournal(),
       expect:
         saved.publicKey === null ? undefined : { hostId: saved.hostId, publicKey: saved.publicKey },
@@ -599,44 +531,46 @@ export class DesktopHost {
 
     if (connection.publicKey === undefined || watch.stop.signal.aborted) return connection;
     watch.saved = { ...saved, publicKey: connection.publicKey };
-    void this.#servers.write(watch.saved).catch(() => undefined);
+    void this.servers.write(watch.saved).catch(() => undefined);
 
     return connection;
   }
 
-  async #followServer(watch: ServerWatch): Promise<void> {
+  private async followServer(watch: ServerWatch): Promise<void> {
     const { saved } = watch;
-    const signal = AbortSignal.any([watch.stop.signal, this.#watching.signal]);
+    const signal = AbortSignal.any([watch.stop.signal, this.watching.signal]);
     let wait = WATCH_RETRY_MS;
 
     while (!signal.aborted) {
-      try {
-        const connection = await this.#connectSaved(watch);
-
-        const stop = (): void => {
-          void connection.close();
-        };
-
-        signal.addEventListener("abort", stop, { once: true });
-
-        try {
-          for await (const view of connection.watch()) {
-            wait = WATCH_RETRY_MS;
-            this.#serverAnswered(watch, linkedServer(saved.url, view));
-          }
-        } finally {
-          signal.removeEventListener("abort", stop);
-          await connection.close().catch(() => undefined);
+      const connection = await this.connectSaved(watch).catch((cause: unknown) => {
+        if (!signal.aborted) {
+          this.serverAnswered(watch, {
+            kind: "unavailable",
+            baseUrl: saved.url,
+            problem: serverProblem(cause),
+          });
         }
 
-        throw new SdkError("unavailable", "The server closed the connection.");
-      } catch (cause) {
-        if (signal.aborted) return;
-        this.#serverAnswered(watch, {
-          kind: "unavailable",
-          baseUrl: saved.url,
-          problem: serverProblem(cause),
+        return null;
+      });
+
+      if (connection !== null) {
+        const show = (): void => {
+          const state = linkedServer(saved.url, connection.link.snapshot());
+
+          if (state !== null) this.serverAnswered(watch, state);
+        };
+
+        const unfollow = connection.link.subscribe(show);
+        show();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
         });
+        unfollow();
+        await connection.close().catch(() => undefined);
+
+        return;
       }
 
       await pause(wait, signal);
@@ -644,47 +578,27 @@ export class DesktopHost {
     }
   }
 
-  #serverAnswered(watch: ServerWatch, state: ServerState): void {
+  private serverAnswered(watch: ServerWatch, state: ServerState): void {
     const changed =
       watch.state !== undefined && JSON.stringify(watch.state) !== JSON.stringify(state);
 
     watch.state = state;
     watch.first.resolve();
 
-    if (changed) this.#deps.emitHostEvent({ kind: "server_changed" });
+    if (changed) this.deps.emitHostEvent({ kind: "server_changed" });
   }
 
-  async #remoteState(): Promise<RemoteAccessState> {
-    const [cloudflare, tailnet] = await Promise.all([
-      this.#deps.remoteAccessPlugins?.cloudflare.view() ?? { kind: "unregistered" as const },
-      this.#tailnetNode(),
-    ]);
-
-    return { kind: "off", tailnet, cloudflare };
+  private async remoteState(): Promise<RemoteAccessState> {
+    return { tailnet: await this.tailnetNode() };
   }
 
-  #tailnetNode(): Promise<TailnetNode> {
-    return this.#call("host.tailnet.status", {}).catch((cause: unknown) => {
-      if (cause instanceof SdkError && cause.code === "unavailable")
+  private tailnetNode(): Promise<TailnetNode> {
+    return this.callHost("host.tailnet.status", {}).catch((cause: unknown) => {
+      if (cause instanceof SdkError && cause.code === "unavailable") {
         return { state: "unavailable" as const };
+      }
 
       throw cause;
     });
-  }
-
-  readonly #remoteChanged = (): void => {
-    this.#deps.emitHostEvent({ kind: "remote_access_changed" });
-  };
-
-  #remotePlugin(id: RemoteAccessPluginId): RemoteAccessPlugins[RemoteAccessPluginId] {
-    const plugin = this.#deps.remoteAccessPlugins?.[id];
-
-    if (plugin === undefined)
-      throw new ExpectedHostError({
-        code: "unknown",
-        message: "This remote access plugin isn't available here.",
-      });
-
-    return plugin;
   }
 }

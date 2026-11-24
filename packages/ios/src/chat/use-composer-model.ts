@@ -2,9 +2,11 @@ import { useRef, useState } from "react";
 import type { Connection, Head, ModelInfo } from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
-import { openHead, type ComposerTarget } from "./composer-target.ts";
+import { openHead } from "./composer-target.ts";
+import type { ComposerTarget } from "./composer-target.ts";
 import { useModelCatalog } from "./remote-models.ts";
-import { supportedThinkingLevel, thinkingLevelsFor, type ThinkingLevel } from "./thinking.ts";
+import { supportedThinkingLevel, thinkingLevelsFor } from "./thinking.ts";
+import type { ThinkingLevel } from "./thinking.ts";
 
 async function configureHead(
   head: Head,

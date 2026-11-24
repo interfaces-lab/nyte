@@ -5,6 +5,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@nyte-ai/ui/diffs";
 import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { FileDiff } from "@nyte-ai/ui/diffs/react";
+// oxlint-disable-next-line import/no-duplicates -- the hand-memo import stays on its own line so its suppression covers only that import
 import { useLayoutEffect, useRef } from "react";
 import type { ReactElement } from "react";
 // oxlint-disable-next-line no-restricted-imports -- the compiler merges the patch parse into the theme/layout scope; keep it keyed on diff.patch alone
@@ -15,8 +16,8 @@ import {
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "@nyte-ai/ui/worker-pool";
-import { appearance as appearanceStore, useAppearance } from "../theme/appearance-store.ts";
-import type { Appearance } from "../theme/appearance-store.ts";
+import { appearance as appearanceStore, useAppearance } from "../preferences/appearance-store.ts";
+import type { Appearance } from "../preferences/appearance-store.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { patchDigest } from "./changes-viewed.ts";
 import { diffStyles } from "./diff.stylex.ts";
@@ -176,11 +177,22 @@ const DIFF_SCOPES = [
     properties: [
       ["--diffs-deletion-color-override", role.strokeAccent],
       ["--diffs-fg-number-deletion-override", role.contentAccent],
+      ["--nyte-diagnostic-error", role.contentAccent],
+    ],
+  },
+  {
+    scope: surfaceTheme.yellow,
+    properties: [
+      ["--diffs-editor-warning-fg", role.strokeAccent],
+      ["--nyte-diagnostic-warning", role.contentAccent],
     ],
   },
   {
     scope: surfaceTheme.blue,
-    properties: [["--diffs-modified-color-override", role.strokeAccent]],
+    properties: [
+      ["--diffs-modified-color-override", role.strokeAccent],
+      ["--nyte-diagnostic-info", role.contentAccent],
+    ],
   },
 ] as const;
 

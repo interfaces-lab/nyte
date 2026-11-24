@@ -10,7 +10,7 @@ import { receiveChatExcerpts } from "./add-to-chat.ts";
 import { ComposerEditor } from "../chat/composer/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
-import { ChangesStack } from "../workbench/changes/changes-stack.tsx";
+import { ChangesStack } from "../changes/changes-stack.tsx";
 import { patchDigest } from "../diff/changes-viewed.ts";
 
 const PATCH = [
@@ -62,8 +62,9 @@ async function click(element: Element, shift: boolean): Promise<void> {
 function deepQuery(root: ParentNode, selector: string): readonly Element[] {
   const found = [...root.querySelectorAll(selector)];
 
-  for (const element of root.querySelectorAll("*"))
+  for (const element of root.querySelectorAll("*")) {
     if (element.shadowRoot !== null) found.push(...deepQuery(element.shadowRoot, selector));
+  }
 
   return found;
 }

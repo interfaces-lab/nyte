@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import { FailureType } from "./errors.ts";
+import type { Id } from "./ids.ts";
 import { idSchema } from "./ids.ts";
 import { JobEndType } from "./jobs.ts";
 import type { JobState } from "./jobs.ts";
@@ -10,6 +11,8 @@ import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
 import { nullable } from "./wire/nullable.ts";
 
+export type ProviderContinuationId = Id<"provider-continuation">;
+
 export const RunViewType = Type.Object({
   id: idSchema<"run">(),
   head: idSchema<"head">(),
@@ -17,6 +20,11 @@ export const RunViewType = Type.Object({
   attempt: Type.Number(),
   origin: Type.Union([
     Type.Object({ kind: Type.Literal("input"), message: idSchema<"message">() }),
+    Type.Object({
+      kind: Type.Literal("agent-continued"),
+      provider: Type.String(),
+      continuation: idSchema<"provider-continuation">(),
+    }),
     Type.Object({
       kind: Type.Literal("continuation"),
       from: Type.Enum(["child", "job", "answer", "wake"]),

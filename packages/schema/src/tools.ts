@@ -69,8 +69,8 @@ export const ToolOutcomeSchema: Schema<ToolOutcome> = standard(withJson(ToolOutc
 
 export const ToolProgressSchema: Schema<ToolProgress> = standard(withJson(ToolProgressType));
 
-export type ToolResult<Output> = {
+export interface ToolResult<Output> {
   readonly content: readonly ToolContent[];
   readonly output?: Output;
   readonly parts?: readonly PartId[];
-};
+}

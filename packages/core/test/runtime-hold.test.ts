@@ -74,7 +74,7 @@ async function requestSteps(kernel: Kernel, session: SessionId): Promise<readonl
 }
 
 describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
-  for (const order of ["provider-first", "slow-first"] as const)
+  for (const order of ["provider-first", "slow-first"] as const) {
     it(`D N1 (${order}): a call of a response overlapping a reload resolves and is gated on its request's runtime`, async () => {
       const fake = fakeModels();
       const seen: string[] = [];
@@ -109,6 +109,7 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
         { type: "text", text: "The tool call was rejected: The user declined." },
       ]);
     });
+  }
 
   it("D N1 (run_ended mid-reload): a run ending while its session reloads is observed by the runtime it ran on", async () => {
     const fake = fakeModels();

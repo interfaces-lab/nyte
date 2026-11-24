@@ -67,12 +67,12 @@ export function userPresentation(content: UserContent): UserPresentation {
     part.kind === "file" && part.mime.startsWith("image/") ? [part] : [],
   );
 
-  if (images.length > 0) text = text.replace(/\[Image \d+\]/gu, "");
+  if (images.length > 0) text = text.replaceAll(/\[Image \d+\]/gu, "");
 
   return {
     text: text
-      .replace(/[ \t]{2,}/gu, " ")
-      .replace(/\n[ \t]+/gu, "\n")
+      .replaceAll(/[ \t]{2,}/gu, " ")
+      .replaceAll(/\n[ \t]+/gu, "\n")
       .trim(),
     files,
     skills,

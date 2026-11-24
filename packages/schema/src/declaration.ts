@@ -1,7 +1,7 @@
 import type { Authority } from "./host.ts";
 import type { Schema } from "./schema.ts";
 
-export type Declaration<Input, Output> = {
+export interface Declaration<Input, Output> {
   /** One sentence, third person: "Starts a chat with its first message." */
   readonly summary: string;
   readonly input: Schema<Input>;
@@ -14,4 +14,4 @@ export type Declaration<Input, Output> = {
   readonly wait?: true;
   readonly local?: true;
   readonly mcp?: "read" | "write";
-};
+}

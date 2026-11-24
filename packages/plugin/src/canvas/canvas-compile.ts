@@ -21,12 +21,12 @@ export type CompileOutcome =
   | { readonly kind: "compiled"; readonly code: string; readonly runtime: number }
   | { readonly kind: "failed"; readonly errors: readonly CompileError[] };
 
-export type CompileError = {
+export interface CompileError {
   readonly file: string | null;
   readonly line: number | null;
   readonly column: number | null;
   readonly text: string;
-};
+}
 
 export type CanvasFiles = Readonly<Record<string, string>>;
 
@@ -81,7 +81,10 @@ function locate(
   return { line, column };
 }
 
-type Binding = { readonly imported: string; readonly local: string };
+interface Binding {
+  readonly imported: string;
+  readonly local: string;
+}
 
 function bindings(clause: string): readonly Binding[] | undefined {
   const text = clause.trim();
@@ -139,7 +142,7 @@ function resolveFile(
   );
 }
 
-type Unit = {
+interface Unit {
   readonly file: string;
   readonly output: string;
   readonly exports: readonly string[];
@@ -151,7 +154,7 @@ type Unit = {
     readonly line: number;
     readonly column: number;
   }[];
-};
+}
 
 function checkFile(
   file: string,
@@ -234,8 +237,9 @@ function findLinkerNames(
   const scan =
     /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`|(?<!\.\s*)(?<![\w$])(exports|require)(?![\w$])(?!\s*:)/gu;
 
-  for (const match of code.matchAll(scan))
+  for (const match of code.matchAll(scan)) {
     if (match[1] !== undefined) found.push({ name: match[1], offset: match.index });
+  }
 
   return found;
 }
@@ -331,16 +335,19 @@ function checkImport(
     return;
   }
 
-  for (const name of named)
-    if (!(external?.names ?? []).includes(name))
+  for (const name of named) {
+    if (!(external?.names ?? []).includes(name)) {
       fail(`"${specifier}" has no export named "${name}".`);
+    }
+  }
 }
 
 function link(unit: Unit): string {
   let code = unit.output;
 
-  for (const edit of unit.edits.toSorted((left, right) => right.start - left.start))
+  for (const edit of unit.edits.toSorted((left, right) => right.start - left.start)) {
     code = `${code.slice(0, edit.start)}${edit.text}${code.slice(edit.end)}`;
+  }
 
   return transform(code, { transforms: ["imports"], production: true, filePath: unit.file }).code;
 }
@@ -376,15 +383,16 @@ export async function compileCanvas(
   ];
   const bytes = sources.reduce((sum, [, text]) => sum + encoder.encode(text).byteLength, 0);
 
-  if (bytes > sourceLimit)
+  if (bytes > sourceLimit) {
     return failed([
       at(null, null, null, `The source is over ${kb(sourceLimit)}; render less at once.`),
     ]);
+  }
   const errors: CompileError[] = [];
   const names = new Set<string>();
 
   for (const [name = ""] of sources) {
-    if (names.has(name))
+    if (names.has(name)) {
       errors.push(
         at(
           name,
@@ -395,7 +403,7 @@ export async function compileCanvas(
             : "This file is named twice.",
         ),
       );
-    else if (!FILE_NAME.test(name))
+    } else if (!FILE_NAME.test(name)) {
       errors.push(
         at(
           name,
@@ -404,6 +412,7 @@ export async function compileCanvas(
           "A canvas file is a path inside the canvas, such as `chart.tsx` or `lib/scale.ts`.",
         ),
       );
+    }
     names.add(name);
   }
 
@@ -417,10 +426,10 @@ export async function compileCanvas(
   });
   const exported = new Map(units.map((unit) => [unit.file, unit.exports]));
 
-  for (const unit of units)
-    for (const want of unit.wants)
-      for (const name of want.names)
-        if (exported.get(want.target)?.includes(name) === false)
+  for (const unit of units) {
+    for (const want of unit.wants) {
+      for (const name of want.names) {
+        if (exported.get(want.target)?.includes(name) === false) {
           errors.push(
             at(
               unit.file,
@@ -431,17 +440,23 @@ export async function compileCanvas(
                 : `"${want.specifier}" has no export named "${name}".`,
             ),
           );
+        }
+      }
+    }
+  }
 
-  if (exported.get(entry)?.includes("default") === false)
+  if (exported.get(entry)?.includes("default") === false) {
     errors.push(at(entry, null, null, "The module must `export default` a component."));
+  }
 
   if (errors.length > 0) return failed(errors);
   const code = bundle(units, externals, entry);
 
-  if (encoder.encode(code).byteLength > codeLimit)
+  if (encoder.encode(code).byteLength > codeLimit) {
     return failed([
       at(null, null, null, `The compiled canvas is over ${kb(codeLimit)}; render less at once.`),
     ]);
+  }
 
   return {
     kind: "compiled",

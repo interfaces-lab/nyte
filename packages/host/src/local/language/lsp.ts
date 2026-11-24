@@ -1,4 +1,4 @@
-import { compile } from "@nyte-ai/schema";
+import { compile, textOffset } from "@nyte-ai/schema";
 import type {
   CodeActionKind,
   CompletionItem,
@@ -6,11 +6,9 @@ import type {
   DiagnosticSeverity,
   DocumentSymbol,
   Hover,
-  InlayHint,
   LanguageDiagnostic,
   LanguageLocation,
   RenameTarget,
-  SignatureHelp,
   SnippetStop,
   SymbolKind,
   TextEdit,
@@ -131,30 +129,6 @@ const HoverLsp = compile(
   Type.Union([Type.Null(), Type.Object({ contents: MarkupType, range: Type.Optional(RangeType) })]),
 );
 
-const SignatureHelpLsp = compile(
-  Type.Union([
-    Type.Null(),
-    Type.Object({
-      signatures: Type.Array(
-        Type.Object({
-          label: Type.String(),
-          documentation: Type.Optional(MarkupType),
-          parameters: Type.Optional(
-            Type.Array(
-              Type.Object({
-                label: Type.Union([Type.String(), Type.Tuple([Type.Number(), Type.Number()])]),
-              }),
-            ),
-          ),
-          activeParameter: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
-        }),
-      ),
-      activeSignature: Type.Optional(Type.Number()),
-      activeParameter: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
-    }),
-  ]),
-);
-
 const DocumentSymbolLsp = compile(
   Type.Object({
     name: Type.String(),
@@ -231,21 +205,6 @@ const CommandLspType = Type.Object({
 });
 
 const CommandLsp = compile(CommandLspType);
-
-const InlayHintsLsp = compile(
-  Type.Union([
-    Type.Null(),
-    Type.Array(
-      Type.Object({
-        position: PositionType,
-        label: Type.Union([Type.String(), Type.Array(Type.Object({ value: Type.String() }))]),
-        kind: Type.Optional(Type.Number()),
-        paddingLeft: Type.Optional(Type.Boolean()),
-        paddingRight: Type.Optional(Type.Boolean()),
-      }),
-    ),
-  ]),
-);
 
 const ProgressLsp = compile(
   Type.Object({
@@ -403,30 +362,31 @@ export function readDiagnostics(
   );
 }
 
-export function readMarkdown(value: Static<typeof MarkupType> | undefined): string {
+function readMarkdown(value: Static<typeof MarkupType> | undefined): string {
   if (value === undefined) return "";
 
   if (typeof value === "string") return value;
 
-  if (Array.isArray(value))
+  if (Array.isArray(value)) {
     return value
       .map((part) => readMarkdown(part))
       .filter((part) => part !== "")
       .join("\n\n");
+  }
 
   if ("language" in value) return `\`\`\`${value.language}\n${value.value}\n\`\`\``;
 
   return value.kind === "plaintext" ? value.value.replaceAll("\n", "  \n") : value.value;
 }
 
-/** Splits a completion answer into its raw items, kept to resolve them later, and its shared defaults. */
 export function readCompletionAnswer(value: unknown): {
   readonly items: readonly unknown[];
   readonly defaults: CompletionDefaults | null;
   readonly incomplete: boolean;
 } {
-  if (!CompletionAnswer.Check(value) || value === null)
+  if (!CompletionAnswer.Check(value) || value === null) {
     return { items: [], defaults: null, incomplete: false };
+  }
 
   if (Array.isArray(value)) return { items: value, defaults: null, incomplete: false };
 
@@ -539,9 +499,9 @@ function closingParenthesis(text: string): number {
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
 
-    if (character === "(" || character === "<" || character === "[" || character === "{")
+    if (character === "(" || character === "<" || character === "[" || character === "{") {
       depth += 1;
-    else if (character === ")" || character === ">" || character === "]" || character === "}") {
+    } else if (character === ")" || character === ">" || character === "]" || character === "}") {
       depth -= 1;
 
       if (depth === 0 && character === ")") return index;
@@ -560,28 +520,6 @@ export function readHover(value: unknown): Hover | null {
     : { markdown, range: value.range === undefined ? null : readRange(value.range) };
 }
 
-export function readSignatureHelp(value: unknown): SignatureHelp | null {
-  if (!SignatureHelpLsp.Check(value) || value === null || value.signatures.length === 0)
-    return null;
-  const active = value.activeSignature ?? 0;
-
-  return {
-    signatures: value.signatures.map((signature) => ({
-      label: signature.label,
-      documentation: readMarkdown(signature.documentation),
-      parameters: (signature.parameters ?? []).flatMap((parameter) => {
-        if (Array.isArray(parameter.label))
-          return [{ utf16Start: parameter.label[0], utf16End: parameter.label[1] }];
-        const start = signature.label.indexOf(parameter.label);
-
-        return start < 0 ? [] : [{ utf16Start: start, utf16End: start + parameter.label.length }];
-      }),
-    })),
-    activeSignature: active,
-    activeParameter: value.signatures[active]?.activeParameter ?? value.activeParameter ?? null,
-  };
-}
-
 export function readSymbols(value: unknown): readonly DocumentSymbol[] {
   if (!SymbolAnswer.Check(value) || value === null) return [];
 
@@ -590,7 +528,7 @@ export function readSymbols(value: unknown): readonly DocumentSymbol[] {
 
 function walkSymbols(nodes: readonly unknown[], depth: number): DocumentSymbol[] {
   const rows = nodes.flatMap((node) => {
-    if (DocumentSymbolLsp.Check(node))
+    if (DocumentSymbolLsp.Check(node)) {
       return [
         {
           row: {
@@ -605,8 +543,9 @@ function walkSymbols(nodes: readonly unknown[], depth: number): DocumentSymbol[]
           children: node.children ?? [],
         },
       ];
+    }
 
-    if (SymbolInformationLsp.Check(node))
+    if (SymbolInformationLsp.Check(node)) {
       return [
         {
           row: {
@@ -621,6 +560,7 @@ function walkSymbols(nodes: readonly unknown[], depth: number): DocumentSymbol[]
           children: [],
         },
       ];
+    }
 
     return [];
   });
@@ -640,35 +580,58 @@ export function readTextEdits(value: unknown): readonly TextEdit[] {
 
 export function readPrepareRename(
   value: unknown,
-  read: (range: TextRange) => string,
+  text: string,
+  position: TextPosition,
 ): RenameTarget | null {
-  if (!PrepareRenameLsp.Check(value) || value === null || "defaultBehavior" in value) return null;
+  if (!PrepareRenameLsp.Check(value) || value === null) return null;
 
-  if ("start" in value) {
-    const range = readRange(value);
+  if ("defaultBehavior" in value) return findWord(text, position);
 
-    return { range, placeholder: read(range) };
+  if ("placeholder" in value) {
+    return { range: readRange(value.range), placeholder: value.placeholder };
   }
 
-  return { range: readRange(value.range), placeholder: value.placeholder };
+  const range = readRange(value);
+
+  return {
+    range,
+    placeholder: text.slice(textOffset(text, range.start), textOffset(text, range.end)),
+  };
 }
 
-/** The edit, or why it is refused: a file it would create, rename or delete. */
+export function findWord(text: string, position: TextPosition): RenameTarget | null {
+  const offset = textOffset(text, position);
+  const before = /[\p{L}\p{N}_$]*$/u.exec(text.slice(0, offset))?.[0] ?? "";
+  const after = /^[\p{L}\p{N}_$]*/u.exec(text.slice(offset))?.[0] ?? "";
+
+  return before === "" && after === ""
+    ? null
+    : {
+        range: {
+          start: { line: position.line, utf16Column: position.utf16Column - before.length },
+          end: { line: position.line, utf16Column: position.utf16Column + after.length },
+        },
+        placeholder: before + after,
+      };
+}
+
 export function readWorkspaceEdit(
   value: unknown,
   place: Place,
 ):
   | { readonly kind: "edit"; readonly edit: WorkspaceEdit }
   | { readonly kind: "refused"; readonly reason: string } {
-  if (!WorkspaceEditLsp.Check(value) || value === null)
+  if (!WorkspaceEditLsp.Check(value) || value === null) {
     return { kind: "edit", edit: { files: [] } };
+  }
   const operation = (value.documentChanges ?? []).find((change) => "kind" in change);
 
-  if (operation !== undefined && "kind" in operation)
+  if (operation !== undefined && "kind" in operation) {
     return {
       kind: "refused",
       reason: `This change would ${operation.kind} a file, which a returned edit cannot do yet.`,
     };
+  }
 
   const documents = (value.documentChanges ?? []).flatMap((change) =>
     "textDocument" in change ? [{ uri: change.textDocument.uri, edits: change.edits }] : [],
@@ -691,7 +654,7 @@ export function readWorkspaceEdit(
   };
 }
 
-export type ActionPlan = {
+export interface ActionPlan {
   readonly title: string;
   readonly kind: CodeActionKind;
   readonly preferred: boolean;
@@ -700,13 +663,13 @@ export type ActionPlan = {
   readonly command: unknown;
   readonly raw: unknown;
   readonly resolvable: boolean;
-};
+}
 
 export function readCodeActions(value: unknown): readonly ActionPlan[] {
   if (!SymbolAnswer.Check(value) || value === null) return [];
 
   return value.flatMap((entry): ActionPlan[] => {
-    if (CommandLsp.Check(entry))
+    if (CommandLsp.Check(entry)) {
       return [
         {
           title: entry.title,
@@ -719,6 +682,7 @@ export function readCodeActions(value: unknown): readonly ActionPlan[] {
           resolvable: false,
         },
       ];
+    }
 
     if (!CodeActionLsp.Check(entry)) return [];
     const kind = entry.kind ?? "";
@@ -741,32 +705,8 @@ export function readCodeActions(value: unknown): readonly ActionPlan[] {
   });
 }
 
-export function readCodeAction(value: unknown): ActionPlan | null {
-  return readCodeActions([value])[0] ?? null;
-}
-
 export function readCommand(value: unknown): Static<typeof CommandLspType> | null {
   return CommandLsp.Check(value) ? value : null;
-}
-
-export function readInlayHints(value: unknown): readonly InlayHint[] {
-  if (!InlayHintsLsp.Check(value) || value === null) return [];
-
-  return value
-    .map((hint) => ({
-      position: readPosition(hint.position),
-      label:
-        typeof hint.label === "string" ? hint.label : hint.label.map((part) => part.value).join(""),
-      kind:
-        hint.kind === 1
-          ? ("type" as const)
-          : hint.kind === 2
-            ? ("parameter" as const)
-            : ("other" as const),
-      padLeft: hint.paddingLeft ?? false,
-      padRight: hint.paddingRight ?? false,
-    }))
-    .toSorted((left, right) => comparePositions(left.position, right.position));
 }
 
 export function readProgress(value: unknown): {

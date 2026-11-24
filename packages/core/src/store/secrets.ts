@@ -8,8 +8,9 @@ export async function sealText(
 ): Promise<{ readonly iv: string; readonly ciphertext: string }> {
   const cipher = kernel.secretKey;
 
-  if (cipher === null)
+  if (cipher === null) {
     throw new SdkError("unavailable", "This host has no secrets key, so it stores no secrets.");
+  }
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
 
   const sealed = new Uint8Array(
@@ -45,8 +46,9 @@ export async function openText(
 
 export function loadSecretCipherKey(source: NonNullable<Kernel["secrets"]>): Promise<CryptoKey> {
   return source.key().then((bytes) => {
-    if (bytes.length !== 32)
+    if (bytes.length !== 32) {
       throw new SdkError("invalid", `The secrets key is ${bytes.length} bytes; AES-256 needs 32.`);
+    }
 
     return globalThis.crypto.subtle.importKey("raw", new Uint8Array(bytes), "AES-GCM", false, [
       "encrypt",

@@ -11,12 +11,13 @@ import {
   AutocompleteSeparator,
   AutocompleteStatus,
   AutocompleteTrigger,
-  type AutocompleteContentProps,
 } from "@nyte-ai/ui/autocomplete";
+import type { AutocompleteContentProps } from "@nyte-ai/ui/autocomplete";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { selectedFontOption, type FontOption, type FontSelectGroup } from "./font-select-groups.ts";
-import { settingsStyles } from "./settings.stylex.ts";
+import { selectedFontOption } from "./font-select-groups.ts";
+import type { FontOption, FontSelectGroup } from "./font-select-groups.ts";
+import { settingsStyles } from "../settings-rows/settings.stylex.ts";
 
 const FONT_SELECT_COLLISION: NonNullable<AutocompleteContentProps["collisionAvoidance"]> = {
   side: "flip",

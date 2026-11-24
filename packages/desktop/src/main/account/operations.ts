@@ -30,22 +30,22 @@ const FAILURES: Record<AccountFailure, string> = {
 };
 
 export class AccountOperations {
-  #pending: Pending | undefined;
+  private pending: Pending | undefined;
 
-  readonly #newId: () => string;
+  private readonly newId: () => string;
 
   constructor(newId: () => string = randomUUID) {
-    this.#newId = newId;
+    this.newId = newId;
   }
 
   current(): AccountCommand | undefined {
-    return this.#pending === undefined
+    return this.pending === undefined
       ? undefined
-      : { id: this.#pending.id, kind: this.#pending.kind };
+      : { id: this.pending.id, kind: this.pending.kind };
   }
 
   requestToken(signal: AbortSignal) {
-    const id = this.#newId();
+    const id = this.newId();
 
     const result = new Promise<string>((resolve, reject) => {
       if (signal.aborted) {
@@ -57,7 +57,7 @@ export class AccountOperations {
       const abort = (): void => this.cancel(id);
 
       signal.addEventListener("abort", abort, { once: true });
-      this.#replace({
+      this.replace({
         id,
         kind: "token",
         resolve,
@@ -70,40 +70,40 @@ export class AccountOperations {
   }
 
   requestSignOut() {
-    const id = this.#newId();
+    const id = this.newId();
 
     const result = new Promise<void>((resolve, reject) => {
-      this.#replace({ id, kind: "sign_out", resolve, reject, release: () => undefined });
+      this.replace({ id, kind: "sign_out", resolve, reject, release: () => undefined });
     });
 
     return { id, result };
   }
 
   settle(answer: AccountAnswer): boolean {
-    const pending = this.#pending;
+    const pending = this.pending;
 
     if (pending === undefined || pending.id !== answer.id) return false;
 
     if (answer.kind === "cancelled") {
-      this.#finish(pending).reject(new AccountCancelled());
+      this.finish(pending).reject(new AccountCancelled());
 
       return true;
     }
 
     if (answer.kind === "failed") {
-      this.#finish(pending).reject(new Error(FAILURES[answer.reason]));
+      this.finish(pending).reject(new Error(FAILURES[answer.reason]));
 
       return true;
     }
 
     if (pending.kind === "token" && answer.kind === "token") {
-      this.#finish(pending).resolve(answer.token);
+      this.finish(pending).resolve(answer.token);
 
       return true;
     }
 
     if (pending.kind === "sign_out" && answer.kind === "signed_out") {
-      this.#finish(pending).resolve();
+      this.finish(pending).resolve();
 
       return true;
     }
@@ -116,23 +116,23 @@ export class AccountOperations {
   }
 
   fail(error: Error, id?: string): void {
-    const pending = this.#pending;
+    const pending = this.pending;
 
     if (pending === undefined || (id !== undefined && pending.id !== id)) return;
-    this.#finish(pending).reject(error);
+    this.finish(pending).reject(error);
   }
 
-  #finish<P extends Pending>(pending: P): P {
-    this.#pending = undefined;
+  private finish<P extends Pending>(pending: P): P {
+    this.pending = undefined;
     pending.release();
 
     return pending;
   }
 
-  #replace(next: Pending): void {
-    const previous = this.#pending;
+  private replace(next: Pending): void {
+    const previous = this.pending;
 
-    this.#pending = next;
+    this.pending = next;
 
     if (previous === undefined) return;
     previous.release();

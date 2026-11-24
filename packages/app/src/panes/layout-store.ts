@@ -40,7 +40,7 @@ export function createLayoutStore(initial: Layout<PaneContent>): LayoutStore {
   };
 }
 
-export function createFocusRequests(): Pick<LayoutStore, "onFocusRequest" | "requestFocus"> {
+function createFocusRequests(): Pick<LayoutStore, "onFocusRequest" | "requestFocus"> {
   const listeners = new Set<(pane: PaneId) => void>();
 
   return {

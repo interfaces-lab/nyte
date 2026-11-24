@@ -13,8 +13,8 @@ const model = {
   reasoning: true,
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 200000,
-  maxTokens: 32000,
+  contextWindow: 200_000,
+  maxTokens: 32_000,
   compat: { forceAdaptiveThinking: true, supportsStrictTools: true },
 } satisfies Model<"anthropic-messages">;
 
@@ -126,7 +126,7 @@ describe("Anthropic strict tool schemas", () => {
 
   it("sends prefer tools non-strict when they use keywords Anthropic strict mode rejects", async () => {
     const unsupportedParameters: Tool["parameters"][] = [
-      Type.Object({ timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 300000 })) }),
+      Type.Object({ timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 300_000 })) }),
       Type.Object({ options: Type.Object({ tags: Type.Array(Type.String(), { minItems: 2 }) }) }),
       Type.Object({ expression: Type.String({ format: "regex" }) }),
     ];

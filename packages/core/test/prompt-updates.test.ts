@@ -1,11 +1,18 @@
 import { asId } from "@nyte-ai/schema";
+import type { PromptOverride } from "@nyte-ai/schema";
 import { getSystemMessageText } from "@nyte-ai/schema/model";
 import type { Message } from "@nyte-ai/schema/model";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import type { Plugin } from "../src/index.ts";
-import { fakeModels, open, testModel } from "./fake-models.ts";
-import type { FakeModels, Request } from "./fake-models.ts";
+import { compaction, isPart } from "../src/index.ts";
+import type { Plugin, Session } from "../src/index.ts";
+import { until } from "../src/harness.ts";
+import { memoryStore } from "../src/store.ts";
+import { createDisk, fakeProvider } from "./fake-env.ts";
+import { composed, fakeModels, open, testModel } from "./fake-models.ts";
+import type { Composed, FakeModels, Request } from "./fake-models.ts";
 import { echo } from "./turn-support.ts";
+
+const main = asId<"head">("main");
 
 afterEach(() => {
   vi.useRealTimers();
@@ -48,7 +55,7 @@ async function finish(receipt: { settled(): Promise<unknown> }): Promise<void> {
     done = true;
   });
 
-  while (!done) await vi.advanceTimersByTimeAsync(1_000);
+  while (!done) await vi.advanceTimersByTimeAsync(1000);
   await settled;
 }
 
@@ -190,4 +197,327 @@ describe("system prompt updates", () => {
       sections: { rules: expect.stringContaining("Rule two.") },
     });
   });
+
+  it.each<{
+    readonly name: string;
+    readonly updates: boolean;
+    readonly defaultOn?: boolean;
+    readonly prompt?: PromptOverride;
+    readonly systemFile?: string;
+    readonly initialState?: boolean;
+    readonly run: (context: {
+      readonly host: Composed;
+      readonly session: Session;
+      readonly fake: FakeModels;
+      readonly setText: (text: string) => void;
+    }) => Promise<void>;
+    readonly reminders: readonly string[];
+    readonly system?: string;
+    readonly checkRequests?: (requests: readonly (readonly string[])[]) => void;
+  }>([
+    {
+      name: "present from the start is told once, after the first message",
+      updates: false,
+      initialState: true,
+      async run({ session, fake }) {
+        fake.reply({ content: [{ type: "text", text: "Ok." }] });
+        await session.head(main).configure({ settings: { "crew.on": true } });
+        await (await session.send("Again.")).settled();
+      },
+      reminders: ["Go.", "on", "Again."],
+    },
+    {
+      name: "leaving the chat says its gone text",
+      updates: false,
+      initialState: true,
+      async run({ session, fake }) {
+        fake.reply({ content: [{ type: "text", text: "Ok." }] });
+        await session.head(main).configure({ settings: { "crew.on": false } });
+        await (await session.send("Again.")).settled();
+      },
+      reminders: ["Go.", "on", "Again.", "off"],
+    },
+    {
+      name: "returning repeats its text",
+      updates: true,
+      initialState: true,
+      async run({ session, fake }) {
+        fake.reply(
+          { content: [{ type: "text", text: "Ok." }] },
+          { content: [{ type: "text", text: "Ok." }] },
+        );
+        await session.head(main).configure({ settings: { "crew.on": false } });
+        await (await session.send("Again.")).settled();
+        await session.head(main).configure({ settings: { "crew.on": true } });
+        await (await session.send("Again.")).settled();
+      },
+      reminders: ["Go.", "on", "Again.", "off", "Again.", "on"],
+    },
+    {
+      name: "never present is never mentioned",
+      updates: true,
+      initialState: false,
+      async run({ session, fake }) {
+        fake.reply({ content: [{ type: "text", text: "Ok." }] });
+        await session.head(main).configure({ settings: { "crew.on": false } });
+        await (await session.send("Again.")).settled();
+      },
+      reminders: ["Go.", "Again."],
+    },
+    {
+      name: "a switch on by default sends its reminder on the first message without configuring it",
+      updates: false,
+      defaultOn: true,
+      async run({ session, fake }) {
+        fake.reply({ content: [{ type: "text", text: "Ok." }] });
+        await (await session.send("Again.")).settled();
+      },
+      reminders: ["Go.", "on", "Again."],
+    },
+    {
+      name: "changing text while present is re-told without rewriting the system prompt",
+      updates: false,
+      initialState: true,
+      async run({ session, fake, setText }) {
+        fake.reply(
+          { content: [{ type: "text", text: "Ok." }] },
+          { content: [{ type: "text", text: "Ok." }] },
+          { content: [{ type: "text", text: "Ok." }] },
+        );
+        setText("Work as a larger crew.");
+        await (await session.send("Again.")).settled();
+        await (await session.send("Again.")).settled();
+        await session.head(main).configure({ settings: { "crew.on": false } });
+        await (await session.send("Again.")).settled();
+      },
+      reminders: ["Go.", "on", "Again.", "on:v2", "Again.", "Again.", "off"],
+    },
+    {
+      name: "compacting the on entry while still present tells it again",
+      updates: false,
+      initialState: true,
+      async run({ session, fake }) {
+        fake.reply(
+          { content: [{ type: "text", text: "Ok." }] },
+          { content: [{ type: "text", text: "Earlier chat." }] },
+          { content: [{ type: "text", text: "Ok." }] },
+        );
+        await (await session.send("Again.")).settled();
+        await compactAndWait(session);
+        await (await session.send("Third.")).settled();
+      },
+      reminders: ["summary", "Again.", "Third.", "on"],
+    },
+    {
+      name: "turning off right after compaction removes the on entry still says its gone text",
+      updates: false,
+      initialState: true,
+      async run({ session, fake }) {
+        fake.reply(
+          { content: [{ type: "text", text: "Ok." }] },
+          { content: [{ type: "text", text: "Earlier chat." }] },
+          { content: [{ type: "text", text: "Ok." }] },
+        );
+        await (await session.send("Again.")).settled();
+        await compactAndWait(session);
+        await session.head(main).configure({ settings: { "crew.on": false } });
+        await (await session.send("Third.")).settled();
+      },
+      reminders: ["summary", "Again.", "Third.", "off"],
+    },
+    {
+      name: "no orphan off after compaction removes the on and off entries",
+      updates: false,
+      initialState: true,
+      async run({ session, fake }) {
+        fake.reply(
+          { content: [{ type: "text", text: "Ok." }] },
+          { content: [{ type: "text", text: "Ok." }] },
+          { content: [{ type: "text", text: "Earlier chat." }] },
+          { content: [{ type: "text", text: "Ok." }] },
+        );
+        await session.head(main).configure({ settings: { "crew.on": false } });
+        await (await session.send("Second.")).settled();
+        await (await session.send("Third.")).settled();
+        await compactAndWait(session);
+        await (await session.send("Fourth.")).settled();
+      },
+      reminders: ["summary", "Third.", "Fourth."],
+      checkRequests(requests) {
+        expect(requests[0]).toEqual(["Go.", "on"]);
+        expect(requests[1]).toEqual(["Go.", "on", "Second.", "off"]);
+      },
+    },
+    {
+      name: "a replace prompt override does not swallow reminders",
+      updates: false,
+      initialState: true,
+      prompt: { kind: "replace", text: "Only this system prompt." },
+      async run() {},
+      reminders: ["Go.", "on"],
+      system: "Only this system prompt.",
+    },
+    {
+      name: "SYSTEM.md does not swallow reminders",
+      updates: false,
+      initialState: true,
+      systemFile: "From SYSTEM.md.",
+      async run() {},
+      reminders: ["Go.", "on"],
+      system: "From SYSTEM.md.",
+    },
+    {
+      name: "unloading a plugin while its reminder section was present says its gone text from the record",
+      updates: false,
+      initialState: true,
+      async run({ host, session, fake }) {
+        fake.reply(
+          { content: [{ type: "text", text: "Ok." }] },
+          { content: [{ type: "text", text: "Ok." }] },
+        );
+        await host.plugins.replace([], { session: session.id });
+        await (await session.send("Again.")).settled();
+        await (await session.send("Third.")).settled();
+      },
+      reminders: ["Go.", "on", "Again.", "off", "Third."],
+    },
+  ])(
+    "reminder sections: $name",
+    async ({
+      updates,
+      defaultOn,
+      prompt,
+      systemFile,
+      initialState,
+      run,
+      reminders,
+      system,
+      checkRequests,
+    }) => {
+      const fake = models(updates);
+      fake.reply({ content: [{ type: "text", text: "Ok." }] });
+      let currentText = "Work as a crew.";
+
+      const crew: Plugin<"core"> = {
+        id: "crew",
+        contribute: {
+          settings: [
+            {
+              id: "crew.on",
+              title: "Crew",
+              type: "switch",
+              scope: "chat",
+              ...(defaultOn === true ? { default: true } : {}),
+            },
+          ],
+          prompt: [
+            {
+              id: "crew",
+              delivery: "reminder",
+              when: (chat) => chat.settings["crew.on"] === true,
+              text: () => `Crew instructions.\n\n${currentText}`,
+              gone: "Crew instructions no longer apply.",
+            },
+          ],
+        },
+      };
+
+      const disk = systemFile === undefined ? null : createDisk();
+      disk?.put("/work/.nyte/SYSTEM.md", systemFile ?? "");
+
+      await using host =
+        disk === null
+          ? await open(fake, { plugins: [crew] })
+          : await composed({
+              store: memoryStore(),
+              models: fake.models,
+              plugins: [{ id: "local", environment: fakeProvider(disk) }, crew],
+              workspace: { kind: "local", path: "/work" },
+              home: null,
+              description: { name: "test", platform: "darwin", version: "0.1.0" },
+            });
+
+      if (disk !== null) {
+        const [workspace] = await host.workspaces.list();
+        assert(workspace !== undefined);
+        await host.workspace(workspace.id).update({ trusted: true });
+      }
+
+      const { session, receipt } = await host.sessions.start({
+        id,
+        content: "Go.",
+        ...(prompt !== undefined ? { prompt } : {}),
+        ...(initialState !== undefined
+          ? { configuration: { settings: { "crew.on": initialState } } }
+          : {}),
+      });
+      await receipt.settled();
+
+      await run({
+        host,
+        session,
+        fake,
+        setText(next) {
+          currentText = next;
+        },
+      });
+
+      const told = (message: Message): string => {
+        const text = typeof message.content === "string" ? message.content : "";
+
+        if (
+          text === "<system-reminder>\nCrew instructions.\n\nWork as a crew.\n</system-reminder>"
+        ) {
+          return "on";
+        }
+
+        if (
+          text ===
+          "<system-reminder>\nCrew instructions.\n\nWork as a larger crew.\n</system-reminder>"
+        ) {
+          return "on:v2";
+        }
+
+        if (text === "<system-reminder>\nCrew instructions no longer apply.\n</system-reminder>") {
+          return "off";
+        }
+
+        if (text.startsWith("The earlier conversation was summarised")) return "summary";
+
+        return text;
+      };
+
+      const chatRequests = fake.requests
+        .map((request) => request.context.messages)
+        .filter((messages) => messages[0]?.role === "system" && messages[0].content === "");
+
+      const userTurns = chatRequests.map((messages) =>
+        messages.filter((message) => message.role === "user").map(told),
+      );
+
+      checkRequests?.(userTurns);
+      expect(userTurns.at(-1)).toEqual(reminders);
+      expect(new Set(chatRequests.map((messages) => JSON.stringify(messages[0])))).toHaveProperty(
+        "size",
+        1,
+      );
+
+      if (system !== undefined) {
+        const firstSystem = chatRequests[0]?.[0];
+        assert(firstSystem?.role === "system");
+        expect(getSystemMessageText(firstSystem)).toBe(system);
+      }
+    },
+  );
 });
+
+async function compactAndWait(session: Session): Promise<void> {
+  expect(await session.compact()).toMatchObject({ kind: "started" });
+  await until(async () =>
+    (await session.view()).messages.some(
+      (message) => isPart(message, compaction) && message.status.kind === "settled",
+    )
+      ? true
+      : undefined,
+  );
+}

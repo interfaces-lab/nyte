@@ -207,8 +207,8 @@ function selection(
   }
 
   if (filter.query !== undefined) {
-    conditions.push("s.name_folded LIKE ? ESCAPE '\\'");
-    values.push(`%${filter.query.toLowerCase().replaceAll(/[\\%_]/g, "\\$&")}%`);
+    conditions.push(String.raw`s.name_folded LIKE ? ESCAPE '\'`);
+    values.push(`%${filter.query.toLowerCase().replaceAll(/[\\%_]/g, String.raw`\$&`)}%`);
   }
   if (after !== undefined) {
     conditions.push("(s.sort_at, s.session) > (?, ?)");

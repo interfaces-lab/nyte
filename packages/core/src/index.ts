@@ -9,6 +9,7 @@ export type {
   ConnectionContext,
   DocumentsApi,
   Host,
+  HostApi,
   ImageLimits,
   ImageProcessor,
   ListenOptions,
@@ -86,6 +87,7 @@ export type {
   SecretEntry,
   Setting,
   SettingDefinition,
+  SettingMode,
   Side,
   SideTable,
   Skill,
@@ -110,6 +112,16 @@ export { holdMessage } from "./api/hold.ts";
 export { changesSince, readWindow } from "./watch/window.ts";
 
 export type { Machine } from "./contract/presence.ts";
+
+export type {
+  ProviderHeadRegistration,
+  ProviderRunsApi,
+  ProviderRevocation,
+  RuntimeLaunchPolicy,
+  RuntimeScope,
+  RuntimePolicyGrant,
+  RuntimePolicyApi,
+} from "./contract/provider.ts";
 
 export type { OsProcess } from "./contract/records.ts";
 
@@ -144,20 +156,20 @@ export type {
   GitHubApi,
   Job,
   Jobs,
-  LanguageApi,
-  LanguagePosition,
-  LanguageService,
   McpApi,
   Page,
   Resources,
   SnapshotScope,
   SnapshotsApi,
+  StorageProvider,
+  StorageWorkspace,
   Workspace,
   Workspaces,
   Worktree,
   WorktreeProvider,
   WorktreeRemoval,
 } from "./contract/workspace.ts";
+export type { LanguageApi, LanguagePosition, LanguageService } from "./contract/language.ts";
 
 export { attachFile } from "./builtins/attach-file.ts";
 

@@ -1,4 +1,5 @@
-import { type Static, Type } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 
 const OutputIndex = Type.Optional(Type.Number());

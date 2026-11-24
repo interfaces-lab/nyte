@@ -163,6 +163,7 @@ export type Effect =
       readonly kind: "set-trust";
       readonly workspace: WorkspaceId;
       readonly value: boolean | null;
+      readonly at: "folder" | "parent";
     }
   | { readonly kind: "load-folder-catalog"; readonly workspace: WorkspaceId }
   | { readonly kind: "login-answer"; readonly dialog: DialogId; readonly answer: string | null }

@@ -156,8 +156,9 @@ export async function run(): Promise<string> {
     ),
   );
 
-  for (let frame = 0; frame < 200 && container.textContent !== EXPECTED; frame += 1)
+  for (let frame = 0; frame < 200 && container.textContent !== EXPECTED; frame += 1) {
     await nextFrame();
+  }
   const shown = container.textContent;
   flushSync(() => root.unmount());
   container.remove();

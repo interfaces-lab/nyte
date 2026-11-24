@@ -23,7 +23,8 @@ import { errorMessage } from "../contract/errors.ts";
 import { gitFor, refreshVcs, useGitRefs } from "../data/vcs.ts";
 import { gitStatusWatch } from "../data/watches.ts";
 import { useWatch } from "../data/watch-store.ts";
-import { ContextHint, ContextTrigger, type ContextSize } from "./context-selector.tsx";
+import { ContextHint, ContextTrigger } from "./context-selector.tsx";
+import type { ContextSize } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";
 
 type BranchRow = { readonly kind: "branch"; readonly name: string } | { readonly kind: "create" };
@@ -285,8 +286,9 @@ function refusalReason(outcome: Exclude<GitOutcome, { readonly kind: "applied" }
     case "rejected":
       return outcome.reason;
     case "busy":
-      if (outcome.runs.length === 0)
+      if (outcome.runs.length === 0) {
         return "Another git command is using this repository. Try again when it finishes.";
+      }
 
       return outcome.runs.length === 1
         ? "An agent is working in this workspace. Stop it or let it finish, then try again."

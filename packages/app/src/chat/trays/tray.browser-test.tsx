@@ -14,10 +14,11 @@ const CASES: readonly { readonly name: string; readonly steps: readonly Step[] }
 ];
 
 async function until(done: () => boolean): Promise<void> {
-  const deadline = performance.now() + 2_000;
+  const deadline = performance.now() + 2000;
 
-  while (!done() && performance.now() < deadline)
+  while (!done() && performance.now() < deadline) {
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  }
 }
 
 async function play(steps: readonly Step[]): Promise<string> {

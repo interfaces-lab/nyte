@@ -129,16 +129,18 @@ export class RelayServer {
     const target = publicRelayTarget(url);
     const method = METHODS.find((entry) => entry === request.method);
 
-    if (url.origin !== this.options.origin || target === undefined)
+    if (url.origin !== this.options.origin || target === undefined) {
       return relayRefusal("not_found");
+    }
 
     if (request.headers.has("origin")) return relayRefusal("forbidden");
 
     if (
       method === undefined ||
       !PUBLIC_RELAY_METHODS[target.kind].some((allowed) => allowed === method)
-    )
+    ) {
       return relayRefusal("method_not_allowed");
+    }
 
     if (target.environmentId !== this.environmentId) return relayRefusal("closed");
 
@@ -373,8 +375,9 @@ export class RelayServer {
       case "data": {
         const bytes = decodeChunk(frame.data);
 
-        if (exchange.status === undefined || exchange.ended || bytes === undefined)
+        if (exchange.status === undefined || exchange.ended || bytes === undefined) {
           return "data out of order";
+        }
 
         if (hasNullBody(exchange.status)) return "data for a bodyless status";
 
@@ -420,8 +423,9 @@ export class RelayServer {
   private response(exchange: Exchange, head: Extract<DesktopFrame, { t: "head" }>): Response {
     const headers = new Headers();
 
-    for (const [name, value] of Object.entries(head.headers))
+    for (const [name, value] of Object.entries(head.headers)) {
       if (value !== undefined) headers.set(name, value);
+    }
 
     if (hasNullBody(head.status)) return new Response(null, { status: head.status, headers });
 
@@ -435,8 +439,9 @@ export class RelayServer {
               controller.enqueue(chunk);
               exchange.unreturned -= chunk.byteLength;
 
-              if (!exchange.ended)
+              if (!exchange.ended) {
                 this.frame({ t: "credit", ch: exchange.ch, bytes: chunk.byteLength });
+              }
 
               return;
             }

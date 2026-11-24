@@ -52,8 +52,9 @@ async function* events(
       const lines = `${buffered}${decoder.decode(chunk, { stream: true })}`.split("\n");
       buffered = lines.pop() ?? "";
 
-      for (const line of lines)
+      for (const line of lines) {
         if (line !== "") yield Value.Parse(ServiceEventSchema, JSON.parse(line));
+      }
     }
   } catch (cause) {
     if (signal.aborted) return;

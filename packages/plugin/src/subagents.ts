@@ -229,8 +229,9 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
       const execution = (await child.view()).execution;
       const last = execution.kind === "idle" ? execution.lastRun : null;
 
-      if (last === null)
+      if (last === null) {
         return reply(`${CAPITALIZED[target.noun]} ${child.id} has not worked on anything yet.`);
+      }
 
       return reply(
         clipText(
@@ -387,10 +388,11 @@ async function findModel(invocation: ToolInvocation, name: string): Promise<Mode
 
   if (only !== undefined && others.length === 0) return only;
 
-  if (only !== undefined)
+  if (only !== undefined) {
     throw new Error(
       `${name} names more than one model; pass one of ${matches.map((ref) => `${ref.provider}/${ref.id}`).join(", ")}.`,
     );
+  }
 
   if (models.length === 0) throw new Error("No model is available; sign in to a provider first.");
 
@@ -435,7 +437,10 @@ async function describeWorktree(
   return `It works in the worktree ${folder} on branch ${workspace.isolation.branch}.`;
 }
 
-type Target = { readonly session: Session; readonly noun: keyof typeof CAPITALIZED };
+interface Target {
+  readonly session: Session;
+  readonly noun: keyof typeof CAPITALIZED;
+}
 
 function reply(content: string): ToolResult<unknown> {
   return { content: [{ kind: "text", text: content }] };
@@ -452,10 +457,11 @@ async function findTarget(
   const info = await session.info();
   const grant = (await invocation.session.info()).mcp?.grant;
 
-  if (access === "steer" && grant !== undefined && info.mcp?.grant !== grant)
+  if (access === "steer" && grant !== undefined && info.mcp?.grant !== grant) {
     throw new Error(
       `Chat ${id} wasn't started through this chat's MCP grant, so this chat may not message or stop it.`,
     );
+  }
 
   return { session, noun: info.parent === invocation.session.id ? "subagent" : "chat" };
 }
@@ -507,13 +513,15 @@ function scheduled(message: Message | undefined): string {
 }
 
 function renderTranscriptMessage(message: Message): readonly string[] {
-  if (message.kind === "user")
+  if (message.kind === "user") {
     return [
       `User: ${typeof message.content === "string" ? message.content : message.content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join(" ")}`,
     ];
+  }
 
-  if (isPart(message, text))
+  if (isPart(message, text)) {
     return message.state.markdown === "" ? [] : [`Assistant: ${message.state.markdown}`];
+  }
 
   if (isPart(message, tool)) {
     const state = message.state;

@@ -20,7 +20,7 @@ const LightType = Type.Object({
   at: Type.Number(),
 });
 
-export type Light = Static<typeof LightType>;
+type Light = Static<typeof LightType>;
 
 const ActorType = Type.Object({
   kind: Type.Literal("agent"),
@@ -35,7 +35,7 @@ const AgentLightType = Type.Object({
   at: Type.Number(),
 });
 
-export type AgentLight = Static<typeof AgentLightType>;
+type AgentLight = Static<typeof AgentLightType>;
 
 /** The one selection every window shows, and what agents changed in the last moments. */
 export interface Lights {
@@ -49,7 +49,7 @@ const MessageType = Type.Union([
   Type.Object({ kind: Type.Literal("ask") }),
 ]);
 
-const AGENT_MS = 4_000;
+const AGENT_MS = 4000;
 
 /** This window, among the windows that share the light. */
 export const HERE = crypto.randomUUID();
@@ -86,11 +86,12 @@ function addAgents(incoming: readonly AgentLight[]): readonly AgentLight[] {
   if (fresh.length === 0) return fresh;
   show({ you: lights.you, agents: [...lights.agents, ...fresh] });
 
-  for (const light of fresh)
+  for (const light of fresh) {
     setTimeout(
       () => show({ you: lights.you, agents: lights.agents.filter((other) => other !== light) }),
       light.at + AGENT_MS - now,
     );
+  }
 
   return fresh;
 }
@@ -168,19 +169,21 @@ export function carryLight(
     you.window !== HERE ||
     you.subject.kind !== "span" ||
     you.subject.path !== path
-  )
+  ) {
     return;
+  }
   const span = you.subject;
   const grown = change.text.length - (change.end - change.start);
 
   if (change.start >= span.end) return;
 
   if (change.end <= span.start) {
-    if (grown !== 0)
+    if (grown !== 0) {
       showYou({
         ...you,
         subject: { ...span, start: span.start + grown, end: span.end + grown },
       });
+    }
 
     return;
   }

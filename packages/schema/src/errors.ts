@@ -38,6 +38,7 @@ export const FailureType = Type.Object({
   class: FailureClassType,
   message: Type.String(),
   retryAfterMs: Type.Optional(Type.Number()),
+  resetsAt: Type.Optional(Type.Number()),
 });
 
 export type Failure = Decoded<typeof FailureType>;

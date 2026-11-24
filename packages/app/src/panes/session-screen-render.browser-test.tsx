@@ -12,7 +12,7 @@ import type { HostState } from "../contract/nyte.ts";
 import { PaneControllerProvider } from "./pane-context.tsx";
 import { SessionDndProvider } from "./session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { SessionScreen } from "./session-screen.tsx";
+import { SessionScreen } from "../shell/session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
@@ -26,7 +26,7 @@ import {
   turnId,
   user,
   prose,
-  sentence,
+  SENTENCE,
   paragraphs,
   ended,
   view,
@@ -159,7 +159,7 @@ function mount(container: HTMLElement): Root {
 
 async function streamFrames(count: number, verify: (label: string) => void): Promise<void> {
   for (let index = 0; index < count; index += 1) {
-    liveText += `\n\nDelta ${String(index)}: ${sentence.repeat(1 + (index % 3))}`;
+    liveText += `\n\nDelta ${String(index)}: ${SENTENCE.repeat(1 + (index % 3))}`;
     stream.push(view(liveText));
     await painted();
     verify(`stream frame ${String(index)}`);
@@ -276,7 +276,7 @@ async function checkRules(): Promise<string> {
     await painted();
 
     for (let frame = 0; frame < 4; frame += 1) {
-      liveText += `\n\n${sentence.repeat(2)}`;
+      liveText += `\n\n${SENTENCE.repeat(2)}`;
       stream.push(previewView(liveText, 4 + frame));
       await painted();
       checkFrame(`preview frame ${String(frame)}`);
@@ -348,7 +348,7 @@ async function checkRules(): Promise<string> {
     const handover: string[] = [];
 
     for (let frame = 0; frame < 40 && joined.dataset.stickyActive !== "true"; frame += 1) {
-      reply += `\n\n${sentence.repeat(1 + (frame % 3))}`;
+      reply += `\n\n${SENTENCE.repeat(1 + (frame % 3))}`;
       await pushReply();
       checkFollowing(`handover frame ${String(frame)}`);
       const stuck = [earlier, joined].filter((prompt) => prompt.dataset.stickyActive === "true");
@@ -423,7 +423,7 @@ async function checkRules(): Promise<string> {
             ? prose(
                 `answer-${String(index)}`,
                 index,
-                `${paragraphs(index)}\n\n${sentence.repeat(12)}`,
+                `${paragraphs(index)}\n\n${SENTENCE.repeat(12)}`,
               )
             : message,
         ),
@@ -545,7 +545,7 @@ async function checkRules(): Promise<string> {
     const anchored = first(visible(PROSE)[0], "visible prose");
     const anchoredTop = measureTop(anchored);
     const dockHeight = stage.dock.getBoundingClientRect().height;
-    await type(sentence.repeat(4));
+    await type(SENTENCE.repeat(4));
     await until(
       () => stage.dock.getBoundingClientRect().height > dockHeight,
       "the composer to grow",
@@ -558,7 +558,7 @@ async function checkRules(): Promise<string> {
       `composer grew: ${moved(anchored, anchoredTop)}`,
     );
     await toEnd();
-    await type(sentence.repeat(4));
+    await type(SENTENCE.repeat(4));
     await painted();
     checkFollowing("composer grew while following");
 
@@ -709,7 +709,7 @@ async function checkRules(): Promise<string> {
     expectRule("9", near(measureTop(beforePrompt), beforePromptTop), "a prompt moved the view");
     expectRule(
       "19",
-      promptRow.isConnected && promptRow.textContent?.includes("Pending prompt") === true,
+      promptRow.isConnected && promptRow.textContent?.includes("Pending prompt"),
       "the landed message replaced its row",
     );
     expectRule(
@@ -770,7 +770,8 @@ async function checkRules(): Promise<string> {
 
     expectRule(
       "footer",
-      previousFooter.textContent?.includes("footer.ts") === true,
+
+      previousFooter.textContent?.includes("footer.ts"),
       "the completed card has no changed file",
     );
 
@@ -859,7 +860,8 @@ async function checkRules(): Promise<string> {
     await frames("completed footer", () => checkFooter(nextFooter, true));
     expectRule(
       "footer",
-      nextFooter.textContent?.includes("footer.ts") === true,
+
+      nextFooter.textContent?.includes("footer.ts"),
       "completion did not fill the reserved footer",
     );
     stream.push({ ...finishedNext, changes: [] });

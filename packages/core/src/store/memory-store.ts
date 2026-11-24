@@ -225,23 +225,25 @@ export function memoryStore(): Store {
         if (fenced !== undefined) return { kind: "fenced", name: fenced };
         const stale = updates.find((update) => !admits(update, refs.get(update.name)));
 
-        if (stale)
+        if (stale) {
           return {
             kind: "stale",
             name: stale.name,
             revision: refs.get(stale.name)?.revision ?? null,
           };
+        }
 
         const missing = updates.find(
           (update) => update.target !== null && !objects.has(update.target),
         );
 
-        if (missing !== undefined)
+        if (missing !== undefined) {
           return {
             kind: "stale",
             name: missing.name,
             revision: refs.get(missing.name)?.revision ?? null,
           };
+        }
 
         const replaced = replacedTargets(
           updates,
@@ -316,8 +318,9 @@ export function memoryStore(): Store {
     checkpoints: {
       read: async (session) => checkpoints.get(session) ?? null,
       async write(session, checkpoint) {
-        if ((checkpoints.get(session)?.seq ?? 0) <= checkpoint.seq)
+        if ((checkpoints.get(session)?.seq ?? 0) <= checkpoint.seq) {
           checkpoints.set(session, checkpoint);
+        }
       },
       async gap(session, after) {
         let events = 0;

@@ -3,7 +3,7 @@ const AGENT = "release-notes";
 const DENIED =
   "Denied: this session may only read files and run read-only git and gh commands, rg or grep, optionally piped into head, tail, wc, sort, uniq or cut, with no ; & $ ` < > ( ) or backslashes.";
 
-const GIT_READS = [
+const GIT_READS = new Set([
   "blame",
   "cat-file",
   "describe",
@@ -19,7 +19,7 @@ const GIT_READS = [
   "shortlog",
   "show",
   "status",
-];
+]);
 
 function fetchesSafely(refspec) {
   const destination = refspec.replace(/^\+/u, "").split(":")[1];
@@ -33,8 +33,9 @@ function fetchesSafely(refspec) {
 }
 
 function allowedFetch(args) {
-  if (args.some((arg) => /^(--upload-pack|--refmap|--recurse-submodules|-u)/u.test(arg)))
+  if (args.some((arg) => /^(--upload-pack|--refmap|--recurse-submodules|-u)/u.test(arg))) {
     return false;
+  }
 
   return args.filter((arg) => !arg.startsWith("-")).every(fetchesSafely);
 }
@@ -46,18 +47,20 @@ function allowedGit(args) {
 
   if (subcommand === "fetch") return allowedFetch(rest);
 
-  if (subcommand === "tag")
+  if (subcommand === "tag") {
     return (
       rest.some((arg) => arg === "-l" || arg === "--list") &&
       !rest.some((arg) => ["-d", "--delete", "-f", "--force"].includes(arg))
     );
+  }
 
-  return GIT_READS.includes(subcommand ?? "");
+  return GIT_READS.has(subcommand ?? "");
 }
 
 function allowedGh(args) {
-  if (args[0] === "api")
+  if (args[0] === "api") {
     return !args.some((arg) => /^(-X|-f|-F|--method|--field|--raw-field|--input)/u.test(arg));
+  }
 
   return /^(pr (view|list|diff)|issue (view|list)|release (view|list)|search) /u.test(
     `${args.join(" ")} `,
@@ -76,8 +79,9 @@ export function allowedCommand(command) {
 
     if (program === "rg") return !args.some((arg) => arg.startsWith("--pre"));
 
-    if (program === "sort" || program === "uniq")
+    if (program === "sort" || program === "uniq") {
       return args.every((arg) => arg.startsWith("-") && !/^(-o|--output)/u.test(arg));
+    }
 
     return ["grep", "head", "tail", "wc", "cut"].includes(program ?? "");
   });

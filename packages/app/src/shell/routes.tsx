@@ -20,12 +20,13 @@ import { routeSessionExists } from "./route-session.ts";
 import { sessionList } from "../data/directory.ts";
 import { preferences } from "../preferences/index.ts";
 import type { ShellSearch } from "../tabs/search.ts";
-import { SessionScreen } from "../panes/session-screen.tsx";
+import { SessionScreen } from "./session-screen.tsx";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { activeTab, tabPlace } from "../tabs/model.ts";
 import { placeHref } from "../tabs/places.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import { parseWindowOpen } from "../contract/desktop-window.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { CustomizeSurface } from "../customize/customize.tsx";
@@ -36,9 +37,9 @@ import {
   firstSettingsSection,
   namesCustomSection,
   showsSettingsSection,
-  routeSettings,
-  SettingsSurface,
-} from "../settings/index.ts";
+} from "../settings-sections/sections.ts";
+import { routeSettings } from "../settings-sections/return.ts";
+import { SettingsSurface } from "../settings/index.ts";
 
 const styles = create({
   loadError: {
@@ -197,8 +198,9 @@ function leaveMissingSession(router: AppRouter): void {
     read: () => readSession(sessionId),
   }).then(
     (exists) => {
-      if (!exists && currentRouteSession(router) === sessionId)
+      if (!exists && currentRouteSession(router) === sessionId) {
         void router.navigate({ to: indexRoute.to, replace: true });
+      }
     },
     () => undefined,
   );
@@ -253,13 +255,13 @@ const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, sessionRoute,
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
 export function startWindowTabs(desktopWindow: DesktopWindow): void {
-  windowTabs.start(desktopWindow);
+  windowTabs.start(desktopWindow, { strip: appShape().windowTabs });
 
   if (desktopWindow.open === undefined) return;
   const open = parseWindowOpen(desktopWindow.open);
 
-  if (open.kind === "app") openAppWindow(open);
-  else openWindowInEditor(open);
+  if (open.kind === "file") openWindowInEditor(open);
+  else openAppWindow(open.kind === "app" ? open : { kind: "app", workspace: open.workspace });
 }
 
 export function windowTabRoute(): string {

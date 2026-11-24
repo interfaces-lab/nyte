@@ -22,10 +22,11 @@ it("cancels a stream the client lets go of, never one the host ended", async () 
   const firstCancel = Promise.withResolvers<void>();
 
   const open = createStreamClient(async (path, init) => {
-    if (path === CHANNEL_PATH)
+    if (path === CHANNEL_PATH) {
       return new Response(new ReadableStream({ start: (controller) => host.resolve(controller) }), {
         headers: { [CHANNEL_HEADER]: "c1" },
       });
+    }
 
     if (path === CANCEL_PATH) {
       canceled.push(parseJson(await new Response(init.body).text()));

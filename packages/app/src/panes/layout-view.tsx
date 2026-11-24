@@ -10,7 +10,7 @@ import type { Box, Geometry, PaneMetrics, Separator } from "./pane-geometry.ts";
 import { paneRules } from "./pane-kinds.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import { MIN_PANE_SIZE } from "./pane-layout.ts";
-import type { PaneTabInput } from "./pane-views.tsx";
+import type { PaneTabInput } from "./pane-view.ts";
 import { evaluate } from "./piecewise.ts";
 
 const KEY_STEP = 0.02;
@@ -212,11 +212,12 @@ function LayoutSeparator({
   const preview = (event: PointerEvent<HTMLDivElement>): readonly PaneSize[] | undefined => {
     const sizes = dragSizes(event);
 
-    if (sizes !== undefined)
+    if (sizes !== undefined) {
       paint(
         event.currentTarget,
         reduceLayout(layout, { kind: "resize", split: separator.split, sizes }, paneRules),
       );
+    }
 
     return sizes;
   };
@@ -231,15 +232,17 @@ function LayoutSeparator({
     if (root === null) return undefined;
     const measured = readFrame(root);
 
-    if (key === "Home")
+    if (key === "Home") {
       return sizesAt(layout, separator, geometry, measured, metrics, (pair) =>
         Math.min(0, pair.before.min - pair.before.length),
       );
+    }
 
-    if (key === "End")
+    if (key === "End") {
       return sizesAt(layout, separator, geometry, measured, metrics, (pair) =>
         Math.max(0, pair.after.length - pair.after.min),
       );
+    }
 
     if (key !== previous && key !== next) return undefined;
     const step = key === previous ? -KEY_STEP : KEY_STEP;
@@ -282,8 +285,9 @@ function LayoutSeparator({
       onDoubleClick={() => {
         const split = findSplit(layout.root, separator.split);
 
-        if (split !== undefined)
+        if (split !== undefined) {
           resize(split.children.map((child) => (typeof child.size === "number" ? 1 : child.size)));
+        }
       }}
       onKeyDown={(event) => {
         const sizes = step(event.currentTarget, event.key);
@@ -402,8 +406,9 @@ function measure(
   const before = spans[separator.index];
   const after = spans[separator.index + 1];
 
-  if (spans.length !== split.children.length || before === undefined || after === undefined)
+  if (spans.length !== split.children.length || before === undefined || after === undefined) {
     return undefined;
+  }
 
   return { split, spans, before, after };
 }

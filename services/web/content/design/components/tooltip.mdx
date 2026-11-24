@@ -62,19 +62,15 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nyte-
 `TooltipContent` takes `xstyle`, `className`, and `style`. Its `className` and `style` accept
 plain values or functions of popup state. See [Theming](/design/theming).
 
-The reference tables below come from Base UI, MIT, © Material-UI SAS.
+For every other prop, see Base UI's [Tooltip](https://base-ui.com/react/components/tooltip) reference.
 
 ### Tooltip
 
 `Tooltip` passes through Base UI's root unstyled. No handle factory is exported.
 
-<include>../../base-ui-reference/tooltip/Root.md</include>
-
 ### TooltipTrigger
 
 Unstyled, without `xstyle`. Clears `title`. `className` and `style` accept state functions.
-
-<include>../../base-ui-reference/tooltip/Trigger.md</include>
 
 ### TooltipContent
 
@@ -90,14 +86,6 @@ Only the positioning props in this table are accepted. `ref`, `className`, and `
 | `tint`        | `Tint`                                                                                                         |             |
 | `shortcut`    | `readonly string[]`                                                                                            | `[]`        |
 
-#### Positioner
-
-<include>../../base-ui-reference/tooltip/Positioner.md</include>
-
-#### Popup
-
-<include>../../base-ui-reference/tooltip/Popup.md</include>
-
 ### TooltipProvider
 
 | Prop         | Type     | Default | Description                                     |
@@ -105,8 +93,6 @@ Only the positioning props in this table are accepted. `ref`, `className`, and `
 | `delay`      | `number` | `300`   | Hover milliseconds.                             |
 | `closeDelay` | `number` | `100`   | Closing milliseconds.                           |
 | `timeout`    | `number` | `200`   | Milliseconds after closing for instant opening. |
-
-<include>../../base-ui-reference/tooltip/Provider.md</include>
 
 ## Accessibility
 

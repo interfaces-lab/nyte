@@ -63,14 +63,16 @@ export function terminalPort(
 
         if (result.status === "timed-out") throw new Error("Clipboard read timed out");
 
-        if (result.status === "limit-exceeded")
+        if (result.status === "limit-exceeded") {
           throw new RangeError("Clipboard content exceeded the read or image conversion limit");
+        }
 
         return { kind: "empty" };
       }
 
-      if (result.representation.mimeType === "image/png")
+      if (result.representation.mimeType === "image/png") {
         return { kind: "image", bytes: result.representation.bytes };
+      }
 
       if (result.representation.bytes.length === 0) return { kind: "empty" };
 

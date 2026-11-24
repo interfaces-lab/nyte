@@ -1,6 +1,6 @@
 import type { ScrollViewState } from "../../panes/session-view-state.ts";
 
-export const FOLLOW_TOLERANCE = 4;
+const FOLLOW_TOLERANCE = 4;
 
 const INPUT_WINDOW = 250;
 
@@ -20,7 +20,7 @@ export function steeringUp(input: ReaderInput, now: number): boolean {
   return input.pressed || (touching(input, now) && input.upward);
 }
 
-export interface Anchor {
+interface Anchor {
   readonly key: string;
   readonly element: Element | undefined;
   readonly top: number;
@@ -59,11 +59,12 @@ export function initialMode(position: ScrollViewState): TranscriptMode {
 export function nextMode(mode: TranscriptMode, event: TranscriptEvent): TranscriptMode {
   switch (event.kind) {
     case "scrolled":
-      if (mode.kind === "following")
+      if (mode.kind === "following") {
         return event.upward &&
           (event.reader || (!mode.opening && event.distance > FOLLOW_TOLERANCE))
           ? READING
           : mode;
+      }
 
       return mode.anchor === null && !event.upward && event.distance <= FOLLOW_TOLERANCE
         ? FOLLOWING
@@ -195,7 +196,7 @@ export function settleScroll(state: TranscriptScroll, measure: SettleMeasure): S
     : nextMode(state.mode, { kind: "quiet", distance: measure.distance });
 
   if (mode.kind === "following") {
-    if (measure.distance <= 1)
+    if (measure.distance <= 1) {
       return {
         state: {
           ...state,
@@ -203,6 +204,7 @@ export function settleScroll(state: TranscriptScroll, measure: SettleMeasure): S
         },
         action: NO_ACTION,
       };
+    }
 
     return {
       state: { ...state, mode },
@@ -213,10 +215,11 @@ export function settleScroll(state: TranscriptScroll, measure: SettleMeasure): S
   const anchor = mode.anchor;
   const rowTop = measure.anchor?.rowTop;
 
-  if (anchor === null || measure.anchor === null || rowTop === undefined)
+  if (anchor === null || measure.anchor === null || rowTop === undefined) {
     return { state: { ...state, mode }, action: NO_ACTION };
+  }
 
-  if (!measure.anchor.connected)
+  if (!measure.anchor.connected) {
     return {
       state: {
         ...state,
@@ -227,6 +230,7 @@ export function settleScroll(state: TranscriptScroll, measure: SettleMeasure): S
       },
       action: NO_ACTION,
     };
+  }
 
   const drift = (measure.anchor.elementTop ?? rowTop) - anchor.top;
 
@@ -273,7 +277,7 @@ export const IDLE_HISTORY: HistoryPager = {
 
 const EMPTY_PAGES = 3;
 
-const RETRY_MS = 1_000;
+const RETRY_MS = 1000;
 
 const RETRY_MAX_MS = 30_000;
 
@@ -303,8 +307,9 @@ export function nextHistory(pager: HistoryPager, event: HistoryEvent): HistorySt
         (pager.stalled && pager.failures === 0) ||
         (pager.failures > 0 && event.now < pager.retryAt) ||
         (!event.older && event.top === pager.exhausted)
-      )
+      ) {
         return none(pager);
+      }
 
       return { pager: { ...pager, loading: true, from: from(event) }, action: "load" };
     case "asked":
@@ -345,8 +350,9 @@ function from(event: HistoryTop): HistoryTop {
 function loaded(pager: HistoryPager, count: number): HistoryStep {
   if (count > 0) return { pager: IDLE_HISTORY, action: "next-frame" };
 
-  if (pager.from?.older !== true)
+  if (pager.from?.older !== true) {
     return none({ ...IDLE_HISTORY, exhausted: pager.from?.top ?? null });
+  }
   const empty = pager.empty + 1;
   const stalled = empty >= EMPTY_PAGES;
 

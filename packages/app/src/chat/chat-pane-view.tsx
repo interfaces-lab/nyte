@@ -8,7 +8,7 @@ import { receiveChatExcerpts } from "../references/add-to-chat.ts";
 import { usePaneLayoutStore, usePaneViewStateStore } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/layout.ts";
 import type { LayoutStore } from "../panes/layout-store.ts";
-import type { PaneTabRender, PaneView } from "../panes/pane-views.tsx";
+import type { PaneTabRender, PaneView } from "../panes/pane-view.ts";
 import { useSessionPaneDropTarget } from "../panes/session-dnd.tsx";
 import {
   clientActionAriaShortcut,
@@ -17,7 +17,7 @@ import {
   resolveClientAction,
 } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
-import type { ChatFields } from "./chat-pane-kind.ts";
+import type { ChatFields } from "../panes/chat-pane-kind.ts";
 import { BlankConversation } from "./composer/blank-conversation.tsx";
 import type { ComposerEditorHandle } from "./composer/composer-editor.tsx";
 import { SessionConversation } from "./session-conversation.tsx";

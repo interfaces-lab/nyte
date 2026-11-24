@@ -10,7 +10,8 @@ import { queryClient } from "../../data/query-client.ts";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
-import { transcriptRows, type TurnItemRow } from "./transcript-rows.ts";
+import { transcriptRows } from "./transcript-rows.ts";
+import type { TurnItemRow } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
@@ -72,16 +73,16 @@ const rows = transcriptRows({
   failed: false,
   turns: [
     endedTurn(
-      [work("r1", "t1", SENT - 2_000, SENT - 1_000), reply("a1", "t1", SENT, "First answer")],
+      [work("r1", "t1", SENT - 2000, SENT - 1000), reply("a1", "t1", SENT, "First answer")],
       {
         id: asId<"turn">("t1"),
-        startedAt: SENT - 2_500,
+        startedAt: SENT - 2500,
       },
     ),
     endedTurn(
       [
-        work("r2", "t2", SENT + 1_000, SENT + 4_000),
-        reply("a2", "t2", SENT + 3_000, `Second answer\n\n\`\`\`ts\n${CODE}\n\`\`\``),
+        work("r2", "t2", SENT + 1000, SENT + 4000),
+        reply("a2", "t2", SENT + 3000, `Second answer\n\n\`\`\`ts\n${CODE}\n\`\`\``),
       ],
       { id: asId<"turn">("t2"), startedAt: SENT },
     ),
@@ -101,7 +102,7 @@ function streamedReply(ended: boolean): TurnItemRow | undefined {
     turns: [
       endedTurn([reply("a3", "t3", SENT, "Streamed answer", !ended)], {
         id: asId<"turn">("t3"),
-        startedAt: SENT - 1_000,
+        startedAt: SENT - 1000,
         state: ended
           ? { kind: "ended", end: { kind: "completed", usage: USAGE } }
           : { kind: "working", activity: null },
@@ -160,8 +161,9 @@ function Stage(): ReactElement {
 async function within(done: () => boolean, ms: number): Promise<void> {
   const deadline = performance.now() + ms;
 
-  while (!done() && performance.now() < deadline)
+  while (!done() && performance.now() < deadline) {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
 }
 
 async function settled(element: Element): Promise<void> {
@@ -193,7 +195,7 @@ export async function run(): Promise<string> {
   document.body.append(stage);
   const root = createRoot(stage);
   flushSync(() => root.render(<Stage />));
-  await within(() => stage.querySelector("[data-row='response:a2']") !== null, 2_000);
+  await within(() => stage.querySelector("[data-row='response:a2']") !== null, 2000);
 
   const first = find(stage, "[data-row='response:a1']", HTMLElement);
   const second = find(stage, "[data-row='response:a2']", HTMLElement);
@@ -213,8 +215,10 @@ export async function run(): Promise<string> {
   const secondTime = find(second, "time", HTMLElement);
   check(
     firstTime.textContent ===
-      "4h agoMessage sent " +
-        new Date(SENT).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+      `4h agoMessage sent ${new Date(SENT).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}`,
     `the reply's time reads ${firstTime.textContent ?? ""}`,
   );
   await settled(secondTime);
@@ -227,7 +231,7 @@ export async function run(): Promise<string> {
   check(opacity(firstTime) === 1, "focusing an earlier reply's actions shows its time");
 
   copy.click();
-  await within(() => copy.hasAttribute("data-copied"), 2_000);
+  await within(() => copy.hasAttribute("data-copied"), 2000);
   check(copy.hasAttribute("data-copied"), "copying a reply confirms it");
   check((await navigator.clipboard.readText()) === "First answer", "the reply copies its own text");
   await navigator.clipboard.writeText("untouched");
@@ -239,21 +243,21 @@ export async function run(): Promise<string> {
 
   const code = find(second, "[aria-label='Copy ts code block']", HTMLButtonElement);
   code.click();
-  await within(() => code.hasAttribute("data-copied"), 2_000);
+  await within(() => code.hasAttribute("data-copied"), 2000);
   check(code.hasAttribute("data-copied"), "copying code confirms it");
   check((await navigator.clipboard.readText()) === CODE, "the code block copies its code");
 
   const command = find(stage, "[aria-label='Copy command']", HTMLButtonElement);
   const confirmed = () => command.innerHTML.includes("IconCheckmark");
   command.click();
-  await within(confirmed, 2_000);
+  await within(confirmed, 2000);
   check(confirmed(), "copying a command confirms it");
   check((await navigator.clipboard.readText()) === "pnpm test", "the command copies itself");
 
-  await within(() => !copy.hasAttribute("data-copied") && !code.hasAttribute("data-copied"), 3_000);
+  await within(() => !copy.hasAttribute("data-copied") && !code.hasAttribute("data-copied"), 3000);
   check(!copy.hasAttribute("data-copied"), "the reply's confirmation resets after 2 s");
   check(!code.hasAttribute("data-copied"), "the code block's confirmation resets after 2 s");
-  await within(() => !confirmed(), 3_000);
+  await within(() => !confirmed(), 3000);
   check(!confirmed(), "the command's confirmation resets after 2 s");
 
   const [busy, idle] = stage.querySelectorAll("a[data-citation='agent']");
@@ -273,12 +277,12 @@ export async function run(): Promise<string> {
   document.body.append(replyStage);
   const replyRoot = createRoot(replyStage);
   flushSync(() => replyRoot.render(<Completion row={streamedReply(false)} />));
-  await within(() => replyStage.querySelector("p") !== null, 2_000);
+  await within(() => replyStage.querySelector("p") !== null, 2000);
   const streamed = find(replyStage, "p", HTMLParagraphElement);
   const selection = window.getSelection();
   selection?.selectAllChildren(streamed);
   flushSync(() => replyRoot.render(<Completion row={streamedReply(true)} />));
-  await within(() => replyStage.querySelector("[aria-label='Copy reply']") !== null, 2_000);
+  await within(() => replyStage.querySelector("[aria-label='Copy reply']") !== null, 2000);
   check(
     replyStage.querySelector("[aria-label='Copy reply']") !== null,
     "a reply gains its actions when its turn ends",

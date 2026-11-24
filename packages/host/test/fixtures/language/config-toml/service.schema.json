@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Service Configuration",
+  "description": "Configuration for a local NotifyHub service instance.",
+  "type": "object",
+  "required": ["service"],
+  "additionalProperties": false,
+  "properties": {
+    "service": {
+      "type": "object",
+      "description": "Primary service identity and network settings.",
+      "required": ["name", "port"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name of the running service."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "TCP port the HTTP listener binds to."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["development", "staging", "production"],
+          "description": "Deployment environment mode."
+        },
+        "tags": {
+          "type": "array",
+          "description": "Labels attached to service telemetry.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "endpoint": {
+          "type": "object",
+          "description": "Upstream listener bind options.",
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string",
+              "description": "Bind host address."
+            },
+            "tls": {
+              "type": "boolean",
+              "description": "Whether TLS termination is enabled."
+            }
+          }
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "description": "PostgreSQL connection pool settings.",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Database connection URL."
+        },
+        "pool_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of pooled connections."
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "description": "Connection acquisition timeout in milliseconds."
+        }
+      }
+    },
+    "workers": {
+      "type": "array",
+      "description": "Background job worker queues.",
+      "items": {
+        "type": "object",
+        "required": ["name", "concurrency"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Worker queue name."
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of concurrent tasks."
+          }
+        }
+      }
+    }
+  }
+}

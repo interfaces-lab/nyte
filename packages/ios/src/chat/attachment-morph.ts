@@ -4,8 +4,8 @@ import {
   interpolate,
   useAnimatedStyle,
   useDerivedValue,
-  type SharedValue,
 } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import { COMPOSER, ICON_ROW_INSET } from "./composer-geometry.ts";
 import { controls, menu, spacing } from "../theme.ts";
 

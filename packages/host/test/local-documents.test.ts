@@ -13,11 +13,11 @@ afterEach(async () => {
   for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
 });
 
-type Row = {
+interface Row {
   readonly name: string;
   act(documents: DocumentsApi, folder: string): Promise<unknown>;
   expected(folder: string): unknown;
-};
+}
 
 const rows: readonly Row[] = [
   {
@@ -32,7 +32,7 @@ const rows: readonly Row[] = [
       path: join(folder, "a.txt"),
       mime: "text/plain",
       contents: "hello\n",
-      encoding: "utf-8",
+      encoding: "utf8",
       version: sha256("hello\n"),
     }),
   },

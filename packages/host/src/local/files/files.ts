@@ -25,7 +25,6 @@ import type {
   FileEntryView,
   FileEvent,
   FileVersion,
-  FormatOutcome,
   SearchFrame,
   SearchInput,
   WriteOutcome,
@@ -35,12 +34,12 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sha256 } from "../../hash.ts";
 import { findExecutable, run } from "../process/command.ts";
+import { format } from "./format.ts";
 import { localTransfers } from "./transfers.ts";
-import type { Ran } from "../process/command.ts";
 import { feed } from "../feed.ts";
 import { classifyFile } from "./file-kind.ts";
 import { decodeText } from "../text.ts";
-import { createIgnores, walkTree, watchPath, watchTree } from "./tree.ts";
+import { createIgnores, WALK_LIMIT, walkTree, watchPath, watchTree } from "./tree.ts";
 import { missing } from "../../fs-errors.ts";
 
 export type VersionedReader = ByteReader & { readonly version: FileVersion };
@@ -59,17 +58,19 @@ const FIND_DEFAULT = 20;
 
 const FIND_CAP = 50;
 
-const FIND_TTL_MS = 5_000;
+const FIND_TTL_MS = 5000;
 
 const SEARCH_DEFAULT = 200;
 
 const SEARCH_LINE = 500;
 
+const LIST_BYTES = 16 * 1024 * 1024;
+
+const FILE_FLAGS = ["--no-config", "--hidden", "--no-require-git", "--glob=!.git"];
+
 const WATCH_DELAY_MS = 100;
 
-const WATCH_POLL_MS = 1_000;
-
-const FORMATTERS = ["oxfmt", "prettier", "biome"] as const;
+const WATCH_POLL_MS = 1000;
 
 const TEMPORARY_SUFFIX = ".nyte-tmp";
 
@@ -77,30 +78,32 @@ const TEMPORARY_NAME = new RegExp(
   String.raw`^\..+\.[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}${RegExp.escape(TEMPORARY_SUFFIX)}$`,
 );
 
+export function within(root: string, path: string): string {
+  const inside = relative(root, path);
+
+  return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)
+    ? path
+    : inside.split(sep).join("/");
+}
+
 export function localFiles(
   root: string,
   options?: {
-    readonly ripgrep?: string;
+    readonly ripgrep?: () => Promise<string | null>;
     readonly formatter?: string;
+    readonly trusted?: () => Promise<boolean>;
     readonly signal?: AbortSignal;
   },
 ): LocalFiles {
   const absolute = (path: string): string => (isAbsolute(path) ? path : join(root, path));
-
-  const within = (path: string): string => {
-    const inside = relative(root, path);
-
-    return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)
-      ? path
-      : inside.split(sep).join("/");
-  };
+  const findRipgrep = options?.ripgrep ?? (() => findExecutable("rg"));
 
   let found: { readonly at: number; readonly paths: Promise<readonly FileEntryView[]> } | null =
     null;
 
   const scanned = (): Promise<readonly FileEntryView[]> => {
     if (found !== null && Date.now() - found.at < FIND_TTL_MS) return found.paths;
-    const paths = collectFiles(root);
+    const paths = collectFiles(root, findRipgrep);
     found = { at: Date.now(), paths };
     paths.catch(() => {
       if (found?.paths === paths) found = null;
@@ -131,8 +134,9 @@ export function localFiles(
         return { kind: "symlink", size: stats.size, version: hashVersion(link), target: link };
       }
 
-      if (stats.isDirectory())
+      if (stats.isDirectory()) {
         return { kind: "directory", size: stats.size, version: await directoryVersion(target) };
+      }
 
       return { kind: "file", size: stats.size, version: await hashFile(target) };
     },
@@ -148,8 +152,9 @@ export function localFiles(
         (await currentVersion(target)) ??
         (link.isSymbolicLink() ? hashVersion(await readLink(target)) : null);
 
-      if (removeOptions?.expect !== undefined && removeOptions.expect !== current)
+      if (removeOptions?.expect !== undefined && removeOptions.expect !== current) {
         return { kind: "stale", current };
+      }
       await rm(target, { recursive: link.isDirectory() });
 
       return current === null ? { kind: "stale", current } : { kind: "saved", version: current };
@@ -157,7 +162,11 @@ export function localFiles(
     ...localTransfers(root),
     batch: () => refusedBatch(),
     async format(path, contents) {
-      return format(root, absolute(path), contents, options?.formatter);
+      if (options?.trusted === undefined || !(await options.trusted())) {
+        return { kind: "unavailable", reason: "Trust the folder to format its files." };
+      }
+
+      return format(root, absolute(path), contents, options.formatter);
     },
     async *scan(input) {
       const directory = input?.directory ?? "";
@@ -195,13 +204,13 @@ export function localFiles(
     },
     search(input) {
       const drafts = new Map(
-        (input.drafts ?? []).map((draft) => [within(absolute(draft.path)), draft.contents]),
+        (input.drafts ?? []).map((draft) => [within(root, absolute(draft.path)), draft.contents]),
       );
 
-      return search(root, input, drafts, options?.ripgrep);
+      return search(root, input, drafts, findRipgrep);
     },
     watch(input) {
-      const paths = (input?.paths ?? []).map((path) => within(absolute(path)));
+      const paths = (input?.paths ?? []).map((path) => within(root, absolute(path)));
 
       return watchFiles(root, paths, options?.signal);
     },
@@ -226,7 +235,7 @@ export async function readDocument(
   if (head === null) return { kind: "missing", path };
   const file = classifyFile(target, head);
 
-  if (file.kind !== "text" && (file.mime !== "image/svg+xml" || as === "document"))
+  if (file.kind !== "text" && (file.mime !== "image/svg+xml" || as === "document")) {
     return {
       kind: file.kind,
       path,
@@ -234,8 +243,9 @@ export async function readDocument(
       size: stats.size,
       version: await hashFile(target),
     };
+  }
 
-  if (stats.size > TEXT_LIMIT)
+  if (stats.size > TEXT_LIMIT) {
     return {
       kind: "large",
       path,
@@ -243,6 +253,7 @@ export async function readDocument(
       size: stats.size,
       version: await hashFile(target),
     };
+  }
   const bytes = await readFile(target).catch(missing);
 
   if (bytes === null) return { kind: "missing", path };
@@ -318,16 +329,18 @@ export async function writeDocument(
   const current = await currentVersion(resolved);
   const expect = options?.expect;
 
-  if (expect === "absent" ? current !== null : expect !== undefined && expect !== current)
+  if (expect === "absent" ? current !== null : expect !== undefined && expect !== current) {
     return { kind: "stale", current };
+  }
   const parent = dirname(resolved);
   const folder = await stat(parent).catch(missing);
 
   if (folder === null) {
     if (options?.parents !== true) return { kind: "missing-parent" };
     await mkdir(parent, { recursive: true });
-  } else if (!folder.isDirectory())
+  } else if (!folder.isDirectory()) {
     throw new SdkError("invalid", `${dirname(path)} is not a directory.`);
+  }
 
   const bytes = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
   const mode = (await stat(resolved).catch(missing))?.mode;
@@ -438,16 +451,75 @@ function refusedBatch(): FileBatch {
   };
 }
 
-async function collectFiles(root: string): Promise<readonly FileEntryView[]> {
+async function collectFiles(
+  root: string,
+  findRipgrep: () => Promise<string | null>,
+): Promise<readonly FileEntryView[]> {
+  const binary = await findRipgrep();
+
+  if (binary !== null) return listFiles(binary, root);
   const entries: FileEntryView[] = [];
 
-  for await (const frame of walkTree(root, { ignored: "exclude" }))
-    if (frame.kind === "entries")
-      for (const entry of frame.entries)
-        if (entry.kind !== "directory")
+  for await (const frame of walkTree(root, { ignored: "exclude" })) {
+    if (frame.kind === "entries") {
+      for (const entry of frame.entries) {
+        if (entry.kind !== "directory") {
           entries.push({ path: entry.path, kind: entry.kind, size: entry.size, version: null });
+        }
+      }
+    }
+  }
 
   return entries;
+}
+
+async function listFiles(binary: string, root: string): Promise<readonly FileEntryView[]> {
+  const [listed, links] = await Promise.all([
+    run(binary, ["--files", "--no-messages", ...FILE_FLAGS, "."], {
+      cwd: root,
+      limit: LIST_BYTES,
+    }),
+    trackedSymlinks(root),
+  ]);
+
+  rejectFailure(listed.code, listed.stderr);
+  const lines = listed.stdout.toString("utf8").split("\n");
+
+  if (listed.truncated) lines.pop();
+
+  const files = lines
+    .filter((line) => line !== "")
+    .slice(0, WALK_LIMIT)
+    .map((line): FileEntryView => ({
+      path: ripgrepPath(line),
+      kind: "file",
+      size: null,
+      version: null,
+    }));
+
+  return [
+    ...files,
+    ...links.map((path): FileEntryView => ({ path, kind: "symlink", size: null, version: null })),
+  ].toSorted((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+}
+
+async function trackedSymlinks(root: string): Promise<readonly string[]> {
+  const ran = await run("git", ["ls-files", "-s", "-z"], { cwd: root }).catch(() => null);
+
+  if (ran?.code !== 0) return [];
+
+  const tracked = ran.stdout
+    .toString("utf8")
+    .split("\0")
+    .flatMap((line) => (line.startsWith("120000 ") ? [line.slice(line.indexOf("\t") + 1)] : []));
+
+  const present = await Promise.all(
+    tracked.map(async (path) =>
+      (await lstat(join(root, path)).catch(() => null))?.isSymbolicLink() === true ? [path] : [],
+    ),
+  );
+
+  return present.flat();
 }
 
 function rank(
@@ -457,7 +529,11 @@ function rank(
 ): readonly FileEntryView[] {
   const needle = query.trim().toLowerCase();
 
-  if (needle === "") return entries.slice(0, limit);
+  if (needle === "") {
+    return entries
+      .toSorted((left, right) => left.path.split("/").length - right.path.split("/").length)
+      .slice(0, limit);
+  }
 
   const scored = entries.flatMap((entry) => {
     const path = entry.path.toLowerCase();
@@ -502,60 +578,11 @@ function subsequence(text: string, needle: string): boolean {
   return false;
 }
 
-async function format(
-  root: string,
-  path: string,
-  contents: string,
-  formatter: string | undefined,
-): Promise<FormatOutcome> {
-  const binary = formatter ?? (await detectFormatter(root));
-
-  if (binary === null)
-    return { kind: "unavailable", reason: "No formatter is installed for this workspace." };
-  const name = basename(binary).replace(/\.(cmd|exe)$/i, "");
-
-  const args =
-    name === "biome"
-      ? ["format", `--stdin-file-path=${path}`]
-      : name === "oxfmt"
-        ? [`--stdin-filepath=${path}`]
-        : ["--stdin-filepath", path];
-
-  let ran: Ran;
-
-  try {
-    ran = await run(binary, args, { cwd: root, input: contents });
-  } catch (error) {
-    return { kind: "unavailable", reason: error instanceof Error ? error.message : String(error) };
-  }
-
-  if (ran.code !== 0)
-    return {
-      kind: "unavailable",
-      reason: `${name} could not format ${basename(path)}: ${ran.stderr.trim()}`,
-    };
-  const formatted = ran.stdout.toString("utf8");
-
-  return formatted === contents
-    ? { kind: "unchanged" }
-    : { kind: "formatted", contents: formatted };
-}
-
-async function detectFormatter(root: string): Promise<string | null> {
-  for (const name of FORMATTERS) {
-    const found = await findExecutable(name, [join(root, "node_modules", ".bin")]);
-
-    if (found !== null) return found;
-  }
-
-  return null;
-}
-
 async function* search(
   root: string,
   input: SearchInput,
   drafts: ReadonlyMap<string, string>,
-  ripgrep: string | undefined,
+  findRipgrep: () => Promise<string | null>,
 ): AsyncGenerator<SearchFrame> {
   const limit = Math.max(1, input.limit ?? SEARCH_DEFAULT);
 
@@ -565,7 +592,7 @@ async function* search(
     return;
   }
 
-  const binary = await findExecutable(ripgrep ?? "rg");
+  const binary = await findRipgrep();
 
   const matches =
     binary === null ? scanText(root, input, drafts) : grep(binary, root, input, drafts);
@@ -608,10 +635,7 @@ function matchFlags(input: SearchInput): readonly string[] {
 
 function fileFlags(input: SearchInput): readonly string[] {
   return [
-    "--no-config",
-    "--hidden",
-    "--no-require-git",
-    "--glob=!.git",
+    ...FILE_FLAGS,
     ...(input.include ?? []).map((glob) => `--glob=${glob}`),
     ...(input.exclude ?? []).map((glob) => `--glob=!${glob}`),
   ];
@@ -813,8 +837,9 @@ export function watchFiles(
       const reads = serial();
 
       const readEvent = async (path: string): Promise<FileEvent | null> => {
-        if (path.endsWith(".gitignore"))
+        if (path.endsWith(".gitignore")) {
           ignores?.forget(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
+        }
 
         if (ignores !== null && (await ignores.ignored(path, false))) return null;
         const at = resolve(path);
@@ -827,14 +852,15 @@ export function watchFiles(
         const before = known.get(path);
         known.set(path, version);
 
-        if (version === null)
+        if (version === null) {
           return before === null ? null : { kind: "removed", path, version: null };
+        }
 
         if (before === version) return null;
 
         const created =
           before === null ||
-          (before === undefined && stats !== null && stats.birthtimeMs >= started - 1_000);
+          (before === undefined && stats !== null && stats.birthtimeMs >= started - 1000);
 
         return { kind: created ? "created" : "modified", path, version };
       };
@@ -850,10 +876,13 @@ export function watchFiles(
 
         for await (const frame of walkTree(resolve(prefix), {
           ignored: "include",
-        }))
-          if (frame.kind === "entries")
-            for (const entry of frame.entries)
+        })) {
+          if (frame.kind === "entries") {
+            for (const entry of frame.entries) {
               if (entry.kind === "file") below.push(`${prefix}/${entry.path}`);
+            }
+          }
+        }
 
         return [prefix, ...below, ...inside];
       };

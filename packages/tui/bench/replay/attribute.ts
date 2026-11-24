@@ -134,14 +134,17 @@ function classify(frames: readonly CallFrame[]): Category | null {
     return "frame other";
   }
 
-  if (frames.some((frame) => /\/tui\/src\/model\//u.test(frame.url)))
+  if (frames.some((frame) => /\/tui\/src\/model\//u.test(frame.url))) {
     return "model (reduce, derive)";
+  }
 
-  if (frames.some((frame) => /solid-js|@opentui\/solid|\/tui\/src\/ui\//u.test(frame.url)))
+  if (frames.some((frame) => /solid-js|@opentui\/solid|\/tui\/src\/ui\//u.test(frame.url))) {
     return "Solid re-render";
+  }
 
-  if (frames.some((frame) => /@opentui\/keymap|KeyHandler|stdin-parser/u.test(frame.url)))
+  if (frames.some((frame) => /@opentui\/keymap|KeyHandler|stdin-parser/u.test(frame.url))) {
     return "input & keymap";
+  }
 
   if (
     frames.some((frame) =>
@@ -149,8 +152,9 @@ function classify(frames: readonly CallFrame[]): Category | null {
         frame.url,
       ),
     )
-  )
+  ) {
     return "host link";
+  }
 
   return "other";
 }
@@ -164,12 +168,14 @@ function parseJson(text: string): unknown {
 }
 
 function readWindow(result: unknown): { readonly start: number; readonly end: number } {
-  if (typeof result !== "object" || result === null || !("window" in result))
+  if (typeof result !== "object" || result === null || !("window" in result)) {
     throw new Error("The result has no window.");
+  }
   const window = result.window;
 
-  if (typeof window !== "object" || window === null || !("start" in window) || !("end" in window))
+  if (typeof window !== "object" || window === null || !("start" in window) || !("end" in window)) {
     throw new Error("The result's window is malformed.");
+  }
 
   return { start: Number(window.start), end: Number(window.end) };
 }
@@ -187,8 +193,9 @@ function parseProfile(text: string): Profile {
     !Array.isArray(parsed.nodes) ||
     !Array.isArray(parsed.samples) ||
     !Array.isArray(parsed.timeDeltas)
-  )
+  ) {
     throw new Error("Not a CPU profile.");
+  }
 
   return {
     nodes: parsed.nodes.filter(

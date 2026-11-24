@@ -108,12 +108,13 @@ export class CatalogRefreshes {
 
     const operation = (async () => {
       let storedAccounts: CredentialAccounts | undefined;
-      let credentialError: unknown;
+      let credentialError: Error | undefined;
 
       try {
         storedAccounts = allowNetwork ? await readAccounts(signal) : undefined;
       } catch (error) {
-        credentialError = error;
+        credentialError =
+          error instanceof Error ? error : new Error(String(error), { cause: error });
       }
 
       await this.runPhase(

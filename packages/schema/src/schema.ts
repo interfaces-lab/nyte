@@ -82,8 +82,9 @@ export function standard<T extends TSchema>(schema: T): Schema<StaticDecode<T>> 
       jsonSchema: {
         input: () => json,
         output() {
-          if (HasCodec(definitions(schema), schema))
+          if (HasCodec(definitions(schema), schema)) {
             throw new TypeError("A TypeBox codec does not declare its decoded output JSON Schema.");
+          }
 
           return json;
         },

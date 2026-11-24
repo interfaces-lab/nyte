@@ -1,0 +1,126 @@
+---
+title: workspaces.cleanStorage
+description: Removes the scanned items named, each checked again first, and reports which it cleaned.
+---
+
+Removes the items named by their `id` from an earlier `workspaces.scanStorage`. The host scans
+again first and removes only the named items it still finds unblocked, so an item that changed since
+the scan is left alone and listed in `failed` with the reason.
+
+Build output and cache folders are deleted for good. A finished git worktree is removed with
+`git worktree remove`, which keeps its branch. A cache with its own command, such as
+`pnpm store prune`, is cleaned by that command.
+
+## When to call it
+
+From a one-click "clean up" action after a scan, with the ids of the items to clear. Sum the
+`bytes` of the `cleaned` items from the scan for the space freed, and read `disk` for the free
+space now.
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "items": ["projects:build:/Users/me/Developer/shop", "caches:npm"] }
+```
+
+Response:
+
+```json
+{
+  "cleaned": ["projects:build:/Users/me/Developer/shop"],
+  "failed": [{ "id": "caches:npm", "reason": "npm is running" }],
+  "disk": { "size": 994662584320, "free": 50465865728 }
+}
+```
+
+## Errors
+
+`unavailable` when the host has no local disk to clean. Otherwise only the
+[errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["cleaned", "failed", "disk"],
+  "properties": {
+    "cleaned": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "failed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "reason"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "disk": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["size", "free"],
+          "properties": {
+            "size": {
+              "type": "number"
+            },
+            "free": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -78,7 +78,6 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
   "type": "object",
   "required": [
     "id",
-    "link",
     "name",
     "platform",
     "version",
@@ -89,54 +88,12 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
     "defaultWorkspace",
     "projects",
     "authority",
-    "principal"
+    "principal",
+    "routes"
   ],
   "properties": {
     "id": {
       "type": "string"
-    },
-    "link": {
-      "anyOf": [
-        {
-          "type": "object",
-          "required": ["kind"],
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "connected"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["kind", "since", "attempts"],
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "reconnecting"
-            },
-            "since": {
-              "type": "number"
-            },
-            "attempts": {
-              "type": "number"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["kind", "reason"],
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "closed"
-            },
-            "reason": {
-              "enum": ["client", "revoked", "host-gone"]
-            }
-          }
-        }
-      ]
     },
     "name": {
       "type": "string"
@@ -248,6 +205,27 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
           "secret": {
             "type": "boolean",
             "const": true
+          },
+          "mode": {
+            "type": "object",
+            "required": ["icon"],
+            "properties": {
+              "icon": {
+                "type": "string"
+              },
+              "tint": {
+                "type": "object",
+                "required": ["hue", "chroma"],
+                "properties": {
+                  "hue": {
+                    "type": "number"
+                  },
+                  "chroma": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
           },
           "schema": {
             "type": "object",

@@ -190,13 +190,13 @@ describe("turn", () => {
 
   test("a retrying run shows its countdown, attempt and cause", async () => {
     const view = buildView((v) =>
-      v.turn("t1", (t) => t.user("question")).retrying("rate limited", 9_000),
+      v.turn("t1", (t) => t.user("question")).retrying("rate limited", 9000),
     );
 
     await using app = await renderWithApp(buildState(followed(view)), transcript);
 
     expect(app.captureCharFrame()).toContain("Retrying in 9s (attempt 0) · rate limited.");
-    app.clock.advance(1_000);
+    app.clock.advance(1000);
     await app.renderOnce();
     expect(app.captureCharFrame()).toContain("Retrying in 8s (attempt 0) · rate limited.");
   });

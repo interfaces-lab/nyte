@@ -8,14 +8,15 @@ import type { ModelCatalogView, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { HostState } from "../../contract/nyte.ts";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { PaneControllerProvider } from "../../panes/pane-context.tsx";
+import { WindowPanesProvider } from "../../tabs/window-panes.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import { tabPlace } from "../../tabs/model.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { sessionRow, sessionView } from "../../../test/view-fixtures.ts";
+import { errorMessage } from "../../contract/errors.ts";
 
 const first = sessionRow("preview-first", { name: "First" });
 
@@ -54,10 +55,14 @@ installScripted(
 let renderFailure: unknown;
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
+  const deadline = performance.now() + 5000;
 
   while (!predicate()) {
-    if (renderFailure !== undefined) throw renderFailure;
+    if (renderFailure !== undefined) {
+      throw renderFailure instanceof Error
+        ? renderFailure
+        : new Error(errorMessage(renderFailure), { cause: renderFailure });
+    }
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
@@ -107,11 +112,11 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider>
+            <WindowPanesProvider>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
-            </PaneControllerProvider>
+            </WindowPanesProvider>
           </TooltipProvider>
         </RouterContextProvider>
       </QueryClientProvider>,

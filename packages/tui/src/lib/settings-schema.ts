@@ -29,8 +29,9 @@ function optionalString(object: JsonObject, key: string, path: string): string |
 
   if (field === undefined) return undefined;
 
-  if (typeof field !== "string" || field.trim() === "")
+  if (typeof field !== "string" || field.trim() === "") {
     throw new Error(`${path}.${key} must be a non-empty string`);
+  }
 
   return field;
 }
@@ -65,8 +66,9 @@ export function parseSettingsFile(value: Json, path = "settings"): SettingsFile 
   const followUp = value.followUp;
 
   if (followUp !== undefined) {
-    if (followUp !== "steer" && followUp !== "queue")
+    if (followUp !== "steer" && followUp !== "queue") {
       throw new Error(`${path}.followUp must be steer or queue`);
+    }
     settings = { ...settings, followUp };
   }
 

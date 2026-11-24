@@ -28,8 +28,9 @@ export function createPartTable(bus: SessionBus): PartTable {
   const table: PartTable = { waiters: new Map(), acting: new Map() };
 
   bus.subscribeAll((session, event) => {
-    if (event.kind === "part" && event.change === "failed")
+    if (event.kind === "part" && event.change === "failed") {
       dismiss(table, partRef(session, event.part));
+    }
   });
 
   return table;
@@ -48,8 +49,9 @@ export function release(table: PartTable, name: string): void {
 }
 
 export function releaseParts(table: PartTable, session: SessionId): void {
-  for (const name of new Set([...table.waiters.keys(), ...table.acting.keys()]))
+  for (const name of new Set([...table.waiters.keys(), ...table.acting.keys()])) {
     if (parseSessionRef(name) === session) release(table, name);
+  }
 }
 
 function dismiss(table: PartTable, name: string): void {

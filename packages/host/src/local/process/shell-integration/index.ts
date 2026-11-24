@@ -34,8 +34,9 @@ export async function prepareShellIntegration(input: {
     process.platform === "win32" ||
     input.env.NYTE_SHELL_INTEGRATION === "0" ||
     (shell !== "zsh" && shell !== "bash")
-  )
+  ) {
     return plain;
+  }
 
   const nonce = randomBytes(32).toString("hex");
   const folder = await mkdtemp(join(tmpdir(), "nyte-shell-")).catch(() => null);

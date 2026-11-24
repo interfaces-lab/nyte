@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Deferred } from "../lib/deferred.tsx";
 import { preferences } from "../preferences/index.ts";
-import { SelectRow, SettingsSection, SwitchRow } from "./rows.tsx";
+import { SelectRow, SettingsSection, SwitchRow } from "../settings-rows/rows.tsx";
 
 const LAYOUTS = [
   { value: "unified", label: "Unified" },

@@ -1,5 +1,6 @@
 import { glyphs } from "~/lib/glyphs";
-import { PAGE_GLYPH_NAMES, type PageGlyphName } from "~/lib/icon-set/names";
+import { PAGE_GLYPH_NAMES } from "~/lib/icon-set/names";
+import type { PageGlyphName } from "~/lib/icon-set/names";
 
 export const docsIcons = glyphs;
 

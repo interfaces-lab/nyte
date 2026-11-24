@@ -1,6 +1,6 @@
 import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
 import type { ImageContent } from "@nyte-ai/schema/model";
-import type { ComposerSubmission } from "./composer-document.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import type { ContentPart } from "../../references/message-references.ts";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { parsePluginCommand } from "./plugin-command.ts";
@@ -91,11 +91,13 @@ export function planEdit(
 ): Exclude<SubmissionPlan, { readonly kind: "command" }> {
   if (input.commands.kind === "failed") return commandsFailed(input.commands);
 
-  if (parsePluginCommand(input.submission.text, input.commands.commands) !== undefined)
+  if (parsePluginCommand(input.submission.text, input.commands.commands) !== undefined) {
     return { kind: "kept", message: "Commands can't run from a queued message." };
+  }
 
-  if (input.submission.parts.length === 0 && input.attachments.length === 0)
+  if (input.submission.parts.length === 0 && input.attachments.length === 0) {
     return { kind: "empty" };
+  }
 
   return {
     kind: "message",

@@ -43,8 +43,9 @@ const StoredRecord = Type.Record(Type.String(), Type.Unknown());
 const EMPTY_RECORD: Static<typeof StoredRecord> = {};
 
 function read<S extends TSchema>(slot: PreferenceSlot, schema: S, fallback: Static<S>): Static<S> {
-  if (slot.field === undefined)
+  if (slot.field === undefined) {
     return readStored(localArea(), slot.key, schema, fallback, { text: true });
+  }
   const stored = readStored(localArea(), slot.key, StoredRecord, EMPTY_RECORD)[slot.field];
 
   return Value.Check(schema, stored) ? stored : fallback;

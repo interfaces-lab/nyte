@@ -29,8 +29,9 @@ export async function reorderQueued(
   const { session, head, message } = input;
   const after = input.place.after;
 
-  if (after === message)
+  if (after === message) {
     throw new SdkError("invalid", `Message ${message} can't move after itself.`);
+  }
   await refuseDeciding(kernel, session, message);
 
   const moved = await attempt(`Reordering ${message}`, async () => {
@@ -50,8 +51,9 @@ export async function reorderQueued(
       (state) => state.inputs.get(message)?.schedule,
     );
 
-    if (schedule === undefined)
+    if (schedule === undefined) {
       throw new SdkError("internal", `Message ${message} is in the inbox but was never admitted.`);
+    }
 
     const outcome = await commit(kernel, [
       {

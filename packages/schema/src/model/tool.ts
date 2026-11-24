@@ -39,6 +39,11 @@ export interface ToolReference {
   name: string;
 }
 
+export interface ProviderCheckpointSeal {
+  readonly dispatchId: string;
+  readonly data: JsonValue;
+}
+
 export interface ProviderCheckpointMaterial {
   type: "provider";
   provider: ProviderId;

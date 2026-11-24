@@ -85,8 +85,8 @@ it("keeps old history readable but refuses a replacement environment", async () 
     ...(await inspect(target)),
     identity: asId("replacement"),
   });
-  provider.attach = async (target) => ({
-    ...(await attach(target)),
+  provider.attach = async (target, trusted) => ({
+    ...(await attach(target, trusted)),
     identity: asId("replacement"),
   });
 
@@ -119,8 +119,8 @@ it("closes an environment that changes between inspection and attachment", async
   const { host, provider, workspace } = await world();
   const attach = provider.attach.bind(provider);
   let closed = false;
-  provider.attach = async (target) => {
-    const attached = await attach(target);
+  provider.attach = async (target, trusted) => {
+    const attached = await attach(target, trusted);
 
     return {
       ...attached,

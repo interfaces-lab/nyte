@@ -33,8 +33,9 @@ function breakdownLines(total: Usage): readonly string[] {
 export function usageCard(view: HeadView | null, accounts: readonly ProviderUsage[]): UsageCard {
   const total = view?.usage;
 
-  if (total === undefined || (total.total === 0 && total.cost.total === 0))
+  if (total === undefined || (total.total === 0 && total.cost.total === 0)) {
     return { accounts, chat: { kind: "message", message: "No usage recorded" } };
+  }
 
   return {
     accounts,
@@ -59,10 +60,11 @@ export function usageLines(card: UsageCard): readonly TextLine[] {
     const name =
       provider.account === null ? provider.name : `${provider.name} · ${provider.account.label}`;
 
-    if (state.kind === "unavailable")
+    if (state.kind === "unavailable") {
       return state.reason === "failed"
         ? [[{ text: `${name} · ${state.message}`, tone: "error" }], ""]
         : [];
+    }
 
     return [
       [{ text: `${name} · account limits`, bold: true }],

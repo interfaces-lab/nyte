@@ -19,13 +19,17 @@ const tailnet =
 if (
   tailnet === undefined ||
   (tailnetAt === -1 ? args : args.toSpliced(tailnetAt, 2)).some((arg) => arg !== "--log")
-)
+) {
   throw new Error(USAGE);
+}
 
 const stop = new AbortController();
 
-for (const ending of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
+for (const ending of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.once(ending, () => stop.abort());
+}
+
+const REPLACED_EXIT = 75;
 
 void serveHost({
   entry: new URL("./host-worker.js", import.meta.url),
@@ -36,4 +40,6 @@ void serveHost({
   signal: stop.signal,
   output: { write: (text) => void process.stdout.write(text) },
   listening: (host) => `${JSON.stringify({ type: "listening", ...host })}\n`,
+}).then((served) => {
+  process.exitCode = served.kind === "replaced" ? REPLACED_EXIT : 0;
 });

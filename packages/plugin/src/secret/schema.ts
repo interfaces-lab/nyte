@@ -20,18 +20,18 @@ const name = Type.String({
 const label = Type.String({
   minLength: 1,
   maxLength: 60,
-  pattern: "\\S",
+  pattern: String.raw`\S`,
   description: "A title, such as ElevenLabs API key.",
 });
 
 const reason = Type.String({
   minLength: 1,
-  pattern: "\\S",
+  pattern: String.raw`\S`,
   description: "What you need it for, in one sentence.",
 });
 
 const url = Type.String({
-  pattern: "^https?://\\S+$",
+  pattern: String.raw`^https?://\S+$`,
   description: "A page where the user can get it.",
 });
 

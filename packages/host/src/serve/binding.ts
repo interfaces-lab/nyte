@@ -277,6 +277,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspaces.add": ({ target, options }) => connection.workspaces.add(target, options),
     "workspaces.forget": ({ id }) => connection.workspaces.forget(id),
     "workspaces.cleanWorktrees": () => connection.workspaces.cleanWorktrees(),
+    "workspaces.scanStorage": () => connection.workspaces.scanStorage(),
+    "workspaces.cleanStorage": ({ items }) => connection.workspaces.cleanStorage(items),
 
     "sessions.start": async (input) => {
       const { session, receipt } = await connection.sessions.start(input);
@@ -294,6 +296,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "host.tailnet.status": async () => tailnet().status(),
     "host.tailnet.configure": (input) => tailnet().configure(input),
     "host.tailnet.logout": () => tailnet().logout(),
+    "host.activity": () => connection.host.activity(),
     "host.execution.pause": async () => {
       execution().pause();
 
@@ -320,7 +323,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "session.info": ({ session: id }) => session(id).info(),
     "session.update": ({ session: id, patch }) => session(id).update(patch),
     "session.remove": ({ session: id }) => session(id).remove(),
-    "session.fork": ({ session: id, from }) => session(id).fork({ from }),
+    "session.fork": ({ session: id, from, workspace }) => session(id).fork({ from, workspace }),
     "session.stop": ({ session: id }) => session(id).stop(),
     "session.command": ({ session: id, name, text }) => session(id).command(name, text),
     "session.completeCommand": ({ session: id, name, prefix }) =>
@@ -569,6 +572,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "language.watchStatus": async ({ workspace: id }) => (await language(id)).watchStatus(),
     "language.open": async ({ workspace: id, path, text, version }) =>
       (await language(id)).open({ path, text, version }),
+    "language.install": async ({ workspace: id, server, root }) =>
+      (await language(id)).install({ server, root }),
     "language.change": async ({ workspace: id, path, version, changes }) =>
       (await language(id)).change({ path, version, changes }),
     "language.close": async ({ workspace: id, path }) => (await language(id)).close({ path }),
@@ -590,16 +595,12 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await language(id)).prepareRename({ path, position }),
     "language.rename": async ({ workspace: id, path, position, name }) =>
       (await language(id)).rename({ path, position, name }),
-    "language.codeActions": async ({ workspace: id, path, range }) =>
-      (await language(id)).codeActions({ path, range }),
+    "language.codeActions": async ({ workspace: id, path, range, only }) =>
+      (await language(id)).codeActions({ path, range, only }),
     "language.resolveCodeAction": async ({ workspace: id, token }) =>
       (await language(id)).resolveCodeAction({ token }),
-    "language.format": async ({ workspace: id, path, options }) =>
-      (await language(id)).format({ path, options }),
-    "language.signatureHelp": async ({ workspace: id, path, position }) =>
-      (await language(id)).signatureHelp({ path, position }),
-    "language.inlayHints": async ({ workspace: id, path, range }) =>
-      (await language(id)).inlayHints({ path, range }),
+    "language.format": async ({ workspace: id, path, options, range }) =>
+      (await language(id)).format({ path, options, range }),
 
     "github.account": () => connection.github.account(),
     "github.signIn": () => connection.github.signIn(),

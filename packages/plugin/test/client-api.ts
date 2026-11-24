@@ -26,7 +26,7 @@ export function clientApi(
         list: () => [],
         value: async () => undefined,
         set: async () => undefined,
-        watch: async function* () {},
+        async *watch() {},
       },
       renderers: { list: () => [] },
       keybindings: { list: () => [] },

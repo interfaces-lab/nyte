@@ -1,10 +1,5 @@
-import {
-  CodeRenderable,
-  DiffRenderable,
-  LineNumberRenderable,
-  pathToFiletype,
-} from "@opentui/core";
-import type { SimpleHighlight } from "@opentui/core";
+import { CodeRenderable, LineNumberRenderable, pathToFiletype } from "@opentui/core";
+import type { SimpleHighlight, DiffRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { diffWordsWithSpace } from "diff";
 import { createEffect, For, on, onCleanup, Show } from "solid-js";
@@ -13,7 +8,7 @@ import { unchangedLinesLabel } from "../../lib/format.ts";
 import type { ChangedLinePair, OutputDiff } from "../../lib/output-diff.ts";
 import { displayWidth } from "../../lib/width.ts";
 
-const WORD_SPAN_LIMIT = 4_000;
+const WORD_SPAN_LIMIT = 4000;
 
 function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlight[] {
   if (pair.removed.length + pair.added.length > WORD_SPAN_LIMIT) return [];
@@ -33,12 +28,13 @@ function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlight[] {
       const leading = change.value.length - change.value.trimStart().length;
       const trailing = change.value.length - change.value.trimEnd().length;
 
-      if (leading + trailing < change.value.length)
+      if (leading + trailing < change.value.length) {
         spans.push([
           offset + leading,
           offset + change.value.length - trailing,
           change.added ? "diff.plus" : "diff.minus",
         ]);
+      }
     }
 
     if (!change.added) removedOffset += change.value.length;

@@ -549,7 +549,7 @@ describe("fold", () => {
       );
 
       const view = readView(state, main, { tail: 40 });
-      const every = ids(readView(state, main, { tail: 1_000 }));
+      const every = ids(readView(state, main, { tail: 1000 }));
 
       expect(every).toHaveLength(size + 2);
       expect(view.messages).toHaveLength(40);
@@ -842,7 +842,7 @@ describe("fold", () => {
     expect(readView(after, main).turns).toEqual(before.turns);
   });
 
-  const long = `${"a".repeat(5_000)}${"z".repeat(5_000)}`;
+  const long = `${"a".repeat(5000)}${"z".repeat(5000)}`;
 
   const material = { provider: "test", api: "responses", model: "model", data: { blob: long } };
 

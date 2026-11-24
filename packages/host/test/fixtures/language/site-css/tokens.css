@@ -1,0 +1,10 @@
+:root {
+  --brand-accent: #1d4ed8;
+  --surface-bg: rgb(248, 250, 252);
+  --text-muted: #475569;
+}
+
+.card-shell {
+  background-color: var(--surface-bg);
+  border: 1px solid var(--brand-accent);
+}

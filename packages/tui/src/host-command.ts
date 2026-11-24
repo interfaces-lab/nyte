@@ -36,7 +36,19 @@ export async function hostCommand(
   });
 
   if (served.kind === "taken") throw taken(served.by);
-  output.status("none", `Stopped the host and removed ${hostFilePath()}.`);
+
+  if (served.kind === "store-newer") {
+    throw new CliError("failed", served.message, {
+      next: [{ label: "Update Nyte", argv: ["nyte", "update"] }],
+    });
+  }
+
+  output.status(
+    "none",
+    served.kind === "replaced"
+      ? `Stopped the host so a newer Nyte can start, and removed ${hostFilePath()}.`
+      : `Stopped the host and removed ${hostFilePath()}.`,
+  );
 
   return 0;
 }
@@ -47,8 +59,9 @@ function parseHostArgs(args: readonly string[]) {
   for (const arg of args) {
     if (arg === "--json" || arg === "--log" || arg === "--supervised") continue;
 
-    if (arg.startsWith("-"))
+    if (arg.startsWith("-")) {
       throw new CliError("unknown_option", `Unknown option ${arg} for nyte host.`, help);
+    }
 
     throw new CliError("invalid_arguments", "nyte host takes no arguments.", help);
   }
@@ -71,11 +84,12 @@ function describe(host: HostListening, log: boolean, output: Output): void {
 }
 
 function taken(host: RunningHost | null): CliError {
-  if (host === null)
+  if (host === null) {
     return new CliError("conflict", "Can't start a host. Another one is starting in this home.", {
       details: [{ label: "Lock", value: hostLockPath() }],
       next: [{ label: "Attach to it once it listens", argv: ["nyte"] }],
     });
+  }
 
   return new CliError(
     "conflict",

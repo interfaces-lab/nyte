@@ -71,8 +71,9 @@ export function clientCanvasPreview(
 
     if (answered === null) return fallback(request, signal);
 
-    if (!previewAnswers.Check(answered))
+    if (!previewAnswers.Check(answered)) {
       throw new SdkError("invalid", "The app answered a canvas preview with something unreadable.");
+    }
 
     return readAnswer(answered);
   };

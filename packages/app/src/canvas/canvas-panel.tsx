@@ -87,12 +87,13 @@ export function CanvasPanel({
   const editing = useCanvasEditing(sessionId, part);
   const now = useNowMinute();
 
-  if (view === undefined)
+  if (view === undefined) {
     return (
       <section aria-label="Canvas" {...props(styles.panel)}>
         {error !== undefined && <p {...props(text.base, styles.message)}>{error.message}</p>}
       </section>
     );
+  }
 
   const checked = view === null ? undefined : canvas.state["~standard"].validate(view.state);
 
@@ -101,7 +102,7 @@ export function CanvasPanel({
       ? undefined
       : checked.value;
 
-  if (state === undefined)
+  if (state === undefined) {
     return (
       <section aria-label="Canvas" {...props(styles.panel)}>
         <p {...props(text.base, styles.message)}>
@@ -109,6 +110,7 @@ export function CanvasPanel({
         </p>
       </section>
     );
+  }
 
   const revisions = state.revisions;
   const latest = revisions.at(-1)?.number ?? 1;

@@ -4,15 +4,15 @@ import type { ESTree } from "@oxlint/plugins";
 
 type Comment = ESTree.Comment;
 
-type CodeScan = {
+interface CodeScan {
   readonly offset: number;
   readonly blankLine: boolean;
-};
+}
 
-type Span = {
+interface Span {
   readonly start: number;
   readonly end: number;
-};
+}
 
 const DIRECTIVE =
   /^(?:(?:eslint|oxlint)-(?:disable|enable)(?:-next-line|-line)?\b|@ts-(?:expect-error|nocheck|check)\b|biome-ignore\b|prettier-ignore\b|oxfmt-ignore\b|istanbul\s+ignore\b|[cv]8\s+ignore\b|#(?:end)?region\b|@vite-ignore\b|webpack[A-Z]\w*:|[@#]__(?:PURE|NO_SIDE_EFFECTS)__|@jsx(?:ImportSource|Runtime|Frag)?\b|@(?:vitest|jest)-environment\b|@license\b|@preserve\b|[#@] sourceMappingURL=)/;

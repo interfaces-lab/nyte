@@ -15,7 +15,7 @@ const devStylex = import.meta.env.DEV
 export const Route = createRootRoute({
   head: () => ({
     meta: [
-      { charSet: "utf-8" },
+      { charSet: "utf8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: siteTitle },
       { name: "description", content: siteDescription },

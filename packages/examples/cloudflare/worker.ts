@@ -17,27 +17,27 @@ import manifest from "./package.json" with { type: "json" };
 
 Settings.Set({ useAcceleration: false });
 
-export type WorkerState = {
+export interface WorkerState {
   readonly storage: DurableObjectSql & {
     getAlarm(): Promise<number | null>;
     setAlarm(scheduledTime: number): Promise<void>;
     deleteAlarm(): Promise<void>;
   };
   blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
-};
+}
 
-export type WorkerEnv = {
+export interface WorkerEnv {
   readonly NYTE_HOST: { getByName(name: string): { fetch(request: Request): Promise<Response> } };
   readonly NYTE_TOKEN: string;
   readonly NYTE_SECRET_KEY?: string;
   readonly NYTE_IDENTITY_KEY?: string;
-};
+}
 
-export type PassBudget = {
+export interface PassBudget {
   readonly heads: number;
   readonly ms: number;
   readonly repair: boolean;
-};
+}
 
 export type PassHost = Pick<Host, "execution"> & {
   readonly server: Pick<ServerHost, "tick">;
@@ -109,18 +109,18 @@ export async function pass(
 }
 
 export class NyteHost {
-  readonly #state: WorkerState;
-  readonly #env: WorkerEnv;
-  readonly #models: MutableModels | undefined;
-  #served: Promise<Served> | null = null;
-  #passes = 0;
+  private readonly state: WorkerState;
+  private readonly env: WorkerEnv;
+  private readonly models: MutableModels | undefined;
+  private served: Promise<Served> | null = null;
+  private passes = 0;
 
   constructor(state: WorkerState, env: WorkerEnv, options?: { readonly models?: MutableModels }) {
-    this.#state = state;
-    this.#env = env;
-    this.#models = options?.models;
+    this.state = state;
+    this.env = env;
+    this.models = options?.models;
     void state.blockConcurrencyWhile(async () => {
-      await this.#serve().catch(() => undefined);
+      await this.serve().catch(() => undefined);
     });
   }
 
@@ -128,7 +128,7 @@ export class NyteHost {
     let served: Served;
 
     try {
-      served = await this.#serve();
+      served = await this.serve();
     } catch (error) {
       const failure = new SdkError(
         "unavailable",
@@ -145,20 +145,20 @@ export class NyteHost {
   }
 
   async alarm(): Promise<void> {
-    const served = await this.#serve();
-    const repair = this.#passes % REPAIR_EVERY === 0;
-    this.#passes += 1;
-    const next = await pass(served.host, this.#state.storage, { ...PASS_BUDGET, repair });
+    const served = await this.serve();
+    const repair = this.passes % REPAIR_EVERY === 0;
+    this.passes += 1;
+    const next = await pass(served.host, this.state.storage, { ...PASS_BUDGET, repair });
 
-    if (next === null) await this.#state.storage.deleteAlarm();
-    else await this.#state.storage.setAlarm(next);
+    if (next === null) await this.state.storage.deleteAlarm();
+    else await this.state.storage.setAlarm(next);
   }
 
-  #serve(): Promise<Served> {
-    const served = (this.#served ??= compose(this.#state, this.#env, this.#models));
+  private serve(): Promise<Served> {
+    const served = (this.served ??= compose(this.state, this.env, this.models));
 
     served.catch(() => {
-      if (this.#served === served) this.#served = null;
+      if (this.served === served) this.served = null;
     });
 
     return served;
@@ -171,11 +171,11 @@ export default {
   },
 };
 
-type Served = {
+interface Served {
   readonly host: ServedHost;
   readonly listener: Listener;
   readonly coverage: Owned;
-};
+}
 
 async function compose(
   state: WorkerState,
@@ -231,12 +231,13 @@ async function compose(
 }
 
 function secretsFrom(key: string | undefined): NonNullable<OpenOptions["secrets"]> {
-  if (key === undefined || key === "")
+  if (key === undefined || key === "") {
     return {
       key: async () => {
         throw new SdkError("unavailable", "Set NYTE_SECRET_KEY to a base64 32-byte key.");
       },
     };
+  }
   const bytes = Uint8Array.from(atob(key), (character) => character.charCodeAt(0));
 
   return { key: async () => bytes };
@@ -288,9 +289,9 @@ function openSchedule(storage: Pick<DurableObjectSql, "sql">) {
     ): void {
       if (readAt(entry.session, entry.head) !== entry.at) return;
 
-      if (next === null)
+      if (next === null) {
         rows("DELETE FROM nyte_schedule WHERE session = ? AND head = ?", entry.session, entry.head);
-      else write(entry.session, entry.head, next);
+      } else write(entry.session, entry.head, next);
     },
     earliest(): number | null {
       const at = rows("SELECT MIN(at) AS at FROM nyte_schedule")[0]?.at;

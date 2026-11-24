@@ -28,17 +28,20 @@ export function route(argv: readonly string[]): Route {
     return { kind: "help", path };
   }
 
-  if (options.includes("--help") || options.includes("-h"))
+  if (options.includes("--help") || options.includes("-h")) {
     return { kind: "help", path: knownPath(options) };
+  }
   const path = knownPath(argv);
 
   if (path.length > 0 && argv[path.length] === "help") return { kind: "help", path };
 
-  if (options.includes("--version") || options.includes("-v"))
+  if (options.includes("--version") || options.includes("-v")) {
     return { kind: "version", json: options.includes("--json") };
+  }
 
-  if (first === undefined || first.startsWith("-"))
+  if (first === undefined || first.startsWith("-")) {
     return { kind: "chat", args: argv, json: options.includes("--json") };
+  }
 
   if (command === undefined) return { kind: "unknown", word: first };
   const spec = findCommand(command.name);
@@ -47,8 +50,9 @@ export function route(argv: readonly string[]): Route {
     argv.length === 1 &&
     spec?.subcommands !== undefined &&
     !spec.subcommands.some((action) => action.default === true)
-  )
+  ) {
     return { kind: "help", path: [command.name] };
+  }
 
   const action =
     spec?.subcommands?.find((candidate) => candidate.name === argv[1]) ??

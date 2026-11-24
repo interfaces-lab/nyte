@@ -4,13 +4,17 @@ import {
   MediaType,
   Query,
   requestPermissionsAsync,
-  type PermissionResponse,
 } from "expo-media-library";
-import { prepareImage, type StagedImage } from "./attachments.ts";
+import type { PermissionResponse } from "expo-media-library";
+import { prepareImage } from "./attachments.ts";
+import type { StagedImage } from "./attachments.ts";
 // oxlint-disable-next-line nyte-code/no-cross-package-relative-imports -- Expo autolinks local modules from modules/, and the app imports them by path
 import { photoAccess } from "../../modules/nyte-photo-access/src/nyte-photo-access.ts";
 
-export type RecentPhoto = { readonly id: string; readonly uri: string };
+export interface RecentPhoto {
+  readonly id: string;
+  readonly uri: string;
+}
 
 export type PhotoAccess =
   | { readonly kind: "granted"; readonly photos: readonly RecentPhoto[] }

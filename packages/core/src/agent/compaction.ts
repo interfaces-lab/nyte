@@ -140,14 +140,18 @@ async function latestCompaction(
 
 export function createCompactor(kernel: Kernel, models: Models): Compactor {
   return async ({ session, head, instructions }) => {
-    const runtime = kernel.plugins.runtime(session);
+    const runtime = kernel.plugins.newest(session);
     await runtime.ready;
     const configuration = await resolveHeadConfiguration(kernel, session, head);
     const { model } = configuration;
+    if (models.getProvider(model.provider)?.contextManagement === "provider") {
+      return { kind: "provider-managed" };
+    }
     const info = modelInfo(models, model, runtime);
 
-    if (info === null)
+    if (info === null) {
       throw new SdkError("invalid", `No model ${model.provider}/${model.id} is in the catalog.`);
+    }
     const body = { session, head, run: null, configuration };
     const { transcript } = await requestBody(kernel, models, runtime, body);
     await failLeftoverCompactions(kernel, session, head, null);
@@ -166,13 +170,14 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
 
     if (opened === null) return { kind: "nothing-to-compact" };
 
-    if (opened === "stopped")
+    if (opened === "stopped") {
       throw new SdkError("internal", "A manual compaction has no run to stop.");
+    }
     const here = running.get(kernel) ?? new Set<PartId>();
     running.set(kernel, here.add(opened.part));
 
     void finishCompaction(kernel, models, runtime, opened, kernel.executionState.closing.signal)
-      .catch((error) =>
+      .catch((error: unknown) =>
         dev("compaction", "failed", {
           session,
           part: opened.part,
@@ -232,7 +237,7 @@ export function createSummarizer(kernel: Kernel, models: Models): Summarizer {
     if (commits.length === 0) return { kind: "ok", markdown: "", usage: ZERO_USAGE };
 
     try {
-      const runtime = kernel.plugins.runtime(session);
+      const runtime = kernel.plugins.newest(session);
       await runtime.ready;
       const configuration = await resolveHeadConfiguration(kernel, session, head);
 
@@ -478,8 +483,9 @@ async function writeCompaction(
 
     if (outcome.kind === "stale") return "stale";
 
-    if (fence === null && written.event !== null)
+    if (fence === null && written.event !== null) {
       await rideRef(kernel, sessionRef(session), written.event);
+    }
 
     return failure;
   }
@@ -579,7 +585,7 @@ async function buildCompactionResult(
 
     const checked = await check(compaction.state, state);
 
-    if (checked.kind === "invalid")
+    if (checked.kind === "invalid") {
       return {
         kind: "failed",
         failure: {
@@ -587,6 +593,7 @@ async function buildCompactionResult(
           message: `before_compaction returned an invalid result: ${checked.issues.map((issue) => issue.message).join("; ")}`,
         },
       };
+    }
 
     return {
       kind: "ok",
@@ -661,7 +668,7 @@ async function ask(
     signal: input.signal,
   });
 
-  if (sent === null)
+  if (sent === null) {
     return {
       kind: "failed",
       failure: {
@@ -669,17 +676,19 @@ async function ask(
         message: `No model ${request.model.provider}/${request.model.id} is in the catalog.`,
       },
     };
+  }
 
   const { message, usage, info, failure } = sent;
 
   if (failure !== null) return { kind: "failed", failure };
   const answer = contentText(message.content).trim();
 
-  if (answer === "")
+  if (answer === "") {
     return {
       kind: "failed",
       failure: { class: "provider", message: "The summary came back empty." },
     };
+  }
 
   return { kind: "ok", text: answer, usage, info };
 }
@@ -703,8 +712,11 @@ function splitTranscriptForCompaction(
   while (start < body.length && body[start]?.role === "toolResult") start += 1;
   const summarise = body.slice(0, start);
 
-  if (!summarise.some((message) => projectedCommit(message) !== null && !projectsSummary(message)))
+  if (
+    !summarise.some((message) => projectedCommit(message) !== null && !projectsSummary(message))
+  ) {
     return null;
+  }
 
   return { summarise, keep: body.slice(start) };
 }
@@ -741,8 +753,9 @@ async function findReplacedCommits(
   const kept = indexes(plan.keep);
   const summarised = indexes(plan.summarise);
 
-  if (kept.length === 0)
+  if (kept.length === 0) {
     return summarised.length === 0 ? [] : path.slice(0, Math.max(...summarised) + 1);
+  }
   const older = path.slice(0, Math.min(...kept));
 
   return [
@@ -771,6 +784,11 @@ function transcriptText(messages: readonly Message[]): string {
           return [
             `${message.toolName} ${message.isError ? "failed" : "returned"}: ${excerptText(contentText(message.content))}`,
           ];
+        default: {
+          const exhaustive: never = message;
+
+          return exhaustive;
+        }
       }
     })
     .join("\n\n");
@@ -779,8 +797,9 @@ function transcriptText(messages: readonly Message[]): string {
 function renderCompactionPart(kernel: Kernel, part: PartRecord): string {
   const state = part.state;
 
-  if (part.partKind === "text" && isJsonObject(state) && typeof state.markdown === "string")
+  if (part.partKind === "text" && isJsonObject(state) && typeof state.markdown === "string") {
     return `Assistant: ${state.markdown}`;
+  }
 
   if (part.partKind === "tool" && isJsonObject(state) && typeof state.name === "string") {
     const outcome = isJsonObject(state.outcome) ? state.outcome.kind : state.phase;
@@ -808,8 +827,9 @@ export async function readProviderCheckpoint(
   if (latest === null) return null;
   const checked = await check(compaction.state, latest);
 
-  if (checked.kind === "invalid")
+  if (checked.kind === "invalid") {
     throw new SdkError("internal", "The head's latest compaction is corrupt in the store.");
+  }
   const material = checked.value.material;
 
   if (
@@ -817,8 +837,9 @@ export async function readProviderCheckpoint(
     material.provider !== model.provider ||
     material.api !== model.api ||
     material.model !== (model.variant?.base ?? model.id)
-  )
+  ) {
     return null;
+  }
 
   return {
     type: "provider",
@@ -832,8 +853,9 @@ export async function readProviderCheckpoint(
 function jsonValue(value: Json): JsonValue {
   if (value === null || typeof value !== "object") return value;
 
-  if (isJsonObject(value))
+  if (isJsonObject(value)) {
     return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, jsonValue(inner)]));
+  }
 
   return value.map(jsonValue);
 }

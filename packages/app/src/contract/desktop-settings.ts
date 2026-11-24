@@ -57,8 +57,9 @@ export function findAlertBlocker(
     case "sound": {
       if (!settings.notifications) return { kind: "master", setting: "notifications" };
 
-      if (!chosenChannels(state, settings).includes("notification"))
+      if (!chosenChannels(state, settings).includes("notification")) {
         return { kind: "channel", channel: "notification" };
+      }
 
       return channel === "sound" && !settings.notificationSounds
         ? { kind: "master", setting: "notificationSounds" }

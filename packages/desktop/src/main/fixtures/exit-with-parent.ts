@@ -10,5 +10,5 @@ export function exitWithParent(): void {
     } catch {
       app.exit(1);
     }
-  }, 1_000).unref();
+  }, 1000).unref();
 }

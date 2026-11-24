@@ -83,8 +83,7 @@ Response:
     "target",
     "identity",
     "availability",
-    "projectResources",
-    "trusted",
+    "trust",
     "projectSources",
     "addedBy",
     "writers",
@@ -153,23 +152,157 @@ Response:
         }
       ]
     },
-    "projectResources": {
+    "trust": {
       "anyOf": [
         {
-          "type": "boolean"
+          "type": "object",
+          "required": ["state"],
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "home"
+            }
+          }
         },
         {
-          "type": "null"
-        }
-      ]
-    },
-    "trusted": {
-      "anyOf": [
-        {
-          "type": "boolean"
+          "type": "object",
+          "required": ["state", "notice", "parent"],
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "undecided"
+            },
+            "notice": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "ask"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
         },
         {
-          "type": "null"
+          "type": "object",
+          "required": ["state", "by"],
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "trusted"
+            },
+            "by": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "path"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "folder"
+                    },
+                    "path": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "setting"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["state", "by", "notice", "parent"],
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "untrusted"
+            },
+            "by": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "path"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "folder"
+                    },
+                    "path": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "setting"
+                    }
+                  }
+                }
+              ]
+            },
+            "notice": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "tell"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
         }
       ]
     },

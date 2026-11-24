@@ -14,13 +14,14 @@ export { headView } from "./view/head-view.ts";
 
 export type { HeadView } from "./view/head-view.ts";
 
-export { streamText, withStreamedText } from "./view/streamed-text.ts";
+export { streamedText } from "./view/streamed-text.ts";
 
-export type { StreamedPart, StreamedText } from "./view/streamed-text.ts";
+export type { StreamedText } from "./view/streamed-text.ts";
+
+export type { LinkState } from "./live/link.ts";
 
 export type {
   ActionHandler,
-  Health,
   OpenSocket,
   Requester,
   SocketRequest,

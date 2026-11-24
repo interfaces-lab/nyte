@@ -2,8 +2,8 @@ import { expect, test } from "vitest";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { asId } from "@nyte-ai/schema";
 import type { ComposerViewState } from "../../panes/session-view-state.ts";
-import type { ComposerSubmission } from "./composer-document.ts";
-import type { SessionDraft } from "./composer-draft.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
+import type { SessionDraft } from "../../panes/composer-draft.ts";
 import { CLOSED_SESSION, stepSession } from "./composer-session.ts";
 import type {
   ComposerSession,
@@ -442,8 +442,9 @@ test.each<{
       );
     };
 
-    for (const event of [{ kind: "shown" } as const, edit, held(1), typed("Edited."), save])
+    for (const event of [{ kind: "shown" } as const, edit, held(1), typed("Edited."), save]) {
       drive("closing", event);
+    }
     drive("closing", { kind: "closed" });
     drive("reopened", { kind: "shown" });
 

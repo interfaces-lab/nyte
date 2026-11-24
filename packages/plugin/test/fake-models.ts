@@ -51,7 +51,7 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
     input: ["text"],
     cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 100_000,
-    maxTokens: 4_096,
+    maxTokens: 4096,
     ...overrides,
   };
 }

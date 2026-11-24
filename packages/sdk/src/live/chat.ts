@@ -17,10 +17,11 @@ import { laidSends } from "../send/unsent.ts";
 import { headView } from "../view/head-view.ts";
 import type { HeadView } from "../view/head-view.ts";
 import { pages } from "../view/history.ts";
-import { streamText, withStreamedText } from "../view/streamed-text.ts";
-import type { StreamedText } from "../view/streamed-text.ts";
+import { streamedText } from "../view/streamed-text.ts";
 import type { HeadStore } from "./head.ts";
-import type { Health, TextUpdate } from "./host-connection.ts";
+import type { TextUpdate } from "./host-connection.ts";
+import type { LinkState } from "./link.ts";
+import { listenerSet } from "./store.ts";
 import type { Freshness, Live } from "./store.ts";
 
 export interface ChatSnapshot {
@@ -33,7 +34,7 @@ export interface ChatSnapshot {
   readonly expired: readonly MessageId[];
   /**
    * `host` while the host's row says the run is stopping. `asked` from a `stop()` until the host
-   * answers with its row or ends the run, the stop fails, or the link's health changes, so a stop
+   * answers with its row or ends the run, the stop fails, or the link's state changes, so a stop
    * sent into a link found lost can be sent again. `asked` only says a stop was sent; the host
    * decides whether the run stops.
    */
@@ -95,24 +96,30 @@ export interface ChatParts {
   readonly head: HeadName;
   readonly open: () => HeadStore;
   readonly text: (listener: (update: TextUpdate) => void) => Disposer;
-  readonly health: Live<Health>;
+  readonly link: Live<LinkState>;
   readonly journal: JournalLoop;
 }
 
-type Opened = { readonly head: HeadStore; readonly stops: readonly Disposer[] };
+interface Opened {
+  readonly head: HeadStore;
+  readonly stops: readonly Disposer[];
+}
 
-type Ask = { readonly run: RunId; readonly health: Health };
+interface Ask {
+  readonly run: RunId;
+  readonly link: LinkState;
+}
 
 const NO_MESSAGES: readonly MessageId[] = [];
 
 export function openChat(parts: ChatParts): Chat {
-  const listeners = new Set<() => void>();
+  const listeners = listenerSet();
   const target = parts.session.head(parts.head);
   const lay = laidSends(parts.journal, parts.session.id, parts.head);
   const paged = () => pages<HeadView>((query) => target.history(query));
   let paging = paged();
   let opened: Opened | null = null;
-  let texts: StreamedText = new Map();
+  let texts = streamedText();
   let laid: HeadView | null = null;
   let asked: Ask | null = null;
   let snapshot = unopened();
@@ -124,15 +131,13 @@ export function openChat(parts: ChatParts): Chat {
 
     if (execution.kind === "live" && execution.stopping) return "host";
 
-    return asked !== null &&
-      asked.run === execution.run.id &&
-      asked.health === parts.health.snapshot()
+    return asked !== null && asked.run === execution.run.id && asked.link === parts.link.snapshot()
       ? "asked"
       : "no";
   };
 
   const draw = (freshness: Freshness, expired: readonly MessageId[]): void => {
-    const view = laid === null ? null : withStreamedText(paging.show(laid), texts);
+    const view = laid === null ? null : texts.lay(paging.show(laid));
     const stopping = showsStopping(view);
 
     if (
@@ -140,12 +145,12 @@ export function openChat(parts: ChatParts): Chat {
       freshness === snapshot.freshness &&
       expired === snapshot.expired &&
       stopping === snapshot.stopping
-    )
+    ) {
       return;
+    }
     const seq = freshness.kind === "fresh" ? freshness.seq : snapshot.seq;
     snapshot = { view, seq, freshness, expired, stopping };
-
-    for (const listener of listeners) listener();
+    listeners.notify();
   };
 
   const redraw = (): void => draw(snapshot.freshness, snapshot.expired);
@@ -159,14 +164,14 @@ export function openChat(parts: ChatParts): Chat {
   };
 
   const stream = (update: TextUpdate): void => {
-    texts = streamText(texts, update);
+    texts.apply(update);
 
     if (laid !== null) redraw();
   };
 
   return {
     subscribe(listener) {
-      listeners.add(listener);
+      const leave = listeners.subscribe(listener);
 
       if (opened === null) {
         const head = parts.open();
@@ -178,18 +183,20 @@ export function openChat(parts: ChatParts): Chat {
             head.subscribe(changed),
             parts.text(stream),
             parts.journal.subscribe(changed),
-            parts.health.subscribe(redraw),
+            parts.link.subscribe(redraw),
           ],
         };
       }
 
       return () => {
-        if (!listeners.delete(listener) || listeners.size > 0 || opened === null) return;
+        leave();
+
+        if (listeners.size() > 0 || opened === null) return;
 
         for (const stop of opened.stops) stop();
         opened.head.close();
         opened = null;
-        texts = new Map();
+        texts = streamedText();
         laid = null;
         paging = paged();
         snapshot = unopened();
@@ -198,24 +205,11 @@ export function openChat(parts: ChatParts): Chat {
     snapshot: () => snapshot,
     async send(content, options) {
       const id = options?.id ?? asId<"receipt">(crypto.randomUUID());
-      const journal = parts.journal;
-      const journaled = Promise.withResolvers<Sending>();
-
-      const leave = journal.subscribe(() => {
-        const sending = journal.sending(id);
-
-        if (sending !== null) journaled.resolve(sending);
-      });
-
+      const journaled = parts.journal.held(id);
       const sent = target.send(content, { ...options, id });
+      const sending = await Promise.race([journaled, sent.then(() => journaled)]);
 
-      try {
-        const sending = await Promise.race([journaled.promise, sent.then(() => journaled.promise)]);
-
-        return { id, delivered: delivered(sent, sending) };
-      } finally {
-        leave();
-      }
+      return { id, delivered: delivered(sent, sending) };
     },
     async resend(message) {
       await parts.journal.resend(parts.session.id, message);
@@ -226,9 +220,10 @@ export function openChat(parts: ChatParts): Chat {
     stop() {
       const execution = snapshot.view?.execution;
 
-      if (execution === undefined || execution.kind === "idle" || snapshot.stopping !== "no")
+      if (execution === undefined || execution.kind === "idle" || snapshot.stopping !== "no") {
         return Promise.resolve();
-      const ask = { run: execution.run.id, health: parts.health.snapshot() };
+      }
+      const ask = { run: execution.run.id, link: parts.link.snapshot() };
       asked = ask;
       redraw();
 

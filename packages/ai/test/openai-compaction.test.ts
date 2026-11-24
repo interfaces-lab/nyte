@@ -1,6 +1,7 @@
 import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
-import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { IncomingHttpHeaders, Server } from "node:http";
 import { text } from "node:stream/consumers";
 import { afterEach, test } from "vitest";
 import { compactOpenAIResponsesContext } from "../src/api/openai-responses.ts";
@@ -32,7 +33,7 @@ async function endpoint(payload: string, status = 200) {
         response.writeHead(status, { "content-type": "application/json" });
         response.end(payload);
       })
-      .catch((cause) =>
+      .catch((cause: unknown) =>
         response.destroy(cause instanceof Error ? cause : new Error(String(cause))),
       );
   });
@@ -56,7 +57,7 @@ async function endpoint(payload: string, status = 200) {
     input: ["text"],
     cost: { input: 2, output: 8, cacheRead: 1, cacheWrite: 2 },
     contextWindow: 100_000,
-    maxTokens: 1_000,
+    maxTokens: 1000,
     headers: { "x-model-header": "model" },
   };
   return { model, requests };

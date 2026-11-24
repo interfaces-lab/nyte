@@ -156,8 +156,8 @@ describe("resources", () => {
     const attach = provider.attach.bind(provider);
     let failing = false;
 
-    provider.attach = async (target) => {
-      const attached = await attach(target);
+    provider.attach = async (target, trusted) => {
+      const attached = await attach(target, trusted);
 
       return {
         ...attached,
@@ -244,13 +244,13 @@ describe("resources", () => {
     });
   });
 
-  it("hides project skills and system files but keeps context files when projectResources is false", async () => {
+  it("hides project skills and system files but keeps context files when the folder is untrusted", async () => {
     const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
     const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const before = await scanResources(kernel, session.id);
 
     expect(before.project).not.toBeNull();
-    expect(await host.workspace(workspace).update({ projectResources: false })).toEqual({
+    expect(await host.workspace(workspace).update({ trusted: false })).toEqual({
       kind: "updated",
     });
 
@@ -288,7 +288,7 @@ describe("resources", () => {
       ["review", "/home/ada/.nyte/skills/review/SKILL.md"],
       ["shared", ".nyte/skills/shared/SKILL.md"],
     ]);
-    expect(await at.update({ projectResources: false })).toEqual({ kind: "updated" });
+    expect(await at.update({ trusted: false })).toEqual({ kind: "updated" });
     expect(await skills()).toEqual([
       ["lint", "/home/ada/.agents/skills/lint/SKILL.md"],
       ["review", "/home/ada/.nyte/skills/review/SKILL.md"],
@@ -317,7 +317,7 @@ describe("resources", () => {
     const remoteHost = createHost(remote, { credential: { kind: "token", token: "x" } });
     const added = await remoteHost.workspaces.add(
       { kind: "sandbox", locator: "box" },
-      { projectResources: true },
+      { trusted: true },
     );
     assert(added.kind === "added");
     const { session: boxed } = await remoteHost.sessions.start({
@@ -360,7 +360,12 @@ describe("resources", () => {
     const context = sections.find((section) => section.id === "project-context");
     const skills = sections.find((section) => section.id === "skills");
 
-    assert(context !== undefined && skills !== undefined);
+    assert(
+      context !== undefined &&
+        context.delivery !== "reminder" &&
+        skills !== undefined &&
+        skills.delivery !== "reminder",
+    );
     expect([context.order, skills.order]).toEqual([10, 90]);
     expect(context.text).toMatch(/# \/home\/ada\/\.nyte\/AGENTS\.md[\s\S]*# \/AGENTS\.md/u);
     expect(context.text).toContain("# /work/project/AGENTS.override.md\n\nProject override.");

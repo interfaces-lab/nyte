@@ -33,8 +33,9 @@ export function loginHandle(rows: Rows, begin: () => Promise<string>, known: str
     async answer(code) {
       const provider = started === null ? known : await started;
 
-      if (provider === null)
+      if (provider === null) {
         throw new SdkError("invalid", "Read the login's steps before answering.");
+      }
       await rows.call("login.answer", { provider, code });
     },
   };

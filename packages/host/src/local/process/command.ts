@@ -6,12 +6,12 @@ import { delimiter, extname, isAbsolute, join } from "node:path";
 import { SdkError } from "@nyte-ai/schema";
 import { processEnvironment } from "@nyte-ai/core";
 
-export type Ran = {
+export interface Ran {
   readonly code: number | null;
   readonly stdout: Buffer;
   readonly stderr: string;
   readonly truncated: boolean;
-};
+}
 
 export async function run(
   file: string,
@@ -105,8 +105,9 @@ export function spawnCommand(
   args: readonly string[],
   options: SpawnOptions,
 ): ChildProcess {
-  if (process.platform !== "win32" || !/\.(cmd|bat)$/i.test(file))
+  if (process.platform !== "win32" || !/\.(cmd|bat)$/i.test(file)) {
     return spawn(file, args, options);
+  }
   const shim = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i.test(file);
   const line = [escapeCommand(file), ...args.map((arg) => escapeArgument(arg, shim))].join(" ");
 
@@ -132,14 +133,14 @@ export function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
 const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
 
 function escapeCommand(command: string): string {
-  return command.replace(CMD_META, "^$1");
+  return command.replaceAll(CMD_META, "^$1");
 }
 
 function escapeArgument(argument: string, twice: boolean): string {
-  const quoted = `"${argument.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1")}"`;
-  const escaped = quoted.replace(CMD_META, "^$1");
+  const quoted = `"${argument.replaceAll(/(\\*)"/g, String.raw`$1$1\"`).replace(/(\\*)$/, "$1$1")}"`;
+  const escaped = quoted.replaceAll(CMD_META, "^$1");
 
-  return twice ? escaped.replace(CMD_META, "^$1") : escaped;
+  return twice ? escaped.replaceAll(CMD_META, "^$1") : escaped;
 }
 
 export async function findExecutable(
@@ -152,8 +153,9 @@ export async function findExecutable(
     process.platform !== "win32" ? [""] : extname(name) === "" ? pathext : ["", ...pathext];
 
   if (isAbsolute(name)) {
-    for (const extension of extensions)
+    for (const extension of extensions) {
       if (await executable(`${name}${extension}`)) return `${name}${extension}`;
+    }
 
     return null;
   }
@@ -161,14 +163,36 @@ export async function findExecutable(
   await processEnvironment();
   const path = (process.env.PATH ?? "").split(delimiter).filter((entry) => entry !== "");
 
-  for (const directory of [...directories, ...path])
+  for (const directory of [...directories, ...path]) {
     for (const extension of extensions) {
       const candidate = join(directory, `${name}${extension}`);
 
       if (await executable(candidate)) return candidate;
     }
+  }
 
   return null;
+}
+
+export function hostNode(): {
+  readonly command: readonly string[];
+  readonly env: Readonly<Record<string, string>>;
+} {
+  if (process.versions.electron !== undefined) {
+    return { command: [process.execPath], env: { ELECTRON_RUN_AS_NODE: "1" } };
+  }
+
+  return {
+    command: [process.execPath],
+    env: process.versions.bun === undefined ? {} : { BUN_BE_BUN: "1" },
+  };
+}
+
+export function projectBins(root: string): readonly string[] {
+  return [
+    join(root, "node_modules", ".bin"),
+    join(root, ".venv", process.platform === "win32" ? "Scripts" : "bin"),
+  ];
 }
 
 async function executable(path: string): Promise<boolean> {

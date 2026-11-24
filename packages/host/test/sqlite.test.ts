@@ -9,7 +9,8 @@ import type { DurableEvent, SessionId } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { sqliteStore } from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
-import { storeConformance, storeMigrationConformance } from "./store-conformance.ts";
+import { storeConformance } from "./store-conformance.ts";
+import { storeMigrationConformance } from "./store-migration-conformance.ts";
 
 const created: DurableEvent = { head: null, kind: "head", from: null, to: null, reason: "created" };
 
@@ -90,7 +91,7 @@ describe("sqliteStore", () => {
       const blob = await objects.blob(id);
       assert(blob !== null);
 
-      expect(blob.size).toBe(20971520);
+      expect(blob.size).toBe(20_971_520);
 
       for await (const bytes of blob.chunks()) {
         expect(bytes[0]).toBe(23);
@@ -247,8 +248,9 @@ describe("sqliteStore", () => {
     while (
       listed.done !== true &&
       listed.value.tables.sessions?.upsert.some((row) => row.name === "After") !== true
-    )
+    ) {
       listed = await directory.next();
+    }
 
     const window = await vi.waitFor(() => {
       const read = attached.read(asId("main"), { tail: 10 }, null);

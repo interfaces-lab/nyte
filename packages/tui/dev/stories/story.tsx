@@ -82,13 +82,13 @@ function keepLocal(
     run(effect) {
       if (!INTERNAL.has(effect.kind)) record(effect.kind);
 
-      if (effect.kind === "send")
+      if (effect.kind === "send") {
         dispatch({
           kind: "sent",
           submission: effect.submission.id,
           message: asId(`story-${effect.submission.id}`),
         });
-      else if (!SKIPPED.has(effect.kind)) runner.run(effect);
+      } else if (!SKIPPED.has(effect.kind)) runner.run(effect);
     },
   };
 }
@@ -205,8 +205,9 @@ function Fixture<D>(props: {
 
   createEffect(
     on(props.dimensions, (dimensions) => {
-      for (const msg of spec.facts(dimensions, store.state(), renderer.clock.now()))
+      for (const msg of spec.facts(dimensions, store.state(), renderer.clock.now())) {
         store.dispatch(msg);
+      }
     }),
   );
 

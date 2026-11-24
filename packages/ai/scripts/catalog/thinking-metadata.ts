@@ -145,8 +145,9 @@ export function applyModelsDevReasoningOptionMetadata(
       !isModelsDevAnthropicModel &&
       model.provider !== "opencode" &&
       model.provider !== "opencode-go")
-  )
+  ) {
     return;
+  }
   const thinkingLevelMap = getEffortThinkingLevelMap(reasoningOptions);
 
   if (!thinkingLevelMap) return;

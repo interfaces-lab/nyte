@@ -16,24 +16,22 @@ import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { switchApp } from "../commands/apps.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
 import { DESKTOP_APP_LABELS } from "../contract/desktop-window.ts";
-import {
-  hideFromPanes,
-  useCanSplitPane,
-  usePaneActions,
-  usePaneLayout,
-} from "../panes/pane-context.tsx";
+import { useCanSplitPane, usePaneActions, usePaneLayout } from "../panes/pane-context.tsx";
+import { hideFromPanes } from "../tabs/window-panes.tsx";
 import { activeSelection, chatPanes, sameSelection } from "../panes/pane-layout.ts";
 import { nyte, offeredApps, windowApp } from "../contract/nyte.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import { chatDirectory, chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
 import { sessionActions } from "../data/session-rows.ts";
 import { useWorkbenchView, workbench } from "../workbench/store.ts";
 import { EDITOR_SLOT, tabSlot, workbenchNarrow, workbenchShowsChat } from "../workbench/model.ts";
 import { shownWorkbenchTab } from "../workbench/selectors.ts";
-import { toggleExplorer } from "../workbench/commands.ts";
+import { toggleExplorer } from "../commands/launch.ts";
 import { ChatHistory } from "./chat-history.tsx";
 import { attachSidebarWidth, shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { attachActiveWorkbenchWidth } from "../workbench/width.ts";
+import { attachWindowActions } from "../workbench/window-actions.ts";
 import { sessionIsRunning } from "../sidebar/sidebar-view.ts";
 import { chatWindow } from "../window/index.ts";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
@@ -45,10 +43,10 @@ import {
 } from "../contract/client-actions.ts";
 import { NeedsYou } from "./needs-you.tsx";
 
-import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
+import { WorkbenchTabStrip } from "./workbench-tab-strip.tsx";
 import type { WindowState } from "../tabs/model.ts";
 import { useWindowTabItems, useWindowTabsState } from "../tabs/use-window-tabs.tsx";
-import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
+import { WindowTabStrip } from "./window-tab-strip.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
 const SessionLink = createLink(ButtonLink);
@@ -193,21 +191,26 @@ export function Titlebar(): ReactElement {
   const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
   const focused = useSyncExternalStore(watchWindowFocus, () => document.hasFocus());
-  const code = windowApp() === "code";
+  const shape = appShape();
+  const files = shape.navigator === "files";
+  const solid = shape.surface === "solid";
+
+  const bar = props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive);
+
   const shownTab = shownWorkbenchTab(view, scope, capabilities);
 
   const explorerOpen =
     shownTab !== null && tabSlot(shownTab) === EDITOR_SLOT && view.sidebars.includes(EDITOR_SLOT);
 
-  const leftOpen = code ? explorerOpen : sidebarVisible;
-  const leftLabel = code ? "Explorer" : "Sidebar";
+  const leftOpen = files ? explorerOpen : sidebarVisible;
+  const leftLabel = files ? "Explorer" : "Sidebar";
 
   const sidebarSlot = (
     <span
       ref={attachSidebarWidth}
       {...props(
         titlebarStyles.sidebarSlot,
-        (code || !sidebarVisible) && titlebarStyles.sidebarSlotHidden,
+        (files || !sidebarVisible) && titlebarStyles.sidebarSlotHidden,
       )}
     >
       <span {...props(titlebarStyles.actionTrack)}>
@@ -221,7 +224,7 @@ export function Titlebar(): ReactElement {
                 pressed={leftOpen}
                 aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
                 onPressedChange={
-                  code ? () => toggleExplorer(viewKey) : sidebarControl.toggleSidebar
+                  files ? () => toggleExplorer(viewKey) : sidebarControl.toggleSidebar
                 }
                 title={undefined}
               >
@@ -238,7 +241,7 @@ export function Titlebar(): ReactElement {
         <span
           {...props(
             titlebarStyles.appSlot,
-            sidebarVisible && !code && titlebarStyles.appSlotDocked,
+            sidebarVisible && !files && titlebarStyles.appSlotDocked,
           )}
         >
           <AppSwitcher mac={mac} />
@@ -313,31 +316,19 @@ export function Titlebar(): ReactElement {
     </>
   );
 
-  if (code) {
+  if (shape.panel === "chat") {
     const chatOpen = view.layout.kind === "split" || workbenchShowsChat(view.layout);
 
     return (
-      <header {...props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive)}>
+      <header {...bar}>
         {sidebarSlot}
-        <div {...props(titlebarStyles.contentArea)}>
-          <span {...props(titlebarStyles.center)}>
-            {workspaceVisible && (
-              <WorkbenchTabStrip
-                key={viewKey}
-                viewKey={viewKey}
-                view={view}
-                scope={scope}
-                capabilities={capabilities}
-                sessionId={selection.kind === "session" ? selection.sessionId : undefined}
-              />
-            )}
-          </span>
+        <div {...props(titlebarStyles.contentArea, solid && titlebarStyles.contentAreaBare)}>
+          <span {...props(titlebarStyles.center)} />
           <span {...props(titlebarStyles.trailing)}>
             {workspaceVisible && (
               <>
-                <span {...props(titlebarStyles.control)}>
-                  <ChatHistory mac={mac} />
-                </span>
+                <span ref={attachWindowActions} {...props(titlebarStyles.windowActions)} />
+                <ChatHistory />
                 <span {...props(titlebarStyles.control)}>
                   <Tooltip>
                     <TooltipTrigger
@@ -375,9 +366,11 @@ export function Titlebar(): ReactElement {
   }
 
   return (
-    <header {...props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive)}>
+    <header {...bar}>
       {sidebarSlot}
-      <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)}>
+      <div
+        {...props(titlebarStyles.contentArea, (strip || solid) && titlebarStyles.contentAreaBare)}
+      >
         <span {...props(titlebarStyles.center)}>
           {settingsOpen ? null : strip ? (
             <TitlebarTabStrip state={tabs} mac={mac} />

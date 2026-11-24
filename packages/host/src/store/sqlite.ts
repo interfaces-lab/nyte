@@ -17,7 +17,6 @@ import {
   collectSessionEvents,
   migrateStore,
   objectId,
-  STORE_VERSION,
   replacedTargets,
   sessionIndexRef,
   parseSessionRef,
@@ -64,15 +63,7 @@ export function storePath(home: string): string {
   return process.env["NYTE_DB"] ?? join(home, ".nyte", "nyte.db");
 }
 
-export function sqliteStore(
-  input:
-    | {
-        readonly path: string;
-        /** Called before a migration of existing data, which blocks this thread until it ends. */
-        readonly onMigrate?: () => void;
-      }
-    | { readonly memory: true },
-): Store {
+export function sqliteStore(input: { readonly path: string } | { readonly memory: true }): Store {
   let database: DatabaseSync | null = null;
   let opening: Promise<StoreConnection> | null = null;
   let closing: Promise<void> | null = null;
@@ -94,11 +85,7 @@ export function sqliteStore(
       created.exec("PRAGMA checkpoint_fullfsync = ON");
       created.exec("PRAGMA journal_size_limit = 33554432");
 
-      const target = sqliteTarget(created, "path" in input ? input.path : null);
-      const stamp = await target.stamp();
-
-      if ("path" in input && !stamp.empty && stamp.version < STORE_VERSION) input.onMigrate?.();
-      await migrateStore(target);
+      await migrateStore(sqliteTarget(created, "path" in input ? input.path : null));
       created.exec("PRAGMA optimize = 0x10012");
     } catch (error) {
       created?.close();
@@ -276,8 +263,9 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           write(database, putBody, created.target, created.body);
           const revision = mintRevision();
 
-          if (Number(create.run(created.name, created.target, revision).changes) > 0)
+          if (Number(create.run(created.name, created.target, revision).changes) > 0) {
             updateSessionIndex(prepared, created.name, created.target, revision);
+          }
         }
 
         const relog = database.prepare(
@@ -292,11 +280,12 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           }
         }
 
-        if (change.reindexSessions)
+        if (change.reindexSessions) {
           for (const row of database.prepare("SELECT name, target, revision FROM refs").all()) {
             const ref = parseRef(row);
             updateSessionIndex(prepared, ref.name, ref.target, ref.revision);
           }
+        }
 
         for (const statement of change.indexed) database.exec(statement);
 
@@ -521,8 +510,9 @@ function connect(
             assertStoreVersion(parseNumber(readVersion.get()?.version ?? 0));
             const before = new Map<string, Ref | undefined>();
 
-            for (const update of updates)
+            for (const update of updates) {
               if (!before.has(update.name)) before.set(update.name, ref(update.name) ?? undefined);
+            }
             const fenced = fenceNames(updates).find((name) => ref(name) === null);
 
             if (fenced !== undefined) {
@@ -687,8 +677,9 @@ function updateSessionIndex(
     name,
     body === null ? null : decodeObject(body),
     revision,
-  ))
+  )) {
     prepared(change.text).run(...change.values);
+  }
 }
 
 function statementCache(database: DatabaseSync): (text: string) => StatementSync {

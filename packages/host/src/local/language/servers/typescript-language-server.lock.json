@@ -1,0 +1,12 @@
+[
+  {
+    "path": "node_modules/typescript",
+    "url": "https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz",
+    "integrity": "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="
+  },
+  {
+    "path": "node_modules/typescript-language-server",
+    "url": "https://registry.npmjs.org/typescript-language-server/-/typescript-language-server-6.1.0.tgz",
+    "integrity": "sha512-/O/dr2CbvDS1W9jKJcBQxk4WagUQ97oBb8k/eq9cOslsbtAuC2BDPpkcULxE2SEZiPIJvVNLeNjLZe9hQl1zCQ=="
+  }
+]

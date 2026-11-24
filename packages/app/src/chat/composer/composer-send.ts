@@ -18,18 +18,23 @@ import type { ImageContent } from "@nyte-ai/schema/model";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { admitDraft } from "../../canvas/client-plugins.tsx";
 import { errorMessage } from "../../contract/errors.ts";
-import { CLIENT_COMMANDS, COMPACT_COMMAND, SIDECHAT_COMMAND } from "../../data/plugins.ts";
+import {
+  CLIENT_COMMANDS,
+  COMPACT_COMMAND,
+  SIDECHAT_COMMAND,
+  TRUST_COMMAND,
+} from "../../data/plugins.ts";
 import { filesFor } from "../../data/files.ts";
-import { selectedWorkspaceId } from "../../data/workspaces.ts";
+import { selectedWorkspaceId, trustWorkspace } from "../../data/workspaces.ts";
 import { connected } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
-import type { ComposerSubmission } from "./composer-document.ts";
+import type { ComposerSubmission } from "../../panes/composer-document.ts";
 import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { openSideChat } from "../side-chat/side-chats.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
-import { refusalMessage } from "./composer-draft.ts";
-import type { SendEnd } from "./composer-draft.ts";
+import { refusalMessage } from "../../panes/composer-draft.ts";
+import type { SendEnd } from "../../panes/composer-draft.ts";
 import type { EditSaved } from "./composer-session.ts";
 import { planEdit } from "./composer-plan.ts";
 import type {
@@ -208,6 +213,8 @@ export async function compactSession(session: Session, instructions: string): Pr
       return { kind: "sent", note: "Nothing to compact" };
     case "busy":
       return { kind: "refused", message: "Wait for the current run before compacting." };
+    case "provider-managed":
+      return { kind: "sent", note: "This agent manages its own context" };
     default: {
       const _exhaustive: never = outcome;
 
@@ -233,6 +240,15 @@ async function runCommand(
   if (name === COMPACT_COMMAND.name) return compactSession(session, argument);
 
   if (name === SIDECHAT_COMMAND.name) return openSideChatFrom(session.id, argument);
+
+  if (name === TRUST_COMMAND.name) {
+    await trustWorkspace((await session.info()).workspace);
+
+    return {
+      kind: "sent",
+      note: "Trusted. This folder's skills, plugins and MCP servers load now.",
+    };
+  }
 
   const outcome = await session.command(name, argument);
 

@@ -71,8 +71,9 @@ export async function pluginFilesIn(dir: string): Promise<readonly string[]> {
                 ? "directory"
                 : null;
 
-          if (kind === "file")
+          if (kind === "file") {
             return EXTENSIONS.some((extension) => entry.name.endsWith(extension)) ? [path] : [];
+          }
 
           if (kind !== "directory") return [];
 
@@ -105,8 +106,9 @@ export function nodePluginImport(): { readonly import: PluginImport; dispose(): 
               !LOCAL_SPECIFIER.test(specifier) ||
               !resolved.url.startsWith("file:") ||
               resolved.url.includes("/node_modules/")
-            )
+            ) {
               return resolved;
+            }
 
             const url = new URL(resolved.url);
             url.searchParams.set(VERSION, version);
@@ -190,9 +192,9 @@ function loaderOver(
         ? { reason: imported.result.reason }
         : exportedPlugin(imported.result.module);
 
-    if ("plugin" in outcome)
+    if ("plugin" in outcome) {
       remembered.set(path, { files: imported.files, plugin: outcome.plugin });
-    else remembered.delete(path);
+    } else remembered.delete(path);
 
     return outcome;
   };
@@ -216,7 +218,7 @@ function loaderOver(
       dev("plugins", "file", { path, outcome: "plugin" in outcome ? "loaded" : "failed" });
 
       if ("plugin" in outcome) loaded.push({ plugin: outcome.plugin, path });
-      else
+      else {
         failed.push({
           path,
           issue: {
@@ -226,6 +228,7 @@ function loaderOver(
             source: { plugin: path, file: path },
           },
         });
+      }
     }
 
     return { loaded, failed };
@@ -243,8 +246,9 @@ function loaderOver(
 
           if (real === null) throw new SdkError("invalid", `No plugin file is at ${path}.`);
 
-          if (!roots.some((root) => inside(root, real)))
+          if (!roots.some((root) => inside(root, real))) {
             throw new SdkError("denied", `${path} is not in a plugin directory this host loads.`);
+          }
 
           return real;
         }),
@@ -253,12 +257,13 @@ function loaderOver(
       const found = await importEach(files);
       const issues = found.failed.map((entry) => entry.issue);
 
-      if (issues.length > 0)
+      if (issues.length > 0) {
         throw new SdkError(
           "invalid",
           `${issues.length === 1 ? "A plugin file" : `${issues.length} plugin files`} did not load: ${found.failed.map((entry) => `${entry.path}: ${entry.issue.message}`).join("; ")}`,
           { issues },
         );
+      }
 
       return found.loaded.map((entry) => entry.plugin);
     },
@@ -296,8 +301,9 @@ function evaluatedBytes(
 ): string | Uint8Array {
   if (source === undefined || source === null) return readFileSync(path);
 
-  if (ArrayBuffer.isView(source))
+  if (ArrayBuffer.isView(source)) {
     return new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
+  }
 
   return source instanceof ArrayBuffer ? new Uint8Array(source) : source;
 }
@@ -320,8 +326,9 @@ function fitsCorePlugin(value: unknown): value is Plugin<"core"> {
     value === null ||
     !("id" in value) ||
     typeof value.id !== "string"
-  )
+  ) {
     return false;
+  }
 
   const object = (field: unknown): boolean =>
     field === undefined || (typeof field === "object" && field !== null);
@@ -330,8 +337,9 @@ function fitsCorePlugin(value: unknown): value is Plugin<"core"> {
 
   if ("hooks" in value && !object(value.hooks)) return false;
 
-  if ("activate" in value && value.activate !== undefined && typeof value.activate !== "function")
+  if ("activate" in value && value.activate !== undefined && typeof value.activate !== "function") {
     return false;
+  }
 
   if (!("environment" in value) || value.environment === undefined) return true;
   const environment = value.environment;

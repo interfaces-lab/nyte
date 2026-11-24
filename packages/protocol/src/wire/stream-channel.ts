@@ -20,16 +20,19 @@ export type StreamFrame =
 
 export function readStreamFrame(value: Json): StreamFrame {
   if (isJsonObject(value) && typeof value.stream === "string") {
-    if (value.kind === "chunk" && typeof value.data === "string")
+    if (value.kind === "chunk" && typeof value.data === "string") {
       return { kind: "chunk", stream: value.stream, data: value.data };
+    }
 
-    if (value.kind === "deflated" && typeof value.data === "string")
+    if (value.kind === "deflated" && typeof value.data === "string") {
       return { kind: "deflated", stream: value.stream, data: value.data };
+    }
 
     if (value.kind === "end") return { kind: "end", stream: value.stream };
 
-    if (value.kind === "error" && typeof value.error === "string")
+    if (value.kind === "error" && typeof value.error === "string") {
       return { kind: "error", stream: value.stream, error: value.error };
+    }
   }
 
   throw new SdkError("invalid", "The host sent an invalid stream frame.");

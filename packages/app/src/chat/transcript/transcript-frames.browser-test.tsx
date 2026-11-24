@@ -222,8 +222,9 @@ export async function run(): Promise<string> {
     if (viewport === null) throw new Error("Missing transcript viewport");
     const response = viewport.querySelector<HTMLElement>("[data-frame-response]");
 
-    if (response === null || !response.textContent?.startsWith("Response "))
+    if (response === null || !response.textContent?.startsWith("Response ")) {
       throw new Error("Missing response text");
+    }
     const ink = getComputedStyle(response);
     const paper = getComputedStyle(container).backgroundColor;
 
@@ -232,8 +233,9 @@ export async function run(): Promise<string> {
       ink.color === "rgba(0, 0, 0, 0)" ||
       ink.opacity === "0" ||
       ink.visibility !== "visible"
-    )
+    ) {
       throw new Error(`Response text is invisible: ${ink.color} on ${paper}`);
+    }
     const failures: string[] = [];
 
     for (let frame = 0; frame < 36; frame += 1) {
@@ -248,8 +250,9 @@ export async function run(): Promise<string> {
         () => {
           const sample = readFrame(viewport);
 
-          if (sample.gap > 1)
+          if (sample.gap > 1) {
             failures.push(`scroll frame ${String(frame)}: ${JSON.stringify(sample)}`);
+          }
         },
       );
 
@@ -267,25 +270,29 @@ export async function run(): Promise<string> {
 
     const edit = prompt?.querySelector<HTMLButtonElement>("button");
 
-    if (prompt === null || edit === null || edit === undefined)
+    if (prompt === null || edit === null || edit === undefined) {
       throw new Error("Missing pinned prompt edit control");
+    }
     const top = prompt.getBoundingClientRect().top;
 
-    if (Math.abs(top - viewport.getBoundingClientRect().top) > 2)
+    if (Math.abs(top - viewport.getBoundingClientRect().top) > 2) {
       throw new Error("The edit target is not pinned");
+    }
 
     await beforePaint(
       () => edit.click(),
       () => {
-        if (Math.abs(prompt.getBoundingClientRect().top - top) > 1)
+        if (Math.abs(prompt.getBoundingClientRect().top - top) > 1) {
           failures.push("Opening the pinned editor moved its top");
+        }
       },
     );
     await nextFrame();
     const editor = prompt.querySelector<HTMLElement>("[contenteditable='true']");
 
-    if (editor === null || editor.textContent !== PROMPT || document.activeElement !== editor)
+    if (editor === null || editor.textContent !== PROMPT || document.activeElement !== editor) {
       throw new Error("The editor did not open focused with the prompt text");
+    }
 
     for (const character of " typed") {
       await beforePaint(
@@ -293,8 +300,9 @@ export async function run(): Promise<string> {
           document.execCommand("insertText", false, character);
         },
         () => {
-          if (Math.abs(prompt.getBoundingClientRect().top - top) > 1)
+          if (Math.abs(prompt.getBoundingClientRect().top - top) > 1) {
             failures.push("Typing moved the pinned editor");
+          }
         },
       );
       await nextFrame();
@@ -306,8 +314,9 @@ export async function run(): Promise<string> {
       typedEditor !== editor ||
       typedEditor.textContent !== `${PROMPT} typed` ||
       document.activeElement !== typedEditor
-    )
+    ) {
       failures.push("Typing lost text or editor focus");
+    }
     await capture("transcript-pinned-editor");
     await beforePaint(
       () =>
@@ -320,8 +329,9 @@ export async function run(): Promise<string> {
           }),
         ),
       () => {
-        if (Math.abs(prompt.getBoundingClientRect().top - top) > 1)
+        if (Math.abs(prompt.getBoundingClientRect().top - top) > 1) {
           failures.push("Cancelling moved the pinned prompt");
+        }
       },
     );
     await nextFrame();
@@ -329,8 +339,9 @@ export async function run(): Promise<string> {
     if (
       prompt.querySelector("[contenteditable='true']") !== null ||
       !prompt.textContent?.includes(PROMPT)
-    )
+    ) {
       failures.push("Cancel did not restore the prompt");
+    }
 
     const followingHistory: readonly SizedRow[] = Array.from({ length: 20 }, (_, index) => ({
       key: `following-history:${String(index)}`,
@@ -363,7 +374,7 @@ export async function run(): Promise<string> {
               const entry = entries[index];
 
               if (entry === undefined) return null;
-              if (entry.key.startsWith("response:"))
+              if (entry.key.startsWith("response:")) {
                 return (
                   <GrowingReply
                     initialHeight={entry.height}
@@ -373,6 +384,7 @@ export async function run(): Promise<string> {
                     }}
                   />
                 );
+              }
 
               return (
                 <div data-follow-row style={{ height: entry.height, overflow: "hidden" }}>
@@ -396,8 +408,9 @@ export async function run(): Promise<string> {
         followingViewport.clientHeight -
         followingViewport.scrollTop;
 
-      if (distance > 1)
+      if (distance > 1) {
         failures.push(`${label}: following stopped ${String(distance)}px from the end`);
+      }
     };
 
     checkFollowing("before the next turn");
@@ -416,10 +429,11 @@ export async function run(): Promise<string> {
         "[data-row-key='response:following-2'] [data-growing-reply]",
       );
 
-      if (reply?.getBoundingClientRect().height !== height)
+      if (reply?.getBoundingClientRect().height !== height) {
         failures.push(
           `The following response did not reach its requested ${String(height)}px height`,
         );
+      }
       checkFollowing(`newest turn at ${String(height)}px`);
     }
     const secondTurn: readonly SizedRow[] = [
@@ -462,8 +476,9 @@ export async function run(): Promise<string> {
         followingViewport.clientHeight -
         followingViewport.scrollTop <=
       1
-    )
+    ) {
       throw new Error("The reader did not leave the end of the conversation");
+    }
     const readingAnchor = [
       ...followingViewport.querySelectorAll<HTMLElement>("[data-follow-row]"),
     ].find((row) => {
@@ -493,15 +508,17 @@ export async function run(): Promise<string> {
         "[data-row-key='response:following-3'] [data-growing-reply]",
       );
 
-      if (reply?.getBoundingClientRect().height !== height)
+      if (reply?.getBoundingClientRect().height !== height) {
         failures.push(
           `The response below the reader did not reach its requested ${String(height)}px height`,
         );
+      }
       if (
         !readingAnchor.isConnected ||
         Math.abs(readingAnchor.getBoundingClientRect().top - readingTop) > 1
-      )
+      ) {
         failures.push(`newest turn at ${String(height)}px moved the reader's response`);
+      }
     }
     await capture("transcript-reading-growth");
 
@@ -557,8 +574,9 @@ export async function run(): Promise<string> {
       reflowAnchor === null ||
       reflowRow === null ||
       reflowRow === undefined
-    )
+    ) {
       throw new Error("Missing the tall response or its disclosure control");
+    }
     const beforeWidth = reflowViewport.clientWidth;
     const beforeHeight = reflowRow.getBoundingClientRect().height;
     const anchorTop = reflowAnchor.getBoundingClientRect().top;
@@ -567,19 +585,21 @@ export async function run(): Promise<string> {
     if (
       anchorTop < reflowViewport.getBoundingClientRect().top ||
       reflowAnchor.getBoundingClientRect().bottom > reflowViewport.getBoundingClientRect().bottom
-    )
+    ) {
       throw new Error("The reflow disclosure is outside the viewport");
+    }
     reflowAnchor.click();
 
     const checkReflow = (label: string): void => {
       const sample = readFrame(reflowViewport);
 
       if (sample.gap > 1) failures.push(`${label}: ${JSON.stringify(sample)}`);
-      if (!reflowAnchor.isConnected || reflowAnchor.textContent !== anchorText)
+      if (!reflowAnchor.isConnected || reflowAnchor.textContent !== anchorText) {
         failures.push(`${label}: the held disclosure was replaced`);
+      }
       const top = reflowAnchor.getBoundingClientRect().top;
 
-      if (Math.abs(top - anchorTop) > 1)
+      if (Math.abs(top - anchorTop) > 1) {
         failures.push(
           `${label}: reflow moved the held disclosure ${JSON.stringify({
             before: anchorTop,
@@ -589,6 +609,7 @@ export async function run(): Promise<string> {
             rowHeight: reflowRow.getBoundingClientRect().height,
           })}`,
         );
+      }
     };
 
     for (const width of ["360px", "760px", "360px", "760px"]) {
@@ -602,8 +623,9 @@ export async function run(): Promise<string> {
       if (
         reflowViewport.clientWidth < beforeWidth &&
         reflowRow.getBoundingClientRect().height <= beforeHeight
-      )
+      ) {
         failures.push(`${width}: the tall prose did not actually rewrap`);
+      }
     }
 
     renderReflow([...reflowHistory, ...reflowTail]);
@@ -633,8 +655,9 @@ export async function run(): Promise<string> {
       firstCompact?.textContent !== "Earlier reply 0" ||
       firstCompact.getBoundingClientRect().bottom <= reflowViewport.getBoundingClientRect().top ||
       firstCompact.getBoundingClientRect().top >= reflowViewport.getBoundingClientRect().bottom
-    )
+    ) {
       failures.push("The first compact reply did not become visible after scrolling to history");
+    }
     await capture("transcript-reflow-history");
 
     const jump = (offset: number): void => {
@@ -653,8 +676,9 @@ export async function run(): Promise<string> {
         await nextFrame();
         const sample = readFrame(reflowViewport);
 
-        if (sample.gap > 1 || sample.overlap > 1)
+        if (sample.gap > 1 || sample.overlap > 1) {
           failures.push(`${label} frame ${String(frame)}: ${JSON.stringify(sample)}`);
+        }
       }
     };
 
@@ -683,8 +707,9 @@ export async function run(): Promise<string> {
     await checkCachedFrames("return near the old bottom after widening");
     const remeasured = container.querySelector<HTMLElement>("[data-row-key='tall:1']");
 
-    if (remeasured === null || remeasured.getBoundingClientRect().height >= cachedHeight)
+    if (remeasured === null || remeasured.getBoundingClientRect().height >= cachedHeight) {
       failures.push("The remounted response did not shrink after the chat widened");
+    }
     await capture("transcript-cached-reflow");
     await capture(failures.length === 0 ? "transcript-frames-passed" : "transcript-frames-failed");
 

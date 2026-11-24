@@ -4,7 +4,7 @@ import type { PatchEntry, ToolClass } from "@nyte-ai/schema";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { Prose } from "../../chat/markdown/prose.tsx";
+import { Prose } from "../../markdown/prose.tsx";
 import { StepGroupView } from "../../chat/transcript/step-group.tsx";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { conversation } from "../../theme/schema.stylex.ts";
@@ -26,10 +26,10 @@ const PATCH = `diff --git a/${FILE} b/${FILE}
 
 const FINISHED: readonly ToolMessage[] = [
   settledTool("read", { kind: "read", path: `${CWD}/${FILE}` }, 0),
-  settledTool("search", { kind: "shell", command: 'rg -n "Density" src' }, 1_400, {
+  settledTool("search", { kind: "shell", command: 'rg -n "Density" src' }, 1400, {
     text: `${FILE}:1:export type Density = "compact" | "detailed";`,
   }),
-  settledTool("edit", { kind: "edit", path: `${CWD}/${FILE}` }, 3_100, {
+  settledTool("edit", { kind: "edit", path: `${CWD}/${FILE}` }, 3100, {
     patch: {
       kind: "text",
       path: FILE,
@@ -43,12 +43,12 @@ const FINISHED: readonly ToolMessage[] = [
 ];
 
 const RUNNING: readonly ToolMessage[] = [
-  settledTool("usages", { kind: "shell", command: 'rg -n "DEFAULT_DENSITY" src' }, 4_200, {
+  settledTool("usages", { kind: "shell", command: 'rg -n "DEFAULT_DENSITY" src' }, 4200, {
     text: `${FILE}:2:export const DEFAULT_DENSITY: Density = "compact";`,
   }),
-  settledTool("test-file", { kind: "read", path: `${CWD}/src/density.test.ts` }, 4_900),
-  settledTool("typecheck", { kind: "shell", command: "pnpm typecheck" }, 5_600),
-  settledTool("lint", { kind: "shell", command: "pnpm lint" }, 9_800, {
+  settledTool("test-file", { kind: "read", path: `${CWD}/src/density.test.ts` }, 4900),
+  settledTool("typecheck", { kind: "shell", command: "pnpm typecheck" }, 5600),
+  settledTool("lint", { kind: "shell", command: "pnpm lint" }, 9800, {
     text: "Found 0 warnings and 0 errors.",
   }),
   {

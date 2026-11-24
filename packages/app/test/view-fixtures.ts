@@ -12,7 +12,7 @@ import { describeChats } from "../src/chats/directory.ts";
 import type { ChatDirectory } from "../src/chats/directory.ts";
 import { mergeSessionRows } from "../src/data/session-rows.ts";
 import type { RowSources } from "../src/data/session-rows.ts";
-import type { TurnMessages } from "../src/chat/transcript/turns.ts";
+import type { TurnMessages } from "../src/chats/turns.ts";
 
 export const USAGE = {
   input: 1,
@@ -69,8 +69,7 @@ export function workspaceRow(
     target: { kind: "local", path },
     identity: asId<"environment-identity">(id),
     availability: { kind: "available" },
-    projectResources: null,
-    trusted: true,
+    trust: { state: "trusted", by: { kind: "folder", path: null } },
     projectSources: [],
     addedBy: asId<"principal">("tester"),
     writers: [],
@@ -117,7 +116,7 @@ export function sessionView(change: Partial<SessionView> = {}): SessionView {
     seenThrough: null,
     background: [],
     configuration: { selected: null, effective: null },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
     ...change,

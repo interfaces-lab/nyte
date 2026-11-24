@@ -60,12 +60,14 @@ async function upload(
   const reader = body.getReader();
 
   try {
-    for (let read = await reader.read(); !read.done; read = await reader.read())
-      if (!outgoing.write(read.value))
+    for (let read = await reader.read(); !read.done; read = await reader.read()) {
+      if (!outgoing.write(read.value)) {
         await new Promise<void>((drained) => {
           outgoing.once("drain", drained);
           outgoing.once("close", drained);
         });
+      }
+    }
 
     outgoing.end();
   } catch (cause) {

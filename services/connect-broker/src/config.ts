@@ -46,7 +46,7 @@ export interface Config {
   };
 }
 
-const SECRET_TEXT = /^[\x21-\x7e]{16,4096}$/u;
+const SECRET_TEXT = /^[\u0021-\u007E]{16,4096}$/u;
 
 function parseSigningKeys(text: string): SigningKey[] | undefined {
   let parsed: unknown;
@@ -85,8 +85,9 @@ export function parseWebOrigins(value: unknown): string[] | undefined {
       url.username !== "" ||
       url.password !== "" ||
       url.origin !== origin
-    )
+    ) {
       return undefined;
+    }
   }
 
   return new Set(origins).size === origins.length ? origins : undefined;
@@ -110,8 +111,14 @@ export function parseConfig(env: Env): Config | { readonly invalid: readonly str
 
   check("BROKER_SIGNING_KEYS", active !== undefined);
 
-  if (invalid.length > 0 || keys === undefined || active === undefined || webOrigins === undefined)
+  if (
+    invalid.length > 0 ||
+    keys === undefined ||
+    active === undefined ||
+    webOrigins === undefined
+  ) {
     return { invalid };
+  }
 
   return {
     origin: env.CONNECT_ORIGIN,

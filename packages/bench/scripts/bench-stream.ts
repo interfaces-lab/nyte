@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import process from "node:process";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core";
@@ -17,7 +16,7 @@ import WebSocket from "ws";
 import { fakeModels, titleReply } from "../src/index.ts";
 import type { Reply } from "../src/index.ts";
 
-const SELF = fileURLToPath(import.meta.url);
+const SELF = import.meta.filename;
 
 const parsed = parseArgs({
   allowPositionals: true,
@@ -127,8 +126,8 @@ async function bench(): Promise<void> {
     await inspector.post("Profiler.setSamplingInterval", { interval: 100 });
   }
 
-  for (const h of hs)
-    for (const withClient of clientModes)
+  for (const h of hs) {
+    for (const withClient of clientModes) {
       for (const k of ks) {
         const sessions = (seeded.get(h) ?? []).slice(0, k);
         const clients = withClient ? await openClients(address, token, sessions) : null;
@@ -165,6 +164,8 @@ async function bench(): Promise<void> {
         rows.push(summarize(k, h, withClient, samples, frames));
         process.stderr.write(`${formatRow(rows.at(-1))}\n`);
       }
+    }
+  }
 
   process.stdout.write(
     `\nchunks per reply ${chunks}, delta ${deltaMs} ms, runs ${runs} after ${warmup} warmup, node ${process.version}\n\n`,
@@ -179,8 +180,9 @@ async function bench(): Promise<void> {
     const { session, receipt } = await host.sessions.start({ content: "Seed 0." });
     await receipt.settled();
 
-    for (let index = 1; index < exchanges; index += 1)
+    for (let index = 1; index < exchanges; index += 1) {
       await (await session.send(`Seed ${index}.`)).settled();
+    }
 
     return session;
   }
@@ -207,11 +209,12 @@ async function bench(): Promise<void> {
           return gate.promise;
         }
 
-        if (streamed === chunks && window.end === null)
+        if (streamed === chunks && window.end === null) {
           window.end = {
             mark: mark(),
             patches: lanes.reduce((sum, each) => sum + each.streamed - 1, 0),
           };
+        }
 
         return deltaMs === 0 ? new Promise((resolve) => setImmediate(resolve)) : undefined;
       };
@@ -243,18 +246,18 @@ async function bench(): Promise<void> {
   }
 }
 
-type Timing = {
+interface Timing {
   begin: Mark | null;
   end: { readonly mark: Mark; readonly patches: number } | null;
-};
+}
 
-type Mark = {
+interface Mark {
   readonly cpu: NodeJS.CpuUsage;
   readonly thread: NodeJS.CpuUsage;
   readonly elu: ReturnType<typeof performance.eventLoopUtilization>;
   readonly wall: number;
   readonly hrtime: number;
-};
+}
 
 function mark(): Mark {
   return {
@@ -266,7 +269,7 @@ function mark(): Mark {
   };
 }
 
-type Sample = {
+interface Sample {
   readonly patches: number;
   readonly cpuMicros: number;
   readonly threadMicros: number;
@@ -275,9 +278,9 @@ type Sample = {
   readonly from: number;
   readonly to: number;
   readonly elu: number;
-};
+}
 
-type Row = {
+interface Row {
   readonly k: number;
   readonly h: number;
   readonly client: boolean;
@@ -291,7 +294,7 @@ type Row = {
   readonly offered: number;
   readonly elu: number;
   readonly frames: number | null;
-};
+}
 
 function summarize(
   k: number,
@@ -381,14 +384,10 @@ function formatRow(row: Row | undefined): string {
 function formatTable(rows: readonly Row[]): string {
   const cells = [COLUMNS, ...rows.map((row) => formatRow(row).split("\t"))];
 
-  const widths = COLUMNS.map((_, column) =>
-    Math.max(...cells.map((line) => String(line[column]).length)),
-  );
+  const widths = COLUMNS.map((_, column) => Math.max(...cells.map((line) => line[column].length)));
 
   return cells
-    .map((line) =>
-      line.map((cell, column) => String(cell).padStart(widths[column] ?? 0)).join("  "),
-    )
+    .map((line) => line.map((cell, column) => cell.padStart(widths[column] ?? 0)).join("  "))
     .join("\n");
 }
 

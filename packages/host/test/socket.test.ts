@@ -10,7 +10,6 @@ import {
   isJson,
   isJsonObject,
   SessionChangeType,
-  SessionsChangeType,
   SOCKET_LIMITS,
   TextFrameType,
   withJson,
@@ -27,7 +26,7 @@ import type {
 import type { Listener } from "@nyte-ai/core";
 import { completed, createServerHost, livePart, publishPatch, setup } from "@nyte-ai/core/testing";
 import { decodeOutput, openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
-import type { DirectoryStore, SessionStore } from "@nyte-ai/protocol";
+import type { SessionStore } from "@nyte-ai/protocol";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
@@ -50,14 +49,13 @@ import {
   TOKEN,
 } from "./fixtures/socket-client.ts";
 import type { Client, Composed } from "./fixtures/socket-client.ts";
+import { applySessions, hostChange, readDirectory } from "./fixtures/socket-directory.ts";
 
 const main: HeadName = asId("main");
 
 const WINDOW = { tail: 50 } as const;
 
 const changes = compile(withJson(SessionChangeType));
-
-const sessionsChanges = compile(withJson(SessionsChangeType));
 
 const textFrames = compile(withJson(TextFrameType));
 
@@ -68,8 +66,9 @@ afterEach(async () => {
 });
 
 function readWindow(client: Client, session: SessionId, resume?: SessionStore) {
-  if (resume === undefined)
+  if (resume === undefined) {
     return client.call("head.read", { session, head: main, window: WINDOW });
+  }
   const from = resume.snapshot().order[0] ?? null;
 
   return client.call("head.read", {
@@ -83,11 +82,12 @@ function readWindow(client: Client, session: SessionId, resume?: SessionStore) {
 function applyChanges(store: SessionStore, frames: readonly JsonSchema[]): number {
   let applied = 0;
 
-  for (const frame of frames)
+  for (const frame of frames) {
     if (frame.type === "event" && frame.kind === "change" && changes.Check(frame)) {
       store.apply(frame);
       applied += 1;
     }
+  }
 
   return applied;
 }
@@ -133,29 +133,6 @@ function childReaches(client: Client, child: SessionId, state: BackgroundItem["s
   );
 }
 
-function hostChange(frame: JsonSchema): boolean {
-  return frame.scope === "host" && frame.kind === "change";
-}
-
-function applySessions(store: DirectoryStore, frames: readonly JsonSchema[]): number {
-  let applied = 0;
-
-  for (const frame of frames)
-    if (hostChange(frame) && sessionsChanges.Check(frame)) {
-      store.apply(frame);
-      applied += 1;
-    }
-
-  return applied;
-}
-
-async function readDirectory(client: Client, seq?: number) {
-  const read = await client.call("sessions.read", seq === undefined ? {} : { resume: { seq } });
-  const answered = client.frames.findIndex((frame) => frame.output === read);
-
-  return { read: decodeOutput("sessions.read", read), answered };
-}
-
 const GREETER = [
   {
     id: "greeter",
@@ -188,10 +165,8 @@ async function send(host: Composed, fake: FakeModels, session: SessionId, text: 
   return host.session(session).head(main).send(text);
 }
 
-const FRAGMENTS = hello(1, [], "socket-test", 23);
-
 async function measured(listener: Listener) {
-  const client = await connect(listener, FRAGMENTS);
+  const client = await connect(listener);
   const sizes: number[] = [];
 
   client.socket.on("message", (data: RawData) =>
@@ -358,13 +333,14 @@ describe("the host's WebSocket", () => {
       await host.sessions.start({ parent: session, content: "Two." }),
     ];
 
-    for (const child of children)
+    for (const child of children) {
       await client.until(
         (frame) =>
           frame.kind === "change" &&
           changes.Check(frame) &&
           frame.tables.background?.upsert.some((row) => row.item.id === child.session.id) === true,
       );
+    }
 
     const fresh = await freshSnapshot(client, session);
     let sent = 0;
@@ -529,8 +505,9 @@ describe("the host's WebSocket", () => {
 
     await client.until(() => texts().length > 0);
 
-    for (const piece of [" two", " three"])
+    for (const piece of [" two", " three"]) {
       publishPatch(harness.kernel, session, run, { kind: "patch", part, append: piece });
+    }
     await client.until(() => written().endsWith(" three"));
     const view = await harness.host.session(session).view();
 
@@ -566,24 +543,12 @@ describe("the host's WebSocket", () => {
     );
     await raw.answered("1");
 
-    for (let index = 0; index < 40; index += 1)
+    for (let index = 0; index < 40; index += 1) {
       await (await send(host, fake, session, `${index} ${"x".repeat(700_000)}`)).settled();
+    }
 
     expect(await raw.closing()).toEqual({ code: 1008, reason: "backlog" });
   }, 60_000);
-
-  it("closes an older client's connection with oversize when an answer passes maxFrameBytes", async () => {
-    const fake = fakeModels();
-    const host = await compose(fake);
-    const listener = await serve(host);
-    const session = await startSession(host, fake);
-    await (await send(host, fake, session, "x".repeat(1_200_000))).settled();
-    const client = await connect(listener);
-
-    client.start("head.read", { session, head: main, window: WINDOW });
-
-    expect(await client.closed).toEqual({ code: 1009, reason: "oversize" });
-  }, 30_000);
 
   it.each([
     { name: "plain text", text: "x".repeat(1_200_000) },
@@ -592,7 +557,7 @@ describe("the host's WebSocket", () => {
     { name: "surrogate pairs", text: "😀".repeat(600_000) },
     { name: "backslashes and newlines", text: 'a\\"\n漢😀'.repeat(200_000) },
   ])(
-    "sends an answer over maxFrameBytes to a revision 23 client as fragments within the limit that join to the whole text: $name",
+    "sends an answer over maxFrameBytes as fragments within the limit that join to the whole text: $name",
     async (entry) => {
       const fake = fakeModels();
       const host = await compose(fake);
@@ -641,14 +606,23 @@ describe("the host's WebSocket", () => {
     expect(Math.max(...measuring.sizes)).toBeLessThanOrEqual(SOCKET_LIMITS.maxFrameBytes);
   }, 30_000);
 
-  it("closes 1008 with a reason that names the side to update when the revisions don't overlap", async () => {
+  it("answers a hello outside the window with a refusal that names the side to update, then closes 1008", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);
     const client = await openSocket(listener, hello(API_REVISION + 1));
     const closed = await client.closed;
 
-    expect(closed.code).toBe(1008);
-    expect(closed.reason).toMatch(/^Update the host/);
+    expect({ code: closed.code, frames: client.frames }).toEqual({
+      code: 1008,
+      frames: [
+        {
+          c: "e",
+          type: "refused",
+          reason: "update-host",
+          message: expect.stringMatching(/^Update the host: /u),
+        },
+      ],
+    });
   });
 
   it.skipIf(process.platform === "win32")(
@@ -671,14 +645,9 @@ describe("the host's WebSocket", () => {
         routes.map(async (entry) => {
           const client = await connect(entry.listener);
 
-          const failure = await client.call("host.tailnet.status", {}).then(
-            () => null,
-            (error: Error) => error,
-          );
-
           return {
             route: entry.route,
-            code: failure !== null && "code" in failure ? failure.code : null,
+            code: await failureCode(client.call("host.tailnet.status", {})),
           };
         }),
       );
@@ -907,7 +876,7 @@ describe("clients as principals", () => {
 
   it.each([
     { timeoutMs: undefined, waits: 10_000 },
-    { timeoutMs: 5_000, waits: 5_000 },
+    { timeoutMs: 5000, waits: 5000 },
     { timeoutMs: 60_000, waits: 30_000 },
   ])(
     "times a request out after $waits ms when it asks for $timeoutMs, without telling the client",
@@ -948,12 +917,12 @@ describe("clients as principals", () => {
     const asked = await target(listener);
     const requester = await connect(listener);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const ask = { client: asked.id, action: "open", input: {}, timeoutMs: 1_000 };
+    const ask = { client: asked.id, action: "open", input: {}, timeoutMs: 1000 };
     const first = requester.start("client.perform", ask);
     const second = requester.start("client.perform", ask);
 
     await asked.until((frame) => frame.kind === "perform");
-    vi.advanceTimersByTime(1_000);
+    vi.advanceTimersByTime(1000);
     expect(await failureCode(first.settled)).toBe("timeout");
     await asked.until(() => performs(asked).length === 2);
 

@@ -16,11 +16,14 @@ import {
   space,
   switchControl,
 } from "./styles/schema.stylex.ts";
-import { mergeStyleProps, type StateStyledProps, type StyledProps, type XStyle } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { StateStyledProps, StyledProps, XStyle } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
-import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
+import { intent, surfaceTheme } from "./surface-theme.ts";
+import type { Tint } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
-import { Icon, type IconName } from "./icon.tsx";
+import { Icon } from "./icon.tsx";
+import type { IconName } from "./icon.tsx";
 
 export const MENU_COLLISION: NonNullable<MenuPrimitive.Positioner.Props["collisionAvoidance"]> = {
   side: "flip",

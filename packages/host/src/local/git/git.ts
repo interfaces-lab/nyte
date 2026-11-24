@@ -38,7 +38,10 @@ import { decodeText } from "../text.ts";
 
 type Repo = Extract<GitStatus, { readonly kind: "repository" }>;
 
-type DiffRange = { readonly args: readonly string[]; readonly untracked: boolean };
+interface DiffRange {
+  readonly args: readonly string[];
+  readonly untracked: boolean;
+}
 
 const PATCH_BATCH = 32;
 
@@ -114,8 +117,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     const pending = located;
     const known = pending === null ? null : await pending;
 
-    if (known !== null && located === pending && (await exists(join(known.gitDir, "HEAD"))))
+    if (known !== null && located === pending && (await exists(join(known.gitDir, "HEAD")))) {
       return known;
+    }
 
     if (located === pending || located === null) located = lookUp();
 
@@ -200,8 +204,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       case "branch": {
         const base = await git(root, ["merge-base", scope.base, "HEAD"]);
 
-        if (base.code !== 0)
+        if (base.code !== 0) {
           throw new SdkError("unknown", `No merge base between ${scope.base} and HEAD.`);
+        }
 
         return { args: [base.stdout.toString("utf8").trim(), "HEAD"], untracked: false };
       }
@@ -318,12 +323,14 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
         file.status === "untracked" ? [] : [withPaths(file, (path) => into(repo, path))],
       );
 
-      for (const file of batch)
-        if (file.status === "untracked")
+      for (const file of batch) {
+        if (file.status === "untracked") {
           entries.set(file.path, {
             ...(await untrackedEntry(join(root, into(repo, file.path)), file.path)),
             fresh: true,
           });
+        }
+      }
 
       if (tracked.length === 0) continue;
 
@@ -369,12 +376,14 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
   ): Promise<GitOutcome> => {
     const repo = await required();
 
-    if (takesIndex && (await exists(join(repo.gitDir, "index.lock"))))
+    if (takesIndex && (await exists(join(repo.gitDir, "index.lock")))) {
       return { kind: "busy", runs: [] };
+    }
     const before = await readRepository(repo);
 
-    if (expect !== undefined && expect !== before.revision)
+    if (expect !== undefined && expect !== before.revision) {
       return { kind: "stale", revision: before.revision };
+    }
     const ran = await operation(repo, before);
 
     if ("kind" in ran) return ran;
@@ -382,8 +391,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     if (ran.code !== 0) {
       const output = `${ran.stdout.toString("utf8")}\n${ran.stderr}`;
 
-      if (/nothing to commit|no changes added to commit|nothing added to commit/.test(output))
+      if (/nothing to commit|no changes added to commit|nothing added to commit/.test(output)) {
         return { kind: "unchanged" };
+      }
 
       return {
         kind: "rejected",
@@ -448,8 +458,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
   const inRepo =
     <T>(read: (repo: Repository, current: Repo) => Promise<T>) =>
     async (current: GitStatus): Promise<T> => {
-      if (current.kind === "none")
+      if (current.kind === "none") {
         throw new SdkError("unavailable", `${env.cwd} is not in a git repository.`);
+      }
 
       return read(await required(), current);
     };
@@ -547,7 +558,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
       const items = records.slice(0, limit).map((record): GitCommitView => {
         const [id = "", parents = "", author = "", time = "0", subject = ""] =
-          record.split("\u001f");
+          record.split("\u001F");
 
         return {
           id: asId<"git-commit">(id),
@@ -595,8 +606,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       const repo = await required();
       const ran = await git(repo.root, ["blame", "--porcelain", "--", into(repo, path)]);
 
-      if (ran.code !== 0)
+      if (ran.code !== 0) {
         throw new SdkError("unknown", ran.stderr.trim() || `Cannot blame ${path}.`);
+      }
 
       return parseBlame(path, ran.stdout.toString("utf8"));
     },
@@ -637,18 +649,53 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
           : git(repo.root, ["clean", "-f", "-q", "--", ...loose]);
       }),
     commit: (input, guard) =>
-      write(true, guard?.expect, async (repo) => {
-        if (input.files.kind === "staged")
+      write(true, guard?.expect, async (repo, before) => {
+        if (input.files.kind === "staged") {
           return git(repo.root, ["commit", "-q", "-m", input.message]);
+        }
 
-        if (input.files.kind === "all")
+        if (input.files.kind === "all") {
           return git(repo.root, ["commit", "-q", "-a", "-m", input.message]);
+        }
+        if (input.files.paths.length === 0) return { kind: "unchanged" };
         const files = input.files.paths.map((path) => into(repo, path));
-        const added = await git(repo.root, ["add", "-A", "--", ...files]);
+        const merging = await exists(join(repo.gitDir, "MERGE_HEAD"));
+        const untracked = new Set(before.untracked);
 
-        if (added.code !== 0) return added;
+        const unindexed = new Set([
+          ...before.conflicts,
+          ...(merging ? before.unstaged.map((file) => file.path) : []),
+        ]);
 
-        return git(repo.root, ["commit", "-q", "-m", input.message, "--", ...files]);
+        const fresh = input.files.paths
+          .filter((path) => untracked.has(path))
+          .map((path) => into(repo, path));
+
+        const adding = input.files.paths
+          .filter((path) => untracked.has(path) || unindexed.has(path))
+          .map((path) => into(repo, path));
+
+        if (adding.length > 0) {
+          const added = await git(repo.root, ["add", "-A", "--", ...adding]);
+
+          if (added.code !== 0) return added;
+        }
+
+        if (merging) return git(repo.root, ["commit", "-q", "-m", input.message]);
+        const committed = await git(repo.root, [
+          "commit",
+          "-q",
+          "-m",
+          input.message,
+          "--",
+          ...files,
+        ]);
+
+        if (committed.code !== 0 && fresh.length > 0) {
+          await git(repo.root, ["rm", "--cached", "-r", "-q", "--ignore-unmatch", "--", ...fresh]);
+        }
+
+        return committed;
       }),
     branch: (input, guard) =>
       write(
@@ -673,8 +720,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
         false,
         guard?.expect,
         async (repo, before) => {
-          if (input?.setUpstream === true && before.branch === null)
+          if (input?.setUpstream === true && before.branch === null) {
             return { kind: "rejected", reason: "HEAD is detached; there is no branch to push." };
+          }
 
           const ran = await git(
             repo.root,
@@ -750,9 +798,9 @@ async function readStatus(
     } else if (token.startsWith("# branch.head ")) {
       const name = token.slice("# branch.head ".length);
       branch = name === "(detached)" ? null : name;
-    } else if (token.startsWith("# branch.upstream "))
+    } else if (token.startsWith("# branch.upstream ")) {
       upstream = token.slice("# branch.upstream ".length);
-    else if (token.startsWith("# branch.ab ")) {
+    } else if (token.startsWith("# branch.ab ")) {
       const [plus = "+0", minus = "-0"] = token.slice("# branch.ab ".length).split(" ");
       ahead = Number(plus.slice(1)) || 0;
       behind = Number(minus.slice(1)) || 0;
@@ -768,7 +816,7 @@ async function readStatus(
 
       if (x !== ".") staged.push(change(fields.rest, x, stagedStats, from));
 
-      if (y !== ".") unstaged.push(change(fields.rest, y, unstagedStats, undefined));
+      if (y !== ".") unstaged.push(change(fields.rest, y, unstagedStats, from));
     } else if (token.startsWith("u ")) conflicts.push(splitFields(token, 10).rest);
     else if (token.startsWith("? ")) untracked.push(token.slice(2));
   }
@@ -850,15 +898,16 @@ function parseBlame(path: string, output: string): BlameView {
     const known = authors.get(commit);
 
     if (text.startsWith("author ") && known !== undefined) known.author = text.slice(7);
-    else if (text.startsWith("author-time ") && known !== undefined)
+    else if (text.startsWith("author-time ") && known !== undefined) {
       known.at = Number(text.slice(12)) * 1000;
-    else if (text.startsWith("\t"))
+    } else if (text.startsWith("\t")) {
       rows.push({
         line,
         commit: asId<"git-commit">(commit),
         author: known?.author ?? "",
         at: known?.at ?? 0,
       });
+    }
   }
 
   return { path, lines: rows };
@@ -877,7 +926,7 @@ async function untrackedStat(path: string): Promise<LineStat> {
 async function untrackedEntry(target: string, path: string): Promise<PatchEntry> {
   const stats = await stat(target).catch(() => null);
 
-  if (stats === null || !stats.isFile())
+  if (stats === null || !stats.isFile()) {
     return {
       path,
       status: "untracked",
@@ -885,17 +934,20 @@ async function untrackedEntry(target: string, path: string): Promise<PatchEntry>
       kind: "failed",
       reason: `${path} is not a file.`,
     };
+  }
 
   const bytes = await readFile(target).catch((error: unknown) =>
     error instanceof Error ? error.message : String(error),
   );
 
-  if (typeof bytes === "string")
+  if (typeof bytes === "string") {
     return { path, status: "untracked", digest: "", kind: "failed", reason: bytes };
+  }
   const digest = sha256(bytes);
 
-  if (bytes.byteLength > PATCH_LIMIT)
+  if (bytes.byteLength > PATCH_LIMIT) {
     return { path, status: "untracked", digest, kind: "too-large", limit: PATCH_LIMIT };
+  }
   const text = decodeText(bytes);
 
   return text === null

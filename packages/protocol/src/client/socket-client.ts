@@ -10,10 +10,20 @@ import type {
   EventFrame,
   Json,
   JsonSchema,
+  RefusedFrame,
   TextFrame,
   WelcomeFrame,
 } from "@nyte-ai/schema";
-import { errors, events, fragments, results, texts, welcomes } from "../wire/frame-checks.ts";
+import { operationsDigest } from "../operations/digest.ts";
+import {
+  errors,
+  events,
+  fragments,
+  refusals,
+  results,
+  texts,
+  welcomes,
+} from "../wire/frame-checks.ts";
 import { readJson } from "../wire/json.ts";
 import { decodeError } from "../wire/wire.ts";
 
@@ -29,7 +39,11 @@ export interface SocketLike {
   addEventListener(type: "error", listener: () => void): void;
 }
 
-export type SocketClosed = { readonly code: number; readonly reason: string };
+export interface SocketClosed {
+  readonly code: number;
+  readonly reason: string;
+  readonly refused: Pick<RefusedFrame, "reason" | "message"> | null;
+}
 
 export type SocketEvent = EventFrame & JsonSchema;
 
@@ -47,22 +61,25 @@ export interface HostSocket {
   close(): void;
 }
 
-type Waiting = {
+interface Waiting {
   readonly resolve: (output: Json) => void;
   readonly reject: (error: SdkError) => void;
-};
+}
 
-type Probe = { readonly deadline: number; readonly answered: PromiseWithResolvers<void> };
+interface Probe {
+  readonly deadline: number;
+  readonly answered: PromiseWithResolvers<void>;
+}
 
 const OPEN_MS = 10_000;
 
 const IDLE_PROBE_MS = 30_000;
 
-const OWED_PROBE_MS = 5_000;
+const OWED_PROBE_MS = 5000;
 
 const PROBE_MS = 10_000;
 
-const ASKED_PROBE_MS = 2_000;
+const ASKED_PROBE_MS = 2000;
 
 const PROBE_FRAME = { c: "e", type: "call", op: "events.unsubscribe", input: { scopes: [] } };
 
@@ -74,6 +91,7 @@ export async function openHostSocket(input: {
   readonly apiMinRevision?: number;
 }): Promise<HostSocket> {
   const socket = input.socket;
+  const digest = operationsDigest();
   const waiting = new Map<string, Waiting>();
   const eventListeners = new Set<(event: SocketEvent) => void>();
   const textListeners = new Set<(frame: TextFrame) => void>();
@@ -84,6 +102,7 @@ export async function openHostSocket(input: {
   let calls = 0;
   let probes = 0;
   let lost: SdkError | null = null;
+  let refused: SocketClosed["refused"] = null;
   let welcomed = false;
   let heard = Date.now();
   let owedSince = heard;
@@ -92,7 +111,7 @@ export async function openHostSocket(input: {
 
   greeted.promise.catch(() => undefined);
 
-  const finish = (closed: SocketClosed): void => {
+  const finish = (closed: Omit<SocketClosed, "refused">): void => {
     if (lost !== null) return;
     clearTimeout(watch);
 
@@ -105,7 +124,7 @@ export async function openHostSocket(input: {
 
     for (const entry of waiting.values()) entry.reject(lost);
     waiting.clear();
-    ended.resolve(closed);
+    ended.resolve({ ...closed, refused });
     probe?.answered.reject(lost);
     probe = null;
   };
@@ -167,11 +186,12 @@ export async function openHostSocket(input: {
     if (welcomes.Check(value)) {
       welcomed = true;
       greeted.resolve(value);
-    } else if (results.Check(value)) settle(value.id, value.output, null);
+    } else if (refusals.Check(value)) refused = { reason: value.reason, message: value.message };
+    else if (results.Check(value)) settle(value.id, value.output, null);
     else if (errors.Check(value)) settle(value.id, null, decodeError(value.error));
-    else if (isJsonObject(value) && events.Check(value))
+    else if (isJsonObject(value) && events.Check(value)) {
       for (const listener of eventListeners) listener(value);
-    else if (texts.Check(value)) for (const listener of textListeners) listener(value);
+    } else if (texts.Check(value)) for (const listener of textListeners) listener(value);
   };
 
   socket.addEventListener("message", (message) => {
@@ -245,6 +265,7 @@ export async function openHostSocket(input: {
       type: "hello",
       api_min_revision: input.apiMinRevision ?? API_MIN_REVISION,
       api_revision: API_REVISION,
+      operations: await digest,
       client: input.client,
     }),
   );

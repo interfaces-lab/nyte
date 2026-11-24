@@ -5,6 +5,7 @@ import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { files } from "@nyte-ai/canvas/shell-files";
 import { ConnectRuntime, hostShare, machineName } from "@nyte-ai/connect/host";
 import { fault } from "@nyte-ai/core";
+import { NewerStoreError } from "@nyte-ai/core/store";
 import { TOKEN } from "@nyte-ai/core/server";
 import type { PluginImport } from "@nyte-ai/host";
 import { chromiumCanvasPreview } from "@nyte-ai/host/canvas-preview";
@@ -25,8 +26,8 @@ import type { DocsSource } from "./docs.ts";
 import { openFaultLog } from "./fault-log.ts";
 import { hostFaultsPath } from "./host-endpoint.ts";
 import { hostMessages } from "./host-thread.ts";
+import { metricsPlugin, reportInstall } from "./metrics.ts";
 import type { HostCommand, HostReport } from "./host-thread.ts";
-import { retireOnRequest } from "./outdated-host.ts";
 import { portConflict, probePort } from "./port.ts";
 import { Sharing } from "./sharing.ts";
 
@@ -79,7 +80,10 @@ export function serveHostThread(runtime: HostWorkerRuntime): void {
           return opened;
         },
         (cause: unknown) => {
-          report({ kind: "failed", message: failureMessage(cause) });
+          report({
+            kind: cause instanceof NewerStoreError ? "store-newer" : "failed",
+            message: failureMessage(cause),
+          });
 
           return null;
         },
@@ -105,12 +109,13 @@ async function open(
 ): Promise<Opened> {
   if (command.socket !== undefined) void completeShellEnvironment();
   let shell: string | null = null;
-  const host = await openLocalHost(command, runtime, revoked, () => shell);
+  const host = await openLocalHost(command, runtime, { revoked, replaced }, () => shell);
 
-  if (command.socket !== undefined)
+  if (command.socket !== undefined) {
     void followTerminalShell(host, (next) => {
       shell = next;
     });
+  }
 
   let sharing: Sharing | null = null;
 
@@ -133,7 +138,7 @@ async function open(
 
     if (listener.address === null) throw new Error("The listener bound no address.");
 
-    if (command.socket !== undefined)
+    if (command.socket !== undefined) {
       await host.listen({
         transport: { kind: "socket", path: command.socket },
         auth: {
@@ -143,15 +148,16 @@ async function open(
         execution: { kind: "admit-only" },
         before: sharing.routes(command.token),
       });
+    }
 
     sharing.start();
-
-    const unfollow = retireOnRequest(host, command.supervisor, replaced);
+    void reportInstall(host, runtime.source).catch((cause: unknown) =>
+      dev("metrics", "install", { error: String(cause) }),
+    );
 
     return {
       address: listener.address,
       close: async () => {
-        unfollow();
         await sharing.close();
         await connect.close();
         await host.close();
@@ -172,7 +178,7 @@ async function open(
 async function openLocalHost(
   command: HostCommand,
   runtime: HostWorkerRuntime,
-  revoked: () => void,
+  ends: { readonly revoked: () => void; readonly replaced: () => void },
   shell: () => string | null,
 ): Promise<Host> {
   if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, runtime.source);
@@ -186,6 +192,7 @@ async function openLocalHost(
     plugins: [
       codemodePlugin(runtime.codemode),
       docsPlugin(docs),
+      metricsPlugin(runtime.source),
       ...(clients ? [desktopSettingsPlugin] : []),
     ],
     clientPlugins: (actions) =>
@@ -199,7 +206,9 @@ async function openLocalHost(
     pluginImport: runtime.pluginImport,
     execution: { kind: "run", coverage: { kind: "all" } },
     label: "nyte",
-    onRevoked: revoked,
+    onRevoked: ends.revoked,
+    supervisor: command.supervisor,
+    onReplaced: ends.replaced,
     shell,
     tailnet: command.tailnet === undefined ? undefined : { binary: command.tailnet },
     workspace:

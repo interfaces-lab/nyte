@@ -102,8 +102,8 @@ export function check(snapshot: Snapshot): CheckResult {
     box: SnapBox,
     facts: { readonly extra?: readonly BoxFact[]; readonly ignore?: readonly BoxFact[] } = {},
   ): boolean => {
-    const known = [...box.facts, ...(facts.extra ?? [])].filter(
-      (fact) => !(facts.ignore ?? []).includes(fact),
+    const known = new Set(
+      [...box.facts, ...(facts.extra ?? [])].filter((fact) => !(facts.ignore ?? []).includes(fact)),
     );
 
     const exception = GRID_RULES[rule].exceptions.find((entry) => {
@@ -119,7 +119,7 @@ export function check(snapshot: Snapshot): CheckResult {
         }
 
         case "fact":
-          return known.includes(entry.match.fact);
+          return known.has(entry.match.fact);
         default: {
           const exhaustive: never = entry.match;
 
@@ -213,8 +213,9 @@ export function check(snapshot: Snapshot): CheckResult {
 
       if (inSet(SCALE.spacing, size) || even(size)) continue;
 
-      if (exempt("spacing", box, { extra: scriptSets(box, property) ? ["script-length"] : [] }))
+      if (exempt("spacing", box, { extra: scriptSets(box, property) ? ["script-length"] : [] })) {
         continue;
+      }
       add({
         rule: "spacing",
         box: box.id,
@@ -293,8 +294,11 @@ export function check(snapshot: Snapshot): CheckResult {
 
     if (row === undefined || !(box.tag === "button" || box.role === "button")) return false;
 
-    if (![box, row].some((entry) => ROW_ROLES.has(entry.role ?? "") || declaredRows.has(entry.id)))
+    if (
+      ![box, row].some((entry) => ROW_ROLES.has(entry.role ?? "") || declaredRows.has(entry.id))
+    ) {
       return false;
+    }
 
     const others = boxes.filter(
       (entry) =>
@@ -384,7 +388,7 @@ export function check(snapshot: Snapshot): CheckResult {
       barProperty !== undefined &&
       !near(box.rect.height, SCALE.chromeBar) &&
       !exempt("bar-size", box)
-    )
+    ) {
       add({
         rule: "bar-size",
         box: box.id,
@@ -394,6 +398,7 @@ export function check(snapshot: Snapshot): CheckResult {
         target: null,
         cause: { kind: "property", box: box.id, property: barProperty },
       });
+    }
 
     if (box.control && !box.font.inline) {
       const measured = paintedControl(box);
@@ -404,7 +409,7 @@ export function check(snapshot: Snapshot): CheckResult {
       if (
         !(tall && square) &&
         !exempt("control-size", measured, { extra: multiLine(measured) ? ["multi-line"] : [] })
-      )
+      ) {
         add({
           rule: "control-size",
           box: measured.id,
@@ -414,6 +419,7 @@ export function check(snapshot: Snapshot): CheckResult {
           target: null,
           cause: { kind: "property", box: measured.id, property: tall ? "width" : "height" },
         });
+      }
     }
 
     const ownSet = (box.control && !box.font.inline) || barProperty !== undefined;
@@ -427,8 +433,9 @@ export function check(snapshot: Snapshot): CheckResult {
         !checked ||
         even(value) ||
         exempt("box-grid", box, { extra: scriptSets(box, property) ? ["script-length"] : [] })
-      )
+      ) {
         continue;
+      }
 
       add({
         rule: "box-grid",
@@ -479,8 +486,9 @@ export function check(snapshot: Snapshot): CheckResult {
   }
 
   function hasAncestor(box: SnapBox, test: (ancestor: SnapBox) => boolean): boolean {
-    for (let current = box.parent; current !== null; current = boxes[current]?.parent ?? null)
+    for (let current = box.parent; current !== null; current = boxes[current]?.parent ?? null) {
       if (boxes[current] !== undefined && test(boxes[current])) return true;
+    }
 
     return false;
   }
@@ -509,8 +517,9 @@ export function check(snapshot: Snapshot): CheckResult {
                 ? []
                 : ["inline-run"],
         })
-      )
+      ) {
         continue;
+      }
 
       const parts = offsetParts(tree, box, axis === "x" ? "left" : "top", null);
       const origin = parts.find((part) => !whole(part.px));
@@ -542,8 +551,9 @@ export function check(snapshot: Snapshot): CheckResult {
 
       if (owner !== undefined) owners.add(owner.id);
 
-      if (box.font.inline && owner !== undefined && !near(box.font.size, owner.font.size))
+      if (box.font.inline && owner !== undefined && !near(box.font.size, owner.font.size)) {
         inlineSizes.add(box.id);
+      }
     }
 
     for (const id of [...owners].sort((a, b) => a - b)) {
@@ -611,8 +621,9 @@ export function check(snapshot: Snapshot): CheckResult {
   function blockOwner(box: SnapBox): SnapBox | undefined {
     let current: SnapBox | undefined = box;
 
-    while (current !== undefined && current.font.inline)
+    while (current !== undefined && current.font.inline) {
       current = current.parent === null ? undefined : boxes[current.parent];
+    }
 
     return current;
   }
@@ -663,7 +674,7 @@ export function check(snapshot: Snapshot): CheckResult {
         if (centre !== null) {
           errors.push(centre.error);
 
-          if (Math.abs(centre.error) > LINE_TOLERANCE + EPSILON && !exempt("rhythm", row))
+          if (Math.abs(centre.error) > LINE_TOLERANCE + EPSILON && !exempt("rhythm", row)) {
             add({
               rule: "rhythm",
               box: row.id,
@@ -677,6 +688,7 @@ export function check(snapshot: Snapshot): CheckResult {
                 terms: [],
               },
             });
+          }
         }
 
         const previous = rows[index - 1];
@@ -732,26 +744,28 @@ export function check(snapshot: Snapshot): CheckResult {
     const inRegion = snapshot.regions.indexOf(region);
 
     const candidates = [
-      ...visible
-        .filter((box) => box.region === inRegion && box.id !== region.box && railEdge(box))
-        .flatMap((box) => [
-          {
-            box,
-            from: "start" as const,
-            offset: box.rect.left - left,
-            top: box.rect.top,
-            text: null,
-            textIndex: 0,
-          },
-          {
-            box,
-            from: "end" as const,
-            offset: right - (box.rect.left + box.rect.width),
-            top: box.rect.top,
-            text: null,
-            textIndex: 0,
-          },
-        ]),
+      ...visible.flatMap((box) =>
+        box.region === inRegion && box.id !== region.box && railEdge(box)
+          ? [
+              {
+                box,
+                from: "start" as const,
+                offset: box.rect.left - left,
+                top: box.rect.top,
+                text: null,
+                textIndex: 0,
+              },
+              {
+                box,
+                from: "end" as const,
+                offset: right - (box.rect.left + box.rect.width),
+                top: box.rect.top,
+                text: null,
+                textIndex: 0,
+              },
+            ]
+          : [],
+      ),
       ...snapshot.texts.flatMap((text, position) => {
         const box = boxes[text.box];
 
@@ -811,8 +825,9 @@ export function check(snapshot: Snapshot): CheckResult {
             ...(candidate.from === "start" || overflows ? (["after-text"] as const) : []),
           ],
         })
-      )
+      ) {
         continue;
+      }
       const at = candidate.from === "start" ? left + rail.offset : right - rail.offset;
       add({
         rule: "rail",
@@ -902,12 +917,13 @@ export function check(snapshot: Snapshot): CheckResult {
     pick: Pick,
     axis: "x" | "y",
   ): { value: number; box: SnapBox; label: string }[] {
-    if (pick.kind === "box")
+    if (pick.kind === "box") {
       return boxesByPick(pick.selector).flatMap((box) =>
         axis === "y" && pick.line === "end"
           ? [{ value: box.rect.top + box.rect.height, box, label: pick.name }]
           : (lineValue(box, axis, pick.name) ?? []),
       );
+    }
 
     const value = pickValue(pick, axis);
 

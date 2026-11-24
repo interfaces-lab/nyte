@@ -29,8 +29,9 @@ function farEnd(answering: Answering) {
     type: string,
     event: { readonly data?: unknown; readonly code?: number; readonly reason?: string },
   ): void => {
-    for (const listener of listeners.get(type) ?? [])
+    for (const listener of listeners.get(type) ?? []) {
       listener({ data: event.data, code: event.code ?? 0, reason: event.reason ?? "" });
+    }
   };
 
   const answer = (frame: Json): void => {
@@ -46,6 +47,9 @@ function farEnd(answering: Answering) {
           api_server_revision: API_REVISION,
           host_id: "host",
           client_id: "client",
+          version: "1",
+          startedAt: 0,
+          match: { kind: "current" },
           limits: SOCKET_LIMITS,
         }),
       });
@@ -58,10 +62,11 @@ function farEnd(answering: Answering) {
     if (typeof op !== "string") return;
     calls.push(op);
 
-    if (answering === "probes" && op === "events.unsubscribe")
+    if (answering === "probes" && op === "events.unsubscribe") {
       emit("message", {
         data: JSON.stringify({ c: "e", type: "result", id: frame["id"], output: null }),
       });
+    }
   };
 
   const socket: SocketLike = {
@@ -132,8 +137,8 @@ describe("a host socket", () => {
       answering: "nothing",
       call: false,
       asked: true,
-      alive: 1_999,
-      lost: 2_000,
+      alive: 1999,
+      lost: 2000,
     },
   ] as const)(
     "counts itself lost $case, and fails what was pending as a lost link",
@@ -150,7 +155,11 @@ describe("a host socket", () => {
       await vi.advanceTimersByTimeAsync(row.lost - row.alive);
 
       expect(ended).toBe(true);
-      expect(await socket.closed).toEqual({ code: 1006, reason: "The host stopped answering." });
+      expect(await socket.closed).toEqual({
+        code: 1006,
+        reason: "The host stopped answering.",
+        refused: null,
+      });
       expect(far.closed()).toBe(true);
       expect(far.calls.filter((op) => op === "events.unsubscribe")).toHaveLength(1);
 

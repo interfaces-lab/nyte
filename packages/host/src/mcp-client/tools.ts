@@ -27,7 +27,7 @@ import type {
 import { Errors, Meta } from "typebox/schema";
 import type { McpServerEntry } from "./config.ts";
 
-type JsonObject = { readonly [key: string]: Json };
+type JsonObject = Readonly<Record<string, Json>>;
 
 const NAME_LIMIT = 64;
 
@@ -50,10 +50,10 @@ export function toolExposure(entry: McpServerEntry, tool: string): McpExposure {
   return matched?.[1] ?? entry.exposure;
 }
 
-export type CheckedTools = {
+export interface CheckedTools {
   readonly usable: readonly Tool[];
   readonly issues: readonly ValidationIssue[];
-};
+}
 
 export function checkToolSchemas(server: string, tools: readonly Tool[]): CheckedTools {
   const usable: Tool[] = [];
@@ -88,9 +88,11 @@ function findSchemaProblem(schema: Tool["inputSchema"]): string | null {
   const [, errors] = Errors(Meta, named ?? DRAFT_2020_12, schema);
   const first = new Map<string, string>();
 
-  for (const error of errors)
-    if (!first.has(error.instancePath))
+  for (const error of errors) {
+    if (!first.has(error.instancePath)) {
       first.set(error.instancePath, `${error.instancePath || "/"} ${error.message}`);
+    }
+  }
 
   return [...first.values()].slice(0, 3).join("; ");
 }
@@ -137,7 +139,7 @@ export function bridgeTools(
   const instructions = listed.instructions?.trim() ?? "";
 
   const namespace: ToolNamespace = {
-    name: `mcp__${entry.name}`.replace(/[^A-Za-z0-9_]/g, "_"),
+    name: `mcp__${entry.name}`.replaceAll(/[^A-Za-z0-9_]/g, "_"),
     aliases: [entry.name],
     ...(description === "" ? {} : { description }),
     ...(instructions === "" ? {} : { instructions }),
@@ -152,7 +154,7 @@ export function bridgeTools(
 }
 
 function toolName(server: string, tool: string): string {
-  const name = `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_]/g, "_");
+  const name = `mcp__${server}__${tool}`.replaceAll(/[^A-Za-z0-9_]/g, "_");
 
   return name.length > NAME_LIMIT ? hashed(name, tool) : name;
 }
@@ -168,7 +170,7 @@ function globMatches(pattern: string, value: string): boolean {
 
   const source = pattern
     .split("*")
-    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+    .map((part) => part.replaceAll(/[.+?^${}()|[\]\\]/g, String.raw`\$&`))
     .join(".*");
 
   return new RegExp(`^${source}$`).test(value);
@@ -244,8 +246,9 @@ function bridge(
         output === undefined ||
         !isJson(structured) ||
         JSON.stringify(structured).length > CLIP_CHARS
-      )
+      ) {
         return { content };
+      }
 
       return { content, output: structured };
     },

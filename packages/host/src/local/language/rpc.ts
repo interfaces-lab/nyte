@@ -3,17 +3,17 @@ import { compile } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 
-export type LspHandlers = {
+interface LspHandlers {
   readonly notification: (method: string, params: unknown) => void;
   readonly request: (method: string, params: unknown) => Promise<Json>;
   readonly stderr: (text: string) => void;
-};
+}
 
-export type LspConnection = {
+export interface LspConnection {
   /** Rejects with `LspError` for an error answer, and once the server is gone; aborting `signal` sends `$/cancelRequest`. */
   request(method: string, params: Json, signal?: AbortSignal): Promise<unknown>;
   notify(method: string, params: Json): void;
-};
+}
 
 export class LspError extends Error {
   readonly code: number;
@@ -25,6 +25,8 @@ export class LspError extends Error {
 }
 
 export const REQUEST_CANCELLED = -32_800;
+
+export const METHOD_NOT_FOUND = -32_601;
 
 const SERVER_GONE = -32_099;
 
@@ -64,7 +66,10 @@ export function connectLsp(job: Job, handlers: LspHandlers): LspConnection {
     const result = await handlers.request(method, params).then(
       (value) => ({ result: value }),
       (error: unknown) => ({
-        error: { code: -32_603, message: error instanceof Error ? error.message : String(error) },
+        error: {
+          code: error instanceof LspError ? error.code : -32_603,
+          message: error instanceof Error ? error.message : String(error),
+        },
       }),
     );
 
@@ -138,8 +143,9 @@ export function connectLsp(job: Job, handlers: LspHandlers): LspConnection {
     .finally(() => {
       gone = true;
 
-      for (const waiter of pending.values())
+      for (const waiter of pending.values()) {
         waiter.reject(new LspError(SERVER_GONE, "The language server stopped."));
+      }
       pending.clear();
     });
 
@@ -191,8 +197,9 @@ function parseBody(body: string): unknown {
 }
 
 function findSequence(haystack: Uint8Array, needle: Uint8Array): number {
-  for (let index = 0; index + needle.byteLength <= haystack.byteLength; index += 1)
+  for (let index = 0; index + needle.byteLength <= haystack.byteLength; index += 1) {
     if (needle.every((byte, offset) => haystack[index + offset] === byte)) return index;
+  }
 
   return -1;
 }

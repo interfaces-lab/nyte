@@ -11,8 +11,8 @@ test("letters follow the layout, and another script falls back to the physical k
   expect(resolveBrowserShortcut(key({ key: "l", code: "KeyP" }), true, "page")).toBe(
     "focus-address",
   );
-  expect(resolveBrowserShortcut(key({ key: "\u043a", code: "KeyR" }), true, "page")).toBe("reload");
-  expect(resolveBrowserShortcut(key({ key: "\u00e0", code: "Digit0" }), true, "page")).toBe(
+  expect(resolveBrowserShortcut(key({ key: "\u043A", code: "KeyR" }), true, "page")).toBe("reload");
+  expect(resolveBrowserShortcut(key({ key: "\u00E0", code: "Digit0" }), true, "page")).toBe(
     "zoom-reset",
   );
 });

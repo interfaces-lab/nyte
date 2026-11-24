@@ -187,10 +187,11 @@ describe("credentialStore", () => {
     async (row) => {
       const store = memoryStore();
 
-      if (row.seeded)
+      if (row.seeded) {
         await credentialStore(store, key(5)).modify("p", async () =>
           storedAccounts({ type: "api_key", key: "k" }),
         );
+      }
       let reads = 0;
 
       const credentials = credentialStore(store, {

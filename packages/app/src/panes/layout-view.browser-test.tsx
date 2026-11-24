@@ -20,7 +20,7 @@ import { LayoutView } from "./layout-view.tsx";
 import { PaneControllerProvider } from "./pane-context.tsx";
 import type { PaneContent } from "./pane-kinds.ts";
 import { chatPanes } from "./pane-layout.ts";
-import { renderPaneContent } from "./pane-views.tsx";
+import { renderPaneContent } from "../shell/pane-views.tsx";
 import { SessionDndProvider } from "./session-dnd.tsx";
 
 const TURNS = 30;

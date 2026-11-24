@@ -30,7 +30,7 @@ Options:
   --print       Print the generated notes and exit without releasing; allowed with unpushed commits
   -h, --help    Show this help`;
 
-const BUMPS = ["major", "minor", "patch"];
+const BUMPS = new Set(["major", "minor", "patch"]);
 
 const VERSION =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
@@ -65,12 +65,12 @@ if (values.help) {
 
 const target = positionals[0] ?? "patch";
 
-if (positionals.length > 1 || (!BUMPS.includes(target) && !VERSION.test(target))) {
+if (positionals.length > 1 || (!BUMPS.has(target) && !VERSION.test(target))) {
   process.stderr.write(`${USAGE}\n`);
   process.exit(1);
 }
 
-const input = BUMPS.includes(target) ? `bump=${target}` : `version=${target}`;
+const input = BUMPS.has(target) ? `bump=${target}` : `version=${target}`;
 
 process.chdir(root);
 
@@ -102,7 +102,7 @@ const base =
     head,
   );
 
-const version = BUMPS.includes(target)
+const version = BUMPS.has(target)
   ? execFileSync(process.execPath, ["scripts/release-version.mjs", "resolve", "--bump", target], {
       encoding: "utf8",
     })
@@ -167,19 +167,21 @@ async function attachHost() {
 
   if (running !== null) return { host: running, started: false, stop: async () => undefined };
 
-  if (!existsSync(BINARY))
+  if (!existsSync(BINARY)) {
     throw new Error(`No installed nyte at ${BINARY}. Run \`pnpm install:tui\`, then retry.`);
+  }
 
-  if (spawnSync(BINARY, ["host", "--help"], { stdio: "ignore" }).status !== 0)
+  if (spawnSync(BINARY, ["host", "--help"], { stdio: "ignore" }).status !== 0) {
     throw new Error(
       `${BINARY} is too old to run \`nyte host\`. Run \`pnpm install:tui\` or \`nyte update\`, then retry.`,
     );
+  }
 
   const child = spawn(BINARY, ["host", "--json"], { stdio: ["ignore", "pipe", "pipe"] });
   let stderr = "";
 
   child.stderr.on("data", (chunk) => {
-    stderr = `${stderr}${String(chunk)}`.slice(-4_096);
+    stderr = `${stderr}${String(chunk)}`.slice(-4096);
   });
 
   const exited = new Promise((resolve) => child.once("exit", resolve));
@@ -203,21 +205,23 @@ async function attachHost() {
 
   child.stdout.resume();
 
-  if (child.exitCode !== null)
+  if (child.exitCode !== null) {
     throw new Error(`${BINARY} host exited with ${String(child.exitCode)}.\n${stderr.trim()}`);
+  }
   const host = listening ? await findRunningHost(path) : null;
 
   if (host !== null && host.pid === child.pid) return { host, started: true, stop };
 
   await stop();
   throw new Error(
-    `${BINARY} host didn't publish ${path} within ${String(HOST_START_MS / 1_000)} s.`,
+    `${BINARY} host didn't publish ${path} within ${String(HOST_START_MS / 1000)} s.`,
   );
 }
 
 async function announced(stdout) {
-  for await (const line of createInterface({ input: stdout, crlfDelay: Infinity }))
+  for await (const line of createInterface({ input: stdout, crlfDelay: Infinity })) {
     if (line.includes('"type":"listening"')) return true;
+  }
 
   return false;
 }
@@ -257,8 +261,9 @@ async function writeReview(from, to) {
 async function runSession(connection, from, to) {
   const added = await connection.workspaces.add({ kind: "local", path: root });
 
-  if (added.kind !== "added" && added.kind !== "exists")
+  if (added.kind !== "added" && added.kind !== "exists") {
     throw new Error(`The host can't open ${root} as a workspace (${added.kind}).`);
+  }
 
   const { session, receipt: ready } = await connection.sessions.start({
     name: `Release notes for v${version}`,
@@ -269,16 +274,18 @@ async function runSession(connection, from, to) {
   const report = await connection.plugins.replace([{ path: GUARD }], { session: session.id });
   const guard = report.plugins.find((outcome) => outcome.id === AGENT);
 
-  if (guard?.kind !== "activated")
+  if (guard?.kind !== "activated") {
     throw new Error(
       `The release guard didn't load: ${guard?.issues.map((issue) => issue.message).join("; ") ?? "missing from the report"}`,
     );
+  }
   await ready.settled();
 
   const configured = await session.configure({ agent: AGENT });
 
-  if (configured.kind !== "configured")
+  if (configured.kind !== "configured") {
     throw new Error(`Session ${session.id} refused the ${AGENT} agent (${configured.kind}).`);
+  }
 
   const receipt = await session.send(reviewPrompt(from, to));
   const answered = new Set();
@@ -299,8 +306,9 @@ async function runSession(connection, from, to) {
     if (turn === undefined || turn.state.kind !== "ended") continue;
     const { end } = turn.state;
 
-    if (end.kind === "failed")
+    if (end.kind === "failed") {
       throw new Error(`The release-notes session failed: ${end.failure.message}`);
+    }
 
     if (end.kind !== "completed") throw new Error("The release-notes session was stopped.");
 
@@ -308,8 +316,9 @@ async function runSession(connection, from, to) {
       (message) => message.turn === turn.id && isPart(message, text),
     );
 
-    if (reply === undefined || !isPart(reply, text) || !NOTES.test(reply.state.markdown))
+    if (reply === undefined || !isPart(reply, text) || !NOTES.test(reply.state.markdown)) {
       throw new Error(`Session ${session.id} ended without notes between the changelog markers.`);
+    }
 
     return reply.state.markdown.trim();
   }

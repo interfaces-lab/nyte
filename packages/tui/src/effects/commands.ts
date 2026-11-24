@@ -167,7 +167,7 @@ export async function checkTrust(
 
 export async function setTrust(effect: Of<"set-trust">, context: HandlerContext): Promise<void> {
   try {
-    await context.ports.host.trust(effect.workspace, effect.value);
+    await context.ports.host.trust(effect.workspace, effect.value, effect.at);
   } finally {
     context.dispatch({ kind: "trust-settled", workspace: effect.workspace });
   }
@@ -178,8 +178,9 @@ export async function setTrust(effect: Of<"set-trust">, context: HandlerContext)
     chat?.kind === "blank" &&
     chat.folder.kind === "folder" &&
     chat.folder.id === effect.workspace
-  )
+  ) {
     await loadFolderCatalog(effect.workspace, context);
+  }
 }
 
 export async function loadFolderCatalog(
@@ -203,8 +204,9 @@ export async function applySetting(
       ? await ports.host.session(effect.session).applySetting(effect.id, effect.value)
       : await ports.host.applySetting(effect.id, effect.value);
 
-  if (outcome.kind !== "applied" && outcome.kind !== "configured")
+  if (outcome.kind !== "applied" && outcome.kind !== "configured") {
     throw new Error(`Could not set ${effect.label}`);
+  }
 }
 
 export async function runCommand(
@@ -277,11 +279,11 @@ function settleCommand(
   { dispatch }: HandlerContext,
 ): void {
   switch (outcome.kind) {
+    case "sent":
+      return;
     case "ran":
       if (outcome.output !== null) dispatch({ kind: "inform", tone: "info", text: outcome.output });
 
-      return;
-    case "sent":
       return;
     case "unknown":
       dispatch({
@@ -306,8 +308,9 @@ function settleCommand(
 export async function stopTask(effect: Of<"stop-task">, context: HandlerContext): Promise<void> {
   const result = await context.ports.host.session(effect.session).stopTask(effect.task);
 
-  if (result === "missing")
+  if (result === "missing") {
     context.dispatch({ kind: "inform", tone: "warning", text: "That task already ended." });
+  }
 }
 
 export async function chatMoved(effect: Of<"chat-moved">, context: HandlerContext): Promise<void> {
@@ -320,8 +323,9 @@ export async function chatMoved(effect: Of<"chat-moved">, context: HandlerContex
     chat?.kind !== "session" ||
     chat.id !== effect.session ||
     chat.info.workspace !== effect.workspace
-  )
+  ) {
     return;
+  }
   await refreshWorkspace(context, cwd, { mentions: folder, signal: context.signal });
 }
 
@@ -373,8 +377,9 @@ export async function compact(effect: Of<"compact">, context: HandlerContext): P
 
   if (outcome === "busy") throw new Error("Wait for the current run before compacting");
 
-  if (outcome === "nothing")
+  if (outcome === "nothing") {
     context.dispatch({ kind: "inform", tone: "info", text: "Nothing to compact" });
+  }
 }
 
 export function stampNotice(context: HandlerContext, tone: Notice["tone"], text: string): Notice {

@@ -14,11 +14,12 @@ import { draftProject } from "./project-draft.ts";
 export function createProjects(kernel: Kernel): Projects {
   return {
     async create(input) {
-      if ((await kernel.store.refs.get(workspaceRef(input.workspace))) === null)
+      if ((await kernel.store.refs.get(workspaceRef(input.workspace))) === null) {
         throw new SdkError(
           "unknown",
           `Workspace ${input.workspace} is not registered on this host.`,
         );
+      }
       const at = Date.now();
 
       const project: ProjectRecord = {
@@ -76,8 +77,9 @@ export function projectHandle(kernel: Kernel, id: ProjectId): Project {
       if (
         JSON.stringify(before.disabledMcp) !== JSON.stringify(updated.disabledMcp) ||
         JSON.stringify(before.disabledDocs) !== JSON.stringify(updated.disabledDocs)
-      )
+      ) {
         await reloadProjectSessions(kernel, id);
+      }
 
       return updated;
     },
@@ -119,8 +121,9 @@ export async function joinableProject(
 ): Promise<Found<ProjectRecord>> {
   const found = await requireProject(kernel, id);
 
-  if (found.record.archived)
+  if (found.record.archived) {
     throw new SdkError("invalid", `Project ${found.record.name} is archived.`);
+  }
 
   const own = await load(
     kernel.store,
@@ -130,11 +133,12 @@ export async function joinableProject(
 
   const folder = own?.record.isolation?.source ?? workspace;
 
-  if (folder !== found.record.workspace)
+  if (folder !== found.record.workspace) {
     throw new SdkError(
       "invalid",
       `Project ${found.record.name} works in another folder than this chat.`,
     );
+  }
 
   return found;
 }

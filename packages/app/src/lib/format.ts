@@ -1,5 +1,5 @@
 export function groupDigits(digits: string): string {
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
+  return digits.replaceAll(/\B(?=(\d{3})+(?!\d))/gu, ",");
 }
 
 export function formatUsd(dollars: number): string {
@@ -30,12 +30,13 @@ export function formatUsdPrecise(dollars: number): string {
 }
 
 export function formatTokens(tokens: number): string {
-  if (tokens < 1_000) return String(Math.round(tokens));
+  if (tokens < 1000) return String(Math.round(tokens));
 
-  if (tokens < 1_000_000) return `${(tokens / 1_000).toFixed(tokens < 10_000 ? 1 : 0)}K`;
+  if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(tokens < 10_000 ? 1 : 0)}K`;
 
-  if (tokens < 1_000_000_000)
+  if (tokens < 1_000_000_000) {
     return `${(tokens / 1_000_000).toFixed(tokens < 10_000_000 ? 2 : 1)}M`;
+  }
 
   return `${(tokens / 1_000_000_000).toFixed(2)}B`;
 }

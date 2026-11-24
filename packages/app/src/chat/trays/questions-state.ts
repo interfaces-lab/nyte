@@ -8,7 +8,7 @@ import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
-import type { ComposerDocumentState } from "../composer/composer-document.ts";
+import type { ComposerDocumentState } from "../../panes/composer-document.ts";
 import { openAsks, requireAnswered } from "./asks.ts";
 import { dockView, stepDock } from "./question-dock.ts";
 import type { DockEvent, DockOutcome, Reply, RequestDraft } from "./question-dock.ts";
@@ -33,7 +33,7 @@ interface Submission {
 
 const BLOCKED = { kind: "blocked" } as const;
 
-export type QuestionOutcome =
+type QuestionOutcome =
   | { readonly kind: "blocked" }
   | { readonly kind: "next" }
   | { readonly kind: "sent" }
@@ -159,16 +159,18 @@ function replyState(
 ): Reply {
   if (mutation.isPending) return { kind: "pending" };
 
-  if (mutation.isSuccess)
+  if (mutation.isSuccess) {
     return { kind: "sent", sessionId: mutation.data.sessionId, part: mutation.data.part };
+  }
 
-  if (mutation.isError)
+  if (mutation.isError) {
     return {
       kind: "failed",
       sessionId: mutation.variables.sessionId,
       part: mutation.variables.request.part,
       message: mutation.error.message,
     };
+  }
 
   return { kind: "idle" };
 }

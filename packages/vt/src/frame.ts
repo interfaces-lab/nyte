@@ -35,7 +35,7 @@ const defaultStyle: Style = {
   underline: UnderlineStyle.NONE,
 };
 
-const hashPrime = 16777619;
+const hashPrime = 16_777_619;
 
 const cursorStyles = new Map<number, CursorKind>([
   [CursorStyle.BAR, "bar"],
@@ -101,8 +101,9 @@ export function createFrames(context: Context): Frames {
   const readColor = (view: DataView, pointer: number, palette: readonly Rgb[]): Rgb => {
     const tag = view.getUint8(pointer + layout.styleColor.tag);
 
-    if (tag === StyleColorTag.PALETTE)
+    if (tag === StyleColorTag.PALETTE) {
       return palette[view.getUint8(pointer + layout.styleColor.palette)] ?? NO_COLOR;
+    }
 
     if (tag === StyleColorTag.RGB) return readRgb(view, pointer + layout.styleColor.rgb);
 
@@ -161,8 +162,9 @@ export function createFrames(context: Context): Frames {
   };
 
   const cellBackground = (low: number, high: number, tag: number, palette: readonly Rgb[]) => {
-    if (tag === CellContentTag.BG_COLOR_PALETTE)
+    if (tag === CellContentTag.BG_COLOR_PALETTE) {
       return palette[bits(low, high, layout.cell.paletteIndex)] ?? NO_COLOR;
+    }
 
     if (tag !== CellContentTag.BG_COLOR_RGB) return undefined;
 
@@ -184,8 +186,9 @@ export function createFrames(context: Context): Frames {
       memory.sized(rowSelection, layout.rowSelection),
     );
 
-    if (selected !== Result.SUCCESS && selected !== Result.NO_VALUE)
+    if (selected !== Result.SUCCESS && selected !== Result.NO_VALUE) {
       check(selected, "row selection");
+    }
     check(native.ghostty_render_state_row_get(iterator, RowData.RAW, rowValue), "raw row");
     check(
       native.ghostty_row_get(memory.view().getBigUint64(rowValue, true), ScreenRowData.WRAP, out),
@@ -199,7 +202,7 @@ export function createFrames(context: Context): Frames {
     const raw = new DataView(memory.copy(pointer, count * layout.cell.size).buffer);
     const styles = new Map<number, Style>([[0, defaultStyle]]);
     const base = y * screen.cols;
-    let hash = 2166136261;
+    let hash = 2_166_136_261;
 
     for (let x = 0; x < screen.cols; x += 1) {
       const index = base + x;
@@ -239,8 +242,9 @@ export function createFrames(context: Context): Frames {
 
       clusters.set(index, cluster);
 
-      for (let unit = 0; unit < cluster.length; unit += 1)
+      for (let unit = 0; unit < cluster.length; unit += 1) {
         hash = Math.imul(hash ^ cluster.charCodeAt(unit), hashPrime);
+      }
     }
 
     const start =
@@ -426,7 +430,7 @@ export function createFrames(context: Context): Frames {
 }
 
 function bits(low: number, high: number, field: Bits) {
-  const mask = field.width >= 32 ? 0xffffffff : (1 << field.width) - 1;
+  const mask = field.width >= 32 ? 0xff_ff_ff_ff : (1 << field.width) - 1;
 
   if (field.lsb >= 32) return (high >>> (field.lsb - 32)) & mask;
 

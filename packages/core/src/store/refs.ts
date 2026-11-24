@@ -38,6 +38,18 @@ export function headRef(id: SessionId, head: HeadName): string {
   return `sessions/${id}/heads/${head}`;
 }
 
+export function providerCheckpointRef(id: SessionId, head: HeadName): string {
+  return `sessions/${id}/provider-checkpoints/${head}`;
+}
+
+export function providerContinuationRef(
+  id: SessionId,
+  head: HeadName,
+  continuation: string,
+): string {
+  return `sessions/${id}/provider-continuations/${head}/${continuation}`;
+}
+
 export function promptRef(id: SessionId, head: HeadName): string {
   return `sessions/${id}/prompts/${head}`;
 }

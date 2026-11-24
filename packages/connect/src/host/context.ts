@@ -15,13 +15,13 @@ export interface ConnectTiming {
 }
 
 export const DEFAULT_TIMING: ConnectTiming = {
-  heartbeatMs: HEARTBEAT_INTERVAL_SECONDS * 1_000,
-  retryMs: 5_000,
+  heartbeatMs: HEARTBEAT_INTERVAL_SECONDS * 1000,
+  retryMs: 5000,
   unlinkRetryMs: 300_000,
-  readinessWaitMs: 5_000,
+  readinessWaitMs: 5000,
   readinessThrottleMs: 30_000,
-  readinessRetryMs: 2_000,
+  readinessRetryMs: 2000,
   keysMs: 300_000,
   dropDelayMs: 250,
-  linkPollMs: LINK_POLL_INTERVAL_SECONDS * 1_000,
+  linkPollMs: LINK_POLL_INTERVAL_SECONDS * 1000,
 };

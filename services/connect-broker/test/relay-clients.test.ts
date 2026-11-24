@@ -398,8 +398,9 @@ describe("phone requests", () => {
       ],
     ];
 
-    for (const [label, answer, expected] of checks)
+    for (const [label, answer, expected] of checks) {
       expect({ label, ...(await wireError(await answer)) }).toEqual({ label, ...expected });
+    }
 
     expect(desktop.pending("open")).toEqual([]);
     desktop.close();
@@ -458,8 +459,9 @@ describe("phone requests", () => {
       );
       const opened = [];
 
-      for (let index = 0; index < RELAY_CHANNEL_LIMIT; index += 1)
+      for (let index = 0; index < RELAY_CHANNEL_LIMIT; index += 1) {
         opened.push((await desktop.next("open")).ch);
+      }
       expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
         refused(503, "closed"),
       );

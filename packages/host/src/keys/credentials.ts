@@ -86,10 +86,11 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
             if (sealed === null) return [];
             const providerId = ref.name.slice(PREFIX.length);
 
-            if ("type" in sealed)
+            if ("type" in sealed) {
               return [
                 { providerId, id: "default", label: "Default", type: sealed.type, active: true },
               ];
+            }
 
             return sealed.accounts.map((account) => ({
               providerId,
@@ -146,8 +147,9 @@ export async function openSecret(secrets: SecretsSource, sealed: string): Promis
 async function importedKey(secrets: SecretsSource): Promise<CryptoKey> {
   const bytes = await secrets.key();
 
-  if (bytes.length !== 32)
+  if (bytes.length !== 32) {
     throw new SdkError("invalid", `The secrets key is ${bytes.length} bytes; AES-256 needs 32.`);
+  }
 
   return crypto.subtle.importKey("raw", new Uint8Array(bytes), "AES-GCM", false, [
     "encrypt",

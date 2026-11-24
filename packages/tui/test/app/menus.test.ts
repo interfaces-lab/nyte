@@ -108,12 +108,12 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
           availability: { kind: "available" },
           projectSources: [".nyte/plugins/qa-probe"],
         }),
-        attach: (target) => {
+        attach: (target, trusted) => {
           const base = chatOnly.environment;
 
           if (base === undefined) throw new Error("chatOnly provides no environment.");
 
-          return base.attach(target);
+          return base.attach(target, trusted);
         },
       },
     },
@@ -128,7 +128,7 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
   const [workspace] = await fixture.host.workspaces.list();
 
   if (workspace === undefined) throw new Error("The host registered no workspace.");
-  await fixture.host.workspace(workspace.id).update({ projectResources: true });
+  await fixture.host.workspace(workspace.id).update({ trusted: true });
 
   await using tui = await startTui({ fixture });
   await tui.ready();
@@ -160,8 +160,9 @@ test("the tree holds its pointer mid-window: opened on the current message, move
   await using tui = await startTui({ size: { width: 100, height: 24 } });
   await tui.ready();
 
-  for (const turn of ["1", "2", "3", "4", "5"])
+  for (const turn of ["1", "2", "3", "4", "5"]) {
     await answered(tui, `answer ${turn}`, `question ${turn}`);
+  }
 
   tui.press("chat.interrupt");
   tui.press("chat.interrupt");
@@ -240,13 +241,14 @@ test("/accounts switches the login the next request uses, without asking the pro
   for (const [label, key] of [
     ["Primary", "sk-primary"],
     ["Secondary", "sk-secondary"],
-  ] as const)
+  ] as const) {
     await fixture.models.models.login(
       "test",
       "api_key",
       { prompt: async () => key, notify: () => undefined },
       label,
     );
+  }
   await fixture.models.models.selectAccount(
     "test",
     (await fixture.models.models.listAccounts("test")).find(

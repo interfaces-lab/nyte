@@ -111,8 +111,9 @@ export function TaskGlyph({
   readonly job?: boolean;
   readonly stopped?: boolean;
 }): ReactElement | null {
-  if (!taskEnded(state) || (state === "done" && unread))
+  if (!taskEnded(state) || (state === "done" && unread)) {
     return <TaskMark state={state} unread={unread} job={job} />;
+  }
 
   const failed = state === "failed" && !stopped;
 

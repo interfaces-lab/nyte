@@ -14,7 +14,7 @@ import { activeSelection } from "../../panes/pane-layout.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { SessionScreen } from "../../panes/session-screen.tsx";
+import { SessionScreen } from "../../shell/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
@@ -84,7 +84,7 @@ function part(
     status: live
       ? ({ kind: "live", run: asId<"run">(`${key}-run`) } as const)
       : ({ kind: "settled", commit: asId<"commit">(`${key}-${id}`), endedAt: at } as const),
-  } as const;
+  } satisfies Partial<Message>;
 
   return content.partKind === "text"
     ? {
@@ -164,7 +164,7 @@ function view(
       selected: configuration,
       effective: configuration,
     },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 0, window: 1000, lastRequest: null },
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -287,7 +287,7 @@ async function until(read: () => boolean, what: string): Promise<void> {
   const started = performance.now();
 
   while (!read()) {
-    if (performance.now() - started > 5_000) throw new Error(`Timed out waiting for ${what}`);
+    if (performance.now() - started > 5000) throw new Error(`Timed out waiting for ${what}`);
     await frame();
   }
 }
@@ -399,7 +399,7 @@ export async function run(): Promise<string> {
     for (const agent of agents) {
       const current = agent.stream.latest();
 
-      if (current !== undefined)
+      if (current !== undefined) {
         agent.stream.push({
           ...current,
           seq: asSeq(token + 1),
@@ -408,6 +408,7 @@ export async function run(): Promise<string> {
             answer(agent.key, ` token${String(token)}`.repeat(token % 40)),
           ],
         });
+      }
     }
   }, 25);
 
@@ -447,8 +448,9 @@ export async function run(): Promise<string> {
     "chat:core",
   );
 
-  if (!opensWhole(opened, "list", "chat:core"))
+  if (!opensWhole(opened, "list", "chat:core")) {
     return `Opening an agent showed an empty tray before its chat: ${JSON.stringify(opened)}`;
+  }
 
   const back = await record(container, () => button(container, "Back to agents").click(), "list");
 
@@ -460,8 +462,9 @@ export async function run(): Promise<string> {
     "chat:app",
   );
 
-  if (!opensWhole(switched, "list", "chat:app"))
+  if (!opensWhole(switched, "list", "chat:app")) {
     return `Switching agents showed an empty tray: ${JSON.stringify(switched)}`;
+  }
 
   await record(container, () => button(container, "Close agents").click(), "none");
   await record(container, () => agentsPill(container).click(), "list");

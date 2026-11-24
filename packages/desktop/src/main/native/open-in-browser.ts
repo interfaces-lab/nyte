@@ -13,8 +13,9 @@ const run = promisify(execFile);
  * included, so the file goes to the app that opens web links instead.
  */
 export async function openInBrowser(path: string): Promise<void> {
-  if (!isAbsolute(path) || !HTML_EXTENSIONS.has(extname(path).toLowerCase()))
+  if (!isAbsolute(path) || !HTML_EXTENSIONS.has(extname(path).toLowerCase())) {
     throw new Error("Only an HTML file opens in the browser.");
+  }
 
   if (process.platform !== "darwin") return shell.openExternal(pathToFileURL(path).href);
   const browser = await app.getApplicationInfoForProtocol("https://");

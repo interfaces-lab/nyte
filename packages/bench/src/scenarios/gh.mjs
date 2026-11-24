@@ -5,7 +5,7 @@ import { CHECK_RUNS, ciLog } from "./ci-log.mjs";
 const [command, subcommand, ...rest] = process.argv.slice(2);
 
 const answer = () => {
-  if (command === "pr" && subcommand === "checks")
+  if (command === "pr" && subcommand === "checks") {
     return {
       out: CHECK_RUNS.map(
         (run) =>
@@ -13,9 +13,11 @@ const answer = () => {
       ).join(""),
       code: CHECK_RUNS.some((run) => run.conclusion !== "success") ? 1 : 0,
     };
+  }
 
-  if (command === "run" && subcommand === "view" && rest.includes("--log-failed"))
+  if (command === "run" && subcommand === "view" && rest.includes("--log-failed")) {
     return { out: ciLog(Number(process.env.CI_LOG_BYTES) || undefined), code: 0 };
+  }
 
   return { err: `unknown command: gh ${process.argv.slice(2).join(" ")}\n`, code: 1 };
 };

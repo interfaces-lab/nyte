@@ -3,19 +3,19 @@ export type ShellState =
   | { readonly kind: "prompt"; readonly jobs: number }
   | { readonly kind: "running" };
 
-export type ShellStream = {
+export interface ShellStream {
   read(text: string): string;
   end(): string;
   state(): ShellState;
-};
+}
 
-const ESC = "\x1b";
+const ESC = "\u001B";
 
-const BEL = "\x07";
+const BEL = "\u0007";
 
-const CAN = "\x18";
+const CAN = "\u0018";
 
-const SUB = "\x1a";
+const SUB = "\u001A";
 
 const MARKER_LIMIT = 16 * 1024;
 

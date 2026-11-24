@@ -38,14 +38,15 @@ function safeJsonStringify(
 }
 
 function estimateTextAndImageContentChars(
-  content: string | Array<TextContent | ImageContent>,
+  content: string | (TextContent | ImageContent)[],
 ): number {
   if (!Array.isArray(content)) return content.length;
 
   let chars = 0;
 
-  for (const block of content)
+  for (const block of content) {
     chars += block.type === "text" ? block.text.length : ESTIMATED_IMAGE_CHARS;
+  }
 
   return chars;
 }
@@ -55,7 +56,7 @@ export function estimateTextTokens(text: string): number {
 }
 
 export function estimateTextAndImageContentTokens(
-  content: string | Array<TextContent | ImageContent>,
+  content: string | (TextContent | ImageContent)[],
 ): number {
   return Math.ceil(estimateTextAndImageContentChars(content) / CHARS_PER_TOKEN);
 }
@@ -90,9 +91,9 @@ export function estimateMessageTokens(message: Message): number {
 
 function getLastAssistantUsageInfo(
   messages: readonly Message[],
-): { usage: Usage; index: number } | undefined {
+): { tokens: number; index: number } | undefined {
   let latestPrefixTimestamp = Number.NEGATIVE_INFINITY;
-  let usageInfo: { usage: Usage; index: number } | undefined;
+  let usageInfo: { tokens: number; index: number } | undefined;
 
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i];
@@ -104,9 +105,19 @@ function getLastAssistantUsageInfo(
         usageAppliesToPrefix &&
         message.stopReason !== "aborted" &&
         message.stopReason !== "error" &&
-        calculateContextTokens(message.usage) > 0
+        (message.contextOccupancy !== undefined || calculateContextTokens(message.usage) > 0)
       ) {
-        usageInfo = { usage: message.usage, index: i };
+        const occupancy = message.contextOccupancy;
+        usageInfo =
+          occupancy?.kind === "unknown"
+            ? undefined
+            : {
+                tokens:
+                  occupancy?.kind === "measured"
+                    ? occupancy.usedTokens
+                    : calculateContextTokens(message.usage),
+                index: i,
+              };
       }
     }
 
@@ -120,7 +131,7 @@ function estimateMessages(messages: readonly Message[]): ContextUsageEstimate {
   const usageInfo = getLastAssistantUsageInfo(messages);
 
   if (usageInfo) {
-    const usageTokens = calculateContextTokens(usageInfo.usage);
+    const usageTokens = usageInfo.tokens;
     let trailingTokens = 0;
 
     for (let i = usageInfo.index + 1; i < messages.length; i++) {

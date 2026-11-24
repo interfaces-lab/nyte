@@ -66,8 +66,14 @@ export function runHandle(rows: Rows, session: SessionId, id: RunId): Run {
 }
 
 function sendOutcome(value: Json): SendOutcome {
-  if (typeof value === "object" && value !== null && "kind" in value && value.kind === "withdrawn")
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    value.kind === "withdrawn"
+  ) {
     return { kind: "withdrawn" };
+  }
   const end = parsed(RunEndSchema, value);
 
   if (end !== null) return end;

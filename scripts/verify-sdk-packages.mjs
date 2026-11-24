@@ -309,11 +309,12 @@ try {
     }
 
     for (const field of ["main", "module"]) {
-      if (manifest[field] !== undefined)
+      if (manifest[field] !== undefined) {
         assert.ok(
           manifest[field].endsWith(".js"),
           `TypeScript runtime ${field}: ${manifest[field]}`,
         );
+      }
     }
 
     for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {

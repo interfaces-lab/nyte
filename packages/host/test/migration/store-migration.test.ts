@@ -10,7 +10,7 @@ import { MAPPING } from "./mapping.ts";
 import { scenario, writeStore } from "./scenario.ts";
 import { verifyMigration } from "./verify.ts";
 
-const RUNS = Number(process.env.NYTE_MIGRATION_RUNS ?? 1_000);
+const RUNS = Number(process.env.NYTE_MIGRATION_RUNS ?? 1000);
 
 const SEED = Number(process.env.NYTE_MIGRATION_SEED ?? Date.now() % 2_147_483_647);
 
@@ -30,11 +30,12 @@ afterAll(() => {
 
   console.log(`store migration property: ${JSON.stringify(summary)}`);
 
-  if (process.env.NYTE_MIGRATION_REPORT !== undefined)
+  if (process.env.NYTE_MIGRATION_REPORT !== undefined) {
     writeFileSync(
       process.env.NYTE_MIGRATION_REPORT,
       `${JSON.stringify({ ...summary, mapping: MAPPING }, null, 2)}\n`,
     );
+  }
 });
 
 it(
@@ -63,17 +64,21 @@ it(
           tally("events checked", report.log.events);
           tally("events relogged", report.log.relogged);
 
-          for (const [key, value] of Object.entries(report.refs.outcomes))
+          for (const [key, value] of Object.entries(report.refs.outcomes)) {
             tally(`refs ${key}`, value);
+          }
 
-          for (const [key, value] of Object.entries(report.refs.added))
+          for (const [key, value] of Object.entries(report.refs.added)) {
             tally(`added ${key}`, value);
+          }
 
-          for (const [key, value] of Object.entries(report.fieldChanges))
+          for (const [key, value] of Object.entries(report.fieldChanges)) {
             tally(`field ${key}`, value);
+          }
 
-          for (const [key, value] of Object.entries(report.hookDecisions))
+          for (const [key, value] of Object.entries(report.hookDecisions)) {
             tally(`hook decisions ${key}`, value);
+          }
         } finally {
           rmSync(folder, { recursive: true, force: true });
         }

@@ -48,11 +48,12 @@ export function collectSessionEvents(
     if (update.events === undefined || update.events.length === 0) return [];
     const session = parseSessionRef(update.name);
 
-    if (session === null)
+    if (session === null) {
       throw new SdkError(
         "internal",
         `${update.name} is outside a session and cannot carry an event`,
       );
+    }
 
     return update.events.map((event) => ({ session, event }));
   });
@@ -63,8 +64,9 @@ export function loggedEvent(seq: number, at: number, body: unknown): SessionEven
     typeof body === "object" && body !== null ? { at, ...body, seq } : body,
   );
 
-  if (result instanceof Promise || result.issues !== undefined)
+  if (result instanceof Promise || result.issues !== undefined) {
     throw new SdkError("internal", `The event at seq ${seq} is malformed.`);
+  }
 
   return result.value;
 }

@@ -205,12 +205,16 @@ export const branchSummary = definePart({
 });
 
 function clip(content: string): string {
-  const line = content.replace(/\s+/g, " ").trim();
+  const line = content.replaceAll(/\s+/g, " ").trim();
 
   return line.length > 120 ? `${line.slice(0, 120)}…` : line;
 }
 
-export type Answered = { readonly action: string; readonly input: Json };
+// oxlint-disable-next-line typescript/consistent-type-definitions -- stored as Json, which needs the implicit index signature only a type alias has
+export type Answered = {
+  readonly action: string;
+  readonly input: Json;
+};
 
 export interface PartTable {
   readonly waiters: Map<string, Set<(answer: Answered | null) => void>>;
