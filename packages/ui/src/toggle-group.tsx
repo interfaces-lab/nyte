@@ -8,7 +8,6 @@ import { mergeStyleProps } from "./style.ts";
 import type { StyledProps } from "./style.ts";
 import { hairline } from "./styles/hairline.stylex.ts";
 import type { Restyle } from "./styles/contracts.ts";
-import { role } from "./styles/vars.stylex.ts";
 
 const styles = create({
   group: {
@@ -18,7 +17,6 @@ const styles = create({
     gap: space.px,
     padding: space.s0_5,
     borderRadius: radius.control,
-    backgroundColor: role.bgMutedTranslucent,
   },
 });
 

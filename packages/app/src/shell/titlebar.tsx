@@ -25,11 +25,10 @@ import { chatDirectory, chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
 import { sessionActions } from "../data/session-rows.ts";
 import { useWorkbenchView, workbench } from "../workbench/store.ts";
-import { EDITOR_SLOT, tabSlot, workbenchNarrow, workbenchShowsChat } from "../workbench/model.ts";
-import { shownWorkbenchTab } from "../workbench/selectors.ts";
-import { toggleExplorer } from "../commands/launch.ts";
+import { workbenchNarrow, workbenchShowsChat } from "../workbench/model.ts";
 import { ChatHistory } from "./chat-history.tsx";
-import { attachSidebarWidth, shellActions, useStagePage } from "../tabs/shell-state.ts";
+import { shellActions, useStagePage } from "../tabs/shell-state.ts";
+import { attachSidebarWidth } from "../workbench/window-sidebar.ts";
 import { attachActiveWorkbenchWidth } from "../workbench/width.ts";
 import { attachWindowActions } from "../workbench/window-actions.ts";
 import { sessionIsRunning } from "../sidebar/sidebar-view.ts";
@@ -192,26 +191,14 @@ export function Titlebar(): ReactElement {
   const tabs = useWindowTabsState();
   const focused = useSyncExternalStore(watchWindowFocus, () => document.hasFocus());
   const shape = appShape();
-  const files = shape.navigator === "files";
-  const solid = shape.surface === "solid";
+  const leftLabel = shape.navigator === "files" ? "Explorer" : "Sidebar";
 
   const bar = props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive);
-
-  const shownTab = shownWorkbenchTab(view, scope, capabilities);
-
-  const explorerOpen =
-    shownTab !== null && tabSlot(shownTab) === EDITOR_SLOT && view.sidebars.includes(EDITOR_SLOT);
-
-  const leftOpen = files ? explorerOpen : sidebarVisible;
-  const leftLabel = files ? "Explorer" : "Sidebar";
 
   const sidebarSlot = (
     <span
       ref={attachSidebarWidth}
-      {...props(
-        titlebarStyles.sidebarSlot,
-        (files || !sidebarVisible) && titlebarStyles.sidebarSlotHidden,
-      )}
+      {...props(titlebarStyles.sidebarSlot, !sidebarVisible && titlebarStyles.sidebarSlotHidden)}
     >
       <span {...props(titlebarStyles.actionTrack)}>
         <Tooltip>
@@ -220,30 +207,23 @@ export function Titlebar(): ReactElement {
               <Toggle
                 iconOnly
                 indicator="glyph"
-                aria-label={`${leftOpen ? "Hide" : "Show"} ${leftLabel.toLowerCase()}`}
-                pressed={leftOpen}
+                aria-label={`${sidebarVisible ? "Hide" : "Show"} ${leftLabel.toLowerCase()}`}
+                pressed={sidebarVisible}
                 aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
-                onPressedChange={
-                  files ? () => toggleExplorer(viewKey) : sidebarControl.toggleSidebar
-                }
+                onPressedChange={sidebarControl.toggleSidebar}
                 title={undefined}
               >
-                <PanelToggleIcon side="left" visible={leftOpen} />
+                <PanelToggleIcon side="left" visible={sidebarVisible} />
               </Toggle>
             }
           />
           <TooltipContent shortcut={clientActionKeys(clientActions.sidebar, mac)}>
-            {`${leftOpen ? "Hide" : "Show"} ${leftLabel}`}
+            {`${sidebarVisible ? "Hide" : "Show"} ${leftLabel}`}
           </TooltipContent>
         </Tooltip>
       </span>
       {nyte.host.switchApp !== undefined && (
-        <span
-          {...props(
-            titlebarStyles.appSlot,
-            sidebarVisible && !files && titlebarStyles.appSlotDocked,
-          )}
-        >
+        <span {...props(titlebarStyles.appSlot, sidebarVisible && titlebarStyles.appSlotDocked)}>
           <AppSwitcher mac={mac} />
         </span>
       )}
@@ -322,7 +302,12 @@ export function Titlebar(): ReactElement {
     return (
       <header {...bar}>
         {sidebarSlot}
-        <div {...props(titlebarStyles.contentArea, solid && titlebarStyles.contentAreaBare)}>
+        <div
+          {...props(
+            titlebarStyles.contentArea,
+            windowTabs.desktop && titlebarStyles.contentAreaBare,
+          )}
+        >
           <span {...props(titlebarStyles.center)} />
           <span {...props(titlebarStyles.trailing)}>
             {workspaceVisible && (
@@ -369,7 +354,7 @@ export function Titlebar(): ReactElement {
     <header {...bar}>
       {sidebarSlot}
       <div
-        {...props(titlebarStyles.contentArea, (strip || solid) && titlebarStyles.contentAreaBare)}
+        {...props(titlebarStyles.contentArea, windowTabs.desktop && titlebarStyles.contentAreaBare)}
       >
         <span {...props(titlebarStyles.center)}>
           {settingsOpen ? null : strip ? (

@@ -1,30 +1,9 @@
 import { useSyncExternalStore } from "react";
 import type { ProjectId, SessionId } from "@nyte-ai/sdk";
 import type { AppInfo } from "../contract/bridge.ts";
-import { elementVariable } from "../lib/element-variable.ts";
-import { preferences, SIDEBAR_WIDTH } from "../preferences/index.ts";
 import { activeTab } from "./model.ts";
 import type { Page } from "./model.ts";
 import { windowTabs } from "./window-tabs.ts";
-
-export function clampSidebarWidth(width: number): number {
-  if (!Number.isFinite(width)) return preferences.sidebarWidth.get();
-
-  return Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, Math.round(width)));
-}
-
-const sidebarWidth = elementVariable(
-  "--nyte-sidebar-width",
-  `${String(preferences.sidebarWidth.get())}px`,
-);
-
-export const attachSidebarWidth = sidebarWidth.attach;
-
-export function applySidebarWidth(width: number): void {
-  sidebarWidth.set(`${String(width)}px`);
-}
-
-preferences.sidebarWidth.subscribe(() => applySidebarWidth(preferences.sidebarWidth.get()));
 
 interface Overlays {
   readonly about: AppInfo | undefined;
@@ -77,12 +56,6 @@ export const shellActions = Object.freeze({
   },
   toggleSearch(): void {
     showOverlays({ ...overlays, search: !overlays.search });
-  },
-  toggleSidebar(): void {
-    preferences.sidebarVisible.set(!preferences.sidebarVisible.get());
-  },
-  setSidebarWidth(width: number): void {
-    preferences.sidebarWidth.set(clampSidebarWidth(width));
   },
   openCustomize(sessionId: SessionId | undefined): void {
     windowTabs.dispatch({

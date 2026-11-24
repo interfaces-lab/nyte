@@ -1,7 +1,9 @@
 import type { ClientCapabilities } from "../contract/client-actions.ts";
+import { preferences } from "../preferences/index.ts";
+import type { Preference } from "../preferences/index.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
 import { windowApp } from "../contract/nyte.ts";
-import { DEFAULT_VIEW, EDITOR_SLOT, WORKBENCH_KINDS } from "./model.ts";
+import { DEFAULT_VIEW, WORKBENCH_KINDS } from "./model.ts";
 import type { LaunchKind, WorkbenchScope, WorkbenchViewState } from "./model.ts";
 import { reduceView } from "./view-reducer.ts";
 import type { WorkbenchViewAction } from "./view-reducer.ts";
@@ -20,7 +22,8 @@ export interface AppShape {
   readonly initial: WorkbenchViewState;
   /** Where a selection made in another window lands: nowhere, in the Editor at its range, or on the Design board. */
   readonly arrival: "ignore" | "file" | "design";
-  readonly surface: "glass" | "solid";
+  /** Whether the window's sidebar shows and how wide it is. Each app remembers its own. */
+  readonly sidebar: { readonly visible: Preference<boolean>; readonly width: Preference<number> };
   readonly settings: "here" | "nyte";
 }
 
@@ -46,7 +49,7 @@ const APP_SHAPES = {
     launchers: LAUNCH_ORDER,
     initial: DEFAULT_VIEW,
     arrival: "ignore",
-    surface: "glass",
+    sidebar: { visible: preferences.sidebarVisible, width: preferences.sidebarWidth },
     settings: "here",
   },
   code: {
@@ -56,11 +59,10 @@ const APP_SHAPES = {
     launchers: ["editor", "browser", "terminal"],
     initial: arrange([
       { kind: "open", tab: { id: "editor", kind: "editor" }, activate: true },
-      { kind: "toggle-sidebar", slot: EDITOR_SLOT },
       { kind: "set-width", pixels: CODE_CHAT_WIDTH },
     ]),
     arrival: "file",
-    surface: "solid",
+    sidebar: { visible: preferences.explorerVisible, width: preferences.explorerWidth },
     settings: "nyte",
   },
   studio: {
@@ -73,7 +75,7 @@ const APP_SHAPES = {
       { kind: "maximize" },
     ]),
     arrival: "design",
-    surface: "glass",
+    sidebar: { visible: preferences.sidebarVisible, width: preferences.sidebarWidth },
     settings: "here",
   },
 } as const satisfies Readonly<Record<DesktopApp, AppShape>>;

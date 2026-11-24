@@ -44,6 +44,7 @@ import { SettingsNavigation } from "../settings/index.ts";
 import { settingsRoute } from "./routes.tsx";
 import { BrowserGuestHost } from "../browser/browser-guests.tsx";
 import { noteFocusRegion } from "../workbench/focus-region.ts";
+import { attachNavigator } from "../workbench/window-actions.ts";
 
 const styles = create({
   shell: {
@@ -68,7 +69,7 @@ const styles = create({
     backgroundColor: role.surfaceMaterial,
     overflow: "clip",
   },
-  bare: { backgroundColor: "transparent" },
+  navigator: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   card: {
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
@@ -170,7 +171,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const { about } = useOverlays();
   const root = useRef<HTMLDivElement | null>(null);
   const chatSidebar = appShape().navigator === "chats";
-  const pushing = useSidebarSwipe(root, chatSidebar);
+  const pushing = useSidebarSwipe(root);
   const sidebarCollapsed = useSidebar().state === "collapsed";
   const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
@@ -275,19 +276,20 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       <Titlebar />
       <div {...props(styles.stage)}>
         <SessionDndProvider>
-          {chatSidebar && (
-            <SidebarPane>
+          <SidebarPane>
+            {chatSidebar ? (
               <Sidebar
                 renderSettingsNavigation={(section) => <SettingsNavigation section={section} />}
               />
-            </SidebarPane>
-          )}
+            ) : (
+              <div ref={attachNavigator} {...props(styles.navigator)} />
+            )}
+          </SidebarPane>
           <main
             {...props(
               styles.surface,
-              appShape().surface === "solid" && styles.bare,
-              strip && styles.card,
-              strip && sidebarCollapsed && styles.cardSidebarHidden,
+              windowTabs.desktop && styles.card,
+              windowTabs.desktop && sidebarCollapsed && styles.cardSidebarHidden,
             )}
           >
             <HostBanner />

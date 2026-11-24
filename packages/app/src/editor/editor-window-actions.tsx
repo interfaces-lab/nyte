@@ -1,5 +1,5 @@
 import { Button } from "@nyte-ai/ui/button";
-import { SplitPreviewIcon } from "@nyte-ai/ui/icon";
+import { PanelToggleIcon, SplitPreviewIcon } from "@nyte-ai/ui/icon";
 import { MenuGroup, MenuGroupLabel, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -61,7 +61,7 @@ export function EditorWindowActions({
               onPressedChange={() => void appActions.run("terminal.toggle", {})}
               title={undefined}
             >
-              <SplitPreviewIcon side="down" />
+              <PanelToggleIcon side="bottom" visible={dockShown} />
             </Toggle>
           }
         />

@@ -40,8 +40,8 @@ interface SwipeStep {
   readonly toggles: boolean;
 }
 
-/** Opens and closes the sidebar with a two-finger swipe over `root`. A window without the chat sidebar passes `enabled` false. */
-export function useSidebarSwipe(root: RefObject<HTMLElement | null>, enabled: boolean): boolean {
+/** Opens and closes the sidebar with a two-finger swipe over `root`. */
+export function useSidebarSwipe(root: RefObject<HTMLElement | null>): boolean {
   const sidebar = useSidebar();
   const [pushing, setPushing] = useState(false);
   const gesture = useRef<Swipe | undefined>(undefined);
@@ -98,7 +98,7 @@ export function useSidebarSwipe(root: RefObject<HTMLElement | null>, enabled: bo
   useMountEffect(() => {
     const element = root.current;
 
-    if (element === null || !enabled) return;
+    if (element === null) return;
     const listener = (event: WheelEvent): void => onWheel(event);
     element.addEventListener("wheel", listener, { passive: true });
 
