@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.3 — 2026-11-24
+
+- The Code window shares Nyte's window shell. Its explorer (Files, Search and Changes) sits in the glass sidebar, which resizes, collapses and slides in on hover like Nyte's, and keeps its own width and open state. The editor and chat sit in the card below the title bar.
+- The bottom panel's title-bar button uses a panel icon that shows whether the panel is open.
+- Toggle groups take the same selected fill as tabs, and no longer draw a fill of their own. Code's sidebar view switcher is the same height as the file tabs.
+
 ## v0.3.2 — 2026-11-24
 
 - Language features in Nyte Code: completions, inline diagnostics and code actions, links, colours, linked editing, range formatting and rename edits. The host routes each request to a server that offers it and downloads a missing server when asked. New servers: clangd, jdtls, rust-analyzer, sourcekit-lsp, ruby-lsp, lua-language-server, ty, Ruff, Tombi, marksman, yaml, JSON, CSS, HTML, bash with shellcheck, postgres and ESLint. New grammars for C and C++, Java, Lua, Ruby, SQL, Swift and TOML.
