@@ -286,7 +286,7 @@ describe("transport", () => {
       decodeOutput("models.accounts", await owner.invoke("models.accounts", {})).map(
         (account) => account.label,
       ),
-    ).toEqual(["Account 1"]);
+    ).toEqual(["Default"]);
   });
 
   it("reads job output as framed octets whatever Content-Type the answer carries (ADV G8)", async () => {

@@ -8,6 +8,7 @@ import { themeSource } from "../shared/ipc-inputs.ts";
 import { DesktopAppType, SelectedWorkspaceType } from "@nyte-ai/app/contract/desktop-window.ts";
 import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
 import type { DesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
+import type { SelectedWorkspace } from "@nyte-ai/app/contract/bridge.ts";
 
 const rect = Type.Object({
   x: Type.Integer(),
@@ -160,10 +161,9 @@ export class LaunchStateStore {
     this.write({ ...this.state, windows: [...windows], frames, apps });
   }
 
-  keepWindow(windowId: string, app: DesktopApp, opening: DesktopWindowOpen | undefined): void {
+  keepWindow(windowId: string, app: DesktopApp, workspace: SelectedWorkspace | undefined): void {
     const windows = this.windows();
-    const workspace = app === "nyte" ? undefined : opening?.workspace;
-    const kind = workspace === undefined ? { app } : { app, workspace };
+    const kind = app === "nyte" || workspace === undefined ? { app } : { app, workspace };
 
     this.write({
       ...this.state,

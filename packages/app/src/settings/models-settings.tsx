@@ -307,7 +307,13 @@ function ProviderRow({
   const running = useLoginAttempt(provider.id);
   const disconnected = provider.credential === "missing";
   const unknown = provider.credential === "unknown";
-  const attempt = disconnected ? running : undefined;
+  const attempt = running;
+
+  const refreshAccounts = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: ["model-accounts", provider.id] }),
+      client.invalidateQueries({ queryKey: ["account-limits"] }),
+    ]);
 
   const login = useMutation({
     mutationFn: (
@@ -317,6 +323,8 @@ function ProviderRow({
       if (outcome.kind === "cancelled") return;
       setKeyFormOpen(false);
       toast.add({ type: "success", title: `Connected to ${provider.name}` });
+
+      return refreshAccounts();
     },
     onError: (error) =>
       toast.add({
@@ -332,12 +340,6 @@ function ProviderRow({
     onError: () =>
       toast.add({ type: "error", title: `Couldn't sign out of ${provider.name}. Try again.` }),
   });
-
-  const refreshAccounts = () =>
-    Promise.all([
-      client.invalidateQueries({ queryKey: ["model-accounts", provider.id] }),
-      client.invalidateQueries({ queryKey: ["account-limits"] }),
-    ]);
 
   const rename = useMutation({
     mutationFn: (input: { readonly account: string; readonly label: string }) =>
@@ -433,7 +435,7 @@ function ProviderRow({
       status="Connected"
       loading={logout.isPending || switchAccount.isPending}
       disabled={login.isPending || setPreference.isPending}
-      finalFocus={() => nameField.current ?? true}
+      finalFocus={() => nameField.current ?? keyField.current ?? true}
     >
       {accounts.length > 1 ? (
         <MenuGroup>
@@ -473,11 +475,38 @@ function ProviderRow({
           >
             Rename Account…
           </MenuItem>
-          <MenuSeparator />
         </>
       )}
+      <MenuGroup>
+        <MenuGroupLabel>Add Account</MenuGroupLabel>
+        {browser !== undefined && (
+          <MenuItem
+            onClick={() => {
+              setRenameOpen(false);
+              setModelsOpen(false);
+              login.mutate({ kind: "browser" });
+            }}
+          >
+            Sign In
+          </MenuItem>
+        )}
+        {apiKey !== undefined && (
+          <MenuItem
+            icon="key"
+            onClick={() => {
+              login.reset();
+              setRenameOpen(false);
+              setModelsOpen(false);
+              setKeyFormOpen(true);
+            }}
+          >
+            Add API Key…
+          </MenuItem>
+        )}
+      </MenuGroup>
+      <MenuSeparator />
       <MenuItem variant="danger" onClick={() => logout.mutate()}>
-        Disconnect Provider
+        {accounts.length > 1 ? "Remove Account" : "Disconnect Provider"}
       </MenuItem>
     </ConnectionMenu>
   ) : (

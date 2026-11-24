@@ -83,6 +83,7 @@ export const ICON_NAMES = [
   "keyboard",
   "laptop",
   "layers",
+  "lightbulb",
   "linear",
   "list",
   "loader",

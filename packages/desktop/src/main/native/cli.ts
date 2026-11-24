@@ -17,6 +17,7 @@ import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import type { BundledCli } from "@nyte-ai/app/contract/bridge.ts";
+import { compareVersions } from "@nyte-ai/schema";
 
 const execute = promisify(execFile);
 
@@ -35,6 +36,8 @@ function commandLink(home: string): string {
 }
 
 type PathChange =
+  | { readonly kind: "found" }
+  | { readonly kind: "shadowed"; readonly path: string }
   | { readonly kind: "present"; readonly file: string }
   | { readonly kind: "added"; readonly file: string }
   | { readonly kind: "manual"; readonly line: string };
@@ -177,18 +180,28 @@ function failure(cause: unknown): string {
   return stderr === "" ? message : stderr;
 }
 
-export async function adoptStagedCli(home: string, staged: string): Promise<void> {
+/** Points `~/.nyte/bin/nyte` at this app's CLI when it already runs one of the app's, or when it runs an older nyte than the app's, so the newest nyte wins. A missing command stays missing until the user installs it. */
+export async function adoptStagedCli(home: string, staged: string, version: string): Promise<void> {
   const current = dirname(staged);
   const stages = dirname(current);
-  const linked = await readlink(commandLink(home)).catch(() => undefined);
+  const link = commandLink(home);
+  const linked = await readlink(link).catch(() => undefined);
 
-  if (linked?.startsWith(`${stages}/`) === true) await linkCli(home, staged);
+  if (linked?.startsWith(`${stages}/`) === true || (await runsOlderCli(link, version))) {
+    await linkCli(home, staged);
+  }
 
   for (const entry of await readdir(stages)) {
     if (join(stages, entry) !== current) {
       await rm(join(stages, entry), { recursive: true, force: true });
     }
   }
+}
+
+async function runsOlderCli(path: string, version: string): Promise<boolean> {
+  const ran = await execute(path, ["--version"], { timeout: 10_000 }).catch(() => undefined);
+
+  return ran !== undefined && (compareVersions(ran.stdout.trim(), version) ?? 0) < 0;
 }
 
 export async function installCli(
@@ -201,6 +214,10 @@ export async function installCli(
   const change = await addToPath(home, shell);
 
   switch (change.kind) {
+    case "found":
+      return `${link} runs this app's nyte, and your shell already finds it on your PATH.`;
+    case "shadowed":
+      return `${link} runs this app's nyte, but your shell runs ${change.path} first. Remove that one, or put ${dirname(link)} before it on your PATH.`;
     case "present":
       return `${link} runs this app's nyte, and ${change.file} puts it on your PATH.`;
     case "added":
@@ -227,7 +244,13 @@ async function linkCli(home: string, staged: string): Promise<void> {
 }
 
 async function addToPath(home: string, shell: string | undefined): Promise<PathChange> {
-  const directory = dirname(commandLink(home));
+  const link = commandLink(home);
+  const found = shell === undefined ? undefined : await findShellCommand(shell);
+
+  if (found === link) return { kind: "found" };
+
+  if (found?.startsWith("/") === true) return { kind: "shadowed", path: found };
+  const directory = dirname(link);
   const name = basename(shell ?? "sh");
   const line = name === "fish" ? `fish_add_path ${directory}` : `export PATH="${directory}:$PATH"`;
 
@@ -253,4 +276,13 @@ async function addToPath(home: string, shell: string | undefined): Promise<PathC
   }
 
   return { kind: "manual", line };
+}
+
+/** Asks an interactive login shell which `nyte` it runs, because an app opened from the Dock doesn't inherit the PATH its rc files build. Undefined when the shell finds none or doesn't answer. */
+async function findShellCommand(shell: string): Promise<string | undefined> {
+  const ran = await execute(shell, ["-ilc", "command -v nyte"], { timeout: 10_000 }).catch(
+    () => undefined,
+  );
+
+  return ran?.stdout.trim().split("\n").at(-1);
 }

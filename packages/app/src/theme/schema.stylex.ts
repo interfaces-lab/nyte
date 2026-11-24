@@ -85,6 +85,7 @@ export const settings = defineConsts({
 export const workbench = defineConsts({
   widthMin: 360,
   centerWidthMin: 360,
+  editorWidthMin: 480,
   widthDefault: 588,
   activeWidth: "var(--nyte-active-workbench-width)",
   railWidth: "var(--nyte-workbench-rail-width)",

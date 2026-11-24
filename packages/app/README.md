@@ -16,7 +16,7 @@ import "@nyte-ai/app/theme/global.css";
 
 The web app does the same in `src/web/install.ts`, the first import of `src/web/entry.tsx`.
 
-Then mount `App` from `@nyte-ai/app`. It takes the embedding's product mark as `appIcon` and a router from `createAppRouter`. The desktop passes its bundled `build/icon-macos.svg`.
+Then mount `App` from `@nyte-ai/app`. It takes the embedding's product mark as `appIcon`, a light and a dark image, and a router from `createAppRouter`. The desktop passes its day and night icon renders, `build/icon-day.png` and `build/icon.png`.
 
 ## Entry points
 

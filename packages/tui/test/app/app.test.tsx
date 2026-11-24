@@ -155,7 +155,7 @@ test("API-key login supports paste, select all, delete and repaste without expos
   await app.state((store) => store.screen().dialog === null);
   expect(
     (await fixture.models.models.listAccounts("test")).map((account) => account.label),
-  ).toEqual(["Account 1"]);
+  ).toEqual(["Default"]);
 });
 
 test("cancelling a login prompt releases its effect before quitting", async () => {

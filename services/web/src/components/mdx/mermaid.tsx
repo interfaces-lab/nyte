@@ -1,12 +1,13 @@
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { MERMAID_COLORS, cleanMermaidSvg } from "@nyte-ai/ui/mermaid-theme";
 import { renderMermaidSVG } from "beautiful-mermaid";
 
 export function Mermaid({ chart }: { chart: string }) {
-  const svg = renderMermaidSVG(chart.replaceAll(String.raw`\n`, "\n"), {
-    bg: role.bgBase,
-    fg: role.contentPrimary,
-    transparent: true,
-  });
+  const svg = cleanMermaidSvg(
+    renderMermaidSVG(chart.replaceAll(String.raw`\n`, "\n"), {
+      ...MERMAID_COLORS,
+      transparent: true,
+    }),
+  );
 
   return <div className="docs-mermaid" dangerouslySetInnerHTML={{ __html: svg }} />;
 }

@@ -8,8 +8,8 @@ import { createMenuCommandDelivery } from "./app-menu.ts";
 import { createUnsavedEdits } from "./unsaved-edits.ts";
 
 test.each<{ readonly end: WindowEnd; readonly survives: readonly string[] }>([
-  { end: "navigated", survives: ["seed", "opening"] },
-  { end: "crashed", survives: ["seed", "opening"] },
+  { end: "navigated", survives: ["selection", "seed", "opening"] },
+  { end: "crashed", survives: ["selection", "seed", "opening"] },
   { end: "closed", survives: [] },
 ])("a window whose page $end keeps $survives", (row) => {
   const workspaces = createWindowWorkspaces();

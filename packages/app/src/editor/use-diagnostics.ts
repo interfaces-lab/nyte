@@ -36,6 +36,7 @@ interface DiagnosticsInput {
 
 export function useDiagnostics(input: DiagnosticsInput) {
   const held = useRef<Marker[]>([]);
+  const shown = useRef<readonly LanguageDiagnostic[]>([]);
   const heldKey = useRef("[]");
 
   const show = useEffectEvent((diagnostics: readonly LanguageDiagnostic[]) => {
@@ -52,6 +53,7 @@ export function useDiagnostics(input: DiagnosticsInput) {
     );
 
     held.current = markers;
+    shown.current = diagnostics;
     input.show(markers);
   });
 
@@ -74,7 +76,24 @@ export function useDiagnostics(input: DiagnosticsInput) {
     return () => stop.abort();
   }, [id, root, path, viewKey]);
 
-  return { markers: () => held.current };
+  return {
+    markers: () => held.current,
+    diagnosed: (position: TextPosition) =>
+      shown.current.some(
+        (diagnostic) =>
+          comparePosition(diagnostic.range.start, position) <= 0 &&
+          comparePosition(position, diagnostic.range.end) <= 0,
+      ),
+    nearest: (position: TextPosition) =>
+      shown.current
+        .filter(
+          (diagnostic) =>
+            diagnostic.range.start.line <= position.line &&
+            position.line <= diagnostic.range.end.line,
+        )
+        .toSorted((left, right) => offset(left.range, position) - offset(right.range, position))
+        .at(0)?.range,
+  };
 }
 
 async function follow(
@@ -261,19 +280,16 @@ function severityIcon(severity: DiagnosticSeverity): SVGSVGElement {
   return svg;
 }
 
-export function diagnosed(markers: readonly Marker[], position: TextPosition): boolean {
-  return markers.some(
-    (shown) =>
-      comparePosition(shown.start, position) <= 0 && comparePosition(position, shown.end) <= 0,
-  );
+function offset(range: TextRange, position: TextPosition): number {
+  if (comparePosition(position, range.start) < 0) {
+    return range.start.utf16Column - position.utf16Column;
+  }
+
+  return comparePosition(range.end, position) < 0
+    ? position.utf16Column - range.end.utf16Column
+    : 0;
 }
 
-function comparePosition(
-  left: { readonly line: number; readonly character: number } | TextPosition,
-  right: { readonly line: number; readonly character: number } | TextPosition,
-): number {
-  const leftColumn = "character" in left ? left.character : left.utf16Column;
-  const rightColumn = "character" in right ? right.character : right.utf16Column;
-
-  return left.line === right.line ? leftColumn - rightColumn : left.line - right.line;
+function comparePosition(left: TextPosition, right: TextPosition): number {
+  return left.line === right.line ? left.utf16Column - right.utf16Column : left.line - right.line;
 }

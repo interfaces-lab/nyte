@@ -1,7 +1,18 @@
+import { create } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import type { CodeAction } from "@nyte-ai/schema";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuGroupLabel,
+  ContextMenuItem,
+} from "@nyte-ai/ui/context-menu";
 import { Loader } from "@nyte-ai/ui/loader";
-import { Menu, MenuContent, MenuGroup, MenuGroupLabel, MenuItem } from "@nyte-ai/ui/menu";
+
+const styles = create({
+  menu: { maxWidth: "min(640px, var(--available-width))" },
+});
 
 export function CodeActionsMenu({
   anchor,
@@ -16,36 +27,49 @@ export function CodeActionsMenu({
   readonly onPick: (action: CodeAction) => void;
   readonly onClose: () => void;
 }): ReactElement {
-  const fixes = actions
-    .filter((action) => action.kind === "quickfix")
-    .toSorted((first, second) => Number(second.preferred) - Number(first.preferred));
-
   const groups = [
-    { label: "Quick Fixes", actions: fixes },
-    { label: "Refactor", actions: actions.filter((action) => action.kind.startsWith("refactor")) },
+    {
+      label: "Quick Fixes",
+      icon: "lightbulb" as const,
+      actions: actions
+        .filter((action) => action.kind === "quickfix")
+        .toSorted((first, second) => Number(second.preferred) - Number(first.preferred)),
+    },
+    {
+      label: "Refactor",
+      icon: "pencil" as const,
+      actions: actions.filter((action) => action.kind.startsWith("refactor")),
+    },
   ].filter((group) => group.actions.length > 0);
 
   return (
-    <Menu open onOpenChange={(open) => !open && onClose()}>
-      <MenuContent anchor={anchor} align="start" sideOffset={4} aria-busy={running !== undefined}>
+    <ContextMenu open onOpenChange={(open) => !open && onClose()}>
+      <ContextMenuContent
+        anchor={anchor}
+        side="bottom"
+        align="start"
+        sideOffset={4}
+        aria-busy={running !== undefined}
+        xstyle={styles.menu}
+      >
         {groups.map((group) => (
-          <MenuGroup key={group.label}>
-            <MenuGroupLabel>{group.label}</MenuGroupLabel>
+          <ContextMenuGroup key={group.label}>
+            <ContextMenuGroupLabel>{group.label}</ContextMenuGroupLabel>
             {group.actions.map((action) => (
-              <MenuItem
-                key={action.token.item}
-                layout="plain"
+              <ContextMenuItem
+                key={`${action.token.server}:${String(action.token.item)}`}
+                icon={group.icon}
                 closeOnClick={false}
-                disabled={running !== undefined || action.disabled !== null}
-                meta={action === running ? <Loader /> : action.disabled}
+                disabled={running !== undefined}
+                meta={action === running ? <Loader /> : undefined}
                 onClick={() => onPick(action)}
               >
                 {action.title}
-              </MenuItem>
+              </ContextMenuItem>
             ))}
-          </MenuGroup>
+          </ContextMenuGroup>
         ))}
-      </MenuContent>
-    </Menu>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

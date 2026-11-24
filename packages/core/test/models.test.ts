@@ -429,12 +429,12 @@ describe("models", () => {
     expect(last.at(-1)).toEqual({ kind: "failed", reason: "Organisation two has no access." });
 
     const accounts = await host.models.accounts("test");
-    const work = accounts.find((account) => account.label === "Account 1");
+    const work = accounts.find((account) => account.label === "Default");
     assert(work !== undefined);
 
     expect(accounts.map((account) => [account.label, account.method.kind, account.active])).toEqual(
       [
-        ["Account 1", "key", false],
+        ["Default", "key", false],
         ["Personal", "oauth", true],
       ],
     );
@@ -445,18 +445,18 @@ describe("models", () => {
     expect(host.kernel.host.current().catalog).not.toBe(generation);
     expect((await host.models.list()).providers[0].credential).toBe("configured");
     expect((await host.models.accounts("test")).find((account) => account.active)?.label).toBe(
-      "Account 1",
+      "Default",
     );
     expect((await host.models.usage())[0]).toMatchObject({
       provider: "test",
-      account: { id: work.id, label: "Account 1" },
+      account: { id: work.id, label: "Default" },
       state: { kind: "unavailable", reason: "unsupported" },
     });
     await host.models.logout("test");
 
     expect(
       (await host.models.accounts()).map((account) => [account.label, account.active]),
-    ).toEqual([["Personal", false]]);
+    ).toEqual([["Personal", true]]);
     expect((await host.models.usage())[0].state).toMatchObject({
       kind: "unavailable",
       reason: "unsupported",
@@ -512,7 +512,7 @@ describe("models", () => {
       if (step.kind === "failed") throw new Error(step.reason);
     }
 
-    expect((await host.models.accounts()).map((account) => account.label)).toEqual(["Account 1"]);
+    expect((await host.models.accounts()).map((account) => account.label)).toEqual(["Default"]);
   });
 });
 

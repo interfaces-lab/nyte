@@ -12,6 +12,7 @@ import {
   connectLocalHost,
   createAppRouter,
   recordFirstFrame,
+  rememberedWorkspace,
   seedFirstFrame,
   startRendererStartup,
   StartupFailure,
@@ -20,10 +21,11 @@ import {
   windowTabRoute,
 } from "@nyte-ai/app";
 import { windowOpening } from "@nyte-ai/app/contract/desktop-window.ts";
-import appIcon from "../../../build/icon-macos.svg";
+import dayIcon from "../../../build/icon-day.png";
+import nightIcon from "../../../build/icon.png";
 import { AccountProvider } from "./account/provider.tsx";
 
-const opening = windowOpening(window.nyte.window);
+const opening = windowOpening(window.nyte.window, rememberedWorkspace());
 
 startWindowTabs(opening.window);
 
@@ -77,7 +79,7 @@ function mountShell(): void {
     root.render(
       <StrictMode>
         <AccountProvider>
-          <App appIcon={appIcon} router={router} />
+          <App appIcon={{ light: dayIcon, dark: nightIcon }} router={router} />
         </AccountProvider>
       </StrictMode>,
     ),

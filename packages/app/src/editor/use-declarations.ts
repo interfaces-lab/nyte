@@ -1,6 +1,6 @@
 import { useEffectEvent, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import type { CodeAction, WorkspaceEdit } from "@nyte-ai/schema";
+import type { CodeAction, CodeActionKind, WorkspaceEdit } from "@nyte-ai/schema";
 import type { LanguageApi, TextPosition, TextRange, WorkspaceId } from "@nyte-ai/sdk";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
@@ -56,6 +56,7 @@ export function useDeclarations(input: {
   readonly rangeRect: (range: TextRange) => DOMRect | undefined;
   readonly fallbackRect: () => DOMRect;
   readonly diagnosed: (position: TextPosition) => boolean;
+  readonly nearestProblem: (position: TextPosition) => TextRange | undefined;
   readonly focus: () => void;
 }) {
   const [popup, setPopup] = useState<DeclarationPopup>();
@@ -294,21 +295,29 @@ export function useDeclarations(input: {
     });
   };
 
-  const showActions = async (target?: TextRange): Promise<void> => {
-    const range = target ?? input.selection();
-    const caret = target?.start ?? input.caret();
-
-    if (caret === undefined || range === undefined) return;
+  const showActions = async (request: {
+    readonly range: TextRange;
+    readonly anchor: TextRange;
+    readonly only: readonly CodeActionKind[];
+  }): Promise<void> => {
     ticket.current += 1;
     const mine = ticket.current;
     const revision = input.buffer.getSnapshot().revision;
-    const place = input.rangeRect(target ?? { start: caret, end: caret }) ?? input.fallbackRect();
+    const place = input.rangeRect(request.anchor) ?? input.fallbackRect();
     const slow = resolving(place, "Finding actions…", mine);
 
     const listed = await connect()
       .then(async (found) => ({
-        actions: ((await found?.codeActions({ path: input.path, range })) ?? []).filter(
-          (action) => action.kind === "quickfix" || action.kind.startsWith("refactor"),
+        actions: (
+          (await found?.codeActions({
+            path: input.path,
+            range: request.range,
+            only: request.only,
+          })) ?? []
+        ).filter(
+          (action) =>
+            action.disabled === null &&
+            request.only.some((kind) => action.kind === kind || action.kind.startsWith(`${kind}.`)),
         ),
         detail: undefined,
       }))
@@ -507,8 +516,8 @@ export function useDeclarations(input: {
       cancel: dismiss,
     },
     action: { pick: runAction, close: dismiss },
-    showActions: (range: TextRange): void => {
-      if (!input.readOnly) void showActions(range);
+    showFixes: (range: TextRange): void => {
+      if (!input.readOnly) void showActions({ range, anchor: range, only: ["quickfix"] });
     },
     pointer: {
       enter(
@@ -613,8 +622,23 @@ export function useDeclarations(input: {
       if (actionsKey(event, input.mac)) {
         event.preventDefault();
         event.stopPropagation();
+        const caret = input.caret();
+        const selection = input.selection();
 
-        if (!input.readOnly) void showActions();
+        if (input.readOnly || caret === undefined || selection === undefined) return true;
+
+        const nearby =
+          selection.start.line === selection.end.line &&
+          selection.start.utf16Column === selection.end.utf16Column &&
+          !input.diagnosed(caret)
+            ? input.nearestProblem(caret)
+            : undefined;
+
+        void showActions({
+          range: nearby ?? selection,
+          anchor: { start: caret, end: caret },
+          only: ["quickfix", "refactor"],
+        });
 
         return true;
       }

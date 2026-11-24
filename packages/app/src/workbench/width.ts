@@ -5,6 +5,8 @@ const WORKBENCH_WIDTH_MIN = workbench.widthMin;
 
 export const WORKBENCH_CENTER_WIDTH_MIN = workbench.centerWidthMin;
 
+export const EDITOR_WIDTH_MIN = workbench.editorWidthMin;
+
 const activeWidth = elementVariable("--nyte-active-workbench-width", "500px");
 
 export const attachActiveWorkbenchWidth = activeWidth.attach;
@@ -27,23 +29,24 @@ interface WorkbenchWidthBounds {
   readonly max: number;
 }
 
-export function workbenchPanelWidth(width: WorkbenchWidth, stageWidth: number): number {
-  return clampWorkbenchWidthToBounds(width.pixels, workbenchWidthBounds(stageWidth));
-}
-
-export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBounds {
+export function workbenchWidthBounds(
+  availableWidth: number,
+  centerMin: number,
+): WorkbenchWidthBounds {
   const width = Math.max(0, Math.floor(availableWidth));
 
   return Object.freeze({
-    narrow: width < WORKBENCH_WIDTH_MIN + WORKBENCH_CENTER_WIDTH_MIN,
+    narrow: width < WORKBENCH_WIDTH_MIN + centerMin,
     min: WORKBENCH_WIDTH_MIN,
-    max: Math.max(WORKBENCH_WIDTH_MIN, width - WORKBENCH_CENTER_WIDTH_MIN),
+    max: Math.max(WORKBENCH_WIDTH_MIN, width - centerMin),
   });
 }
 
-export function workbenchSeparatorValue(panelWidth: number, stageWidth: number) {
-  const bounds = workbenchWidthBounds(stageWidth);
-
+export function workbenchSeparatorValue(
+  panelWidth: number,
+  stageWidth: number,
+  bounds: WorkbenchWidthBounds,
+) {
   const percent = (pixels: number): number =>
     stageWidth <= 0 ? 100 : Math.min(100, Math.max(0, Math.round((pixels / stageWidth) * 100)));
 

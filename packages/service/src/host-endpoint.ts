@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { HOST_HEADER } from "@nyte-ai/protocol";
+import { HostDescriptionType } from "@nyte-ai/schema";
+import type { HostDescription } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -71,6 +73,17 @@ export async function hostAnswers(url: string): Promise<boolean> {
     },
     () => false,
   );
+}
+
+/** Reads what a host says about itself, without credentials. Null when it doesn't answer in `ms` or answers something else. */
+export async function describeHost(url: string, ms: number): Promise<HostDescription | null> {
+  const body: unknown = await fetch(new URL("/.nyte/describe", url), {
+    signal: AbortSignal.timeout(ms),
+  })
+    .then((response) => response.json())
+    .catch(() => null);
+
+  return Value.Check(HostDescriptionType, body) ? body : null;
 }
 
 export async function publishHost(path: string, host: RunningHost): Promise<void> {

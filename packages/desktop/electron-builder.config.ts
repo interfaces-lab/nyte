@@ -219,6 +219,7 @@ const mac = {
     ...CLI,
     { from: "build/Assets.car", to: "Assets.car" },
     { from: "resources/icon.png", to: "icon.png" },
+    { from: "resources/icon-day.png", to: "icon-day.png" },
     { from: "resources/trayTemplate.png", to: "trayTemplate.png" },
     { from: "resources/trayTemplate@2x.png", to: "trayTemplate@2x.png" },
   ],

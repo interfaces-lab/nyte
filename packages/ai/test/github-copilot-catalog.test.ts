@@ -200,11 +200,7 @@ describe("GitHub Copilot provider", () => {
     await setup.models.logout("github-copilot");
     const remaining = await setup.models.listAccounts("github-copilot");
     assert.equal(remaining.length, 1);
-    assert.equal(remaining[0]?.active, false);
-    assert.deepEqual(await setup.models.getAvailable("github-copilot"), []);
-    const first = remaining[0];
-    if (!first) throw new Error("Expected the first account to remain");
-    await setup.models.selectAccount("github-copilot", first.id);
+    assert.equal(remaining[0]?.active, true);
     assert.deepEqual(
       (await setup.models.getAvailable("github-copilot")).map((model) => model.id),
       ["gemini-3.8-flash"],

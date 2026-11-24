@@ -1,4 +1,4 @@
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { MERMAID_COLORS, cleanMermaidSvg } from "@nyte-ai/ui/mermaid-theme";
 import { renderMermaidSVG } from "beautiful-mermaid";
 
 const MAX_SOURCE_LENGTH = 8000;
@@ -17,21 +17,9 @@ export function renderDiagram(source: string): DiagramResult {
   }
 
   try {
-    const svg = renderMermaidSVG(source, {
-      bg: role.bgMutedTranslucent,
-      fg: role.contentPrimary,
-      accent: role.contentAccent,
-      muted: role.contentSecondary,
-      surface: role.bgElevated,
-      border: role.strokeQuaternary,
-      line: role.strokeTertiary,
-      padding: 24,
-      transparent: true,
-    })
-      .replaceAll(/^ *@import .*\n/gm, "")
-      .replace(/^ *text \{ font-family: .*\n/m, "")
-      .replace(/(\.mono \{ font-family: )[^;]*/, `$1${type.fontMono}`)
-      .replace(/<svg\b[^>]*>/, wholePixelSize);
+    const svg = cleanMermaidSvg(
+      renderMermaidSVG(source, { ...MERMAID_COLORS, padding: 24, transparent: true }),
+    ).replace(/<svg\b[^>]*>/, wholePixelSize);
 
     return svg.length > MAX_SVG_LENGTH ? { kind: "source" } : { kind: "diagram", svg };
   } catch {

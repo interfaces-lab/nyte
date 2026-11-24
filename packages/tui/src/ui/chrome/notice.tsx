@@ -96,7 +96,7 @@ function hostText(host: HostNotice, now: number): string {
     case "update-host":
       return "The host runs an older Nyte · update Nyte there";
     case "update-nyte":
-      return "The host runs a newer Nyte · nyte update";
+      return "The host runs a newer Nyte · update this nyte";
     case "restart-host":
       return "The host runs an older Nyte · restart nyte host";
     default: {

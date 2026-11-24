@@ -2,7 +2,6 @@ import { findLanguage, LANGUAGES } from "@nyte-ai/schema";
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
@@ -103,7 +102,7 @@ export function LanguageBar(input: {
   if (notice === dismissed) return null;
 
   return (
-    <div role="status" {...props(text.sm, styles.card, hairline.ring)}>
+    <div role="status" {...props(text.sm, styles.card)}>
       <Icon name="circle-info" size="sm" />
       {state.kind === "installing" && (
         <span {...props(styles.message)}>

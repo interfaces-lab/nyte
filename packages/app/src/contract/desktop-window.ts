@@ -72,10 +72,17 @@ export interface WindowOpening {
   readonly workspace: DesktopWindowOpen["workspace"];
 }
 
-export function windowOpening(window: DesktopWindow): WindowOpening {
+export function windowOpening(
+  window: DesktopWindow,
+  remembered: Static<typeof SelectedWorkspaceType> | null | undefined,
+): WindowOpening {
+  const launched = window.open === undefined ? undefined : parseWindowOpen(window.open).workspace;
+
+  if (!window.reloaded) return { window, workspace: launched };
+
   return {
-    window: window.reloaded ? { ...window, open: undefined } : window,
-    workspace: window.open === undefined ? undefined : parseWindowOpen(window.open).workspace,
+    window: { ...window, open: undefined },
+    workspace: remembered === undefined ? launched : (remembered ?? undefined),
   };
 }
 

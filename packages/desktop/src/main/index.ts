@@ -99,11 +99,12 @@ import {
   themePreference,
   unsavedEditsHeld,
   viewedChat,
-  windowWorkspacePath,
+  windowWorkspace,
 } from "../shared/ipc-inputs.ts";
 import { createWindowWorkspaces } from "../shared/window-workspace.ts";
 
 interface NyteWindow {
+  readonly windowId: string;
   readonly app: DesktopApp;
   readonly window: BrowserWindow;
   readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
@@ -369,6 +370,12 @@ const mainCalls: CallTable = {
   "host.browser.attach": async (window, input) => browserSurfaces.attach(input, window),
   "host.browser.setEntered": async (window, input) => browserSurfaces.setEntered(input, window),
   "host.switchApp": async (window, input) => switchApp(window, input),
+  "host.openSettings": async (_window, input) => {
+    const shown =
+      [...windows.values()].findLast((entry) => entry.app === "nyte") ?? createWindow("nyte");
+
+    shown.menuCommands.dispatch({ kind: "action", action: "settings.open", input });
+  },
 } satisfies { readonly [P in MainCallPath]: CallHandler<P> };
 
 const mainRoute: CallRoute = (window, path, input) => callTable(mainCalls, window, path, input);
@@ -525,12 +532,14 @@ function registerIpc(): void {
     if (unsavedEditsHeld.Check(held)) unsavedEdits.report(event.sender.id, held);
   });
 
-  ipcMain.on(WINDOW_WORKSPACE_CHANNEL, (event, path) => {
+  ipcMain.on(WINDOW_WORKSPACE_CHANNEL, (event, shown) => {
     const entry = senderWindow(event);
 
-    if (!windowWorkspacePath.Check(path)) return;
-    windowWorkspaces.shown(event.sender.id, path ?? undefined);
-    entry.window.setTitle(windowTitle(entry.app, path ?? undefined));
+    if (!windowWorkspace.Check(shown)) return;
+    const workspace = shown ?? undefined;
+    windowWorkspaces.shown(event.sender.id, workspace?.path);
+    entry.window.setTitle(windowTitle(entry.app, workspace?.path));
+    launchState.keepWindow(entry.windowId, entry.app, workspace);
   });
 
   ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
@@ -587,7 +596,7 @@ function createWindow(
     onScreen,
   });
 
-  launchState.keepWindow(windowId, app, opening);
+  launchState.keepWindow(windowId, app, opening?.workspace);
 
   const options: Electron.BrowserWindowConstructorOptions = {
     ...frame.bounds,
@@ -626,6 +635,7 @@ function createWindow(
   }
 
   const entry: NyteWindow = {
+    windowId,
     app,
     window: created,
     menuCommands: createMenuCommandDelivery({
@@ -928,7 +938,7 @@ if (!hasSingleInstanceLock) {
 
     Menu.setApplicationMenu(menu);
     void cli
-      ?.then((staged) => adoptStagedCli(home, staged))
+      ?.then((staged) => adoptStagedCli(home, staged, app.getVersion()))
       .catch((cause: unknown) => retainDiagnostic({ correlationId: "desktop-cli-stage", cause }));
   });
 

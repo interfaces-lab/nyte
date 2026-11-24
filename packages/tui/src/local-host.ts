@@ -7,9 +7,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { connect } from "@nyte-ai/sdk/client";
 import type { ClientConnection, ClientConnectOptions } from "@nyte-ai/sdk/client";
 import { tryLockFile } from "@nyte-ai/connect/host";
-import { SdkError } from "@nyte-ai/schema";
+import { compareVersions, SdkError } from "@nyte-ai/schema";
 import type { LocalEndpoint } from "@nyte-ai/service";
 import {
+  describeHost,
   findRunningHost,
   hostFilePath,
   hostLockPath,
@@ -172,8 +173,9 @@ async function attachHost(
     client: { kind, name: "nyte", version: VERSION },
     journal: fileJournal(),
     transport: unixTransport(endpoint.socket),
-  }).catch((cause: unknown) => {
+  }).catch(async (cause: unknown) => {
     if (cause instanceof SdkError && cause.code !== "unavailable") {
+      await failIfHostNewer(endpoint.url);
       hostFailure(`attach to the host at ${endpoint.url}`)(cause);
     }
 
@@ -196,6 +198,21 @@ async function attachHost(
       await connection.close().catch(() => undefined);
     },
   };
+}
+
+/** The HTTP dial fails before the socket's hello, so the host's `host-newer` verdict (`matchBuild`) never arrives. Orders the builds the way it would, so an older nyte left on the PATH says so instead of showing a schema error. */
+async function failIfHostNewer(url: string): Promise<void> {
+  const host = await describeHost(url, 1000);
+
+  if (host === null || (compareVersions(VERSION, host.version) ?? 0) >= 0) return;
+
+  throw new CliError("conflict", `Can't attach to the host at ${url}: it runs a newer Nyte.`, {
+    details: [
+      { label: "This nyte", value: `${VERSION} at ${selfCommand()[0]}` },
+      { label: "Host reported", value: printable(host.version) },
+      { label: "Fix", value: "Put a nyte at least as new as the host first on your PATH" },
+    ],
+  });
 }
 
 function unixTransport(path: string | undefined): ClientConnectOptions["transport"] {

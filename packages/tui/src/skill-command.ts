@@ -3,10 +3,9 @@ import { mkdir, readFile, readdir, rm, rmdir, writeFile } from "node:fs/promises
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { HostDescriptionType, isJsonObject } from "@nyte-ai/schema";
+import { isJsonObject } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
-import { Compile } from "typebox/compile";
-import { findRunningHost, hostFilePath } from "@nyte-ai/service/host-endpoint";
+import { describeHost, findRunningHost, hostFilePath } from "@nyte-ai/service/host-endpoint";
 import { CliError } from "./cli/errors.ts";
 import { parseCommandArgs, readAction } from "./cli/options.ts";
 import { formatCommand, formatTable } from "./cli/format.ts";
@@ -49,8 +48,6 @@ const SKILL_REVISION = 4;
 const HOOK_COMMAND = "nyte skill hook";
 
 const HOOK_BUDGET_MS = 2000;
-
-const descriptions = Compile(HostDescriptionType);
 
 export async function skillCommand(input: {
   readonly args: readonly string[];
@@ -440,7 +437,7 @@ function ourHandler(handler: Json): boolean {
 
 async function hookContext(env: Env): Promise<string> {
   const host = await Promise.race([
-    describeHost(env).catch(() => "unknown" as const),
+    findServingHost(env).catch(() => "unknown" as const),
     sleep(HOOK_BUDGET_MS, "unknown" as const, { ref: false }),
   ]);
 
@@ -460,21 +457,13 @@ async function hookContext(env: Env): Promise<string> {
   ].join("\n");
 }
 
-async function describeHost(env: Env) {
+async function findServingHost(env: Env) {
   const running = await findRunningHost(hostFilePath(env));
 
   if (running === null) return null;
+  const description = await describeHost(running.url, HOOK_BUDGET_MS / 2);
 
-  const response = await fetch(new URL("/.nyte/describe", running.url), {
-    signal: AbortSignal.timeout(HOOK_BUDGET_MS / 2),
-  });
-
-  const body: unknown = await response.json();
-
-  return {
-    url: running.url,
-    version: descriptions.Check(body) ? body.version : "of unknown version",
-  };
+  return { url: running.url, version: description?.version ?? "of unknown version" };
 }
 
 function parseSkillArgs(args: readonly string[]) {

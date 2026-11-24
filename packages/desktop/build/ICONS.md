@@ -11,7 +11,7 @@ The icon has two looks.
 | Night | `#232a44` to `#0c1020` | `#eef2fd` at the centre, deepening to `#8199dc` | Full |
 | Day | `#e6ecfb` to `#c4d0f0` | `#7d95dc` at the centre, deepening to `#3b519f` | 35% |
 
-macOS 26 and later pick the look from the Icon & widget style setting. Default shows the day look, even when the system is in dark mode, and Dark shows the night look. Tinted uses the night moons, so they stay bright on the dark plate. Every other file here is the night look.
+macOS 26 and later pick the look from the Icon & widget style setting. Default shows the day look, even when the system is in dark mode, and Dark shows the night look. Tinted uses the night moons, so they stay bright on the dark plate. The two `icon-day.png` files are the day look. Every other file here is the night look.
 
 | File | What it is |
 | --- | --- |
@@ -19,10 +19,12 @@ macOS 26 and later pick the look from the Icon & widget style setting. Default s
 | `Assets.car` | `icon.icon` compiled with `actool`. macOS 26 and later draw the app icon from it as Liquid Glass. `CFBundleIconName` in the packaged app's `Info.plist` names it |
 | `icon.icns` | The night look for macOS before 26 and for development builds. An 824px plate on the 1024px canvas with the drop shadow in the margin, following Apple's macOS icon grid |
 | `icon.png` | The 1024px image from `icon.icns` |
-| `../resources/icon.png` | The 256px image from `icon.icns`. Development builds set it as the Dock icon |
+| `icon-day.png` | The day look at 1024px on the same grid as `icon.png`. The app shows it, or `icon.png` in dark mode, in its About window and its Settings previews |
+| `../resources/icon.png` | The 256px image from `icon.icns`. Development builds set it as the Dock icon, and the menu bar's host menu shows it in dark mode |
+| `../resources/icon-day.png` | The day look at 256px on the same grid. The host menu shows it in light mode |
 | `icon.ico` | The night look without padding at 16 to 256px, for Windows |
 | `icon.svg` | The night look as flat SVG, without padding, corner radius 26.8% |
-| `icon-macos.svg` | The flat SVG with the 824px plate on the 1024px canvas. The app shows it in its About window |
+| `icon-macos.svg` | The flat SVG with the 824px plate on the 1024px canvas |
 | `icon-ios.svg` | The flat SVG on a square plate, with no padding and no corner radius, because iOS applies its own mask |
 | `icon-ios.png` | The 1024px opaque render of `icon-ios.svg`. The mobile app's `app.json` points at it |
 
@@ -64,8 +66,9 @@ Icon Composer, `ictool` and an `actool` that reads `.icon` files ship with Xcode
 
 4. Build `icon.ico` from the renders at 16, 24, 32, 48, 64, 128 and 256px.
 5. Build `icon.icns`. For each canvas size, render the plate at 80.5% of the canvas, rounded up to an even number of pixels, and centre it over a black shadow at 30% opacity whose blur and downward offset are 1.2% of the canvas. Save `icon.png` and `../resources/icon.png` from the 1024px and 256px images.
-6. Redraw the three SVG files and render `icon-ios.png`. The iOS plate stays square and opaque.
-7. Copy the files the web app and the docs site share.
+6. Render the day look the same way with `--rendition Default` at 1024px and 256px, and save `icon-day.png` and `../resources/icon-day.png`.
+7. Redraw the three SVG files and render `icon-ios.png`. The iOS plate stays square and opaque.
+8. Copy the files the web app and the docs site share.
 
 To check the development bundle without launching Electron, run this from `packages/desktop`:
 

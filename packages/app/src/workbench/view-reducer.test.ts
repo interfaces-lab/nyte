@@ -8,7 +8,20 @@ import type { WorkbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
 import { reduceView } from "./view-reducer.ts";
 import type { WorkbenchViewAction } from "./view-reducer.ts";
-import { DEFAULT_WIDTH, workbenchPanelWidth, workbenchSeparatorValue } from "./width.ts";
+import {
+  clampWorkbenchWidthToBounds,
+  DEFAULT_WIDTH,
+  WORKBENCH_CENTER_WIDTH_MIN,
+  workbenchSeparatorValue,
+  workbenchWidthBounds,
+} from "./width.ts";
+
+function shownWidth(width: { readonly pixels: number }, stage: number): number {
+  return clampWorkbenchWidthToBounds(
+    width.pixels,
+    workbenchWidthBounds(stage, WORKBENCH_CENTER_WIDTH_MIN),
+  );
+}
 
 test("reopening Changes applies the requested scope and path to the open tab in one step", () => {
   const opened = reduceView(DEFAULT_VIEW, {
@@ -158,14 +171,14 @@ test("the panel keeps its preferred pixel width as the stage changes", () => {
 
   const view = "/workspace";
 
-  expect(workbenchPanelWidth(store.getView(view).width, 1176)).toBe(588);
-  expect(workbenchPanelWidth(store.getView(view).width, 1424)).toBe(588);
-  expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(584);
-  expect(workbenchPanelWidth(store.getView(view).width, 696)).toBe(360);
+  expect(shownWidth(store.getView(view).width, 1176)).toBe(588);
+  expect(shownWidth(store.getView(view).width, 1424)).toBe(588);
+  expect(shownWidth(store.getView(view).width, 944)).toBe(584);
+  expect(shownWidth(store.getView(view).width, 696)).toBe(360);
 
   store.dispatch(view, { kind: "set-width", pixels: 700 });
-  expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(584);
-  expect(workbenchPanelWidth(store.getView(view).width, 2000)).toBe(700);
+  expect(shownWidth(store.getView(view).width, 944)).toBe(584);
+  expect(shownWidth(store.getView(view).width, 2000)).toBe(700);
   expect(stored.at(-1)?.views).toMatchObject([{ key: view, width: 700 }]);
 
   const reopened = createWorkbenchStore(() => ({ browser: true }), {
@@ -173,7 +186,7 @@ test("the panel keeps its preferred pixel width as the stage changes", () => {
     set: () => undefined,
   });
 
-  expect(workbenchPanelWidth(reopened.getView(view).width, 2000)).toBe(700);
+  expect(shownWidth(reopened.getView(view).width, 2000)).toBe(700);
 });
 
 test.each([
@@ -181,9 +194,15 @@ test.each([
   { name: "a 720 px stage at zoom 2", stage: 360, expected: { min: 100, max: 100, now: 100 } },
   { name: "a 900 px stage at zoom 3", stage: 300, expected: { min: 100, max: 100, now: 100 } },
 ])("the resize separator reports within its range on $name", (row) => {
-  const width = workbenchPanelWidth(DEFAULT_WIDTH, row.stage);
+  const width = shownWidth(DEFAULT_WIDTH, row.stage);
 
-  expect(workbenchSeparatorValue(width, row.stage)).toEqual(row.expected);
+  expect(
+    workbenchSeparatorValue(
+      width,
+      row.stage,
+      workbenchWidthBounds(row.stage, WORKBENCH_CENTER_WIDTH_MIN),
+    ),
+  ).toEqual(row.expected);
 });
 
 test.each([
@@ -209,11 +228,11 @@ test.each([
     set: () => undefined,
   });
 
-  expect(workbenchPanelWidth(store.getView("/workspace").width, 1400)).toBe(row.expected);
-  expect(workbenchPanelWidth(store.getView("/workspace").width, 2000)).toBe(row.expected);
+  expect(shownWidth(store.getView("/workspace").width, 1400)).toBe(row.expected);
+  expect(shownWidth(store.getView("/workspace").width, 2000)).toBe(row.expected);
   expect(store.getView("/workspace").tabs).toMatchObject([{ id: "files", kind: "editor" }]);
   store.dispatch("/workspace", { kind: "set-width", pixels: 640 });
-  expect(workbenchPanelWidth(store.getView("/workspace").width, 2000)).toBe(640);
+  expect(shownWidth(store.getView("/workspace").width, 2000)).toBe(640);
 });
 
 const other = { kind: "workspace", id: asId<"workspace">("other") } satisfies WorkbenchBrowse;

@@ -241,6 +241,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
       subject: Type.Union([ArrivalSubjectType, Type.Null()]),
     }),
   ),
+  "host.openSettings": compile(strict({ page: Type.Optional(nonEmpty) })),
 };
 
 const callRequest = compile(
@@ -340,7 +341,7 @@ export const viewedChat = Compile(
 
 export const unsavedEditsHeld = Compile(Type.Boolean());
 
-export const windowWorkspacePath = Compile(Type.Union([nonEmpty, Type.Null()]));
+export const windowWorkspace = Compile(Type.Union([SelectedWorkspaceType, Type.Null()]));
 
 export const terminalNotice = Compile(
   strict({

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import process from "node:process";
 import { dev } from "@nyte-ai/sdk/client";
-import { app, clipboard, Menu, nativeImage, shell, Tray } from "electron";
+import { app, clipboard, Menu, nativeImage, nativeTheme, shell, Tray } from "electron";
 import type { MenuItemConstructorOptions, NativeImage } from "electron";
 import { processAlive } from "@nyte-ai/service/host-endpoint";
 import type { HostAgent } from "./host-agent.ts";
@@ -53,7 +53,12 @@ export function createHostTray(options: HostTrayOptions): HostTray {
   const icon = nativeImage.createFromPath(resourcePath("trayTemplate.png"));
   icon.setTemplateImage(true);
   const tray = new Tray(icon);
-  const appIcon = nativeImage.createFromPath(resourcePath("icon.png"));
+
+  const appIcons = {
+    day: nativeImage.createFromPath(resourcePath("icon-day.png")),
+    night: nativeImage.createFromPath(resourcePath("icon.png")),
+  };
+
   let reading: HostReading = { status: "stopped", issues: [] };
   let probing: Promise<void> | undefined;
 
@@ -78,7 +83,14 @@ export function createHostTray(options: HostTrayOptions): HostTray {
 
     tray.popUpContextMenu(
       Menu.buildFromTemplate(
-        items(options, reading, badgedIcon(appIcon, STATUS_COLORS[reading.status])),
+        items(
+          options,
+          reading,
+          badgedIcon(
+            nativeTheme.shouldUseDarkColors ? appIcons.night : appIcons.day,
+            STATUS_COLORS[reading.status],
+          ),
+        ),
       ),
     );
   };

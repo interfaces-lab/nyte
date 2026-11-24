@@ -68,7 +68,7 @@ const styles = create({
     backgroundColor: role.surfaceMaterial,
     overflow: "clip",
   },
-  solid: { backgroundColor: role.bgBase },
+  bare: { backgroundColor: "transparent" },
   card: {
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
@@ -285,7 +285,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
           <main
             {...props(
               styles.surface,
-              appShape().surface === "solid" && styles.solid,
+              appShape().surface === "solid" && styles.bare,
               strip && styles.card,
               strip && sidebarCollapsed && styles.cardSidebarHidden,
             )}

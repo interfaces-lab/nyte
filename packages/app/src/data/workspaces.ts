@@ -3,8 +3,11 @@ import { useMutation, useMutationState, useQuery, useQueryClient } from "@tansta
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { MutationState } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
+import { Type } from "typebox";
 import { keys, queryClient } from "./query-client.ts";
 import type { HostState, SelectedWorkspace } from "../contract/bridge.ts";
+import { SelectedWorkspaceType } from "../contract/desktop-window.ts";
+import { readStored, sessionArea, writeStored } from "../lib/storage.ts";
 import { connected } from "./connection.ts";
 import { groupByWorkspace } from "./session-list.ts";
 import { useRootRows } from "./session-rows.ts";
@@ -213,6 +216,21 @@ export async function trustWorkspace(
 
 export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {
   queryClient.setQueryData<HostState>(keys.host, (host) => ({ ...host, workspace }));
+}
+
+const SHOWN_WORKSPACE_KEY = "nyte:shown-workspace:v1";
+
+export function rememberShownWorkspace(workspace: SelectedWorkspace | null): void {
+  writeStored(sessionArea(), SHOWN_WORKSPACE_KEY, workspace);
+}
+
+export function rememberedWorkspace(): SelectedWorkspace | null | undefined {
+  return readStored(
+    sessionArea(),
+    SHOWN_WORKSPACE_KEY,
+    Type.Union([SelectedWorkspaceType, Type.Null()]),
+    undefined,
+  );
 }
 
 export function workspacePath(workspace: Pick<WorkspaceInfo, "target">): string | null {

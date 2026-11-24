@@ -45,11 +45,10 @@ const EDITOR_WIDGET_CSS = `
 [data-marker-popover] {
   min-width: 0;
   max-width: min(460px, var(--popover-available-width));
-  margin-block: ${space.s1};
   padding: 0;
   border-radius: ${radius.card};
   background-color: ${role.popupMaterial};
-  box-shadow: ${shadow.shadowLg}, inset 0 0 0 1px ${role.strokeQuaternary};
+  box-shadow: ${shadow.shadowSm}, inset 0 0 0 1px ${role.strokeQuaternary};
   color: ${role.contentPrimary};
   animation-name: nyte-marker-popover-in;
   animation-duration: ${motion.durationFast};
@@ -59,12 +58,6 @@ const EDITOR_WIDGET_CSS = `
   [data-marker-popover] {
     animation-name: none;
   }
-}
-[data-marker-popover]::before {
-  content: "";
-  position: absolute;
-  inset: calc(${space.s1} * -1) 0;
-  z-index: -1;
 }
 [data-marker-popover][data-marker-error] {
   --_diagnostic-accent: var(--nyte-diagnostic-error, var(--diffs-marker-bg));
@@ -122,7 +115,6 @@ const EDITOR_WIDGET_CSS = `
   padding-block: ${space.s1};
   padding-inline-start: ${space.s3};
   padding-inline-end: ${space.s1_5};
-  box-shadow: inset 0 1px 0 ${role.strokeQuaternary};
 }
 [data-diagnostic-footer][data-diagnostic-action-only] {
   padding-inline-start: ${space.s1_5};

@@ -79,7 +79,7 @@ function mountApp(
     mountShell: () =>
       mount(
         <StrictMode>
-          <App appIcon="/icon.svg" router={router} />
+          <App appIcon={{ light: "/icon.svg", dark: "/icon.svg" }} router={router} />
           <AddFolderDialogHost />
         </StrictMode>,
       ),

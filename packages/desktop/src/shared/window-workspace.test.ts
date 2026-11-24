@@ -114,31 +114,31 @@ test.each<{
     shown: undefined,
   },
   {
-    name: "a window Finder opened that chose Home starts on its folder after a reload, as its page does",
+    name: "a window Finder opened that chose Home stays on Home after a reload, as its page does",
     steps: [
       { kind: "opened", seed },
       { kind: "shown", workspace: undefined },
       { kind: "ended", end: "navigated" },
     ],
-    shown: seed,
-  },
-  {
-    name: "a folder the old page opened is gone after a reload until the new page says it",
-    steps: [
-      { kind: "opened" },
-      { kind: "shown", workspace: picked },
-      { kind: "ended", end: "navigated" },
-    ],
     shown: undefined,
   },
   {
-    name: "a crashed page leaves the folder Finder opened",
+    name: "a reload keeps the folder the page showed, as the page does",
+    steps: [
+      { kind: "opened", seed },
+      { kind: "shown", workspace: picked },
+      { kind: "ended", end: "navigated" },
+    ],
+    shown: picked,
+  },
+  {
+    name: "a crashed page keeps the folder it showed",
     steps: [
       { kind: "opened", seed },
       { kind: "shown", workspace: picked },
       { kind: "ended", end: "crashed" },
     ],
-    shown: seed,
+    shown: picked,
   },
   {
     name: "a closed window shows nothing, and a late word from it changes nothing",

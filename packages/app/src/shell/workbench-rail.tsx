@@ -1,6 +1,5 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import type { GitStatus, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -39,6 +38,7 @@ import { railModel, tabPresentation } from "../workbench/selectors.ts";
 import { workbench } from "../workbench/store.ts";
 import { useTerminalRuntime } from "../terminal/terminal-store.ts";
 import { workbenchStyles } from "../workbench/workbench.stylex.ts";
+import { appActions } from "../data/app-actions.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;
 
@@ -96,8 +96,6 @@ function CostRow({
   readonly usage: Usage | undefined;
   readonly actions: ReactNode;
 }): ReactElement {
-  const navigate = useNavigate();
-
   if (usage === undefined || usage.total === 0) {
     return <StatusRow icon="speed-low" label="No usage yet" quiet actions={actions} />;
   }
@@ -120,7 +118,7 @@ function CostRow({
           render={<TooltipTrigger />}
           onClick={
             showsSettingsSection("usage")
-              ? () => void navigate({ to: "/settings/$section", params: { section: "usage" } })
+              ? () => appActions.run("settings.open", { page: "usage" })
               : undefined
           }
         >
@@ -147,9 +145,7 @@ function SessionStatusRows({
 }): ReactElement {
   const store = chatStore(sessionId);
   const context = useWatchSelect(store, (state) => state.value?.context);
-  const execution = useWatchSelect(store, (state) => state.value?.execution);
-  const lastRun = execution?.kind === "idle" ? execution.lastRun : null;
-  const usage = lastRun?.end.kind === "completed" ? lastRun.end.usage : undefined;
+  const usage = useWatchSelect(store, (state) => state.value?.usage);
 
   const percent =
     context === undefined || context.window === 0

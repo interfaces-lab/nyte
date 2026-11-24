@@ -1135,6 +1135,7 @@
     "app/src/theme/schema.stylex.ts workbench": [
       "activeWidth",
       "centerWidthMin",
+      "editorWidthMin",
       "fileListWidth",
       "headerHeight",
       "headerPaddingBlock",

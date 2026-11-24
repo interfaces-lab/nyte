@@ -4,6 +4,8 @@ import { MotionConfig } from "motion/react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { AppIcon } from "./components/app-icon.ts";
+import type { AppIcons } from "./components/app-icon.ts";
+import { useAppearance } from "./preferences/appearance-store.ts";
 import { nyte } from "./contract/nyte.ts";
 import { keys, queryClient } from "./data/query-client.ts";
 import type { HostState } from "./contract/bridge.ts";
@@ -12,7 +14,7 @@ import type { AppRouter } from "./shell/routes.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { windowTabs } from "./tabs/window-tabs.ts";
 import { activeSelection } from "./panes/pane-layout.ts";
-import { homeFolder, subscribeHomeFolder } from "./data/workspaces.ts";
+import { homeFolder, rememberShownWorkspace, subscribeHomeFolder } from "./data/workspaces.ts";
 import { WORKBENCH_HOME_VIEW_KEY, workspacePathForView } from "./workbench/paths.ts";
 import { workbench } from "./workbench/store.ts";
 import { watchUnsavedEdits } from "./editor/file-store.ts";
@@ -64,17 +66,18 @@ function useViewedChat(): void {
 
 function useShownWorkspace(): void {
   useMountEffect(() => {
-    const show = nyte.host.setWorkspacePath;
+    const show = nyte.host.setWorkspace;
 
     if (show === undefined) return undefined;
     let reported: string | null | undefined;
 
     const report = (): void => {
-      const path = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path ?? null;
+      const workspace = queryClient.getQueryData<HostState>(keys.host)?.workspace ?? null;
 
-      if (path === reported) return;
-      reported = path;
-      show(path);
+      if ((workspace?.path ?? null) === reported) return;
+      reported = workspace?.path ?? null;
+      rememberShownWorkspace(workspace);
+      show(workspace);
     };
 
     report();
@@ -113,7 +116,8 @@ function useSavedShells(): void {
   });
 }
 
-export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
+export function App({ appIcon, router }: { appIcon: AppIcons; router: AppRouter }): ReactElement {
+  const icon = useAppearance().dark ? appIcon.dark : appIcon.light;
   useHostEvents();
   useChatWindowStage(router);
   useClientPlugins();
@@ -136,8 +140,8 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
     <MotionConfig reducedMotion="user">
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
-          <AppIcon value={appIcon}>
-            <Shell appIcon={appIcon} />
+          <AppIcon value={icon}>
+            <Shell appIcon={icon} />
           </AppIcon>
         </RouterContextProvider>
       </QueryClientProvider>

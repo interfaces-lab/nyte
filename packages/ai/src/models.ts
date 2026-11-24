@@ -682,7 +682,8 @@ class ModelsImpl implements MutableModels {
     }
 
     const accounts = await this.listAccounts(providerId, { signal });
-    const name = label?.trim() || `Account ${accounts.length + 1}`;
+    const name =
+      label?.trim() || (accounts.length === 0 ? "Default" : `Account ${accounts.length + 1}`);
 
     const loginOperation: Promise<Credential> = method.login({ ...interaction, signal });
     const credential = await raceWithAbortSignal(loginOperation, signal);
@@ -761,10 +762,11 @@ class ModelsImpl implements MutableModels {
         providerId,
         async (current) => {
           if (!current?.accounts.some((account) => account.id === id)) return undefined;
+          const accounts = current.accounts.filter((account) => account.id !== id);
 
           return {
-            active: current.active === id ? null : current.active,
-            accounts: current.accounts.filter((account) => account.id !== id),
+            active: current.active === id ? (accounts[0]?.id ?? null) : current.active,
+            accounts,
           };
         },
         { signal },

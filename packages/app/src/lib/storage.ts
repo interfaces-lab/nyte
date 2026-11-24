@@ -12,6 +12,10 @@ export function localArea(): Storage | undefined {
   return globalThis.window === undefined ? undefined : window.localStorage;
 }
 
+export function sessionArea(): Storage | undefined {
+  return globalThis.window === undefined ? undefined : window.sessionStorage;
+}
+
 export function readStored<S extends TSchema, Fallback>(
   area: StorageArea | undefined,
   key: string,

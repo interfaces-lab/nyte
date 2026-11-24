@@ -517,7 +517,7 @@ export interface HostBridge {
   }) => Promise<number | undefined>;
   readonly browser?: BrowserBridge;
   readonly attention?: AttentionBridge;
-  readonly setWorkspacePath?: (path: string | null) => void;
+  readonly setWorkspace?: (workspace: SelectedWorkspace | null) => void;
   readonly setUnsavedEdits?: (held: boolean) => void;
   /** Focuses the app's window on this workspace, or opens one beside this window, and lands it on the subject. */
   readonly switchApp?: (input: {
@@ -525,6 +525,7 @@ export interface HostBridge {
     readonly workspace: SelectedWorkspace | null;
     readonly subject: ArrivalSubject | null;
   }) => Promise<void>;
+  readonly openSettings?: (input: { readonly page?: string }) => Promise<void>;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 

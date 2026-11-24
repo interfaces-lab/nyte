@@ -76,6 +76,7 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.attach",
   "host.browser.setEntered",
   "host.switchApp",
+  "host.openSettings",
 ] as const;
 
 const HOST_PROCESS_PATHS = [
@@ -137,6 +138,7 @@ export interface DesktopBridge {
     | "pathForFile"
     | "onEvent"
     | "switchApp"
+    | "openSettings"
   > &
     Required<
       Pick<
@@ -156,7 +158,7 @@ export interface DesktopBridge {
         | "browser"
         | "attention"
         | "setUnsavedEdits"
-        | "setWorkspacePath"
+        | "setWorkspace"
       >
     >;
 }

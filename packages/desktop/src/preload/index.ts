@@ -208,8 +208,9 @@ const bridge = {
       notify: (input) => ipcRenderer.send(TERMINAL_NOTIFICATION_CHANNEL, input),
     },
     setUnsavedEdits: (held) => ipcRenderer.send(UNSAVED_EDITS_CHANNEL, held),
-    setWorkspacePath: (path) => ipcRenderer.send(WINDOW_WORKSPACE_CHANNEL, path),
+    setWorkspace: (workspace) => ipcRenderer.send(WINDOW_WORKSPACE_CHANNEL, workspace),
     switchApp: object("host.switchApp"),
+    openSettings: object("host.openSettings"),
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);
