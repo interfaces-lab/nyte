@@ -184,95 +184,95 @@ export function EditorSidebar({
   const views = VIEWS.filter((view) => view.value !== "changes" || changesView !== undefined);
   const activeTab = tabs.find((tab) => tab.path === outline.path);
 
-  return (
-    <SidePanel side={sidePanel}>
-      <aside
-        aria-label={views.find((view) => view.value === sidebar.tab)?.label ?? "Explorer"}
-        {...props(styles.explorer)}
-      >
-        {main && (
-          <div {...props(styles.header)}>
-            <ExplorerFolderMenu viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
-            <ToggleGroup
-              aria-label="Sidebar views"
-              value={[sidebar.tab]}
-              xstyle={styles.views}
-              onValueChange={(value) => {
-                const next = views.find((view) => view.value === value[0]);
+  const aside = (
+    <aside
+      aria-label={views.find((view) => view.value === sidebar.tab)?.label ?? "Explorer"}
+      {...props(styles.explorer)}
+    >
+      {main && (
+        <div {...props(styles.header)}>
+          <ExplorerFolderMenu viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
+          <ToggleGroup
+            aria-label="Sidebar views"
+            value={[sidebar.tab]}
+            xstyle={styles.views}
+            onValueChange={(value) => {
+              const next = views.find((view) => view.value === value[0]);
 
-                if (next !== undefined) sidebar.show(next.value);
-              }}
-            >
-              {views.map((view) => (
-                <Toggle
-                  key={view.value}
-                  value={view.value}
-                  size="xs"
-                  iconOnly
-                  icon={view.icon}
-                  aria-label={view.label}
-                />
-              ))}
-            </ToggleGroup>
-          </div>
-        )}
-        <div {...props(styles.sidebarBody, sidebar.tab !== "explorer" && styles.hidden)}>
-          <FilesExplorer
-            viewKey={viewKey}
-            chatFolder={chatFolder}
-            workspace={workspace}
-            files={files}
-            changes={changes}
-            outline={main ? undefined : outline}
-            main={main}
-            handle={explorer}
-            onSearch={() => sidebar.show("search")}
-            onCopyPath={onCopyPath}
-          />
-        </div>
-        <div
-          ref={searchRef}
-          {...props(styles.sidebarBody, sidebar.tab !== "search" && styles.hidden)}
-        >
-          {sidebar.searchOpened && (
-            <WorkspaceSearch
-              active={shown && sidebar.tab === "search"}
-              drafts={drafts}
-              onOpen={(location) =>
-                fileActions.open(viewKey, {
-                  path: location.path,
-                  target: {
-                    kind: "match",
-                    line: location.line,
-                    column: location.column,
-                    length: location.length,
-                  },
-                })
-              }
-            />
-          )}
-        </div>
-        {changesView !== undefined && (
-          <div {...props(styles.sidebarBody, sidebar.tab !== "changes" && styles.hidden)}>
-            {changesView}
-          </div>
-        )}
-        {main && (
-          <FileOutline
-            path={activeTab?.displayPath}
-            symbols={outline.symbols}
-            empty={outline.path === undefined ? "Open a file to see its outline" : "No symbols"}
-            onOpen={(line) => {
-              if (outline.path !== undefined) {
-                fileActions.open(viewKey, {
-                  path: outline.path,
-                  target: { kind: "position", line },
-                });
-              }
+              if (next !== undefined) sidebar.show(next.value);
             }}
+          >
+            {views.map((view) => (
+              <Toggle
+                key={view.value}
+                value={view.value}
+                size="xs"
+                iconOnly
+                icon={view.icon}
+                aria-label={view.label}
+              />
+            ))}
+          </ToggleGroup>
+        </div>
+      )}
+      <div {...props(styles.sidebarBody, sidebar.tab !== "explorer" && styles.hidden)}>
+        <FilesExplorer
+          viewKey={viewKey}
+          chatFolder={chatFolder}
+          workspace={workspace}
+          files={files}
+          changes={changes}
+          outline={main ? undefined : outline}
+          main={main}
+          handle={explorer}
+          onSearch={() => sidebar.show("search")}
+          onCopyPath={onCopyPath}
+        />
+      </div>
+      <div
+        ref={searchRef}
+        {...props(styles.sidebarBody, sidebar.tab !== "search" && styles.hidden)}
+      >
+        {sidebar.searchOpened && (
+          <WorkspaceSearch
+            active={shown && sidebar.tab === "search"}
+            drafts={drafts}
+            onOpen={(location) =>
+              fileActions.open(viewKey, {
+                path: location.path,
+                target: {
+                  kind: "match",
+                  line: location.line,
+                  column: location.column,
+                  length: location.length,
+                },
+              })
+            }
           />
         )}
-      </aside>
-    </SidePanel>
+      </div>
+      {changesView !== undefined && (
+        <div {...props(styles.sidebarBody, sidebar.tab !== "changes" && styles.hidden)}>
+          {changesView}
+        </div>
+      )}
+      {main && (
+        <FileOutline
+          path={activeTab?.displayPath}
+          symbols={outline.symbols}
+          empty={outline.path === undefined ? "Open a file to see its outline" : "No symbols"}
+          onOpen={(line) => {
+            if (outline.path !== undefined) {
+              fileActions.open(viewKey, {
+                path: outline.path,
+                target: { kind: "position", line },
+              });
+            }
+          }}
+        />
+      )}
+    </aside>
   );
+
+  return main ? aside : <SidePanel side={sidePanel}>{aside}</SidePanel>;
 }

@@ -23,7 +23,7 @@ import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { workbenchScope } from "../workbench/paths.ts";
 import { shownDockTab } from "../workbench/selectors.ts";
 import { useWorkbenchViewState, workbench } from "../workbench/store.ts";
-import { useWindowActionsSlot } from "../workbench/window-actions.ts";
+import { useNavigatorSlot, useWindowActionsSlot } from "../workbench/window-actions.ts";
 import { FileBreadcrumbs } from "./file-breadcrumbs.tsx";
 import { EditorEmptyState } from "./editor-empty-state.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
@@ -149,6 +149,7 @@ export function EditorPanel({
   const [palette, setPalette] = useState<string>();
   const [statusSlot, setStatusSlot] = useState<HTMLDivElement | null>(null);
   const windowActions = useWindowActionsSlot();
+  const explorerHost = useNavigatorSlot();
   const view = useWorkbenchViewState(viewKey);
   const chosenSide = useSetting(preferences.editorSidePanel);
   const sidePanel = main ? "start" : chosenSide;
@@ -390,6 +391,26 @@ export function EditorPanel({
     </>
   );
 
+  const explorerSidebar = (
+    <EditorSidebar
+      viewKey={viewKey}
+      chatFolder={chatFolder}
+      workspace={workspace}
+      files={files}
+      changes={changes}
+      outline={{ path: activeFile?.path, symbols }}
+      tabs={tabs.tabs}
+      sidebar={sidebar}
+      searchRef={searchRef}
+      explorer={explorer}
+      shown={shown}
+      sidePanel={sidePanel}
+      main={main}
+      changesView={changesView}
+      onCopyPath={copyPath}
+    />
+  );
+
   return (
     <section
       ref={panelRef}
@@ -406,7 +427,15 @@ export function EditorPanel({
       onKeyDownCapture={(event) => {
         if (!shown || event.defaultPrevented || event.nativeEvent.isComposing) return;
 
-        if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
+        if (
+          !(event.target instanceof Node) ||
+          !(
+            event.currentTarget.contains(event.target) ||
+            explorerHost?.contains(event.target) === true
+          )
+        ) {
+          return;
+        }
 
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
@@ -555,25 +584,7 @@ export function EditorPanel({
             />
           )}
         </div>
-        {explorerShown && (
-          <EditorSidebar
-            viewKey={viewKey}
-            chatFolder={chatFolder}
-            workspace={workspace}
-            files={files}
-            changes={changes}
-            outline={{ path: activeFile?.path, symbols }}
-            tabs={tabs.tabs}
-            sidebar={sidebar}
-            searchRef={searchRef}
-            explorer={explorer}
-            shown={shown}
-            sidePanel={sidePanel}
-            main={main}
-            changesView={changesView}
-            onCopyPath={copyPath}
-          />
-        )}
+        {!main && explorerShown && explorerSidebar}
       </div>
       <EditorPalette
         viewKey={viewKey}
@@ -597,6 +608,10 @@ export function EditorPanel({
         tabs={tabs.tabs}
         editors={editors}
       />
+      {main &&
+        workspaceActive &&
+        explorerHost !== null &&
+        createPortal(explorerSidebar, explorerHost)}
       {main &&
         shown &&
         windowActions !== null &&

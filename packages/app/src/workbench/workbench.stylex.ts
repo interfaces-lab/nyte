@@ -35,7 +35,6 @@ export const workbenchStyles = create({
   /** In a Code window the stored width is the chat panel's, and the workbench takes the rest of the stage. */
   panelOpenCode: {
     minWidth: 0,
-    backgroundColor: role.bgBase,
     width: `calc(100cqi - min(100cqi, clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.editorWidthMin}px)))))`,
   },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },

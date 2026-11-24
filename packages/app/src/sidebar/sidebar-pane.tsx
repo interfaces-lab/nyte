@@ -7,14 +7,15 @@ import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.style
 import { layer, media } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion as motionTokens, role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { preferences, SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
+import { SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import { appShape } from "../workbench/app-shape.ts";
 import {
   applySidebarWidth,
   attachSidebarWidth,
   clampSidebarWidth,
-  shellActions,
-} from "../tabs/shell-state.ts";
+  windowSidebar,
+} from "../workbench/window-sidebar.ts";
 import { useSidebar } from "./use-sidebar.ts";
 
 const FLOAT_OMEGA = (2 * Math.PI) / 0.18;
@@ -129,7 +130,7 @@ interface ResizeState {
 
 export function SidebarPane({ children }: { readonly children: ReactNode }): ReactElement {
   const docked = useSidebar().state === "expanded";
-  const sidebarWidth = useSetting(preferences.sidebarWidth);
+  const sidebarWidth = useSetting(appShape().sidebar.width);
   const rail = useRef<HTMLDivElement | null>(null);
   const reducedMotion = useReducedMotion();
   const floatX = useMotionValue(0);
@@ -208,7 +209,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
     }
 
     resizeRef.current = undefined;
-    shellActions.setSidebarWidth(resize.nextWidth);
+    windowSidebar.setWidth(resize.nextWidth);
     setResizing(false);
   };
 
@@ -246,7 +247,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
 
     if (width === undefined) return;
     event.preventDefault();
-    shellActions.setSidebarWidth(width);
+    windowSidebar.setWidth(width);
   };
 
   return (
@@ -269,7 +270,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           floating && [
             floatingSurfaceStyles.popup,
             styles.railFloating,
-            windowTabs.strip ? styles.railFloatingCard : styles.railFloatingEdge,
+            windowTabs.desktop ? styles.railFloatingCard : styles.railFloatingEdge,
           ],
         )}
         initial={false}
@@ -303,7 +304,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           aria-valuenow={sidebarWidth}
           {...props(
             styles.handle,
-            windowTabs.strip ? styles.handleCard : styles.handleEdge,
+            windowTabs.desktop ? styles.handleCard : styles.handleEdge,
             resizing && styles.handleActive,
           )}
           onKeyDown={resizeWithKeyboard}

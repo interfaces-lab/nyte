@@ -240,7 +240,6 @@ const styles = create({
     flexDirection: "column",
     flexShrink: 0,
     minHeight: MIN_HEIGHT,
-    backgroundColor: role.bgBase,
   },
   height: (pixels: number) => ({
     height: `min(${String(pixels)}px, calc(100% - ${String(EDITOR_ROOM)}px))`,

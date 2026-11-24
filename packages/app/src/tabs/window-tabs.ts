@@ -56,6 +56,10 @@ class WindowTabs {
     return this.stored && !this.stripped;
   }
 
+  get desktop(): boolean {
+    return this.stored;
+  }
+
   get startupDestination(): boolean {
     return this.wantsStartupDestination;
   }

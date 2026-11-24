@@ -43,6 +43,8 @@ import { BrowserPanel } from "../browser/browser-panel";
 import { CanvasPanel } from "../canvas/canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../lib/deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
+import { useSidebar } from "../sidebar/use-sidebar.ts";
+import { windowSidebar } from "../workbench/window-sidebar.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 const MOUNTED_VIEWS = 3;
@@ -100,6 +102,8 @@ function PanelContent({
   readonly dock: ReactNode;
 }): ReactElement {
   const uiFontSize = useSetting(preferences.uiFontSize);
+  const windowSidebarOpen = useSidebar().open;
+  const main = appShape().panel === "chat";
 
   const toggleSidebar = (): void =>
     workbench.dispatch(viewKey, { kind: "toggle-sidebar", slot: tabSlot(tab) });
@@ -116,13 +120,11 @@ function PanelContent({
               chatFolder={chatFolder}
               visible={visible}
               workspaceActive={workspaceActive}
-              sidebarVisible={sidebarVisible}
-              main={appShape().panel === "chat"}
+              sidebarVisible={main ? windowSidebarOpen : sidebarVisible}
+              main={main}
               dock={dock}
-              changes={
-                appShape().panel === "chat" ? <EditorChangesView viewKey={viewKey} /> : undefined
-              }
-              onToggleSidebar={toggleSidebar}
+              changes={main ? <EditorChangesView viewKey={viewKey} /> : undefined}
+              onToggleSidebar={main ? windowSidebar.toggle : toggleSidebar}
             />
           )}
         </Deferred>

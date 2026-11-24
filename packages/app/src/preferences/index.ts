@@ -163,6 +163,16 @@ export const preferences = {
     integer(SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max),
     256,
   ),
+  explorerVisible: definePreference(
+    { key: SIDEBAR, field: "explorerVisible" },
+    Type.Boolean(),
+    true,
+  ),
+  explorerWidth: definePreference(
+    { key: SIDEBAR, field: "explorerWidth" },
+    integer(SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max),
+    256,
+  ),
   homeVisible: definePreference({ key: SIDEBAR, field: "homeVisible" }, Type.Boolean(), true),
   sidebarView: definePreference(
     { key: SIDEBAR, field: "view" },

@@ -1,5 +1,6 @@
-import { preferences, useSetting } from "../preferences/index.ts";
-import { shellActions } from "../tabs/shell-state.ts";
+import { useSetting } from "../preferences/index.ts";
+import { appShape } from "../workbench/app-shape.ts";
+import { windowSidebar } from "../workbench/window-sidebar.ts";
 
 type SidebarState = "expanded" | "collapsed";
 
@@ -11,12 +12,12 @@ export interface SidebarControl {
 }
 
 export function useSidebar(): SidebarControl {
-  const open = useSetting(preferences.sidebarVisible);
+  const open = useSetting(appShape().sidebar.visible);
 
   return {
     state: open ? "expanded" : "collapsed",
     open,
-    setOpen: (next) => preferences.sidebarVisible.set(next),
-    toggleSidebar: shellActions.toggleSidebar,
+    setOpen: windowSidebar.setOpen,
+    toggleSidebar: windowSidebar.toggle,
   };
 }

@@ -24,7 +24,8 @@ import {
 } from "../settings-sections/sections.ts";
 import { closeSettings } from "../settings-sections/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { launch, toggleDock, toggleExplorer } from "./launch.ts";
+import { launch, toggleDock } from "./launch.ts";
+import { windowSidebar } from "../workbench/window-sidebar.ts";
 import { closeTab } from "./close-tab.ts";
 import { workbenchHasFocus } from "../workbench/focus-region.ts";
 import { focusedGuestSurface } from "../browser/browser-guests.tsx";
@@ -225,9 +226,7 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
 
       return true;
     case "sidebar.toggle":
-      if (appShape().navigator === "files") {
-        toggleExplorer(workbenchViewKey(currentWorkspacePath()));
-      } else shellActions.toggleSidebar();
+      windowSidebar.toggle();
 
       return true;
     case "workbench.toggle":

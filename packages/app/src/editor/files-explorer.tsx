@@ -334,6 +334,7 @@ export function FilesExplorer({
         {...props(
           workbenchStyles.treeTheme,
           styles.tree,
+          main && styles.treeGlass,
           (unmatched || browsed.kind !== "ready") && styles.hidden,
         )}
       />
@@ -391,6 +392,7 @@ const styles = create({
     overflowWrap: "anywhere",
   },
   hidden: { display: "none" },
+  treeGlass: { "--trees-bg-override": "transparent" },
   tree: {
     display: "block",
     flex: 1,

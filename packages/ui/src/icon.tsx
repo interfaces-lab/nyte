@@ -162,11 +162,28 @@ export function IconSwap(iconProps: IconProps): ReactElement {
   );
 }
 
-export type PanelSide = "left" | "right";
+export type PanelSide = "left" | "right" | "bottom";
 
-const PANE_WIDTH = { visible: 4.5, hidden: 1.5 } as const;
+const PANE_DEPTH = { visible: 4.5, hidden: 1.5 } as const;
 
-const PANE_INNER_EDGE: Readonly<Record<PanelSide, number>> = { left: 5.5, right: 18.5 };
+const PANE_INNER_EDGE: Readonly<Record<PanelSide, number>> = {
+  left: 5.5,
+  right: 18.5,
+  bottom: 16.5,
+};
+
+function paneRect(side: PanelSide, depth: number) {
+  const edge = PANE_INNER_EDGE[side];
+
+  switch (side) {
+    case "left":
+      return { x: edge, y: 7.5, width: depth, height: 9 };
+    case "right":
+      return { x: edge - depth, y: 7.5, width: depth, height: 9 };
+    case "bottom":
+      return { x: 5.5, y: edge - depth, width: 13, height: depth };
+  }
+}
 
 const PANEL_FRAME_PATH =
   "M2.75 6.75C2.75 5.64543 3.64543 4.75 4.75 4.75H19.25C20.3546 4.75 21.25 5.64543 21.25 6.75V17.25C21.25 18.3546 20.3546 19.25 19.25 19.25H4.75C3.64543 19.25 2.75 18.3546 2.75 17.25V6.75Z";
@@ -183,8 +200,7 @@ export function PanelToggleIcon({
   size = "md",
 }: PanelToggleIconProps): ReactElement {
   const reducedMotion = useReducedMotion();
-  const width = PANE_WIDTH[visible ? "visible" : "hidden"];
-  const edge = PANE_INNER_EDGE[side];
+  const pane = paneRect(side, PANE_DEPTH[visible ? "visible" : "hidden"]);
 
   return (
     <IconFrame size={size}>
@@ -199,12 +215,10 @@ export function PanelToggleIcon({
         <path d={PANEL_FRAME_PATH} stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
         <motion.rect
           initial={false}
-          animate={{ x: side === "left" ? edge : edge - width, width }}
+          animate={pane}
           transition={
             reducedMotion ? { duration: 0 } : { type: "spring", duration: 0.28, bounce: 0 }
           }
-          y={7.5}
-          height={9}
           rx={0.75}
           fill="currentColor"
         />

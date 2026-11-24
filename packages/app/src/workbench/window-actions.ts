@@ -1,24 +1,15 @@
-import { useSyncExternalStore } from "react";
+import { portalSlot } from "../lib/portal-slot.ts";
 
-let slot: HTMLElement | null = null;
+const windowActions = portalSlot();
 
-const listeners = new Set<() => void>();
+const navigator = portalSlot();
 
 /** Where the title bar holds the main area's own controls, so the view that owns them can portal them there. */
-export function attachWindowActions(element: HTMLElement | null): void {
-  if (slot === element) return;
-  slot = element;
+export const attachWindowActions = windowActions.attach;
 
-  for (const listener of listeners) listener();
-}
+export const useWindowActionsSlot = windowActions.use;
 
-export function useWindowActionsSlot(): HTMLElement | null {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
+/** Where the shell's sidebar holds a Code window's explorer, so the Editor that owns it can portal it there. */
+export const attachNavigator = navigator.attach;
 
-      return () => listeners.delete(listener);
-    },
-    () => slot,
-  );
-}
+export const useNavigatorSlot = navigator.use;
