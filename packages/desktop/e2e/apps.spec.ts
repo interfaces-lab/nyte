@@ -194,7 +194,8 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
             .getByRole("tablist", { name: "Workbench tabs" })
             .getByRole("tab", { name: "Editor" }),
         ).toHaveCount(0);
-        expect(await offered(code)).toEqual(["Editor", "Changes", "Browser", "Terminal"]);
+        await expect(code.getByRole("button", { name: "New workbench tab" })).toHaveCount(0);
+        await expect(code.getByRole("button", { name: "Show panel" })).toBeVisible();
         await capture(testInfo, application, code, "code-opened");
       });
 

@@ -310,9 +310,7 @@ async function switchTo(page: Page, path: string): Promise<number> {
 
   if (await tab.isVisible()) await tab.click();
   else {
-    await editor(page)
-      .getByRole("button", { name: /^Open files in group/u })
-      .click();
+    await page.getByRole("button", { name: "More", exact: true }).click();
     await page.getByRole("menuitem", { name: path, exact: true }).click();
   }
 

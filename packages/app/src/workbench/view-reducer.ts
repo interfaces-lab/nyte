@@ -15,6 +15,7 @@ import type {
   KindTab,
   WorkbenchBrowse,
   WorkbenchChangesScope,
+  WorkbenchDock,
   WorkbenchTab,
   WorkbenchTabId,
   WorkbenchViewState,
@@ -79,7 +80,11 @@ export type WorkbenchViewAction =
       readonly group: EditorGroupId;
     }
   | { readonly kind: "focus-group"; readonly group: EditorGroupId }
-  | { readonly kind: "browse"; readonly root: WorkbenchBrowse };
+  | { readonly kind: "browse"; readonly root: WorkbenchBrowse }
+  | {
+      readonly kind: "dock";
+      readonly patch: Partial<Pick<WorkbenchDock, "open" | "height" | "maximized">>;
+    };
 
 type Side = "before" | "after";
 
@@ -244,6 +249,20 @@ export function reduceView(
           ? state.sidebars.filter((slot) => slot !== action.slot)
           : [...state.sidebars, action.slot],
       };
+    case "dock": {
+      const dock = {
+        ...state.dock,
+        ...action.patch,
+        height: Math.round(action.patch.height ?? state.dock.height),
+      };
+
+      return dock.open === state.dock.open &&
+        dock.height === state.dock.height &&
+        dock.maximized === state.dock.maximized
+        ? state
+        : { ...state, dock };
+    }
+
     default: {
       const _exhaustive: never = action;
 

@@ -2,6 +2,13 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Command } from "@nyte-ai/ui/command";
 import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
+import { Kbd } from "@nyte-ai/ui/kbd";
+import { Tabs } from "@nyte-ai/ui/tabs";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { PaletteLegend } from "../components/palette-legend.tsx";
+import { paletteTabStyles } from "../components/palette-tabs.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { FileTypeIcon, FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { Loader } from "@nyte-ai/ui/loader";
@@ -14,6 +21,7 @@ import { SymbolKindGlyph } from "./symbol-kind.tsx";
 const MATCH_LIMIT = 50;
 
 type Mode =
+  | { readonly kind: "commands"; readonly needle: string }
   | { readonly kind: "files"; readonly needle: string }
   | {
       readonly kind: "line";
@@ -23,6 +31,7 @@ type Mode =
   | { readonly kind: "symbol"; readonly needle: string };
 
 type PaletteTarget =
+  | { readonly kind: "command"; readonly command: PaletteCommand }
   | { readonly kind: "file"; readonly file: MentionFile }
   | { readonly kind: "symbol"; readonly symbol: OutlineSymbol }
   | { readonly kind: "line" };
@@ -34,6 +43,28 @@ interface Row {
   readonly detail?: string;
   readonly run: () => void;
 }
+
+/** A command the palette's Commands tab runs. */
+export interface PaletteCommand {
+  readonly key: string;
+  readonly label: string;
+  readonly icon: IconName;
+  readonly keys: readonly string[];
+  readonly group: string;
+  readonly run: () => void;
+}
+
+const TABS = [
+  { value: "commands", prefix: ">", label: "Commands", placeholder: "Run a command…" },
+  { value: "files", prefix: "", label: "Files", placeholder: "Go to file…" },
+  { value: "symbol", prefix: "@", label: "Symbols", placeholder: "Go to symbol…" },
+  { value: "line", prefix: ":", label: "Go to Line", placeholder: "Go to line…" },
+] as const satisfies readonly {
+  readonly value: Mode["kind"];
+  readonly prefix: string;
+  readonly label: string;
+  readonly placeholder: string;
+}[];
 
 export interface PaletteFile {
   readonly path: string;
@@ -52,6 +83,8 @@ export function FilePalette({
   onClose,
   onOpenFile,
   onGoTo,
+  commands,
+  shortcut,
 }: {
   readonly query: string | undefined;
   readonly files: readonly MentionFile[] | undefined;
@@ -63,15 +96,28 @@ export function FilePalette({
   readonly onClose: () => void;
   readonly onOpenFile: (file: MentionFile) => void;
   readonly onGoTo: (line: number, column: number | undefined) => void;
+  /** The Commands tab's rows. Undefined leaves the palette to files, symbols and lines, with no tabs. */
+  readonly commands?: readonly PaletteCommand[];
+  /** The keys that open the palette on Commands, shown in its input. */
+  readonly shortcut?: readonly string[];
 }): ReactElement {
-  const mode = paletteMode(query ?? "");
+  const mode = paletteMode(query ?? "", commands !== undefined);
+  const tab = TABS.find((entry) => entry.value === mode.kind) ?? TABS[1];
 
   const run = (action: () => void): void => {
     onClose();
     action();
   };
 
-  const rows = paletteRows(mode, { files, recent, active, onOpenFile, onGoTo });
+  const rows = paletteRows(mode, {
+    files,
+    recent,
+    active,
+    commands: commands ?? [],
+    onOpenFile,
+    onGoTo,
+  });
+
   const recentPaths = new Set(recent.map((file) => file.path));
 
   const groups =
@@ -80,7 +126,13 @@ export function FilePalette({
           { heading: "Recent", rows: rows.filter((row) => recentPaths.has(row.key)) },
           { heading: "All files", rows: rows.filter((row) => !recentPaths.has(row.key)) },
         ]
-      : [{ heading: undefined, rows }];
+      : mode.kind === "commands"
+        ? [
+            ...Map.groupBy(rows, (row) =>
+              row.target.kind === "command" ? row.target.command.group : "",
+            ),
+          ].map(([heading, grouped]) => ({ heading, rows: grouped }))
+        : [{ heading: undefined, rows }];
 
   return (
     <Command.Root
@@ -90,27 +142,61 @@ export function FilePalette({
       }}
     >
       <Command.Popup
-        title="Go to file"
+        title={commands === undefined ? "Go to file" : "Command palette"}
         items={rows.map((row) => row.key)}
         value={query ?? ""}
         onValueChange={onQueryChange}
       >
         <FileTypeIconSprite />
         <Command.Input
-          aria-label="Go to file"
-          placeholder="Go to file, :line or @symbol"
+          aria-label={commands === undefined ? "Go to file" : tab.placeholder.replace("…", "")}
+          placeholder={commands === undefined ? "Go to file, :line or @symbol" : tab.placeholder}
+          trailing={shortcut === undefined ? undefined : <Kbd keys={[...shortcut]} plain />}
           onKeyDown={(event) => {
             const input = event.currentTarget;
 
-            if (event.key.length === 1 && input.selectionEnd === 0 && /^[:@]$/u.test(input.value)) {
+            if (
+              event.key.length === 1 &&
+              input.selectionEnd === 0 &&
+              /^[:@>]$/u.test(input.value)
+            ) {
               input.setSelectionRange(1, 1);
             }
           }}
         />
+        {commands !== undefined && (
+          <Tabs.Root
+            variant="plain"
+            value={tab.value}
+            xstyle={[paletteTabStyles.tabsBar, hairline.blockEnd]}
+            onValueChange={(value) => {
+              const next = TABS.find((entry) => entry.value === value);
+
+              if (next !== undefined) onQueryChange(next.prefix);
+            }}
+          >
+            <Tabs.List aria-label="Palette categories" xstyle={paletteTabStyles.tabs}>
+              {TABS.map((entry) => (
+                <Tabs.Tab
+                  key={entry.value}
+                  value={entry.value}
+                  variant="bare"
+                  xstyle={[text.base, paletteTabStyles.tab]}
+                >
+                  {entry.label}
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
+          </Tabs.Root>
+        )}
         <div role="status" {...props(srOnly)}>
           {`${String(rows.length)} ${rows.length === 1 ? "result" : "results"}`}
         </div>
-        <Command.List aria-label={mode.kind === "symbol" ? "Symbols" : "Files"}>
+        <Command.List
+          aria-label={
+            commands !== undefined ? tab.label : mode.kind === "symbol" ? "Symbols" : "Files"
+          }
+        >
           <Command.Empty>
             {mode.kind === "files" && filesError !== null ? (
               <div>
@@ -140,7 +226,9 @@ export function FilePalette({
                     key={row.key}
                     value={row.key}
                     leading={
-                      row.target.kind === "file" ? (
+                      row.target.kind === "command" ? (
+                        <Icon name={row.target.command.icon} size="md" />
+                      ) : row.target.kind === "file" ? (
                         <FileTypeIcon path={row.target.file.displayPath} />
                       ) : row.target.kind === "symbol" ? (
                         <SymbolKindGlyph kind={row.target.symbol.kind} />
@@ -148,7 +236,13 @@ export function FilePalette({
                         <Icon name="chevron-right" size="md" />
                       )
                     }
-                    meta={row.detail}
+                    meta={
+                      row.target.kind === "command" && row.target.command.keys.length > 0 ? (
+                        <Kbd keys={[...row.target.command.keys]} plain />
+                      ) : (
+                        row.detail
+                      )
+                    }
                     onClick={() => run(row.run)}
                   >
                     {row.label}
@@ -157,12 +251,17 @@ export function FilePalette({
               </Command.Group>
             ))}
         </Command.List>
+        {commands !== undefined && <PaletteLegend />}
       </Command.Popup>
     </Command.Root>
   );
 }
 
-function paletteMode(query: string): Mode {
+function paletteMode(query: string, commands: boolean): Mode {
+  if (commands && query.startsWith(">")) {
+    return { kind: "commands", needle: query.slice(1).trim().toLocaleLowerCase() };
+  }
+
   if (query.startsWith(":")) {
     const match = /^:\s*(\d+)?(?:[:,]\s*(\d+))?/u.exec(query);
 
@@ -202,11 +301,26 @@ function paletteRows(
     readonly files: readonly MentionFile[] | undefined;
     readonly recent: readonly MentionFile[];
     readonly active: PaletteFile | undefined;
+    readonly commands: readonly PaletteCommand[];
     readonly onOpenFile: (file: MentionFile) => void;
     readonly onGoTo: (line: number, column: number | undefined) => void;
   },
 ): readonly Row[] {
   switch (mode.kind) {
+    case "commands":
+      return input.commands
+        .flatMap((command) => {
+          const score = mode.needle === "" ? 0 : fuzzyScore(command.label, mode.needle);
+
+          return score === undefined ? [] : [{ command, score }];
+        })
+        .sort((left, right) => (mode.needle === "" ? 0 : right.score - left.score))
+        .map(({ command }) => ({
+          target: { kind: "command", command },
+          key: `command:${command.key}`,
+          label: command.label,
+          run: command.run,
+        }));
     case "files": {
       const recentPaths = new Set(input.recent.map((file) => file.path));
 
@@ -295,6 +409,8 @@ function paletteRows(
 
 function emptyMessage(mode: Mode, active: PaletteFile | undefined): string {
   switch (mode.kind) {
+    case "commands":
+      return mode.needle === "" ? "No commands" : `No commands match "${mode.needle}"`;
     case "files":
       return mode.needle === "" ? "No files in this folder" : `No files match "${mode.needle}"`;
     case "line":

@@ -67,6 +67,7 @@ const dragHandles = new Map([
   ["packages/app/src/images/markup-stage.tsx", new Set(["svg"])],
   ["packages/app/src/panes/session-screen.stylex.ts", new Set(["sash"])],
   ["packages/app/src/workbench/workbench.stylex.ts", new Set(["sash"])],
+  ["packages/app/src/shell/workbench-dock.tsx", new Set(["sash"])],
   ["packages/canvas/src/board/board.stylex.ts", new Set(["stage"])],
 ]);
 

@@ -11,6 +11,7 @@ import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { ChangesPanel } from "../changes/changes-panel.tsx";
 import { DesignTab } from "../shell/design-tab.tsx";
+import { EditorChangesView } from "../shell/editor-changes-view.tsx";
 import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
 import { useWorkbenchViewState, workbench } from "./store.ts";
 import { EditorPanel } from "../editor/editor-panel.tsx";
@@ -68,6 +69,7 @@ export async function run(): Promise<string> {
   window.publishWorkbench = () =>
     publishDeferred("workbench", {
       EditorPanel,
+      EditorChangesView,
       ChangesPanel,
       DesignTab,
       TerminalPanel,

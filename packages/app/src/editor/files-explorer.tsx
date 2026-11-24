@@ -2,8 +2,8 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { FileTree } from "@nyte-ai/ui/trees/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useState } from "react";
-import type { ReactElement } from "react";
+import { useImperativeHandle, useLayoutEffect, useState } from "react";
+import type { ReactElement, RefObject } from "react";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -32,6 +32,12 @@ import { FileOutline } from "./file-outline.tsx";
 import type { OutlineSymbol } from "./outline.ts";
 import type { WorktreeFile } from "./worktree-files.ts";
 
+/** What the editor asks of its explorer from outside it. */
+export interface ExplorerHandle {
+  /** Names a new file in the folder selected in the tree, or at the root. */
+  readonly newFile: () => void;
+}
+
 export function FilesExplorer({
   viewKey,
   chatFolder,
@@ -39,6 +45,8 @@ export function FilesExplorer({
   files,
   changes,
   outline,
+  main,
+  handle,
   onSearch,
   onCopyPath,
 }: {
@@ -50,10 +58,16 @@ export function FilesExplorer({
     readonly error: Error | null;
   };
   readonly changes: readonly WorktreeFile[];
-  readonly outline: {
-    readonly path: string | undefined;
-    readonly symbols: readonly OutlineSymbol[];
-  };
+  /** The active file's outline, shown under the tree. Undefined where the sidebar shows it under every view. */
+  readonly outline:
+    | {
+        readonly path: string | undefined;
+        readonly symbols: readonly OutlineSymbol[];
+      }
+    | undefined;
+  /** The Editor is the window's main area: its sidebar header holds the folder menu, and Changes has its own view. */
+  readonly main: boolean;
+  readonly handle: RefObject<ExplorerHandle | null>;
   readonly onSearch: () => void;
   readonly onCopyPath: (path: string) => void;
 }): ReactElement {
@@ -108,6 +122,16 @@ export function FilesExplorer({
 
   const explorer = { model, viewKey, latest, queryClient };
 
+  const selectedFolder = (): string => {
+    const path = model.getSelectedPaths().at(-1) ?? model.getFocusedPath();
+
+    if (path === null || path === undefined) return "";
+
+    return path.endsWith("/") ? path : path.slice(0, path.lastIndexOf("/") + 1);
+  };
+
+  useImperativeHandle(handle, () => ({ newFile: () => startNaming("file", selectedFolder()) }));
+
   const openFromTree = (event: Event, preview: boolean): void => {
     if (
       event
@@ -150,6 +174,41 @@ export function FilesExplorer({
     activePath,
   });
 
+  const fileActionsBar = browsed.kind === "ready" && (
+    <div {...props(styles.actions)}>
+      <Button
+        iconOnly
+        size="sm"
+        icon="file-add"
+        aria-label="New File"
+        onClick={() => startNaming("file", main ? selectedFolder() : "")}
+      />
+      <Button
+        iconOnly
+        size="sm"
+        icon="folder-add"
+        aria-label="New Folder"
+        onClick={() => startNaming("folder", main ? selectedFolder() : "")}
+      />
+      {!main && (
+        <Button
+          iconOnly
+          size="sm"
+          icon="refresh"
+          aria-label="Refresh Explorer"
+          onClick={() => refresh(explorer)}
+        />
+      )}
+      <Button
+        iconOnly
+        size="sm"
+        icon="collapse"
+        aria-label="Collapse Folders"
+        onClick={collapseFolders}
+      />
+    </div>
+  );
+
   // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes worktree statuses into the imperative Pierre tree
   useLayoutEffect(() => {
     model.setGitStatus(
@@ -163,46 +222,17 @@ export function FilesExplorer({
 
   return (
     <div {...props(styles.explorer)}>
-      <div {...props(styles.header)}>
-        <ExplorerFolderMenu viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
-        {browsed.kind === "ready" && (
-          <div {...props(styles.actions)}>
-            <Button
-              iconOnly
-              size="sm"
-              icon="file-add"
-              aria-label="New File"
-              onClick={() => startNaming("file", "")}
-            />
-            <Button
-              iconOnly
-              size="sm"
-              icon="folder-add"
-              aria-label="New Folder"
-              onClick={() => startNaming("folder", "")}
-            />
-            <Button
-              iconOnly
-              size="sm"
-              icon="refresh"
-              aria-label="Refresh Explorer"
-              onClick={() => refresh(explorer)}
-            />
-            <Button
-              iconOnly
-              size="sm"
-              icon="collapse"
-              aria-label="Collapse Folders"
-              onClick={collapseFolders}
-            />
-          </div>
-        )}
-      </div>
+      {!main && (
+        <div {...props(styles.header)}>
+          <ExplorerFolderMenu viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
+          {fileActionsBar}
+        </div>
+      )}
       {browsed.kind !== "ready" && (
         <ExplorerFolderState viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
       )}
       {browsed.kind === "ready" && (
-        <div {...props(styles.filter)}>
+        <div {...props(styles.filter, main && styles.filterInline)}>
           <InputGroup xstyle={styles.filterField}>
             <Icon name="search" size="sm" />
             <Input
@@ -223,23 +253,26 @@ export function FilesExplorer({
               }}
             />
           </InputGroup>
-          <ToggleGroup
-            aria-label="Show"
-            xstyle={styles.scope}
-            value={[scope]}
-            onValueChange={(value) => {
-              const next = value[0];
+          {main && fileActionsBar}
+          {!main && (
+            <ToggleGroup
+              aria-label="Show"
+              xstyle={styles.scope}
+              value={[scope]}
+              onValueChange={(value) => {
+                const next = value[0];
 
-              if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
-            }}
-          >
-            <Toggle value="all" size="sm" xstyle={styles.scopeOption}>
-              All
-            </Toggle>
-            <Toggle value="changed" size="sm" xstyle={styles.scopeOption}>
-              Changed <span {...props(styles.count)}>{changes.length}</span>
-            </Toggle>
-          </ToggleGroup>
+                if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
+              }}
+            >
+              <Toggle value="all" size="sm" xstyle={styles.scopeOption}>
+                All
+              </Toggle>
+              <Toggle value="changed" size="sm" xstyle={styles.scopeOption}>
+                Changed <span {...props(styles.count)}>{changes.length}</span>
+              </Toggle>
+            </ToggleGroup>
+          )}
         </div>
       )}
       {browsed.kind === "ready" && files.error !== null && (
@@ -304,19 +337,21 @@ export function FilesExplorer({
           (unmatched || browsed.kind !== "ready") && styles.hidden,
         )}
       />
-      <FileOutline
-        path={tabs.active?.displayPath}
-        symbols={outline.symbols}
-        empty={outline.path === undefined ? "Open a file to see its outline" : "No symbols"}
-        onOpen={(line) => {
-          if (outline.path !== undefined) {
-            fileActions.open(viewKey, {
-              path: outline.path,
-              target: { kind: "position", line },
-            });
-          }
-        }}
-      />
+      {outline !== undefined && (
+        <FileOutline
+          path={tabs.active?.displayPath}
+          symbols={outline.symbols}
+          empty={outline.path === undefined ? "Open a file to see its outline" : "No symbols"}
+          onOpen={(line) => {
+            if (outline.path !== undefined) {
+              fileActions.open(viewKey, {
+                path: outline.path,
+                target: { kind: "position", line },
+              });
+            }
+          }}
+        />
+      )}
       <DeleteConfirmation confirming={confirming} onClose={() => setConfirming(undefined)} />
     </div>
   );
@@ -326,13 +361,14 @@ const styles = create({
   explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   header: {
     display: "flex",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: space.s2,
     flexShrink: 0,
     paddingBlock: space.s1_5,
     paddingInline: space.s2_5,
   },
-  actions: { display: "flex", gap: space.px, marginInlineStart: "auto" },
+  actions: { display: "flex", flexShrink: 0, gap: space.px, marginInlineStart: "auto" },
   filter: {
     display: "flex",
     flexWrap: "wrap",
@@ -342,6 +378,7 @@ const styles = create({
     paddingInline: space.s2,
     paddingBlockEnd: space.s1_5,
   },
+  filterInline: { flexWrap: "nowrap" },
   filterField: { flexGrow: 999, flexBasis: "8rem", minWidth: 0 },
   scope: { flexGrow: 1 },
   scopeOption: { flexGrow: 1 },

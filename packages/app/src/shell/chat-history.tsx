@@ -1,6 +1,4 @@
 import type { ReactElement } from "react";
-import { Button } from "@nyte-ai/ui/button";
-import { clientActionAriaShortcut, clientActions } from "../contract/client-actions.ts";
 import { useHostState } from "../data/host.ts";
 import { useRootRows } from "../data/session-rows.ts";
 import { SearchPalette } from "../sidebar/search-palette.tsx";
@@ -12,10 +10,10 @@ import { useWorkbenchFolder, workbenchViewKey } from "../workbench/paths.ts";
 const RECENT_LIMIT = 20;
 
 /**
- * A Code window's way back to its chats, in place of Nyte's chat list: the search palette, listing this project's
+ * A Code window's way back to its chats, in place of Nyte's chat list: the ⌘K palette, listing this project's
  * latest chats first. A chat it opens replaces the one in the chat panel.
  */
-export function ChatHistory({ mac }: { readonly mac: boolean }): ReactElement {
+export function ChatHistory(): ReactElement {
   const open = useOverlays().search;
   const workspace = useWorkbenchFolder(useHostState().data.workspace);
   const roots = useRootRows();
@@ -39,14 +37,6 @@ export function ChatHistory({ mac }: { readonly mac: boolean }): ReactElement {
       onRan={(action) => {
         if (action === "chat.new") revealChatPanel(view);
       }}
-      trigger={
-        <Button
-          iconOnly
-          icon="clock"
-          aria-label="Chats"
-          aria-keyshortcuts={clientActionAriaShortcut(clientActions.search, mac)}
-        />
-      }
     />
   );
 }

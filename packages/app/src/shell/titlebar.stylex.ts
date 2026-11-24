@@ -81,6 +81,13 @@ export const titlebarStyles = create({
     boxShadow: "none",
   },
   splitGroup: { display: "flex", alignItems: "center", gap: target.gap },
+  windowActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: target.gap,
+    flexShrink: 0,
+    WebkitAppRegion: "no-drag",
+  },
   trailing: {
     display: "flex",
     alignItems: "center",

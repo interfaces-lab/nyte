@@ -1,7 +1,7 @@
 import type { IconName } from "@nyte-ai/ui/icon";
 import type { clientActions } from "../contract/client-actions.ts";
-import { SETTINGS_SECTIONS } from "../settings-sections/sections.ts";
-import type { SettingsSection } from "../settings-sections/sections.ts";
+import { SETTINGS_SECTIONS } from "./sections.ts";
+import type { SettingsSection } from "./sections.ts";
 
 type ClientAction = (typeof clientActions)[keyof typeof clientActions];
 

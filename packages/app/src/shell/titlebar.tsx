@@ -1,6 +1,5 @@
 import { useSettingsOpen } from "../tabs/use-settings-open.ts";
 import { titlebarStyles } from "./titlebar.stylex.ts";
-import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { createLink } from "@tanstack/react-router";
@@ -32,6 +31,7 @@ import { toggleExplorer } from "../commands/launch.ts";
 import { ChatHistory } from "./chat-history.tsx";
 import { attachSidebarWidth, shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { attachActiveWorkbenchWidth } from "../workbench/width.ts";
+import { attachWindowActions } from "../workbench/window-actions.ts";
 import { sessionIsRunning } from "../sidebar/sidebar-view.ts";
 import { chatWindow } from "../window/index.ts";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
@@ -195,11 +195,7 @@ export function Titlebar(): ReactElement {
   const files = shape.navigator === "files";
   const solid = shape.surface === "solid";
 
-  const bar = props(
-    titlebarStyles.bar,
-    solid && hairline.blockEnd,
-    !focused && titlebarStyles.windowInactive,
-  );
+  const bar = props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive);
 
   const shownTab = shownWorkbenchTab(view, scope, capabilities);
 
@@ -327,24 +323,12 @@ export function Titlebar(): ReactElement {
       <header {...bar}>
         {sidebarSlot}
         <div {...props(titlebarStyles.contentArea, solid && titlebarStyles.contentAreaBare)}>
-          <span {...props(titlebarStyles.center)}>
-            {workspaceVisible && (
-              <WorkbenchTabStrip
-                key={viewKey}
-                viewKey={viewKey}
-                view={view}
-                scope={scope}
-                capabilities={capabilities}
-                sessionId={selection.kind === "session" ? selection.sessionId : undefined}
-              />
-            )}
-          </span>
+          <span {...props(titlebarStyles.center)} />
           <span {...props(titlebarStyles.trailing)}>
             {workspaceVisible && (
               <>
-                <span {...props(titlebarStyles.control)}>
-                  <ChatHistory mac={mac} />
-                </span>
+                <span ref={attachWindowActions} {...props(titlebarStyles.windowActions)} />
+                <ChatHistory />
                 <span {...props(titlebarStyles.control)}>
                   <Tooltip>
                     <TooltipTrigger

@@ -20,8 +20,8 @@ Rules that follow from this:
 
 - All three share one renderer build, one host and one project. Never fork a component per app.
 - A new difference between the apps is a new `AppShape` field. Lint rejects a comparison of `windowApp()`.
-- A view below the shell never reads `appShape()`. It takes the fact it needs as a prop, as `EditorPanel` takes `explorerDocked`.
-- The workbench store keeps the workbench open on its Editor where it is the main area (`WorkbenchArrangement`). Never restore that from a subscriber.
+- A view below the shell never reads `appShape()`. It takes the fact it needs as a prop, as `EditorPanel` takes `main`.
+- The workbench store keeps the workbench open on its Editor where it is the main area (`WorkbenchArrangement`), and moves every other tab into the dock under it. Never restore that from a subscriber.
 - `AppShape.launchers` lists the tabs each app offers. A new tab kind goes there.
 - `switchApp` focuses or opens another app's window on the same project. It carries the selection as an `ArrivalSubject`.
 - A Code window follows the light (`followLight`). A selection made in another window, or an agent's change, opens in its editor. An agent's change waits while the person is in the window, so it never moves the caret they type at.

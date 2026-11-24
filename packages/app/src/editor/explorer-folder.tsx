@@ -236,8 +236,8 @@ const styles = create({
   seat: {
     display: "flex",
     flexGrow: 1,
-    flexBasis: "50%",
-    minWidth: 0,
+    flexBasis: 0,
+    minWidth: `calc(${space.s8} * 2)`,
     containerType: "inline-size",
   },
   name: {

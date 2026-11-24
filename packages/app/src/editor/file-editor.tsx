@@ -4,7 +4,9 @@ import type { CodeViewSearch } from "@nyte-ai/ui/diffs";
 import type { CodeViewHandle } from "@nyte-ai/ui/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useRef, useState } from "react";
+import { use, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { findLanguage, LANGUAGES } from "@nyte-ai/schema";
 import type { MouseEvent, ReactElement, Ref, RefObject } from "react";
 import type { Document, WorkspaceId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
@@ -24,7 +26,7 @@ import { languageDocuments } from "./language-documents.ts";
 import { caretPosition, editorRange, selectionRange, textChanges } from "./pierre-language.ts";
 import { useCompletion } from "./use-completion.ts";
 import { useDeclarations } from "./use-declarations.ts";
-import { diagnosed, useDiagnostics } from "./use-diagnostics.ts";
+import { useDiagnostics } from "./use-diagnostics.ts";
 import {
   CaretPosition,
   caretStore,
@@ -54,7 +56,8 @@ import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { workspaceFile } from "../workbench/paths.ts";
 import { useWorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
 import type { FileBuffer } from "./file-document.ts";
-import { TAB_COLUMNS, visualColumn } from "./indentation.ts";
+import { indentUnit, TAB_COLUMNS, visualColumn } from "./indentation.ts";
+import { EditorStatusSlot } from "./status-slot.ts";
 import { FileImage, FileMessage, FileVideo, RevealButton, viewerStyles } from "./file-viewers.tsx";
 import { fileActions } from "./file-store.ts";
 import { MarkdownDocument } from "./markdown-document.tsx";
@@ -109,7 +112,26 @@ export const styles = create({
     fontVariantNumeric: "tabular-nums",
   },
   readOnly: { display: "flex", alignItems: "center", gap: space.s1, flexShrink: 0 },
+  language: { flexShrink: 0, color: role.contentSecondary, whiteSpace: "nowrap" },
 });
+
+function IndentationLabel({ path, text }: { readonly path: string; readonly text: string }) {
+  const unit = indentUnit(path, text);
+
+  if (unit === undefined) return null;
+
+  return (
+    <span {...props(styles.language)}>
+      {unit === "\t" ? `Tab Size: ${String(TAB_COLUMNS)}` : `Spaces: ${String(unit.length)}`}
+    </span>
+  );
+}
+
+function languageLabel(path: string): string {
+  const name = findLanguage(path)?.name;
+
+  return name === undefined ? "Plain Text" : LANGUAGES[name].label;
+}
 
 function DiskSync({ path }: { readonly path: string }): null {
   const queryClient = useQueryClient();
@@ -233,6 +255,7 @@ export function TextFileEditor({
   readonly reload: ReturnType<typeof useDocument>["refetch"];
 }): ReactElement {
   const { navigationRevision } = file;
+  const statusSlot = use(EditorStatusSlot);
 
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
 
@@ -384,6 +407,57 @@ export function TextFileEditor({
         : "";
 
   const statusVisible = !documentView || saveText !== "" || errorText !== "";
+
+  const status = (
+    <>
+      {file.readOnly && (
+        <span {...props(styles.readOnly)}>
+          <Icon name="lock" size="sm" />
+          <span>Read-only library file</span>
+          <Button
+            size="2xs"
+            variant="plain"
+            onClick={() => fileActions.setReadOnly(viewKey, file.path, false)}
+          >
+            Edit Anyway
+          </Button>
+        </span>
+      )}
+      {workspace !== undefined && !documentView && (
+        <FileBlame
+          file={file}
+          workspace={workspace}
+          version={snapshot.version}
+          active={active}
+          dirty={dirty}
+          caret={caret}
+        />
+      )}
+      <span role="status" {...props(viewerStyles.statusText, styles.saveText)}>
+        {saveText}
+      </span>
+      <span
+        role="alert"
+        {...props(intent.danger, styles.error, viewerStyles.statusText, styles.saveText)}
+      >
+        {errorText}
+      </span>
+      {snapshot.status.kind === "error" && (
+        <Button onClick={() => void commands.save()}>Retry Save</Button>
+      )}
+      {!documentView && (
+        <span {...props(styles.position)}>
+          <CaretPosition
+            caret={caret}
+            revision={navigationRevision}
+            target={file.target}
+            mac={mac}
+            onGoToLine={onGoToLine}
+          />
+        </span>
+      )}
+    </>
+  );
 
   return (
     <div
@@ -537,54 +611,20 @@ export function TextFileEditor({
           />
         </>
       )}
-      <div {...props(statusVisible ? viewerStyles.status : srOnly)}>
-        {file.readOnly && (
-          <span {...props(styles.readOnly)}>
-            <Icon name="lock" size="sm" />
-            <span>Read-only library file</span>
-            <Button
-              size="2xs"
-              variant="plain"
-              onClick={() => fileActions.setReadOnly(viewKey, file.path, false)}
-            >
-              Edit Anyway
-            </Button>
-          </span>
-        )}
-        {workspace !== undefined && !documentView && (
-          <FileBlame
-            file={file}
-            workspace={workspace}
-            version={snapshot.version}
-            active={active}
-            dirty={dirty}
-            caret={caret}
-          />
-        )}
-        <span role="status" {...props(viewerStyles.statusText, styles.saveText)}>
-          {saveText}
-        </span>
-        <span
-          role="alert"
-          {...props(intent.danger, styles.error, viewerStyles.statusText, styles.saveText)}
-        >
-          {errorText}
-        </span>
-        {snapshot.status.kind === "error" && (
-          <Button onClick={() => void commands.save()}>Retry Save</Button>
-        )}
-        {!documentView && (
-          <span {...props(styles.position)}>
-            <CaretPosition
-              caret={caret}
-              revision={navigationRevision}
-              target={file.target}
-              mac={mac}
-              onGoToLine={onGoToLine}
-            />
-          </span>
-        )}
-      </div>
+      {statusSlot === undefined ? (
+        <div {...props(statusVisible ? viewerStyles.status : srOnly)}>{status}</div>
+      ) : (
+        visible &&
+        statusSlot !== null &&
+        createPortal(
+          <>
+            {status}
+            {!documentView && <IndentationLabel path={file.path} text={settledText} />}
+            <span {...props(styles.language)}>{languageLabel(file.path)}</span>
+          </>,
+          statusSlot,
+        )
+      )}
     </div>
   );
 }
@@ -668,7 +708,8 @@ function useLanguageFeatures(input: {
     selection: () => selectionRange(editor()?.getViewState().selections?.at(-1)),
     rangeRect: (range) => editor()?.getRangeRect(editorRange(range)),
     fallbackRect: () => input.root.current?.getBoundingClientRect() ?? new DOMRect(),
-    diagnosed: (position) => diagnosed(diagnostics.markers(), position),
+    diagnosed: (position) => diagnostics.diagnosed(position),
+    nearestProblem: (position) => diagnostics.nearest(position),
     focus: () => editor()?.focus(),
   });
 
@@ -687,7 +728,7 @@ function useLanguageFeatures(input: {
     mac: input.mac,
     readOnly: file.readOnly,
     show: input.show,
-    onQuickFix: declarations.showActions,
+    onQuickFix: declarations.showFixes,
   });
 
   return { declarations, completion, diagnostics };

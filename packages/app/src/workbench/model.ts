@@ -276,6 +276,22 @@ export type WorkbenchBrowse =
 
 export const FOLLOW_BROWSE = Object.freeze({ kind: "follow" }) satisfies WorkbenchBrowse;
 
+/** The panel under the Editor where the workbench is the window's main area. Every other tab opens in it. */
+export interface WorkbenchDock {
+  readonly open: boolean;
+  /** The tab it shows. A closed or missing tab falls back to the last one. */
+  readonly active: WorkbenchTabId | null;
+  readonly height: number;
+  readonly maximized: boolean;
+}
+
+export const DEFAULT_DOCK = Object.freeze({
+  open: false,
+  active: null,
+  height: 280,
+  maximized: false,
+}) satisfies WorkbenchDock;
+
 export interface WorkbenchViewState {
   readonly tabs: readonly WorkbenchTab[];
   readonly active: WorkbenchTabId | null;
@@ -287,6 +303,7 @@ export interface WorkbenchViewState {
   readonly width: WorkbenchWidth;
   readonly sidebars: readonly string[];
   readonly browse: WorkbenchBrowse;
+  readonly dock: WorkbenchDock;
 }
 
 export interface WorkbenchSnapshot {
@@ -304,6 +321,7 @@ export const DEFAULT_VIEW = Object.freeze({
   groups: Object.freeze([Object.freeze({ id: FIRST_GROUP, active: null })]),
   group: FIRST_GROUP,
   browse: FOLLOW_BROWSE,
+  dock: DEFAULT_DOCK,
 }) satisfies WorkbenchViewState;
 
 export function activeEditorFile(view: WorkbenchViewState): KindTab<"file"> | undefined {

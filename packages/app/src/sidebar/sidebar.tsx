@@ -39,7 +39,7 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { SidebarFooter } from "./account-footer.tsx";
 import { activateWorkspace, folderPicker } from "../panes/open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
-import { actionIcons } from "./action-icons.ts";
+import { actionIcons } from "../settings-sections/action-icons.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { ChatCardGroup } from "../components/chat-card.tsx";
 import { SidebarContent } from "./sidebar-content.tsx";

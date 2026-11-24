@@ -59,6 +59,27 @@ export function activeWorkbenchTab(
   return tabs.find((tab) => tab.id === view.active) ?? tabs[0] ?? null;
 }
 
+/** The tabs a main-area workbench keeps in its dock: every tab but the Editor's. */
+export function dockTabs(
+  view: WorkbenchViewState,
+  scope: WorkbenchScope,
+  capabilities: ClientCapabilities,
+): readonly WorkbenchTab[] {
+  return visibleTabs(view, scope, capabilities).filter((tab) => tabSlot(tab) !== EDITOR_SLOT);
+}
+
+/** The dock tab on show, or undefined when the dock is closed or has no tabs. */
+export function shownDockTab(
+  view: WorkbenchViewState,
+  scope: WorkbenchScope,
+  capabilities: ClientCapabilities,
+): WorkbenchTab | undefined {
+  if (!view.dock.open) return undefined;
+  const tabs = dockTabs(view, scope, capabilities);
+
+  return tabs.find((tab) => tab.id === view.dock.active) ?? tabs.at(-1);
+}
+
 export function shownWorkbenchTab(
   view: WorkbenchViewState,
   scope: WorkbenchScope,

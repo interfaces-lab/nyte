@@ -115,7 +115,7 @@ export function readsWorkingTree(scope: WorkbenchChangesScope): boolean {
   return scope.kind === "uncommitted" || scope.kind === "staged" || scope.kind === "unstaged";
 }
 
-interface CommitBarState {
+export interface CommitBarState {
   readonly scope: WorkbenchChangesScope;
   readonly fileCount: number;
   readonly message: string;
@@ -145,7 +145,7 @@ function pullRequestBlocker(
   }
 }
 
-function commitActionDisabledReason(
+export function commitActionDisabledReason(
   action: CommitAction,
   state: CommitBarState,
 ): string | undefined {
@@ -179,7 +179,7 @@ function commitActionDisabled(action: CommitAction, state: CommitBarState): bool
   );
 }
 
-interface CommitBarResult {
+export interface CommitBarResult {
   readonly tone: "success" | "error";
   readonly text: string;
   readonly detail?: string;
@@ -316,27 +316,27 @@ const styles = create({
   resultActions: { display: "flex", alignItems: "center", gap: space.s2, flexWrap: "wrap" },
 });
 
-interface RunOptions {
+export interface RunOptions {
   readonly branchName?: string;
   readonly setUpstream?: boolean;
   readonly skipBranch?: boolean;
   readonly skipCommit?: boolean;
 }
 
-interface CommitRun {
+export interface CommitRun {
   readonly workspace: WorkspaceId | undefined;
   readonly action: CommitAction;
   readonly options: RunOptions;
   readonly revision: string;
   readonly message: string;
-  readonly scope: WorkbenchChangesScope;
+  readonly files: GitCommitFiles;
   readonly github: GitHubApi | undefined;
   readonly onBranchCreated: () => void;
   readonly onCommitted: () => void;
   readonly onPushInterrupted: () => void;
 }
 
-async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
+export async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
   const { options } = run;
   const plan = commitActionPlan(run.action);
   let expect: GitRevision = asId<"git-revision">(run.revision);
@@ -363,10 +363,7 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
     }
 
     if (plan.commit && options.skipCommit !== true) {
-      const committed = await git.commit(
-        { message: run.message, files: commitTargetFor(run.scope) },
-        { expect },
-      );
+      const committed = await git.commit({ message: run.message, files: run.files }, { expect });
 
       const outcome = commitResultMessage(committed);
 
@@ -494,7 +491,7 @@ export function ChangesCommitBar({
       options,
       revision,
       message,
-      scope,
+      files: commitTargetFor(scope),
       github,
       onBranchCreated: () => {
         setBranchPrompt(undefined);

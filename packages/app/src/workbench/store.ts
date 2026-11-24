@@ -5,7 +5,7 @@ import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { nyte, windowApp } from "../contract/nyte.ts";
 import { localArea } from "../lib/storage.ts";
 import { appShape } from "./app-shape.ts";
-import { DEFAULT_VIEW } from "./model.ts";
+import { DEFAULT_VIEW, EDITOR_SLOT, tabSlot } from "./model.ts";
 import type {
   WorkbenchSnapshot,
   WorkbenchTabId,
@@ -15,7 +15,7 @@ import type {
 import { useWorkbenchViewKey, workbenchScope } from "./paths.ts";
 import type { WorkbenchPersistence } from "./persistence.ts";
 import { persistable, restoreSnapshot, workbenchPersistence } from "./persistence.ts";
-import { shownWorkbenchTab } from "./selectors.ts";
+import { shownDockTab, shownWorkbenchTab } from "./selectors.ts";
 import { reduceView } from "./view-reducer.ts";
 import type { WorkbenchViewAction } from "./view-reducer.ts";
 
@@ -38,19 +38,28 @@ function freezeView(view: WorkbenchViewState): WorkbenchViewState {
 export interface WorkbenchArrangement {
   /** The view of a project the window hasn't shown yet. */
   readonly initial: WorkbenchViewState;
-  /** The workbench is the window's main area, so it stays open and always has its Editor. */
+  /** The workbench is the window's main area: it stays open on its Editor, and every other tab opens in the dock. */
   readonly main: boolean;
 }
 
 const SIDE_PANEL: WorkbenchArrangement = { initial: DEFAULT_VIEW, main: false };
 
-function holdEditor(view: WorkbenchViewState): WorkbenchViewState {
-  const editor = view.tabs.find((tab) => tab.kind === "editor");
+function holdMain(view: WorkbenchViewState, closing: boolean): WorkbenchViewState {
+  const active = view.tabs.find((tab) => tab.id === view.active);
+  const docks = !closing && active !== undefined && tabSlot(active) !== EDITOR_SLOT;
+  const docked = docks ? { ...view, dock: { ...view.dock, open: true, active: active.id } } : view;
+  const editor = docked.tabs.find((tab) => tab.kind === "editor");
 
-  if (editor !== undefined && view.expanded) return view;
+  if (
+    editor !== undefined &&
+    docked.expanded &&
+    (active === undefined || tabSlot(active) === EDITOR_SLOT)
+  ) {
+    return docked;
+  }
 
   return reduceView(
-    view,
+    docked,
     editor === undefined
       ? { kind: "open", tab: { id: crypto.randomUUID(), kind: "editor" }, activate: true }
       : { kind: "activate", id: editor.id },
@@ -65,8 +74,8 @@ export function createWorkbenchStore(
   const listeners = new Set<() => void>();
   let snapshot: WorkbenchSnapshot | undefined;
 
-  const held = (view: WorkbenchViewState): WorkbenchViewState =>
-    arrangement().main ? holdEditor(view) : view;
+  const held = (view: WorkbenchViewState, closing = false): WorkbenchViewState =>
+    arrangement().main ? holdMain(view, closing) : view;
 
   const restore = (): WorkbenchSnapshot => {
     const restored = restoreSnapshot(persistence?.get(), capabilities);
@@ -99,7 +108,7 @@ export function createWorkbenchStore(
     getView,
     dispatch(key: WorkbenchViewKey, action: WorkbenchViewAction) {
       const current = getView(key);
-      const next = held(reduceView(current, action));
+      const next = held(reduceView(current, action), action.kind === "close");
 
       if (next === current) return;
       write(new Map(read().views).set(key, freezeView(next)));
@@ -172,11 +181,15 @@ export function useVisibleCanvasTab(
   const read = (): WorkbenchTabId | undefined => {
     if (canvas === undefined) return undefined;
 
-    const tab = shownWorkbenchTab(
-      workbench.getView(key),
-      workbenchScope(key),
-      clientCapabilities(nyte.host),
-    );
+    const view = workbench.getView(key);
+    const scope = workbenchScope(key);
+    const capabilities = clientCapabilities(nyte.host);
+    const shown = shownWorkbenchTab(view, scope, capabilities);
+
+    const tab =
+      shown !== null && appShape().panel === "chat"
+        ? shownDockTab(view, scope, capabilities)
+        : shown;
 
     return tab?.kind === "canvas" && tab.sessionId === canvas.sessionId && tab.part === canvas.part
       ? tab.id

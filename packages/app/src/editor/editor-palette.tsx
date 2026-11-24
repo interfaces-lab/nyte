@@ -2,12 +2,13 @@ import type { ReactElement } from "react";
 import type { WorkbenchViewKey } from "../workbench/model.ts";
 import type { EditorData } from "./editor-data.ts";
 import { FilePalette } from "./file-palette.tsx";
+import type { PaletteCommand } from "./file-palette.tsx";
 import { fileActions } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 import { characterAtColumn, lineAt, TAB_COLUMNS } from "./indentation.ts";
 import type { OutlineSymbol } from "./outline.ts";
 
-/** The editor's palette: quick open, the active file's symbols, and go to line. */
+/** The editor's palette: quick open, the active file's symbols, go to line, and in the main area its commands. */
 export function EditorPalette({
   viewKey,
   query,
@@ -16,6 +17,8 @@ export function EditorPalette({
   activeFile,
   activeContents,
   symbols,
+  commands,
+  shortcut,
   onQueryChange,
 }: {
   readonly viewKey: WorkbenchViewKey;
@@ -25,6 +28,8 @@ export function EditorPalette({
   readonly activeFile: FileTab | undefined;
   readonly activeContents: string | undefined;
   readonly symbols: readonly OutlineSymbol[];
+  readonly commands: readonly PaletteCommand[] | undefined;
+  readonly shortcut: readonly string[] | undefined;
   readonly onQueryChange: (query: string | undefined) => void;
 }): ReactElement {
   const recentFiles = recent.flatMap((path) => {
@@ -45,6 +50,8 @@ export function EditorPalette({
           ? undefined
           : { path: activeFile.path, contents: activeContents, symbols }
       }
+      commands={commands}
+      shortcut={shortcut}
       onQueryChange={onQueryChange}
       onClose={() => onQueryChange(undefined)}
       onOpenFile={(file) => fileActions.open(viewKey, file)}

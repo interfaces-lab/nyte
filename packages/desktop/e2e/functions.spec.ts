@@ -4,6 +4,7 @@ import {
   board,
   boardStill,
   CONTINUE,
+  editor,
   expect,
   openFile,
   selectFrom,
@@ -18,14 +19,6 @@ test.use({ opened: ["Code", "Studio"] });
 
 async function rest(page: Page): Promise<void> {
   await page.mouse.move(1, 300);
-}
-
-async function openTool(page: Page, kind: string): Promise<void> {
-  await page.getByRole("button", { name: "New workbench tab" }).click();
-  await page
-    .getByRole("menu", { name: "New workbench tab" })
-    .getByRole("menuitem", { name: kind })
-    .click();
 }
 
 for (const theme of ["dark", "light"] as const) {
@@ -144,13 +137,11 @@ async function everyFunction(desk: Desk, theme: "dark" | "light"): Promise<void>
   });
 
   await test.step("Code's Changes and Terminal", async () => {
-    await openTool(code, "Changes");
-    await expect(
-      workbench(code).getByRole("tabpanel", { name: "Changes" }).getByRole("status"),
-    ).toBeVisible();
+    await editor(code).getByRole("button", { name: "Changes", exact: true }).click();
+    await expect(editor(code).getByRole("group", { name: "Changes" })).toBeVisible();
     await rest(code);
     await desk.capture(code, "15-code-changes");
-    await openTool(code, "Terminal");
+    await code.getByRole("button", { name: "Show panel" }).click();
     await expect(workbench(code).getByRole("textbox", { name: "Terminal input" })).toBeVisible();
     await desk.capture(code, "16-code-terminal");
   });

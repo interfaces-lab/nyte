@@ -79,7 +79,7 @@ export function applicationMenuTemplate(options: {
 
   const fileActions = [
     { label: "New Window", accelerator: "Shift+CommandOrControl+N", click: options.newWindow },
-    action(clientActions.newChat),
+    command(clientActions.newChat),
     action(clientActions.newTab),
     action(clientActions.openFolder),
     command(clientActions.search),

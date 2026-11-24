@@ -2,7 +2,7 @@ import { create } from "@stylexjs/stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { media, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 
-export const searchPaletteStyles = create({
+export const paletteTabStyles = create({
   tabsBar: {
     flexShrink: 0,
   },

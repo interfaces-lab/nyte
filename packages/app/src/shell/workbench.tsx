@@ -1,7 +1,7 @@
 import { workbenchStyles } from "../workbench/workbench.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
-import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
+import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
@@ -14,10 +14,10 @@ import { useWorkspaces } from "../data/workspaces.ts";
 import type { RailWorkspace } from "../data/workspaces.ts";
 import {
   clampWorkbenchWidthToBounds,
+  EDITOR_WIDTH_MIN,
   WORKBENCH_CENTER_WIDTH_MIN,
   DEFAULT_WIDTH,
   setActiveWorkbenchWidth,
-  workbenchPanelWidth,
   workbenchSeparatorValue,
   workbenchWidthBounds,
 } from "../workbench/width.ts";
@@ -38,6 +38,7 @@ import { openUrl, revealChatPanel } from "../workbench/commands.ts";
 import { WorkbenchWorkspaceContext } from "../workbench/workbench-workspace.tsx";
 import type { WorkbenchWorkspace } from "../workbench/workbench-workspace.tsx";
 import { CompactRail, Rail, RailRow } from "./workbench-rail.tsx";
+import { WorkbenchDock } from "./workbench-dock.tsx";
 import { BrowserPanel } from "../browser/browser-panel";
 import { CanvasPanel } from "../canvas/canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../lib/deferred.tsx";
@@ -87,6 +88,7 @@ function PanelContent({
   workspacePath,
   workspaceActive,
   sidebarVisible,
+  dock,
 }: {
   readonly tab: WorkbenchTab;
   readonly viewKey: WorkbenchViewKey;
@@ -95,6 +97,7 @@ function PanelContent({
   readonly workspacePath: string | null;
   readonly workspaceActive: boolean;
   readonly sidebarVisible: boolean;
+  readonly dock: ReactNode;
 }): ReactElement {
   const uiFontSize = useSetting(preferences.uiFontSize);
 
@@ -106,7 +109,7 @@ function PanelContent({
     case "editor":
       return (
         <Deferred entry="workbench">
-          {({ EditorPanel }) => (
+          {({ EditorPanel, EditorChangesView }) => (
             <EditorPanel
               key={uiFontSize}
               viewKey={viewKey}
@@ -114,7 +117,11 @@ function PanelContent({
               visible={visible}
               workspaceActive={workspaceActive}
               sidebarVisible={sidebarVisible}
-              explorerDocked={appShape().navigator === "files"}
+              main={appShape().panel === "chat"}
+              dock={dock}
+              changes={
+                appShape().panel === "chat" ? <EditorChangesView viewKey={viewKey} /> : undefined
+              }
               onToggleSidebar={toggleSidebar}
             />
           )}
@@ -227,6 +234,7 @@ function WorkbenchViewHost({
   current,
   scope,
   stageWidth,
+  centerMin,
   capabilities,
 }: {
   readonly viewKey: WorkbenchViewKey;
@@ -234,6 +242,7 @@ function WorkbenchViewHost({
   readonly current: boolean;
   readonly scope: WorkbenchScope;
   readonly stageWidth: number;
+  readonly centerMin: number;
   readonly capabilities: ClientCapabilities;
 }): ReactElement {
   const view = useWorkbenchViewState(viewKey);
@@ -243,12 +252,16 @@ function WorkbenchViewHost({
   const [resizing, setResizing] = useState(false);
   const panelRef = useRef<HTMLElement | null>(null);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
-  const bounds = workbenchWidthBounds(stageWidth);
+  const bounds = workbenchWidthBounds(stageWidth, centerMin);
   const compact = view.collapsed === "compact" || bounds.narrow;
   const maximized = view.layout.kind === "maximized";
   const chatShowing = workbenchShowsChat(view.layout);
-  const panelWidth = maximized ? stageWidth : workbenchPanelWidth(view.width, stageWidth);
-  const separator = workbenchSeparatorValue(panelWidth, stageWidth);
+
+  const panelWidth = maximized
+    ? stageWidth
+    : clampWorkbenchWidthToBounds(view.width.pixels, bounds);
+
+  const separator = workbenchSeparatorValue(panelWidth, stageWidth, bounds);
 
   const setWidth = (width: number): void =>
     workbench.dispatch(viewKey, { kind: "set-width", pixels: width });
@@ -355,7 +368,7 @@ function WorkbenchViewHost({
   const shownTab = current ? shownWorkbenchTab(view, scope, capabilities) : null;
   const editorVisible = shownTab !== null && tabSlot(shownTab) === EDITOR_SLOT;
 
-  const renderSlot = (tab: WorkbenchTab, visible: boolean): ReactElement => {
+  const renderSlot = (tab: WorkbenchTab, visible: boolean, dock?: ReactNode): ReactElement => {
     const slot = tabSlot(tab);
 
     return (
@@ -377,10 +390,21 @@ function WorkbenchViewHost({
           workspacePath={workspacePath}
           workspaceActive={current}
           sidebarVisible={view.sidebars.includes(slot)}
+          dock={dock}
         />
       </div>
     );
   };
+
+  const dock = chatPanel && (
+    <WorkbenchDock
+      viewKey={viewKey}
+      view={view}
+      scope={scope}
+      capabilities={capabilities}
+      renderTab={(tab, visible) => renderSlot(tab, panelShown && visible)}
+    />
+  );
 
   return (
     <WorkbenchWorkspaceContext value={workspace}>
@@ -393,7 +417,7 @@ function WorkbenchViewHost({
         inert={panelHidden ? true : undefined}
         {...props(
           workbenchStyles.panel,
-          panelVisible && (chatPanel ? workbenchStyles.panelEndRule : hairline.inlineStartAfter),
+          panelVisible && (chatPanel ? hairline.forcedInlineEnd : hairline.inlineStartAfter),
           panelVisible && [
             chatPanel ? workbenchStyles.panelOpenCode : workbenchStyles.panelOpen,
             workbenchStyles.panelWidth(view.width.pixels),
@@ -445,8 +469,8 @@ function WorkbenchViewHost({
               onDoubleClick={resetWidth}
             />
           )}
-          {editorTab !== undefined && renderSlot(editorTab, editorVisible)}
-          {panelTabs.map((tab) => renderSlot(tab, shownTab?.id === tab.id))}
+          {editorTab !== undefined && renderSlot(editorTab, editorVisible, dock)}
+          {!chatPanel && panelTabs.map((tab) => renderSlot(tab, shownTab?.id === tab.id))}
           {panelShown && shownTab === null && (
             <div {...props(workbenchStyles.launcher)}>
               {railModel({ view, scope, capabilities, repository: false }).launchers.map(
@@ -496,7 +520,8 @@ export function Workbench({
   readonly folder: SelectedWorkspace | undefined;
 }): ReactElement {
   const capabilities = clientCapabilities(nyte.host);
-  const [stageWidth, setStageWidth] = useState(2 * WORKBENCH_CENTER_WIDTH_MIN);
+  const centerMin = appShape().panel === "chat" ? EDITOR_WIDTH_MIN : WORKBENCH_CENTER_WIDTH_MIN;
+  const [stageWidth, setStageWidth] = useState(2 * centerMin);
   const viewKey = workbenchViewKey(folder?.path);
   const [visited, setVisited] = useState<readonly WorkbenchViewKey[]>([viewKey]);
 
@@ -516,7 +541,10 @@ export function Workbench({
 
       if (width === 0) return;
       setStageWidth(width);
-      workbench.dispatch(viewKey, { kind: "fit", narrow: workbenchWidthBounds(width).narrow });
+      workbench.dispatch(viewKey, {
+        kind: "fit",
+        narrow: workbenchWidthBounds(width, centerMin).narrow,
+      });
     };
 
     update();
@@ -543,6 +571,7 @@ export function Workbench({
             current={current}
             scope={current ? workbenchScope(key) : { kind: "pathless" }}
             stageWidth={stageWidth}
+            centerMin={centerMin}
             capabilities={capabilities}
           />
         );

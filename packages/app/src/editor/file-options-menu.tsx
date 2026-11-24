@@ -9,7 +9,7 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { create } from "@stylexjs/stylex";
-import type { ReactElement, RefObject } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import { revealLabel } from "../components/context-menu.ts";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
@@ -65,8 +65,9 @@ export function FileOptionsMenu({
   workspace,
   editors,
   menuRef,
-  explorerDocked,
+  main,
   sidePanel,
+  leading,
   onCopyPath,
   onDiscard,
 }: {
@@ -75,8 +76,11 @@ export function FileOptionsMenu({
   readonly workspace: SelectedWorkspace | undefined;
   readonly editors: RefObject<Map<string, FileEditorHandle>>;
   readonly menuRef: RefObject<HTMLButtonElement | null>;
-  readonly explorerDocked: boolean;
+  /** The Editor is the window's main area, so the menu sits in the title bar. */
+  readonly main: boolean;
   readonly sidePanel: "start" | "end";
+  /** Items above the file's own, such as the open files. */
+  readonly leading?: ReactNode;
   readonly onCopyPath: (path: string) => void;
   readonly onDiscard: (path: string | undefined) => void;
 }): ReactElement {
@@ -93,15 +97,16 @@ export function FileOptionsMenu({
       <MenuTrigger
         render={
           <Button
-            size="sm"
+            size={main ? undefined : "sm"}
             iconOnly
             ref={menuRef}
             icon="more-horizontal"
-            aria-label="File options"
+            aria-label={main ? "More" : "File options"}
           />
         }
       />
       <MenuContent align="end" xstyle={styles.menu}>
+        {leading}
         <MenuItem
           layout="plain"
           meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
@@ -165,7 +170,7 @@ export function FileOptionsMenu({
             }
           />
         ))}
-        {!explorerDocked && (
+        {!main && (
           <MenuItem
             layout="plain"
             onClick={() => preferences.editorSidePanel.set(sidePanel === "start" ? "end" : "start")}

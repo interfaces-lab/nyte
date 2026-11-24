@@ -2,6 +2,7 @@ import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { publishDeferred } from "../lib/deferred.tsx";
 import { ChangesPanel } from "../changes/changes-panel.tsx";
 import { DesignTab } from "./design-tab.tsx";
+import { EditorChangesView } from "./editor-changes-view.tsx";
 import { EditorPanel } from "../editor/editor-panel.tsx";
 import { TerminalPanel } from "../terminal/terminal-panel.tsx";
 import {
@@ -13,6 +14,7 @@ import {
 
 export const workbenchRuntime = {
   EditorPanel,
+  EditorChangesView,
   ChangesPanel,
   DesignTab,
   TerminalPanel,

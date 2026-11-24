@@ -19,21 +19,22 @@ import { useChatWindow } from "../window/index.ts";
 
 import { amongOptions, chatMark, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionSearch } from "../data/sessions.ts";
-import { PaletteLegend } from "./palette-legend.tsx";
-import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
+import { PaletteLegend } from "../components/palette-legend.tsx";
+import { paletteTabStyles as styles } from "../components/palette-tabs.stylex.ts";
 import { settingsSectionGroups } from "../settings-sections/sections.ts";
 import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
 import type { AppAction } from "../contract/client-actions.ts";
 import { appActions } from "../data/app-actions.ts";
 import { nyte } from "../contract/nyte.ts";
-import { actionIcons, settingsActionPages } from "./action-icons.ts";
+import { actionIcons, settingsActionPages } from "../settings-sections/action-icons.ts";
 
 const TABS = ["all", "agents", "actions", "settings"] as const;
 
 type PaletteTab = (typeof TABS)[number];
 
 interface SearchPaletteProps {
-  readonly trigger: ReactElement;
+  /** The control that opens it. Without one, only its key and `open` do. */
+  readonly trigger?: ReactElement;
   readonly open: boolean;
   readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
@@ -233,7 +234,7 @@ export function SearchPalette({
 
   return (
     <Command.Root open={open} onOpenChange={onOpenChange}>
-      <Command.Trigger render={trigger} />
+      {trigger !== undefined && <Command.Trigger render={trigger} />}
       <Command.Popup
         title="Search chats and actions"
         items={rows}

@@ -417,13 +417,15 @@ export function changesEmptyState(input: {
 export interface RevertTarget {
   readonly path: string;
   readonly untracked: boolean;
+  /** The file is new in the index; reverting it deletes it too. */
+  readonly added?: boolean;
 }
 
 export function revertConfirmation(target: RevertTarget) {
-  if (target.untracked) {
+  if (target.untracked || target.added === true) {
     return {
       title: "Delete File",
-      description: `${target.path} is untracked, so reverting it deletes the file permanently. This can’t be undone.`,
+      description: `${target.path} ${target.untracked ? "is untracked" : "is new since the last commit"}, so reverting it deletes the file permanently. This can’t be undone.`,
       confirmLabel: "Delete File",
       pendingLabel: "Deleting…",
     };

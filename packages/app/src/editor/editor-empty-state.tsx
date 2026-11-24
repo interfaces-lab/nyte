@@ -33,6 +33,8 @@ export function EditorEmptyState({
   onOpen,
   onShowExplorer,
   onSearch,
+  searchKeys,
+  onNewFile,
 }: {
   readonly files: readonly MentionFile[] | undefined;
   readonly changes: readonly WorktreeFile[];
@@ -40,6 +42,9 @@ export function EditorEmptyState({
   readonly onOpen: (file: MentionFile) => void;
   readonly onShowExplorer: () => void;
   readonly onSearch: () => void;
+  readonly searchKeys: readonly string[];
+  /** Names a new file in the explorer. Offered with ⌘N where the Editor is the window's main area. */
+  readonly onNewFile?: () => void;
 }): ReactElement {
   const id = useId();
   const [query, setQuery] = useState("");
@@ -121,6 +126,17 @@ export function EditorEmptyState({
               <h2 id={`${id}-start`} {...props(styles.heading)}>
                 Start
               </h2>
+              {onNewFile !== undefined && (
+                <Row variant="nav" onClick={onNewFile}>
+                  <Row.Leading>
+                    <Icon name="file-add" size="md" />
+                  </Row.Leading>
+                  <Row.Label>New File</Row.Label>
+                  <Row.Meta>
+                    <Kbd keys={[mod, "N"]} plain />
+                  </Row.Meta>
+                </Row>
+              )}
               {!explorerVisible && (
                 <Row variant="nav" onClick={onShowExplorer}>
                   <Row.Leading>
@@ -135,7 +151,7 @@ export function EditorEmptyState({
                 </Row.Leading>
                 <Row.Label>Search in Files</Row.Label>
                 <Row.Meta>
-                  <Kbd keys={[mod, "F"]} plain />
+                  <Kbd keys={searchKeys} plain />
                 </Row.Meta>
               </Row>
             </section>

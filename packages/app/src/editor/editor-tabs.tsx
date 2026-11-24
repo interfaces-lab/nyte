@@ -38,6 +38,10 @@ export function EditorTabs(input: {
   /** Leads the group's actions, so the tabs leave it room instead of running under it. */
   readonly view?: ReactNode;
   readonly actions?: ReactNode;
+  /** The Editor is the window's main area: its file actions live in the title bar, and an open tab shows its close button. */
+  readonly main: boolean;
+  /** The folder that tells a tab apart from another open file of the same name, by display path. */
+  readonly suffixes: ReadonlyMap<string, string>;
 }): ReactElement {
   const track = useRef<HTMLDivElement>(null);
   const [insertion, setInsertion] = useState<{ readonly before: WorkbenchTabId | null }>();
@@ -150,6 +154,7 @@ export function EditorTabs(input: {
                       {...props(
                         styles.item,
                         active && [styles.selected, styles.kept, cap],
+                        active && input.main && styles.closeShown,
                         insertion?.before === file.id && styles.insertBefore,
                       )}
                     >
@@ -221,6 +226,11 @@ export function EditorTabs(input: {
                       >
                         <FileTypeIcon path={file.path} />
                         <span {...props(styles.label, file.preview && styles.preview)}>{name}</span>
+                        {input.suffixes.has(file.displayPath) && (
+                          <span {...props(styles.suffix)}>
+                            {input.suffixes.get(file.displayPath)}
+                          </span>
+                        )}
                         {file.dirty && (
                           <span aria-hidden="true" {...props(surfaceTheme.yellow, styles.dirty)} />
                         )}
@@ -263,45 +273,49 @@ export function EditorTabs(input: {
       {input.path}
       <span ref={watchSize} data-file-actions="" {...props(styles.actions)}>
         {input.view}
-        <Menu>
-          <MenuTrigger
-            render={
-              <Button
-                size="sm"
-                iconOnly
-                icon="chevron-down"
-                aria-label={`Open files in group ${String(input.index + 1)}`}
-                title="Open files"
-                disabled={group.tabs.length === 0}
-              />
-            }
+        {!input.main && (
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  size="sm"
+                  iconOnly
+                  icon="chevron-down"
+                  aria-label={`Open files in group ${String(input.index + 1)}`}
+                  title="Open files"
+                  disabled={group.tabs.length === 0}
+                />
+              }
+            />
+            <MenuContent align="end">
+              {group.tabs.map((file) => (
+                <MenuItem
+                  key={file.id}
+                  icon={file.id === selected ? "checkmark" : undefined}
+                  aria-current={file.id === selected ? "true" : undefined}
+                  onClick={() => focusTab(file.id)}
+                >
+                  <span {...props(styles.path)}>{file.displayPath}</span>
+                </MenuItem>
+              ))}
+            </MenuContent>
+          </Menu>
+        )}
+        {!input.main && (
+          <Button
+            size="sm"
+            iconOnly
+            icon="split-right"
+            aria-label="Split Editor Right"
+            title={`Split Editor Right (${nyte.platform === "darwin" ? "⌘\\" : "Ctrl+\\"})`}
+            disabled={group.active === undefined}
+            onClick={() => {
+              if (group.active !== undefined) {
+                fileActions.split(input.viewKey, "after", group.active.id);
+              }
+            }}
           />
-          <MenuContent align="end">
-            {group.tabs.map((file) => (
-              <MenuItem
-                key={file.id}
-                icon={file.id === selected ? "checkmark" : undefined}
-                aria-current={file.id === selected ? "true" : undefined}
-                onClick={() => focusTab(file.id)}
-              >
-                <span {...props(styles.path)}>{file.displayPath}</span>
-              </MenuItem>
-            ))}
-          </MenuContent>
-        </Menu>
-        <Button
-          size="sm"
-          iconOnly
-          icon="split-right"
-          aria-label="Split Editor Right"
-          title={`Split Editor Right (${nyte.platform === "darwin" ? "⌘\\" : "Ctrl+\\"})`}
-          disabled={group.active === undefined}
-          onClick={() => {
-            if (group.active !== undefined) {
-              fileActions.split(input.viewKey, "after", group.active.id);
-            }
-          }}
-        />
+        )}
         {input.many && (
           <Button
             size="sm"
@@ -395,6 +409,7 @@ const styles = create({
   },
   selected: { backgroundColor: role.fillSecondary, color: role.contentPrimary },
   kept: { flexShrink: 0 },
+  closeShown: { "--_file-close-opacity": "1", "--_file-close-events": "auto" },
   cap: (width: number) => ({ maxWidth: `min(200px, ${String(width)}px)` }),
   tab: {
     backgroundColor: {
@@ -422,6 +437,15 @@ const styles = create({
     whiteSpace: "nowrap",
   },
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
+  suffix: {
+    flexShrink: 1000,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    color: role.contentTertiary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
   preview: { fontStyle: "italic" },
   dirty: {
     width: space.s1_5,

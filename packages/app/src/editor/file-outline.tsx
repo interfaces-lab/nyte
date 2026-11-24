@@ -3,7 +3,6 @@ import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@nyte-ai/ui/tooltip";
 import { row, space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -34,7 +33,7 @@ export function FileOutline({
     <Collapsible.Root
       open={open}
       onOpenChange={preferences.fileOutline.set}
-      {...props(hairline.blockStart, styles.root, open && styles.open)}
+      {...props(styles.root, open && styles.open)}
     >
       <Tooltip>
         <TooltipTrigger render={<Collapsible.Trigger xstyle={styles.trigger} />}>

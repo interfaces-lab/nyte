@@ -24,14 +24,21 @@ import {
 } from "../settings-sections/sections.ts";
 import { closeSettings } from "../settings-sections/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { launch, toggleExplorer } from "./launch.ts";
+import { launch, toggleDock, toggleExplorer } from "./launch.ts";
 import { closeTab } from "./close-tab.ts";
 import { workbenchHasFocus } from "../workbench/focus-region.ts";
+import { focusedGuestSurface } from "../browser/browser-guests.tsx";
 import { fileActions } from "../editor/file-store.ts";
 import { opensAsMarkdown } from "../editor/markdown-parse.ts";
-import { activeEditorFile, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "../workbench/model.ts";
+import {
+  activeEditorFile,
+  browserSurface,
+  EDITOR_SLOT,
+  tabSlot,
+  workbenchShowsChat,
+} from "../workbench/model.ts";
 import { workbenchScope, workbenchViewKey } from "../workbench/paths.ts";
-import { activeWorkbenchTab, shownWorkbenchTab } from "../workbench/selectors.ts";
+import { activeWorkbenchTab, shownDockTab, shownWorkbenchTab } from "../workbench/selectors.ts";
 import { workbench } from "../workbench/store.ts";
 import { landAt, switchApp } from "./apps.ts";
 
@@ -50,6 +57,13 @@ function currentWorkspacePath(): string | undefined {
 
 function toggleTerminal(): void {
   const viewKey = workbenchViewKey(currentWorkspacePath());
+
+  if (appShape().panel === "chat") {
+    toggleDock(viewKey);
+
+    return;
+  }
+
   const view = workbench.getView(viewKey);
 
   const active = activeWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
@@ -107,6 +121,16 @@ function stepEditorHistory(step: "back" | "forward"): boolean {
 function closeFocusedWorkbenchTab(): boolean {
   const viewKey = workbenchViewKey(currentWorkspacePath());
   const view = workbench.getView(viewKey);
+  const docked = shownDockTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
+
+  const pageFocused =
+    docked?.kind === "browser" && focusedGuestSurface() === browserSurface(docked);
+
+  if (docked !== undefined && (pageFocused || focusWithin("[data-workbench-dock]"))) {
+    void closeTab(viewKey, docked.id);
+
+    return true;
+  }
 
   const shown = shownWorkbenchTab(view, workbenchScope(viewKey), clientCapabilities(nyte.host));
 
@@ -182,8 +206,12 @@ export function runAction(router: RegisteredRouter, action: AppAction, input: Js
       void activateWorkspace(null);
 
       return true;
-    case "settings.open":
-      return openSettings(router, read(action, APP_ACTIONS[action].input, input).page);
+    case "settings.open": {
+      const page = read(action, APP_ACTIONS[action].input, input).page;
+
+      return appShape().settings === "nyte" ? openSettingsInNyte(page) : openSettings(router, page);
+    }
+
     case "customize.open": {
       const selection = activeSelection(windowTabs.panes().layout.getSnapshot());
 
@@ -260,6 +288,15 @@ function read<T extends TSchema>(action: AppAction, schema: T, input: Json): Sta
   }
 
   return input;
+}
+
+function openSettingsInNyte(page: string | undefined): boolean {
+  const open = nyte.host.openSettings;
+
+  if (open === undefined) return false;
+  void open(page === undefined ? {} : { page });
+
+  return true;
 }
 
 function openSettings(router: RegisteredRouter, page: string | undefined): boolean {

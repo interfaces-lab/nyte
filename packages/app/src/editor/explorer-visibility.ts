@@ -17,20 +17,20 @@ export function useExplorerVisibility({
   shown,
   revealRevision,
   sidebarVisible,
-  explorerDocked,
+  main,
   onToggleSidebar,
 }: {
   readonly shown: boolean;
   readonly revealRevision: number;
   readonly sidebarVisible: boolean;
-  readonly explorerDocked: boolean;
+  readonly main: boolean;
   readonly onToggleSidebar: () => void;
 }): ExplorerVisibility {
   const bodyRef = useRef<HTMLDivElement>(null);
   const cramped = useCramped(bodyRef);
   const [choice, setChoice] = useState({ shown: false, revision: revealRevision });
   const insisted = choice.shown || choice.revision !== revealRevision;
-  const explorerShown = sidebarVisible && (explorerDocked || !cramped || insisted);
+  const explorerShown = sidebarVisible && (main || !cramped || insisted);
 
   const showSidebar = (): void => {
     if (cramped) setChoice({ shown: true, revision: revealRevision });

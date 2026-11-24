@@ -21,6 +21,7 @@ export interface AppShape {
   /** Where a selection made in another window lands: nowhere, in the Editor at its range, or on the Design board. */
   readonly arrival: "ignore" | "file" | "design";
   readonly surface: "glass" | "solid";
+  readonly settings: "here" | "nyte";
 }
 
 const LAUNCH_ORDER = Object.freeze([
@@ -46,12 +47,13 @@ const APP_SHAPES = {
     initial: DEFAULT_VIEW,
     arrival: "ignore",
     surface: "glass",
+    settings: "here",
   },
   code: {
     navigator: "files",
     panel: "chat",
     windowTabs: false,
-    launchers: ["editor", "changes", "browser", "terminal"],
+    launchers: ["editor", "browser", "terminal"],
     initial: arrange([
       { kind: "open", tab: { id: "editor", kind: "editor" }, activate: true },
       { kind: "toggle-sidebar", slot: EDITOR_SLOT },
@@ -59,6 +61,7 @@ const APP_SHAPES = {
     ]),
     arrival: "file",
     surface: "solid",
+    settings: "nyte",
   },
   studio: {
     navigator: "chats",
@@ -71,6 +74,7 @@ const APP_SHAPES = {
     ]),
     arrival: "design",
     surface: "glass",
+    settings: "here",
   },
 } as const satisfies Readonly<Record<DesktopApp, AppShape>>;
 

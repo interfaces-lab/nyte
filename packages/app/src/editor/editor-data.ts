@@ -14,6 +14,8 @@ export interface EditorData {
   readonly workspace: SelectedWorkspace | undefined;
   readonly files: ReturnType<typeof useMentionFiles>;
   readonly changes: readonly WorktreeFile[];
+  /** The checked-out branch, or the short commit a detached HEAD sits on. Undefined outside a git repository. */
+  readonly branch: string | undefined;
   readonly activeDocument: Document | undefined;
 }
 
@@ -38,5 +40,10 @@ export function useEditorData(shown: boolean, activePath: string | undefined): E
   const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : (chatFiles ?? []);
   const activeDocument = useDocument(activePath).data;
 
-  return { workspace, files, changes, activeDocument };
+  const branch =
+    vcs.data?.kind === "repository"
+      ? (vcs.data.branch ?? vcs.data.head?.slice(0, 7) ?? "HEAD")
+      : undefined;
+
+  return { workspace, files, changes, branch, activeDocument };
 }

@@ -159,6 +159,11 @@ export function sizeGuest(surface: string, width: number, height: number): void 
   notify();
 }
 
+/** The surface whose page has the window's keyboard, or undefined when no page has it. */
+export function focusedGuestSurface(): string | undefined {
+  return [...elements].find((entry) => entry[1] === document.activeElement)?.[0];
+}
+
 export function focusGuest(surface: string): void {
   if (places.get(surface)?.slot?.interactive !== true || keyOwner() !== undefined) return;
   const element = elements.get(surface);

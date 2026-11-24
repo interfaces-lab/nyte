@@ -649,7 +649,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
           : git(repo.root, ["clean", "-f", "-q", "--", ...loose]);
       }),
     commit: (input, guard) =>
-      write(true, guard?.expect, async (repo) => {
+      write(true, guard?.expect, async (repo, before) => {
         if (input.files.kind === "staged") {
           return git(repo.root, ["commit", "-q", "-m", input.message]);
         }
@@ -657,12 +657,45 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
         if (input.files.kind === "all") {
           return git(repo.root, ["commit", "-q", "-a", "-m", input.message]);
         }
+        if (input.files.paths.length === 0) return { kind: "unchanged" };
         const files = input.files.paths.map((path) => into(repo, path));
-        const added = await git(repo.root, ["add", "-A", "--", ...files]);
+        const merging = await exists(join(repo.gitDir, "MERGE_HEAD"));
+        const untracked = new Set(before.untracked);
 
-        if (added.code !== 0) return added;
+        const unindexed = new Set([
+          ...before.conflicts,
+          ...(merging ? before.unstaged.map((file) => file.path) : []),
+        ]);
 
-        return git(repo.root, ["commit", "-q", "-m", input.message, "--", ...files]);
+        const fresh = input.files.paths
+          .filter((path) => untracked.has(path))
+          .map((path) => into(repo, path));
+
+        const adding = input.files.paths
+          .filter((path) => untracked.has(path) || unindexed.has(path))
+          .map((path) => into(repo, path));
+
+        if (adding.length > 0) {
+          const added = await git(repo.root, ["add", "-A", "--", ...adding]);
+
+          if (added.code !== 0) return added;
+        }
+
+        if (merging) return git(repo.root, ["commit", "-q", "-m", input.message]);
+        const committed = await git(repo.root, [
+          "commit",
+          "-q",
+          "-m",
+          input.message,
+          "--",
+          ...files,
+        ]);
+
+        if (committed.code !== 0 && fresh.length > 0) {
+          await git(repo.root, ["rm", "--cached", "-r", "-q", "--ignore-unmatch", "--", ...fresh]);
+        }
+
+        return committed;
       }),
     branch: (input, guard) =>
       write(
@@ -783,7 +816,7 @@ async function readStatus(
 
       if (x !== ".") staged.push(change(fields.rest, x, stagedStats, from));
 
-      if (y !== ".") unstaged.push(change(fields.rest, y, unstagedStats, undefined));
+      if (y !== ".") unstaged.push(change(fields.rest, y, unstagedStats, from));
     } else if (token.startsWith("u ")) conflicts.push(splitFields(token, 10).rest);
     else if (token.startsWith("? ")) untracked.push(token.slice(2));
   }
